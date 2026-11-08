@@ -63,3 +63,31 @@ source rows, also checking PyArrow's full-scan values. It covers true/false
 run boundaries, transitions, nulls, required/optional columns, four mandatory
 codecs, seven-row page boundaries and nineteen-row row-group boundaries.
 Both reader CI jobs run it; no generated binary is retained or committed.
+
+### Generated independent encoding and continuation qualification
+
+`python conformance/generators/check_independent.py --adapter COMMAND` creates
+16 temporary datasets using pinned PyArrow 26.0.1: data pages V1/V2, each of
+UNCOMPRESSED/SNAPPY/GZIP/ZSTD, and dictionary fallback or explicit delta encoding.
+Each dataset has three 1,025-row groups. Physical page headers must demonstrate
+both RLE_DICTIONARY and PLAIN fallback in key/byte columns, or DELTA_BYTE_ARRAY
+keys, DELTA_BINARY_PACKED integers and DELTA_LENGTH_BYTE_ARRAY values. Every
+column spans multiple pages in every row group; optional binary values are all
+null and some required byte values exceed 5 KiB. The PyArrow full scan must equal
+the source table before adapter queries run. These generated files are discarded.
+
+The qualifier compares each page to a direct source-row model and concatenates
+results through exhaustion. Cursors come from the actual preceding response,
+including repeated-key ordinals and delimiter prefixes. It uses both one-entry
+pages and a changing 7/2/129/3/17 limit schedule, with prefix/end bounds and
+repeated delimiters. Hand-derived model tests and deliberately broken adapters
+check duplicate-offset and prefix-repeat failure sensitivity independently of
+the existing conformance oracle. Both real adapters execute this check in CI.
+
+This qualifies these producer/version/geometry combinations, not every legal
+Parquet encoding, dictionary width, delta block geometry, codec, or optional-page
+layout. PyArrow chooses the dictionary/index bitstream; this check does not claim
+exhaustive RLE-width coverage. The separate Boolean qualifier covers small RLE/
+bit-packing boundaries. No malformed dictionary-free all-null page is fabricated.
+This is semantic interoperability evidence, not validator or indexed-access
+qualification, remote-storage performance evidence, or a production writer.
