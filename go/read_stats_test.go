@@ -4,10 +4,15 @@
 package seekparquet
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
 	"testing"
+
+	"github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go/format"
 
 	"github.com/varveio/seekparquet/go/internal/testutil"
 )
@@ -176,6 +181,15 @@ func TestReadStatsDelimitedListing(t *testing.T) {
 	checkStats(t, "warm listing", st, ReadStats{KeyPagesDecoded: 4, KeysDecoded: 80, RowGroupsOpened: 4, IndexLoads: 1,
 		PageIndexSeeks: 2, PrefixSkips: 4, GroupsSkipped: 1, SourceReads: 6}, src)
 
+	// A page filled by a group shortcut does not resume. Warm as above,
+	// Limit 1 emits "a/" for groups 0 and 1 sharing it, and stops: the page
+	// is full, so no resume at "a0" happened (PrefixSkips 0).
+	entries = list(&st, 1, nil)
+	if len(entries) != 1 || string(entries[0].CommonPrefix) != "a/" || st.GroupsSkipped != 1 || st.PrefixSkips != 0 {
+		t.Fatalf("limit 1: %q %+v", entriesOf(entries), st)
+	}
+	src.reset()
+
 	// A paginated listing resumed by cursor. Page 1, limit 2, is the cold
 	// listing up to "b/": 5 pages, 5 openings (groups 0, 3, 5, 4, 3) and 4
 	// loads, one resume (none after the entry that fills the page), reads:
@@ -288,4 +302,34 @@ func TestReadStatsConcurrentAndNil(t *testing.T) {
 		}
 	}
 	wg.Wait()
+}
+
+// A page whose values do not decode is not a decoded page.
+func TestReadStatsFailedDecodeNotCounted(t *testing.T) {
+	c := testChunk(parquet.Int64Type)
+	data := binary.AppendUvarint(binary.AppendUvarint(binary.AppendUvarint(nil, 128), 4), 1<<31-1)
+	h := &format.PageHeader{Type: format.DataPage, UncompressedPageSize: int32(len(data)) + 1}
+	h.DataPageHeader.V = format.DataPageHeader{NumValues: 10, Encoding: format.DeltaBinaryPacked}
+	h.DataPageHeader.Valid = true
+	if _, err := c.decode(h, append(data, 0)); CodeOf(err) != CodeInvalidParquet {
+		t.Fatalf("got %v", err)
+	}
+	if *c.pages != 0 {
+		t.Fatalf("counted %d decoded pages for a page that failed to decode", *c.pages)
+	}
+}
+
+// An index refused by Limits.IndexMemory is neither loaded nor opened, so
+// RowGroupsOpened-IndexLoads, the reuses, is never negative.
+func TestReadStatsIndexRefused(t *testing.T) {
+	dir := write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 200}, dirKeys(map[string]int{"k": 100}, "k")))
+	d := open(t, dir, Options{Limits: Limits{IndexMemory: 1}})
+	var st ReadStats
+	_, err := d.Range(ctx, Range{Limit: 5, Stats: &st})
+	if !errors.Is(err, ErrLimitExceeded) {
+		t.Fatalf("got %v", err)
+	}
+	if st.RowGroupsOpened != 0 || st.IndexLoads != 0 || st.KeyPagesDecoded != 0 || st.SourceReads != 2 {
+		t.Fatalf("refused index: %+v", st)
+	}
 }

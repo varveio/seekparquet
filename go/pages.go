@@ -272,9 +272,12 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 			return nil, c.corrupt(err)
 		}
 	}
-	*c.pages++
 	if !c.col.optional {
-		return c.values(enc, data, n)
+		values, err := c.values(enc, data, n)
+		if err == nil {
+			*c.pages++
+		}
+		return values, err
 	}
 	if err := checkRuns(levels, n, 1); err != nil {
 		return nil, c.corrupt(fmt.Errorf("definition levels: %w", err))
@@ -292,6 +295,7 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 	if err != nil {
 		return nil, err
 	}
+	*c.pages++
 	out := make([]parquet.Value, n)
 	for i, j := 0, 0; i < n; i++ {
 		if defined[i] == 0 {

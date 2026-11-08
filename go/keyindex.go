@@ -85,7 +85,6 @@ func (p *part) keyIndex(ctx context.Context, physical int, st *ReadStats) (*grou
 	if err != nil {
 		return nil, refusePart(CodeInvalidPageIndex, p.name, physical, "the key page index: %v", err)
 	}
-	st.IndexLoads++
 	// Recheck, charge and publish as one operation. Competing cold loads
 	// must not charge the same retained entry, even temporarily.
 	p.r.indexMu.Lock()
@@ -96,6 +95,7 @@ func (p *part) keyIndex(ctx context.Context, physical int, st *ReadStats) (*grou
 	if err := p.r.reserveIndex(index.size); err != nil {
 		return nil, err
 	}
+	st.IndexLoads++
 	p.index[physical].Store(index)
 	return index, nil
 }

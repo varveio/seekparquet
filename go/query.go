@@ -352,6 +352,9 @@ func (s *scan) seekList(from []byte, req List, out *[]Entry) error {
 		if !ok {
 			break
 		}
+		if len(*out) == req.Limit {
+			break // the page is full: no resume
+		}
 		s.stats.PrefixSkips++
 		from = next
 	}

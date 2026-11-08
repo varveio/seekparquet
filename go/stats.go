@@ -18,7 +18,8 @@ package seekparquet
 // not loaded, and a decoded first key is reused without decoding.
 type ReadStats struct {
 	// KeyPagesDecoded is the number of key column data pages the request
-	// decoded: pages walked, probed for a row group's first key, or
+	// decoded successfully (a page whose values do not decode is not
+	// counted, one that then fails a key check is): pages walked, probed for a row group's first key, or
 	// positioned on by a cursor. A page decoded twice counts twice.
 	KeyPagesDecoded int64
 	// ValuePagesDecoded is the number of data pages of projected columns
@@ -31,8 +32,10 @@ type ReadStats struct {
 	// group's key pages: it loaded the group's key page index or reused one
 	// an earlier request, or an earlier step of this one, had loaded.
 	RowGroupsOpened int64
-	// IndexLoads is the number of those openings that loaded the key page
-	// index from the Source; RowGroupsOpened-IndexLoads were reuses.
+	// IndexLoads is the number of those openings that read the key page
+	// index from the Source and retained it; RowGroupsOpened-IndexLoads were
+	// reuses, including an index a concurrent request published first. An
+	// index read but refused (Limits.IndexMemory) is in neither count.
 	IndexLoads int64
 	// PageIndexSeeks is the number of moves within a row group's key pages,
 	// through its ColumnIndex or OffsetIndex, that skipped at least one
