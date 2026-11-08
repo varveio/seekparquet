@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
@@ -262,35 +263,51 @@ func TestValidateUnsupported(t *testing.T) {
 	})
 }
 
-// TestValidateNested decodes the levels of repeated and nested columns,
-// which the reader does not project, in V1 and V2 pages: they complete at
-// the full level, and a corrupt page in one fails it.
-func TestValidateNested(t *testing.T) {
-	type inner struct {
-		A *int32 `parquet:"a,optional"`
-	}
-	type nested struct {
-		Key  []byte   `parquet:"key"`
-		Tags []string `parquet:"tags,list"`
-		Meta *inner   `parquet:"meta,optional"`
-		Nums []int64  `parquet:"nums"`
-	}
-	rows := make([]nested, 400)
+// nestedRow has a repeated column (tags, a list), a nested one (meta.a)
+// and a repeated leaf (nums), besides the key.
+type nestedRow struct {
+	Key  []byte     `parquet:"key"`
+	Tags []string   `parquet:"tags,list"`
+	Meta *nestedSub `parquet:"meta,optional"`
+	Nums []int64    `parquet:"nums"`
+}
+
+type nestedSub struct {
+	A *int32 `parquet:"a,optional"`
+}
+
+// nestedRows returns 400 rows with empty and non-empty lists, and null and
+// present structs and fields.
+func nestedRows() []nestedRow {
+	rows := make([]nestedRow, 400)
 	for i := range rows {
-		rows[i] = nested{Key: []byte(fmt.Sprintf("k%04d", i))}
+		rows[i] = nestedRow{Key: []byte(fmt.Sprintf("k%04d", i))}
 		for j := range i % 4 {
 			rows[i].Tags = append(rows[i].Tags, fmt.Sprintf("t%d", j))
 			rows[i].Nums = append(rows[i].Nums, int64(i*j))
 		}
 		if i%3 != 0 {
-			rows[i].Meta = &inner{A: ptr(int32(i))}
+			rows[i].Meta = &nestedSub{A: ptr(int32(i))}
 		} else if i%2 == 0 {
-			rows[i].Meta = &inner{}
+			rows[i].Meta = &nestedSub{}
 		}
 	}
+	return rows
+}
+
+// nestedDataset writes nestedRows in two row groups of small pages.
+func nestedDataset(t *testing.T, geometry testutil.Part) string {
+	geometry.Rows, geometry.PageBytes, geometry.GroupRows = nestedRows(), 256, 200
+	return write(t, testutil.Dataset{Parts: []testutil.Part{geometry}})
+}
+
+// TestValidateNested decodes the levels of repeated and nested columns,
+// which the reader does not project, in V1 and V2 pages: they complete at
+// the full level, and a corrupt page in one fails it.
+func TestValidateNested(t *testing.T) {
 	for _, version := range []int{1, 2} {
 		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
-			dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: rows, PageBytes: 256, GroupRows: 200, DataPageVersion: version}}})
+			dir := nestedDataset(t, testutil.Part{DataPageVersion: version})
 			report := validate(t, dir, ValidateOptions{})
 			expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "complete"})
 			if f, _ := report.Level(LevelFull); f.Checked.Chunks != 2*3 || f.Checked.Rows != 400 {
@@ -509,4 +526,141 @@ func TestValidateStorageAndContext(t *testing.T) {
 	if _, err := ValidateDir(cancelled, dir, ValidateOptions{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled: %v", err)
 	}
+}
+
+// editPage decodes the page header at off in part 0 of dir, lets change
+// edit the header and the page's bytes in place, and writes both back,
+// with the checksum recomputed when the page has one. The header must keep
+// its encoded length.
+func editPage(t *testing.T, dir string, off int64, change func(h *format.PageHeader, data []byte)) {
+	t.Helper()
+	path := partFile(dir, 0)
+	raw, err := os.ReadFile(path)
+	must(t, err)
+	var h format.PageHeader
+	n, err := decodeBounded(raw[off:], &h, 1<<20)
+	must(t, err)
+	data := raw[off+int64(n) : off+int64(n)+int64(h.CompressedPageSize)]
+	change(&h, data)
+	if h.CRC != 0 {
+		h.CRC = int32(crc32.ChecksumIEEE(data))
+	}
+	must(t, os.WriteFile(path, raw, 0o644))
+	editPageHeader(t, path, off, func(e *format.PageHeader) { *e = h })
+}
+
+// chunkOf returns the metadata of a column chunk of part 0.
+func chunkOf(t *testing.T, dir string, group, column int) format.ColumnMetaData {
+	t.Helper()
+	meta, err := testutil.ReadFooter(partFile(dir, 0))
+	must(t, err)
+	return meta.RowGroups[group].Columns[column].MetaData
+}
+
+// TestValidateLevelEncodings: RLE is the only encoding Parquet allows for
+// levels besides the legacy BIT_PACKED, which is unsupported; a page that
+// declares PLAIN levels is corrupt, for a nested column and a flat one.
+func TestValidateLevelEncodings(t *testing.T) {
+	for name, c := range map[string]struct {
+		dir    func(t *testing.T) string
+		column int
+	}{
+		"nested meta.a": {func(t *testing.T) string { return nestedDataset(t, testutil.Part{DataPageVersion: 1}) }, 2},
+		"flat name":     {func(t *testing.T) string { return write(t, manyPages(testutil.Part{DataPageVersion: 1})) }, 2},
+	} {
+		for enc, want := range map[format.Encoding]string{format.Plain: "invalid_parquet", format.BitPacked: "incomplete"} {
+			t.Run(name+"/"+enc.String(), func(t *testing.T) {
+				dir := c.dir(t)
+				editPage(t, dir, chunkOf(t, dir, 0, c.column).DataPageOffset, func(h *format.PageHeader, _ []byte) {
+					h.DataPageHeader.V.DefinitionLevelEncoding = enc
+				})
+				expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelProfile: "complete", LevelFull: want})
+			})
+		}
+	}
+}
+
+// dictRow has a dictionary-encoded column.
+type dictRow struct {
+	Key  []byte `parquet:"key"`
+	Name string `parquet:"name,dict"`
+}
+
+// TestValidateDictionaryPage: a dictionary page is checked when the walk
+// finds it, whether or not a data page uses it: a payload failing its
+// checksum fails full validation before any data page is decoded.
+func TestValidateDictionaryPage(t *testing.T) {
+	rows := make([]dictRow, 200)
+	for i := range rows {
+		rows[i] = dictRow{Key: []byte(fmt.Sprintf("k%04d", i)), Name: []string{"x", "y", "z"}[i%3]}
+	}
+	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: rows, PageBytes: 128}}})
+	chunk := chunkOf(t, dir, 0, 1)
+	if chunk.DictionaryPageOffset == 0 {
+		t.Fatal("the name column has no dictionary page")
+	}
+	raw, err := os.ReadFile(partFile(dir, 0))
+	must(t, err)
+	raw[chunk.DataPageOffset-1] ^= 1 // the dictionary page's last byte
+	must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
+
+	report := validate(t, dir, ValidateOptions{})
+	expectLevels(t, report, map[Level]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
+	if f, _ := report.Level(LevelFull); f.At.Page != -1 || !strings.Contains(f.Failure.Detail, "checksum") {
+		t.Fatalf("full failed at %s: %v", f.At, f.Failure)
+	}
+	// A walk that decodes no data page still checks the dictionary.
+	d := open(t, dir, Options{})
+	v := &validator{ctx: ctx, limits: Limits{}.withDefaults(), d: d}
+	p := d.r.parts[0]
+	c, err := p.openChunk(ctx, 0, p.leaves["name"], &v.st, &v.pages)
+	must(t, err)
+	err = v.walk(c, 200, func(_ int, loc pageLoc, _ *format.PageHeader, _ int64, _ []byte) (int64, error) { return loc.rows, nil })
+	if CodeOf(err) != CodeInvalidParquet {
+		t.Fatalf("walk without decoding: %v", err)
+	}
+}
+
+// TestValidatePageHeaders: a V2 page's null count must match its decoded
+// levels, nested or flat, and a chunk of a repeated column must begin a
+// row, even when its row and value totals agree.
+func TestValidatePageHeaders(t *testing.T) {
+	t.Run("nested V2 null count", func(t *testing.T) {
+		dir := nestedDataset(t, testutil.Part{DataPageVersion: 2})
+		editPage(t, dir, chunkOf(t, dir, 0, 2).DataPageOffset, func(h *format.PageHeader, _ []byte) { h.DataPageHeaderV2.V.NumNulls++ })
+		expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
+	})
+	t.Run("flat V2 null count", func(t *testing.T) {
+		dir := write(t, manyPages(testutil.Part{DataPageVersion: 2}))
+		editPage(t, dir, chunkOf(t, dir, 0, 1).DataPageOffset, func(h *format.PageHeader, _ []byte) { h.DataPageHeaderV2.V.NumNulls++ })
+		expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
+	})
+	t.Run("first repetition level", func(t *testing.T) {
+		dir := nestedDataset(t, testutil.Part{DataPageVersion: 1, Compression: parquet.Compression(&parquet.Uncompressed)})
+		editPage(t, dir, chunkOf(t, dir, 0, 1).DataPageOffset, func(_ *format.PageHeader, data []byte) {
+			// The repetition levels come first: a 4-byte length, then runs.
+			// Swap the first level (0) with the first 1 in the leading
+			// bit-packed group, keeping the page's rows and entries.
+			run, k := binary.Uvarint(data[4:])
+			group := data[4+k:]
+			if run&1 == 0 || group[0]&1 != 0 || group[0] == 0 {
+				t.Fatalf("the levels do not begin with a bit-packed group holding a 0 then a 1 (run %d, bits %08b)", run, group[0])
+			}
+			first := group[0] & -group[0] // its lowest set bit
+			group[0] = group[0]&^first | 1
+		})
+		report := validate(t, dir, ValidateOptions{})
+		expectLevels(t, report, map[Level]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
+		if f, _ := report.Level(LevelFull); !strings.Contains(f.Failure.Detail, "repetition level") {
+			t.Fatalf("full: %v", f.Failure)
+		}
+	})
+}
+
+// TestValidateKeyValueCount: the key chunk's metadata value count must
+// equal the keys profile validation decodes.
+func TestValidateKeyValueCount(t *testing.T) {
+	dir := write(t, manyPages(testutil.Part{}))
+	rewrite(t, dir, 0, func(m *format.FileMetaData) { m.RowGroups[1].Columns[0].MetaData.NumValues++ })
+	expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelStructural: "complete", LevelProfile: "invalid_parquet"})
 }

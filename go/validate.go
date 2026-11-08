@@ -194,25 +194,32 @@ func Validate(ctx context.Context, src Source, opt ValidateOptions) (*Report, er
 	v := &validator{ctx: ctx, src: src, limits: opt.Limits}
 	defer v.close()
 	report := &Report{}
-	checks := map[Level]func(*LevelReport) error{
-		LevelStructural: v.structural,
-		LevelProfile:    v.profile,
-		LevelFull:       v.full,
-		LevelDigest:     v.digest,
-	}
 	var previous *LevelReport
 	for _, level := range levels {
 		lr := LevelReport{Level: level, At: Location{RowGroup: -1, Page: -1}}
 		if previous != nil && previous.Result != Complete {
 			lr.Result, lr.Reason = Incomplete, fmt.Sprintf("its prerequisite %s is %s", previous.Level, previous.Result)
 			lr.At = Location{RowGroup: -1, Page: -1}
-		} else if err := v.run(&lr, checks[level]); err != nil {
+		} else if err := v.run(&lr, v.check(level)); err != nil {
 			return report, err
 		}
 		report.Levels = append(report.Levels, lr)
 		previous = &report.Levels[len(report.Levels)-1]
 	}
 	return report, nil
+}
+
+// check returns the check of a level.
+func (v *validator) check(level Level) func(*LevelReport) error {
+	switch level {
+	case LevelStructural:
+		return v.structural
+	case LevelProfile:
+		return v.profile
+	case LevelFull:
+		return v.full
+	}
+	return v.digest
 }
 
 // run runs one level's check and records its outcome. It returns an error

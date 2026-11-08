@@ -136,8 +136,8 @@ level failed, and 2 when a level is incomplete, validation could not run, or the
 | Level | What this implementation checks |
 |---|---|
 | `structural` | everything opening checks (CHECK-1, which includes COL-5 for every column); for every non-empty row group, the key column's ColumnIndex and OffsetIndex (RG-2 to RG-4), and the page header at every OffsetIndex entry, which must begin one data page of exactly the entry's size and rows (RG-3). Page data is not read. |
-| `profile` | every key column chunk walked page header by page header from its start, without the OffsetIndex, which must then list exactly the data pages found (offsets, sizes, row positions, count); every key page decoded and every key checked: non-empty, valid UTF-8 for a `STRING` key, bounds valid UTF-8 too (KEY-2, KEY-6), in the declared order across pages, row groups and parts (KEY-3, PART-4), inside its page's ColumnIndex bounds (RG-5); each part's first and last keys equal to its manifest bounds (PART-3) |
-| `full` | every other column chunk walked the same way and decoded: each page passes its CRC when it has one, decompresses to its declared size, its levels and values agree with its header (nested and repeated columns included), the chunk holds exactly the row group's rows and the value count its metadata declares; an OffsetIndex, when present, lists exactly the pages found; a ColumnIndex, when present, has one entry per page and, for a column that is neither nested nor repeated, marks a page null only if every value is null and counts nulls exactly |
+| `profile` | every key column chunk walked page header by page header from its start, without the OffsetIndex, which must then list exactly the data pages found (offsets, sizes, row positions, count); every key page decoded and every key checked: non-empty, valid UTF-8 for a `STRING` key, bounds valid UTF-8 too (KEY-2, KEY-6), in the declared order across pages, row groups and parts (KEY-3, PART-4), inside its page's ColumnIndex bounds (RG-5); each part's first and last keys equal to its manifest bounds (PART-3); the key chunk's metadata value count |
+| `full` | every other column chunk walked the same way and decoded: a dictionary page is checked and decoded when found, whether or not a page uses it; each page passes its CRC when it has one, decompresses to its declared size, its levels (RLE; `BIT_PACKED` is unsupported, anything else corrupt) and values agree with its header, V2 null counts included (nested and repeated columns too; a chunk, and every V2 page, begins a row), the chunk holds exactly the row group's rows and the value count its metadata declares; an OffsetIndex, when present, lists exactly the pages found; a ColumnIndex, when present, has one entry per page and, for a column that is neither nested nor repeated, marks a page null only if every value is null and counts nulls exactly |
 | `digest` | the SHA-256 of every part that declares `sha256`, streamed from the file, whether or not it is valid Parquet (PART-5); with no declared digest it completes with nothing checked and says so (VAL-2) |
 
 Structural, profile and full each run the levels before them; digest runs alone. The indexes under
@@ -210,3 +210,10 @@ hold its start, and value pages only for the rows it returns; a value column wit
 page headers walked from the start of its chunk, decoding only the pages it returns rows from. A listing
 resumes after each common prefix at the prefix's successor, skipping the pages wholly under it, but the page
 it lands on, and the pages around a prefix's boundaries, still decode some of the keys under it.
+
+**Read statistics.** Set `Range.Stats` or `List.Stats` to a `*ReadStats` to see what one request did: key and
+value pages decoded, keys decoded, row groups opened and key page indexes loaded, page-index seeks and prefix
+resumes, row groups a listing skipped whole, and the `Source` reads and requested bytes made on its behalf.
+The counts are exact for the request, are filled whether it succeeds or fails, and cost one integer increment
+per event. They are diagnostics of this reader's access path, not part of the format; the caller owns a
+`ReadStats` for the duration of the call and must not share it between concurrent requests.

@@ -242,7 +242,7 @@ func TestLargeGroupResumeIsPageBounded(t *testing.T) {
 	var maxPages, total int64
 	seen := 0
 	for range 600 {
-		var st stats
+		var st ReadStats
 		page, err := d.r.readRange(ctx, rng, &st)
 		if err != nil {
 			t.Fatalf("%s: %v", describe(rng), err)
@@ -253,7 +253,7 @@ func TestLargeGroupResumeIsPageBounded(t *testing.T) {
 			}
 		}
 		seen += len(page)
-		maxPages, total = max(maxPages, st.pages), total+st.pages
+		maxPages, total = max(maxPages, st.KeyPagesDecoded+st.ValuePagesDecoded), total+st.KeyPagesDecoded+st.ValuePagesDecoded
 		if len(page) < rng.Limit {
 			break
 		}

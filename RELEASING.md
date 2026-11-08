@@ -28,8 +28,9 @@ specification's state. Tags carry the `go/` prefix because the module lives in `
 - The specification's state is tracked separately, in `spec/status.json` and in the stamps the files
   carry. Each module release names, in its changelog entry, the format draft revision and the conformance
   revision it implements.
-- Tag only when a consumer needs the change on its main branch. Between releases, work in progress may pin
-  a commit (a Go pseudo-version).
+- Until the first release, consumers may pin a merged `main` commit as a Go pseudo-version
+  (`go get github.com/varveio/seekparquet/go@<sha>`). Tags are cut only for releases, not to hand a
+  consumer a build.
 - `go/v0.1.0-draft.1` is superseded by `go/v0.1.0` (same commit). It is kept only because tags are
   protected and the module proxy has cached it; do not use it.
 

@@ -11,17 +11,6 @@ import (
 	"github.com/parquet-go/parquet-go"
 )
 
-// stats counts the decoding work of a request, for tests of its access
-// path: pages and keys decoded and the routing decisions taken. It does not
-// count work done on open, page index loads, or bytes read.
-type stats struct {
-	pages     int64 // data pages decoded, key and value columns
-	keys      int64 // keys decoded from key pages
-	groups    int64 // row groups whose key pages a request opened
-	reseeks   int64 // moves that skipped at least one key page through the page index
-	shortcuts int64 // row groups a listing skipped whole (listing.shortcut)
-}
-
 // keyPages walks the key column of one row group forward, holding the
 // page it decoded last. Decoded pages are never reused, so a key it
 // returns stays valid after it moves on.
@@ -40,18 +29,18 @@ type keyPages struct {
 
 // keyPages opens a walker on row group g, loading the group's key page
 // index (RG-2 to RG-4) first.
-func (r *reader) keyPages(ctx context.Context, g int, log *pageLog, st *stats) (*keyPages, error) {
+func (r *reader) keyPages(ctx context.Context, g int, log *pageLog, st *ReadStats) (*keyPages, error) {
 	grp := r.groups[g]
 	p := r.parts[grp.part]
-	index, err := p.keyIndex(ctx, grp.physical)
+	index, err := p.keyIndex(ctx, grp.physical, st)
 	if err != nil {
 		return nil, err
 	}
-	c, err := p.openChunk(ctx, grp.physical, p.key, st)
+	st.RowGroupsOpened++
+	c, err := p.openChunk(ctx, grp.physical, p.key, st, &st.KeyPagesDecoded)
 	if err != nil {
 		return nil, err
 	}
-	st.groups++
 	return &keyPages{r: r, part: p, g: g, index: index, chunk: c, at: -1, log: log}, nil
 }
 
@@ -70,7 +59,7 @@ func (k *keyPages) seek(from []byte, inclusive bool) (key []byte, row int64, ok 
 		if from != nil {
 			if page := k.index.pageFor(target, from, inclusive); page > target {
 				if k.at >= 0 {
-					k.chunk.stats.reseeks++
+					k.chunk.stats.PageIndexSeeks++
 				}
 				target = page
 			}
@@ -95,7 +84,7 @@ func (k *keyPages) advance() (key []byte, row int64, ok bool, err error) {
 func (k *keyPages) seekRow(row int64) ([]byte, error) {
 	if i := k.index.pageAt(row); i != k.at {
 		if i > k.at+1 {
-			k.chunk.stats.reseeks++
+			k.chunk.stats.PageIndexSeeks++
 		}
 		if err := k.decode(i); err != nil {
 			return nil, err
@@ -127,7 +116,7 @@ func (k *keyPages) decode(i int) error {
 		return err
 	}
 	k.values, k.at, k.next = values, i, 0
-	c.stats.keys += int64(len(values))
+	c.stats.KeysDecoded += int64(len(values))
 	var previous []byte
 	for j, value := range values {
 		key := value.ByteArray()

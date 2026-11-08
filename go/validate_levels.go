@@ -37,9 +37,10 @@ type validator struct {
 	src    Source
 	limits Limits
 	d      *Dataset
-	// st takes the reader's decoding counters, which validation does not
-	// report.
-	st stats
+	// st and pages take the reader's read and decoding counters, which
+	// validation does not report.
+	st    ReadStats
+	pages int64
 }
 
 func (v *validator) close() {
@@ -100,7 +101,7 @@ func (v *validator) keyIndex(p *part, physical int, utf8Bounds bool) (*groupInde
 	if !ok || end > p.size {
 		return nil, 0, refusePart(CodeInvalidFooter, p.name, physical, "column chunk %d lies outside the file", p.key.index)
 	}
-	raw, err := p.readIndexBytes(v.ctx, physical, meta.ColumnIndexOffset, meta.ColumnIndexLength)
+	raw, err := p.readIndexBytes(v.ctx, physical, meta.ColumnIndexOffset, meta.ColumnIndexLength, &v.st)
 	if err != nil {
 		return nil, 0, p.indexError(v.ctx, physical, "ColumnIndex", err)
 	}
@@ -108,7 +109,7 @@ func (v *validator) keyIndex(p *part, physical int, utf8Bounds bool) (*groupInde
 	if _, err := decodeBounded(raw, &columns, v.limits.MetadataMemory); err != nil {
 		return nil, 0, p.indexError(v.ctx, physical, "ColumnIndex", err)
 	}
-	offsets, err := p.loadOffsetIndex(v.ctx, physical, p.key.index)
+	offsets, err := p.loadOffsetIndex(v.ctx, physical, p.key.index, &v.st)
 	if err != nil {
 		return nil, 0, p.indexError(v.ctx, physical, "OffsetIndex", err)
 	}
@@ -126,7 +127,7 @@ func checkIndexedHeader(ctx context.Context, p *part, physical, i int, loc pageL
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidPageIndex, p.name, physical, "key page %d: "+format, append([]any{i}, args...)...)
 	}
-	h, n, _, err := p.pageHeader(ctx, physical, p.key.index, loc.offset, end)
+	h, n, _, err := p.pageHeader(ctx, physical, p.key.index, loc.offset, end, nil)
 	if err != nil {
 		if CodeOf(err) == CodeInvalidParquet {
 			return bad("its OffsetIndex entry does not locate a page header")
@@ -149,8 +150,9 @@ func checkIndexedHeader(ctx context.Context, p *part, physical, i int, loc pageL
 // any index, and calls visit for each data page with its number, its
 // location (first row, the rows its header declares, offset and size,
 // header included), its header and the bytes read with it; visit returns
-// the rows the page holds. A dictionary page may only begin the chunk;
-// other page types are stepped over. The pages must fill the chunk and
+// the rows the page holds. A dictionary page may only begin the chunk, and
+// it is checked and decoded when found, whether or not a data page uses
+// it. Other page types are stepped over. The pages must fill the chunk and
 // hold exactly rows rows (CHECK-5).
 func (v *validator) walk(c *chunk, rows int64, visit func(i int, loc pageLoc, h *format.PageHeader, n int64, raw []byte) (int64, error)) error {
 	first, i := int64(0), 0
@@ -167,6 +169,9 @@ func (v *validator) walk(c *chunk, rows int64, visit func(i int, loc pageLoc, h 
 		case format.DictionaryPage:
 			if off != c.start {
 				return c.corrupt(fmt.Errorf("a dictionary page at %d, after the chunk's first page", off))
+			}
+			if _, err := c.dictionary(); err != nil { // its checksum, size and values
+				return err
 			}
 		case format.DataPage, format.DataPageV2:
 			declared, ok := dataRows(h)
@@ -233,7 +238,7 @@ func (v *validator) profile(lr *LevelReport) error {
 			if err != nil {
 				return err
 			}
-			c, err := p.openChunk(v.ctx, physical, p.key, &v.st)
+			c, err := p.openChunk(v.ctx, physical, p.key, &v.st, &v.pages)
 			if err != nil {
 				return err
 			}
@@ -288,6 +293,9 @@ func (v *validator) profile(lr *LevelReport) error {
 			lr.At.Page = -1
 			if found != len(index.pages) {
 				return refusePart(CodeInvalidPageIndex, p.name, physical, "the OffsetIndex lists %d pages, the chunk holds %d", len(index.pages), found)
+			}
+			if declared := p.footer.Metadata().RowGroups[physical].Columns[p.key.index].MetaData.NumValues; declared != rows {
+				return refusePart(CodeInvalidParquet, p.name, physical, "the key column chunk holds %d values, its metadata declares %d", rows, declared)
 			}
 			last = previous
 			lr.Checked.Chunks++
@@ -371,7 +379,7 @@ func (v *validator) column(lr *LevelReport, p *part, physical int, l parquet.Lea
 	chunkMeta := &p.footer.Metadata().RowGroups[physical].Columns[l.ColumnIndex]
 	col := leaf{index: l.ColumnIndex, typ: l.Node.Type(), optional: l.MaxDefinitionLevel > 0}
 	flat := l.MaxRepetitionLevel == 0 && l.MaxDefinitionLevel <= 1 // the reader decodes it
-	c, err := p.openChunk(v.ctx, physical, col, &v.st)
+	c, err := p.openChunk(v.ctx, physical, col, &v.st, &v.pages)
 	if err != nil {
 		return err
 	}
@@ -380,7 +388,7 @@ func (v *validator) column(lr *LevelReport, p *part, physical int, l parquet.Lea
 	}
 	var locs []pageLoc
 	if chunkMeta.OffsetIndexOffset != 0 {
-		offsets, err := p.loadOffsetIndex(v.ctx, physical, col.index)
+		offsets, err := p.loadOffsetIndex(v.ctx, physical, col.index, &v.st)
 		if err != nil {
 			return valueIndexError(v.ctx, p, physical, col.index, "OffsetIndex", err)
 		}
@@ -390,7 +398,7 @@ func (v *validator) column(lr *LevelReport, p *part, physical int, l parquet.Lea
 	}
 	var columns *format.ColumnIndex
 	if chunkMeta.ColumnIndexOffset != 0 {
-		raw, err := p.readIndexBytes(v.ctx, physical, chunkMeta.ColumnIndexOffset, chunkMeta.ColumnIndexLength)
+		raw, err := p.readIndexBytes(v.ctx, physical, chunkMeta.ColumnIndexOffset, chunkMeta.ColumnIndexLength, &v.st)
 		if err != nil {
 			return valueIndexError(v.ctx, p, physical, col.index, "ColumnIndex", err)
 		}
@@ -404,9 +412,19 @@ func (v *validator) column(lr *LevelReport, p *part, physical int, l parquet.Lea
 		lr.At.Page = i
 		var entries int64
 		if flat {
+			if h.Type == format.DataPage && col.optional {
+				if err := c.levelEncoding(h.DataPageHeader.V.DefinitionLevelEncoding); err != nil {
+					return 0, err
+				}
+			}
 			decoded, err := c.page(loc, h, n, raw)
 			if err != nil {
 				return 0, err
+			}
+			if h.Type == format.DataPageV2 {
+				if nulls := countNulls(decoded); nulls != int64(h.DataPageHeaderV2.V.NumNulls) {
+					return 0, bad("page %d holds %d nulls, its header declares %d", i, nulls, h.DataPageHeaderV2.V.NumNulls)
+				}
 			}
 			if columns != nil {
 				if err := checkValueIndexPage(columns, i, decoded); err != nil {
@@ -419,7 +437,7 @@ func (v *validator) column(lr *LevelReport, p *part, physical int, l parquet.Lea
 			if err != nil {
 				return 0, err
 			}
-			if entries, loc.rows, err = c.levelled(h, data, l.MaxRepetitionLevel, l.MaxDefinitionLevel); err != nil {
+			if entries, loc.rows, err = c.levelled(h, data, l.MaxRepetitionLevel, l.MaxDefinitionLevel, i == 0); err != nil {
 				return 0, err
 			}
 		}
@@ -452,9 +470,11 @@ func (v *validator) column(lr *LevelReport, p *part, physical int, l parquet.Lea
 // levelled decodes a data page of a nested or repeated column, which the
 // reader does not project: its repetition and definition levels, each at
 // most its column's maximum, and its present values (those at the maximum
-// definition level). It returns the page's level entries and its rows (the
-// entries at repetition level 0).
-func (c *chunk) levelled(h *format.PageHeader, payload []byte, maxRep, maxDef int) (entries, rows int64, err error) {
+// definition level). The first page of a chunk, and every V2 page, must
+// begin a row (repetition level 0), and a V2 page's null count must be
+// its entries below the maximum definition level. It returns the page's
+// level entries and its rows (the entries at repetition level 0).
+func (c *chunk) levelled(h *format.PageHeader, payload []byte, maxRep, maxDef int, first bool) (entries, rows int64, err error) {
 	defer func() {
 		if r := recover(); r != nil { // a last line of defence, as in decode
 			err = c.corrupt(fmt.Errorf("parquet-go failed on a page: %v", r))
@@ -474,8 +494,8 @@ func (c *chunk) levelled(h *format.PageHeader, payload []byte, maxRep, maxDef in
 			if max == 0 {
 				return nil, nil
 			}
-			if encoding != format.RLE {
-				return nil, &UnsupportedError{Code: UnsupportedEncoding, Detail: "levels encoded " + encoding.String() + " in part " + c.p.name}
+			if err := c.levelEncoding(encoding); err != nil {
+				return nil, err
 			}
 			if len(data) < 4 || int64(binary.LittleEndian.Uint32(data)) > int64(len(data)-4) {
 				return nil, c.corrupt(errors.New("the levels exceed the page"))
@@ -529,13 +549,46 @@ func (c *chunk) levelled(h *format.PageHeader, payload []byte, maxRep, maxDef in
 			}
 		}
 	}
-	if h.Type == format.DataPageV2 && rows != int64(h.DataPageHeaderV2.V.NumRows) {
-		return 0, 0, c.corrupt(fmt.Errorf("the page holds %d rows, its header declares %d", rows, h.DataPageHeaderV2.V.NumRows))
+	if maxRep > 0 && n > 0 && (first || h.Type == format.DataPageV2) && reps[0] != 0 {
+		return 0, 0, c.corrupt(fmt.Errorf("the page begins at repetition level %d, not at a row", reps[0]))
+	}
+	if h.Type == format.DataPageV2 {
+		d := &h.DataPageHeaderV2.V
+		if rows != int64(d.NumRows) {
+			return 0, 0, c.corrupt(fmt.Errorf("the page holds %d rows, its header declares %d", rows, d.NumRows))
+		}
+		if nulls := n - present; nulls != int(d.NumNulls) {
+			return 0, 0, c.corrupt(fmt.Errorf("the page holds %d nulls, its header declares %d", nulls, d.NumNulls))
+		}
 	}
 	if _, err := c.values(enc, data, present); err != nil {
 		return 0, 0, err
 	}
 	return int64(n), rows, nil
+}
+
+// levelEncoding accepts RLE for levels and reports the legacy BIT_PACKED
+// as unsupported; Parquet allows no other encoding for levels, so anything
+// else is corrupt data.
+func (c *chunk) levelEncoding(e format.Encoding) error {
+	switch e {
+	case format.RLE:
+		return nil
+	case format.BitPacked:
+		return &UnsupportedError{Code: UnsupportedEncoding, Detail: "levels encoded BIT_PACKED in part " + c.p.name}
+	}
+	return c.corrupt(fmt.Errorf("levels encoded %s, which Parquet does not allow for levels", e))
+}
+
+// countNulls returns the number of null values.
+func countNulls(values []parquet.Value) int64 {
+	nulls := int64(0)
+	for _, value := range values {
+		if value.IsNull() {
+			nulls++
+		}
+	}
+	return nulls
 }
 
 // levels decodes n levels of at most max from an RLE/bit-packed hybrid
@@ -569,12 +622,7 @@ func checkValueIndexPage(columns *format.ColumnIndex, i int, values []parquet.Va
 	if i >= len(columns.NullPages) {
 		return errors.New("it lists fewer pages than the chunk holds")
 	}
-	nulls := int64(0)
-	for _, value := range values {
-		if value.IsNull() {
-			nulls++
-		}
-	}
+	nulls := countNulls(values)
 	if columns.NullPages[i] && nulls != int64(len(values)) {
 		return errors.New("a page marked null holds values")
 	}
@@ -650,7 +698,7 @@ func (v *validator) hashPart(path string, buf []byte) (string, error) {
 	}
 	defer func() { _ = f.Close() }()
 	h := sha256.New()
-	at := storageReader{bind(v.ctx, f)}
+	at := storageReader{r: bind(v.ctx, f)}
 	for off, size := int64(0), f.Size(); off < size; {
 		if err := v.ctx.Err(); err != nil {
 			return "", err

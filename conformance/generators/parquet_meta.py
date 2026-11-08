@@ -45,6 +45,14 @@ CT_STRUCT = 12
 CT_BOOL = CT_TRUE  # canonical type code used when storing a bool field
 
 
+class ResourceLimit(Exception):
+    """A codec implementation limit, not evidence of malformed Parquet."""
+
+
+MAX_COLLECTION_ITEMS = 1 << 20
+MAX_BINARY_BYTES = 64 << 20
+
+
 class ThriftError(ValueError):
     pass
 
@@ -175,6 +183,8 @@ class Reader:
         if ctype == CT_BINARY:
             n = self.varint()
             self._need(n)
+            if n > MAX_BINARY_BYTES:
+                raise ResourceLimit('compact binary exceeds 64 MiB implementation limit')
             v = bytes(self.buf[self.pos:self.pos + n])
             self.pos += n
             return v
@@ -187,6 +197,8 @@ class Reader:
                 size = self.varint()
             if size > self.limit - self.pos:
                 raise ThriftError("list larger than input")
+            if size > MAX_COLLECTION_ITEMS:
+                raise ResourceLimit('compact collection exceeds implementation item limit')
             items = []
             for _ in range(size):
                 if etype in (CT_TRUE, CT_FALSE):
@@ -203,6 +215,8 @@ class Reader:
                 return TMap(0, 0, [])
             if size > self.limit - self.pos:
                 raise ThriftError("map larger than input")
+            if size > MAX_COLLECTION_ITEMS:
+                raise ResourceLimit('compact collection exceeds implementation item limit')
             kv = self.byte()
             kt, vt = kv >> 4, kv & 0x0F
             items = [(self.value(kt), self.value(vt)) for _ in range(size)]

@@ -124,7 +124,7 @@ func TestListMatchesOracle(t *testing.T) {
 		every = 97
 	}
 	bounds := probes(keys, every)
-	var st stats
+	var skipped, seeks int64
 	for _, prefix := range prefixes {
 		cursors := []*Cursor{nil}
 		for _, b := range bounds {
@@ -144,7 +144,9 @@ func TestListMatchesOracle(t *testing.T) {
 			for _, end := range [][]byte{nil, []byte("d05/"), []byte(prefix + "s03/")} {
 				for _, limit := range []int{1, 3, 1000} {
 					req := List{Prefix: []byte(prefix), Delimiter: '/', Cursor: cur, End: end, Limit: limit}
+					var st ReadStats
 					got, err := d.r.readList(ctx, req, &st)
+					skipped, seeks = skipped+st.GroupsSkipped, seeks+st.PageIndexSeeks
 					if err != nil {
 						t.Fatalf("%s: %v", describe(req), err)
 					}
@@ -155,8 +157,8 @@ func TestListMatchesOracle(t *testing.T) {
 			}
 		}
 	}
-	if st.shortcuts == 0 || st.reseeks == 0 {
-		t.Fatalf("the listing never skipped: %+v", st)
+	if skipped == 0 || seeks == 0 {
+		t.Fatalf("the listing never skipped: %d groups, %d seeks", skipped, seeks)
 	}
 }
 

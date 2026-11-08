@@ -21,6 +21,11 @@ using the manifest, part footers and page indexes, with no query engine and no c
 can touch only a few data pages, but having an index alone does not guarantee that cost: opening checks
 every part, and coarse key bounds can require much more decoding. See [read costs and writer guidance](docs/read-costs.md).
 
+SeekParquet is for immutable, listing-shaped snapshots: point-in-time inventories, and derived or cross-store
+listings that carry extra columns, read as ordinary tables and listed by prefix with a delimiter. It is not
+for incremental update or deletion in place, it supports composite keys only through a producer-side
+order-preserving encoding into the one key column, and it is neither a query engine nor a table format.
+
 ## Try it in five minutes
 
 Follow the [runnable quickstart](docs/quickstart.md) to read a checked-in sample,
@@ -53,7 +58,7 @@ internally, external indexes over Parquet, and table formats.
 | Language | Status | Supports |
 |---|---|---|
 | [Go](go/README.md) | pre-release | format 1 draft revision 1: open, range, list, projection; validation at the structural, profile, full and digest levels (`seekparquet validate`) |
-| [Java](java/README.md) | pre-release; not yet published | format 1 draft revision 1: open, range, list, projection |
+| [Java](java/README.md) | pre-release draft reader; not yet published | format 1 draft revision 1: open, range, list, projection |
 
 Both implementations read; the Go module also validates (§8 of the specification) and qualifies the suite's
 four validator targets. Neither is a production dataset writer. The shared conformance suite checks reader

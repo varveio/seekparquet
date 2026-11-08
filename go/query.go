@@ -106,6 +106,12 @@ type Range struct {
 	// values, null, or absent. No other column's pages are read. Empty
 	// reads keys only.
 	Columns []string
+	// Stats, when not nil, receives the request's read statistics: it is
+	// reset when the request starts and filled as it runs, so it is set
+	// whether the request succeeds or fails. The caller owns it for the
+	// duration of the call and must not share it between concurrent
+	// requests.
+	Stats *ReadStats
 }
 
 // PrefixRange returns a prefix read: the range of the keys that begin with
@@ -161,6 +167,8 @@ type List struct {
 	// Columns names the columns projected for each row entry, as
 	// Range.Columns.
 	Columns []string
+	// Stats receives the request's read statistics, as Range.Stats.
+	Stats *ReadStats
 }
 
 // Entry is one listing entry: exactly one of CommonPrefix and Row is set.
@@ -226,15 +234,13 @@ func (r *reader) checkProjection(columns []string) error {
 }
 
 // readRange returns the rows of rng; see Dataset.Range.
-func (r *reader) readRange(ctx context.Context, rng Range, st *stats) (_ []Row, err error) {
+func (r *reader) readRange(ctx context.Context, rng Range, st *ReadStats) (_ []Row, err error) {
+	st = resetStats(st)
 	ctx, done, err := r.request(ctx, rng.Cursor, false, rng.Limit, rng.Columns)
 	if err != nil {
 		return nil, err
 	}
 	defer done(&err)
-	if st == nil {
-		st = new(stats)
-	}
 	from, exclusive, end := rng.bounds()
 	if len(r.groups) == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
 		return nil, nil
@@ -263,15 +269,13 @@ func (r *reader) readRange(ctx context.Context, rng Range, st *stats) (_ []Row, 
 }
 
 // readList returns the entries of req; see Dataset.List.
-func (r *reader) readList(ctx context.Context, req List, st *stats) (_ []Entry, err error) {
+func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Entry, err error) {
+	st = resetStats(st)
 	ctx, done, err := r.request(ctx, req.Cursor, true, req.Limit, req.Columns)
 	if err != nil {
 		return nil, err
 	}
 	defer done(&err)
-	if st == nil {
-		st = new(stats)
-	}
 	// The read is confined to the keys that begin with Prefix, below End,
 	// and after a prefix cursor's keys.
 	from, end := req.Prefix, req.End
@@ -312,6 +316,7 @@ func (r *reader) readList(ctx context.Context, req List, st *stats) (_ []Entry, 
 			if !ok || len(out) == req.Limit {
 				break
 			}
+			st.PrefixSkips++
 			if err := s.seekList(next, req, &out); err != nil {
 				return nil, err
 			}
@@ -347,6 +352,10 @@ func (s *scan) seekList(from []byte, req List, out *[]Entry) error {
 		if !ok {
 			break
 		}
+		if len(*out) == req.Limit {
+			break // the page is full: no resume
+		}
+		s.stats.PrefixSkips++
 		from = next
 	}
 	s.key = nil
@@ -357,7 +366,7 @@ func (s *scan) seekList(from []byte, req List, out *[]Entry) error {
 // given positions in dataset order: each row group is read with one pass
 // over each projected column, decoding only pages holding selected rows.
 // Sparse selections reuse the current page without retaining prior pages.
-func (r *reader) project(ctx context.Context, rows []*Row, at []position, columns []string, st *stats) error {
+func (r *reader) project(ctx context.Context, rows []*Row, at []position, columns []string, st *ReadStats) error {
 	for _, row := range rows {
 		row.Columns, row.Values = columns, make([]Value, len(columns))
 	}

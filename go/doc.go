@@ -83,6 +83,12 @@
 // whether the row's part lacks the column (Absent), which is distinct from
 // null (COL-2).
 //
+// # Read statistics
+//
+// Setting Range.Stats or List.Stats to a *ReadStats makes the request report
+// the pages, keys, row groups and Source reads it used, exactly, even when
+// it fails. They are diagnostics, not part of the format contract.
+//
 // # Concurrency and cancellation
 //
 // A Dataset is safe for concurrent use; page indexes are loaded once per
