@@ -19,6 +19,12 @@ versioning; while it is v0, minor versions may change the API.
 - Package `local`: `PublishPart` and `Commit`, durable root-confined publication that never replaces a
   manifest and refuses where directories cannot be synced (Windows) unless the caller accepts a visible
   but unproven commit; `WriteDir` writes sorted rows as a new dataset.
+- Validation at the specification's four levels: `Validate` over a `Source`, `ValidateDir` over a local
+  directory, with `ValidateOptions{Level, Limits}` and a `Report` of each level's result, refusal code and
+  location, or the reason it is incomplete. Profile and full validation walk every column chunk page by
+  page from its start and compare the indexes with the pages found. `CodeDigestMismatch` is new.
+- Command `cmd/seekparquet`: `seekparquet validate [--level LEVEL] [--json] DIR`.
+- The conformance adapter claims the four validator targets.
 
 ## v0.1.0 (2026-11-08)
 

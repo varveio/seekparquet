@@ -1,10 +1,10 @@
 # seekparquet for Go
 
-A Go reader and writer for [SeekParquet](../spec/format-1.md) datasets: ordinary Parquet files sorted by one
-byte-string key column named by the manifest, split into key-disjoint parts and committed by a
+A Go reader, writer and validator for [SeekParquet](../spec/format-1.md) datasets: ordinary Parquet files sorted
+by one byte-string key column named by the manifest, split into key-disjoint parts and committed by a
 `manifest.json`. It finds the first row at or after a key, reads key ranges and prefixes, and lists a
 prefix with delimiter rollups, by reading the manifest, the footers, the key column's page index and a
-few pages.
+few pages. It also validates a dataset at the specification's four levels ([Validating](#validating)).
 
 ```
 go get github.com/varveio/seekparquet/go@v0.1.0
@@ -88,9 +88,10 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `Metadata` and `Close`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Options` and `Limits`; refusal codes and errors; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `Metadata` and `Close`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
 | `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
+| `cmd/seekparquet` | the `seekparquet validate` command |
 | `internal/...` | the manifest and Thrift checkers, the test-data writer, the sample datasets (`internal/samples`, written by `internal/cmd/samples`), and the conformance adapter (`internal/cmd/conformance`) for the [conformance harness](../conformance/protocol.md) |
 
 To run the conformance suite from the repository root:
@@ -100,6 +101,7 @@ python3 conformance/harness/run.py --adapter "go -C go run ./internal/cmd/confor
 ```
 
 or build the adapter first (`go -C go build -o /tmp/sp-adapter ./internal/cmd/conformance`) and pass its path.
+The adapter claims the `reader` target and the four validator targets, so one run qualifies all five.
 
 ## Results
 
@@ -135,7 +137,45 @@ relied on.
 
 What is **not** certified: rows a request does not decode (a query that succeeds says nothing about the pages
 it skipped), values beyond decoding them, `sha256` digests, and that files are unchanged after opening. Full
-certification is validation (spec §8), which this module does not yet provide.
+certification is validation (spec §8): see [Validating](#validating).
+
+## Validating
+
+```go
+report, err := seekparquet.ValidateDir(ctx, "/data/listing", seekparquet.ValidateOptions{Level: seekparquet.LevelFull})
+if err != nil {
+	return err // the directory could not be opened, or ctx ended
+}
+for _, lr := range report.Levels {
+	// lr.Result is Complete, Failed (lr.Failure.Code, located by lr.At) or Incomplete (lr.Reason, lr.Err)
+}
+valid := report.Result() == seekparquet.Complete
+```
+
+or, from the repository root, `go -C go run ./cmd/seekparquet validate [--level LEVEL] [--json] DIR`. The command
+prints one line per level (or, with `--json`, one object) and exits 0 when every level completed, 1 when a
+level failed, and 2 when a level is incomplete, validation could not run, or the arguments are wrong.
+`Validate` does the same over any `Source`.
+
+| Level | What this implementation checks |
+|---|---|
+| `structural` | everything opening checks (CHECK-1, which includes COL-5 for every column); for every non-empty row group, the key column's ColumnIndex and OffsetIndex (RG-2 to RG-4), and the page header at every OffsetIndex entry, which must begin one data page of exactly the entry's size and rows (RG-3). Page data is not read. |
+| `profile` | every key column chunk walked page header by page header from its start, without the OffsetIndex, which must then list exactly the data pages found (offsets, sizes, row positions, count); every key page decoded and every key checked: non-empty, valid UTF-8 for a `STRING` key, bounds valid UTF-8 too (KEY-2, KEY-6), in the declared order across pages, row groups and parts (KEY-3, PART-4), inside its page's ColumnIndex bounds (RG-5); each part's first and last keys equal to its manifest bounds (PART-3); the key chunk's metadata value count |
+| `full` | every other column chunk walked the same way and decoded: a dictionary page is checked and decoded when found, whether or not a page uses it; each page passes its CRC when it has one, decompresses to its declared size, its levels (RLE; `BIT_PACKED` is unsupported, anything else corrupt) and values agree with its header, V2 null counts included (nested and repeated columns too; a chunk, and every V2 page, begins a row), the chunk holds exactly the row group's rows and the value count its metadata declares; an OffsetIndex, when present, lists exactly the pages found; a ColumnIndex, when present, has one entry per page and, for a column that is neither nested nor repeated, marks a page null only if every value is null and counts nulls exactly |
+| `digest` | the SHA-256 of every part that declares `sha256`, streamed from the file, whether or not it is valid Parquet (PART-5); with no declared digest it completes with nothing checked and says so (VAL-2) |
+
+Structural, profile and full each run the levels before them; digest runs alone. The indexes under
+examination never choose what is read: every page the profile and full levels check is one they found by
+walking the chunk, and an index that omits, adds or misplaces a page fails (spec §8). A fault fails the
+level that finds it with its refusal code (`digest_mismatch` only at the digest level), and the levels after
+it are incomplete. An unsupported codec or encoding (for example LZO, or legacy `BIT_PACKED` levels or values),
+an encrypted part, a limit, or a storage error leaves the level incomplete, never failed: it says nothing
+about validity. The full level still decodes the other columns, so that a fault in one of them fails it.
+`ValidateOptions.Limits` bounds allocation as for reading (IndexMemory aside: no page index is kept).
+
+Not checked: value-column ColumnIndex bounds against their values (their order depends on the column's
+type), and what validation cannot see (VAL-3): atomic publication, and that files stay unchanged after they
+are read.
 
 ## Untrusted input and limits
 
@@ -158,7 +198,7 @@ limit is separate from the configurable allocation limits and does not make the 
 
 | Error | Meaning |
 |---|---|
-| `*RefusalError` (`CodeOf`) | the data breaks the specification; `Code` is from `spec/refusal-codes.json`, with the part, row group, row and key where known |
+| `*RefusalError` (`CodeOf`) | the data breaks the specification; `Code` is from `spec/refusal-codes.json`, with the part, row group, row and key where known (validation reports it as a failed level) |
 | `ErrInvalidRequest` | a malformed request |
 | `*UnsupportedError` | valid data this reader does not handle: `unsupported_projection`, `unsupported_encoding`, `unsupported_encryption` |
 | anything else | the environment: storage, the context, `ErrClosed`, `ErrLimitExceeded` |
