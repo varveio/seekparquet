@@ -22,9 +22,11 @@ import (
 )
 
 // TestConcurrentColdIndexes starts range reads and listings with differing
-// projections on the same row groups of a dataset none has read yet, so
-// their first reads load each group's page index concurrently, and
-// compares every result with the same call on a dataset read sequentially.
+// projections on the same row groups of a dataset none has read yet (a
+// default open loads no page index and decodes no key; TestOpenReads checks
+// that), so their first reads load each group's page index and first key
+// concurrently, and compares every result with the same call on a dataset
+// read sequentially.
 func TestConcurrentColdIndexes(t *testing.T) {
 	keys := fixtureKeys(3000)
 	ds := parts(seekparquettest.Part{GroupRows: 500, PageBytes: 1024}, split(keys, 2)...)

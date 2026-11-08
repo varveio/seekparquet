@@ -17,5 +17,11 @@ First public version.
   rejected as unsupported.
 - Refusal codes from `spec/refusal-codes.json` with structured locations; invalid requests, unsupported
   features and caller expectations reported as distinct error types.
+- Opening checks CHECK-1 only, reading the manifest and the footers; reads are routed by the manifest's part
+  bounds and lazily decoded row-group first keys. `Options.VerifyOnOpen` checks every row group's first key
+  page and each part's last on open.
+- `Limits` bounds every size a file declares (manifest, footer, page index, page header, page, value count,
+  retained index memory) before allocation; Thrift metadata is walked with a bounded decoder before
+  parquet-go decodes it; exceeding a limit is `ErrLimitExceeded`.
 - `seekparquettest`, a test writer of conforming and deliberately invalid datasets.
 - A conformance adapter (`internal/cmd/conformance`) for the reader target.
