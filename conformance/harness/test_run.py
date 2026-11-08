@@ -131,7 +131,7 @@ ORACLE_ADAPTER = textwrap.dedent(r'''
                 continue
             if end is not None and (kf(k) > kf(end) if BUG == "inclusive-end" else kf(k) >= kf(end)):
                 continue
-            out.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "values": ds._values(k, v, present, cols)})
+            out.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "offset": 0, "values": ds._values(k, v, present, cols)})
             if len(out) == limit:
                 break
         return out

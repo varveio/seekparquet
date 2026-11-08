@@ -409,26 +409,6 @@
         "status": "refused",
         "code": "key_order"
       }
-    },
-    {
-      "id": "refusals-read/grouped-key-decreasing",
-      "description": "A repeated-key dataset decreases inside a page.",
-      "family": "refusals-read/fault",
-      "fault_id": "grouped-key-decreasing",
-      "requirements": [
-        "KEY-3",
-        "CHECK-2"
-      ],
-      "dataset": "datasets/invalid/grouped-key-decreasing",
-      "detect": "read",
-      "request": {
-        "op": "range",
-        "limit": 100000
-      },
-      "expect": {
-        "status": "refused",
-        "code": "key_order"
-      }
     }
   ]
 }

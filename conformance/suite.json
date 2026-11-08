@@ -23,6 +23,7 @@
     "cases/core/range.json",
     "cases/core/refusals-open.json",
     "cases/core/refusals-read.json",
+    "cases/core/repeated.json",
     "cases/core/requests.json",
     "cases/core/validate-digest.json",
     "cases/core/validate-full.json",
@@ -55,6 +56,7 @@
     "cases/core/range.json": 20,
     "cases/core/refusals-open.json": 32,
     "cases/core/refusals-read.json": 12,
+    "cases/core/repeated.json": 29,
     "cases/core/requests.json": 10,
     "cases/core/validate-digest.json": 4,
     "cases/core/validate-full.json": 4,
@@ -68,16 +70,16 @@
     "cases/generated/pagination.generated.json": 81,
     "cases/generated/projection.generated.json": 35,
     "cases/generated/requests.generated.json": 8,
-    "cases/generated/refusals-open.generated.json": 56,
-    "cases/generated/refusals-read.generated.json": 20,
+    "cases/generated/refusals-open.generated.json": 39,
+    "cases/generated/refusals-read.generated.json": 19,
     "cases/generated/validate-structural.generated.json": 115,
     "cases/generated/validate-profile.generated.json": 39,
     "cases/generated/validate-full.generated.json": 29,
     "cases/generated/validate-digest.generated.json": 2
   },
   "totals": {
-    "core": 150,
-    "generated": 1333
+    "core": 179,
+    "generated": 1315
   },
   "renamed_datasets": {
     "datasets/truncated-bounds": "datasets/binary-bounds-truncated-16-byte",
@@ -173,5 +175,5 @@
       "duplicate_of": "open/empty-list"
     }
   ],
-  "content_sha256": "1ad86f0547a02962e864e57517d0dbd65c4bed5348e4db64b449e91b0802468d"
+  "content_sha256": "06f34beb553692ba7fdb5161f4533e6fc5b98fff1453113104c232069772b9f4"
 }
