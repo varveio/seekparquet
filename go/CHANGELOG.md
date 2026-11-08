@@ -7,6 +7,15 @@ versioning; while it is v0, minor versions may change the API.
 
 First public version.
 
+- Required manifest `key` declaration and matching `StampKeyColumn`/`StampKeyUnique` footer stamps.
+  `Metadata.Key` exposes `Key`; `PartsOptions.Key` configures directly opened parts.
+- Non-decreasing repeated-key groups in producer file order, with earliest-candidate routing and
+  whole-group bounds. Unique-key routing retains its existing fast path.
+- `KeyRange` looks up a whole group. `Row.Offset`, `Cursor`, `Range.Cursor`, `List.Cursor`,
+  `Row.Cursor()` and `Entry.Cursor()` support pages ending inside a group.
+- `seekparquettest.Dataset.KeyColumn` and `.RepeatedKeys`, sequential oracle properties, tagged
+  pagination tests and repeated-key fuzz seeds.
+
 - Reads SeekParquet format 1, draft revision 1 (`format_version` 0, `draft_revision` 1).
 - `OpenDataset` over a `Source`, with `source/local` for directories (`os.Root` confinement, a bounded
   descriptor cache, non-blocking opens that refuse anything but regular files); `OpenParts` for parts given

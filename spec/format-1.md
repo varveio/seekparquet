@@ -62,8 +62,8 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
   (`invalid_manifest`).
 - [MAN-3] The manifest MUST conform to [manifest.schema.json](manifest.schema.json). Members not defined by
   this document are not allowed, at the top level, in `key` or in a part, except inside `extensions` (§3.4). A reader
-  MUST refuse a manifest with an undefined member (`invalid_manifest`). New members arrive only with a new
-  format version or draft revision.
+  MUST refuse a manifest with an undefined member (`invalid_manifest`). After a release, new members arrive only with a new
+  format version or draft revision. Unreleased draft revision 1 is edited in place.
 - [MAN-6] The integer members this document defines (`format_version`, `draft_revision`, `rows`, `bytes`)
   are written as JSON numbers with no fraction, exponent or leading zeros, and lie between 0 and 2^63 − 1.
   Numbers inside `extensions` are ordinary JSON numbers and are not constrained. A reader MUST parse them exactly, without rounding, and refuse any other spelling
@@ -217,7 +217,7 @@ and are ignored.
   one whose indexes break RG-3 or RG-4, or whose decoded keys contradict RG-5 (`invalid_page_index`).
 
 - [ROUTE-1] A seek for `k` MUST begin no later than the earliest row group that can hold `k`.
-  With decoded row-group first keys, find the first first key greater than or equal to `k` and start
+  In repeated-key mode, with decoded row-group first keys, find the first first key greater than or equal to `k` and start
   at its predecessor, clamped to the part's first row group (or the last row group if none is found).
   Choosing the last first key equal to `k` would lose earlier rows of a group. Apply the same rule
   within a row group when using exact page first keys. With ColumnIndex bounds, RG-5/RG-6 still
@@ -318,8 +318,9 @@ It returns the whole group (zero or more rows), paginated like any range.
 
 ### 6.3 Delimited listing
 
-The **candidate keys** are the keys `k` that begin with the prefix `p`, are greater than `after` when it is
-given, and are less than the end when it is given. Each candidate row yields one entry:
+The **candidate keys** are the keys `k` that begin with the prefix `p`, are greater than the listing byte
+floor `after` when it is given, and are less than the end when it is given. Tagged continuation cursors
+add the row-position rules in PAGE-1 instead of a byte floor. Each candidate row yields one entry:
 
 - [LIST-2] If the part of `k` after `p` contains the delimiter `d`, let `i` be the index in `k` of the
   first `d` at or after position `len(p)`. The entry is the **common prefix** `k[0 : i+1]` (half-open: `k`

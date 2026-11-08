@@ -71,7 +71,7 @@ func Rows(keys ...string) []Row {
 // Part describes one part file.
 type Part struct {
 	// Rows is a slice of structs whose parquet tags give the schema, with
-	// a top-level column named key; nil is []Row{}. Rows are written in
+	// the configured top-level key column; nil is []Row{}. Rows are written in
 	// the order given.
 	Rows any
 	// PageBytes is the page buffer size (pages are cut by bytes); 0 is 512.

@@ -56,9 +56,8 @@ func (e Entry) Cursor() *Cursor {
 
 // groupPosition tracks file-order offsets while walking complete groups.
 type groupPosition struct {
-	key     []byte
-	offset  int64
-	offsets []int64
+	key    []byte
+	offset int64
 }
 
 func (p *groupPosition) next(key []byte) int64 {

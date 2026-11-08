@@ -84,6 +84,14 @@ func TestParseRefusals(t *testing.T) {
 		{"format_version 1 with a draft revision", edit(`"format_version": 0,`, `"format_version": 1,`), CodeInvalidManifest},
 		{"format_version 2 with new members", edit(`"format_version": 0,
   "draft_revision": 1,`, `"format_version": 2, "new_member": true,`), CodeUnsupportedVersion},
+		{"missing key", edit(`"key": {"column": "key", "unique": true},`, ``), CodeInvalidManifest},
+		{"null key", edit(`{"column": "key", "unique": true}`, `null`), CodeInvalidManifest},
+		{"missing unique", edit(`, "unique": true`, ``), CodeInvalidManifest},
+		{"string unique", edit(`"unique": true`, `"unique": "true"`), CodeInvalidManifest},
+		{"null unique", edit(`"unique": true`, `"unique": null`), CodeInvalidManifest},
+		{"empty key column", edit(`"column": "key"`, `"column": ""`), CodeInvalidManifest},
+		{"control key column", edit(`"column": "key"`, `"column": "bad\u007f"`), CodeInvalidManifest},
+		{"extra key field", edit(`"unique": true`, `"unique": true, "other": 1`), CodeInvalidManifest},
 		{"undefined member", edit(`"parts"`, `"created_at": "now", "parts"`), CodeInvalidManifest},
 		{"undefined part member", edit(`"rows": 3,`, `"rows": 3, "checksum": "x",`), CodeInvalidManifest},
 		{"no parts", `{"format":"seekparquet","format_version":0,"draft_revision":1,"schema_id":"x"}`, CodeInvalidManifest},
@@ -142,6 +150,7 @@ func TestPathsAreLiteral(t *testing.T) {
 // to satisfy the rules it is meant to have checked.
 func FuzzParse(f *testing.F) {
 	f.Add([]byte(validManifest))
+	f.Add([]byte(edit(`{"column": "key", "unique": true}`, `{"column": "object.id", "unique": false}`)))
 	f.Add([]byte(`{"format":"seekparquet","format_version":0,"draft_revision":1,"schema_id":"x","key":{"column":"key","unique":true},"parts":[]}`))
 	f.Add([]byte(`{"format":"seekparquet","format_version":7,"parts":[]}`))
 	f.Add([]byte(`{"a":"𐀀","a":1}`))
@@ -155,7 +164,7 @@ func FuzzParse(f *testing.F) {
 			}
 			return
 		}
-		if m.Version != (Version{0, 1}) || m.SchemaID == "" {
+		if m.Version != (Version{0, 1}) || m.SchemaID == "" || m.KeyColumn == "" || hasControl(m.KeyColumn) {
 			t.Fatalf("accepted %+v", m)
 		}
 		seen := map[string]bool{}

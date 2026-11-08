@@ -98,7 +98,7 @@ The adapter opens the dataset first if it has not.
 
 ```json
 {"id": "4", "op": "list", "dataset": "/abs/path/datasets/basic",
- "prefix_base64": "", "delimiter_base64": "Lw==", "after_base64": "YS8=", "continuation": true,
+ "prefix_base64": "", "delimiter_base64": "Lw==", "after": {"prefix_base64": "YS8="},
  "end_base64": null, "limit": 100, "columns": []}
 ```
 
@@ -191,7 +191,7 @@ Both range and list accept `after = {"key_base64": "...", "offset": n}` after a 
 or `after = {"prefix_base64": "..."}` after a common prefix (PAGE-1/PAGE-2).
 Each row response includes `offset`, its zero-based position within its group in file order;
 it is always zero when the manifest declares unique keys. Offsets are non-negative integers
-at most 2^63-1. Tags have exactly the members shown, and base64 is canonical.
+at most 2^63-1, written without a sign, fraction or exponent. Tags have exactly the members shown, and base64 is canonical.
 A row cursor resumes at offset n+1 of that key, then later keys. A prefix cursor suppresses
 that common prefix and all earlier prefixes. Query bounds still apply to whole groups;
 a page limit may split a group. Repeating pages must equal the unpaginated result.

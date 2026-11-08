@@ -115,7 +115,10 @@ func (rng Range) bounds() (start []byte, exclusive bool, end []byte) {
 // repeated column is an *UnsupportedError; a key page that breaks the
 // specification ends the read with a *RefusalError.
 func (r *Reader) Range(ctx context.Context, rng Range, stats *Stats) ([]Row, error) {
-	sink := &rowSink{columns: slices.Clone(rng.Columns)}
+	sink := &rowSink{columns: slices.Clone(rng.Columns), unique: r.key.Unique}
+	if rng.Cursor != nil && rng.Cursor.Key != nil {
+		sink.position.key, sink.position.offset = bytes.Clone(rng.Cursor.Key), rng.Cursor.Offset
+	}
 	if err := r.Scan(ctx, rng, stats, sink); err != nil {
 		return nil, err
 	}
@@ -213,9 +216,6 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 			return err
 		}
 		if len(keys) > 0 {
-			if s, ok := sink.(*rowSink); ok {
-				s.nextOffsets = position.offsets
-			}
 			if err := sink.Keys(keys); err != nil {
 				return errSink{err}
 			}
@@ -271,7 +271,6 @@ func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive boo
 		return nil, 0, false, err
 	}
 	start := row
-	position.offsets = nil
 	var arena []byte
 	var ends []int
 	done := false
@@ -281,7 +280,7 @@ func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive boo
 			break
 		}
 		offset := int64(0)
-		if !r.key.Unique {
+		if after != nil && !r.key.Unique {
 			offset = position.next(key)
 		}
 		if !after.allows(key, offset) {
@@ -294,7 +293,6 @@ func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive boo
 		if len(ends) == 0 {
 			start = row
 		}
-		position.offsets = append(position.offsets, offset)
 		arena = append(arena, key...)
 		ends = append(ends, len(arena))
 		if len(ends) == want {
@@ -318,17 +316,16 @@ func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive boo
 
 // rowSink builds Range's rows, cloning each value out of its page.
 type rowSink struct {
-	offsets     []int64
-	nextOffsets []int64
-	columns     []string
-	rows        []Row
-	keys        [][]byte
-	values      [][]parquet.Value
+	position groupPosition
+	unique   bool
+	columns  []string
+	rows     []Row
+	keys     [][]byte
+	values   [][]parquet.Value
 }
 
 func (s *rowSink) Keys(keys [][]byte) error {
 	s.flush()
-	s.offsets = append(s.offsets[:0], s.nextOffsets...)
 	s.keys, s.values = keys, make([][]parquet.Value, len(s.columns))
 	return nil
 }
@@ -348,7 +345,11 @@ func (s *rowSink) Absent(int) error { return nil }
 // flush adds the run's rows.
 func (s *rowSink) flush() {
 	for i := range s.keys {
-		s.rows = append(s.rows, Row{Key: s.keys[i], Offset: s.offsets[i], Columns: s.columns, Values: rowValues(s.values, i)})
+		offset := int64(0)
+		if !s.unique {
+			offset = s.position.next(s.keys[i])
+		}
+		s.rows = append(s.rows, Row{Key: s.keys[i], Offset: offset, Columns: s.columns, Values: rowValues(s.values, i)})
 	}
 	s.keys, s.values = nil, nil
 }

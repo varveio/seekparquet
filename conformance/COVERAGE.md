@@ -8,9 +8,9 @@ an argument for completeness: the core descriptions and family descriptions say 
 
 ## KEY-1
 
-- Evidence: 31 positive, 12 negative.
+- Evidence: 55 positive, 12 negative.
 - Core: `projection/key/basic-01`, `projection/key/projection-03`, `refusals-open/key-nullable`, `refusals-open/key-annotation-json`, `repeated/core/literal-key-column` and 1 more
-- Generated: `open/valid-dataset` (2), `projection/key-column` (7), `projection/other-datasets` (1), `refusals-open/fault` (3), `repeated/boundaries` (18), `validate-structural/fault-at-lowest-level` (6)
+- Generated: `open/valid-dataset` (2), `projection/key-column` (7), `projection/other-datasets` (1), `refusals-open/fault` (3), `repeated/boundaries` (42), `validate-structural/fault-at-lowest-level` (6)
 
 ## LAYOUT-1
 
@@ -72,9 +72,9 @@ No case. paths are relative to the root: exercised implicitly by every dataset.
 
 ## MAN-8
 
-- Evidence: 19 positive, 16 negative.
+- Evidence: 43 positive, 16 negative.
 - Core: `repeated/core/literal-key-column`, `refusals-open/manifest-key-null`, `refusals-open/manifest-key-empty`, `refusals-open/manifest-key-unique-string`, `refusals-open/manifest-key-empty-column` and 4 more
-- Generated: `repeated/boundaries` (18), `validate-structural/fault-at-lowest-level` (8)
+- Generated: `repeated/boundaries` (42), `validate-structural/fault-at-lowest-level` (8)
 
 ## PART-1
 
@@ -159,15 +159,15 @@ No case. gap: no encrypted fixture yet.
 
 ## KEY-3
 
-- Evidence: 403 positive, 17 negative.
+- Evidence: 427 positive, 17 negative.
 - Core: `prefix/multipart/00`, `prefix/multipart/07`, `prefix/binary-keys/04`, `prefix/binary-keys/09`, `prefix/binary-keys/12` and 12 more
-- Generated: `prefix/prefix-only` (31), `range/boundary-part` (32), `range/boundary-row-group` (52), `range/end-at-key` (46), `range/seek-key` (135), `range/start-just-above-key` (75), `range/whole-dataset` (3), `refusals-read/fault` (4), `repeated/boundaries` (18), `validate-profile/fault-at-lowest-level` (7)
+- Generated: `prefix/prefix-only` (31), `range/boundary-part` (32), `range/boundary-row-group` (52), `range/end-at-key` (46), `range/seek-key` (135), `range/start-just-above-key` (75), `range/whole-dataset` (3), `refusals-read/fault` (4), `repeated/boundaries` (42), `validate-profile/fault-at-lowest-level` (7)
 
 ## KEY-7
 
-- Evidence: 312 positive, 2 negative.
+- Evidence: 404 positive, 2 negative.
 - Core: `repeated/core/seek-group-start`, `repeated/core/lookup-whole-group`, `repeated/core/resume-inside-group`, `repeated/core/resume-across-part`, `repeated/core/exclusive-whole-group` and 4 more
-- Generated: `repeated/boundaries` (36), `repeated/pagination` (268), `validate-structural/fault-at-lowest-level` (1)
+- Generated: `repeated/boundaries` (84), `repeated/pagination` (312), `validate-structural/fault-at-lowest-level` (1)
 
 ## KEY-4
 
@@ -220,9 +220,9 @@ No case. gap: no encrypted fixture yet.
 
 ## ROUTE-1
 
-- Evidence: 44 positive, 0 negative.
+- Evidence: 92 positive, 0 negative.
 - Core: `repeated/core/seek-group-start`, `repeated/core/lookup-whole-group`, `repeated/core/resume-inside-group`, `repeated/core/resume-across-part`, `repeated/core/exclusive-whole-group` and 3 more
-- Generated: `repeated/boundaries` (36)
+- Generated: `repeated/boundaries` (84)
 
 ## COL-1
 
@@ -310,9 +310,9 @@ No case. writer's choice: not a reader obligation.
 
 ## RANGE-1
 
-- Evidence: 679 positive, 0 negative.
+- Evidence: 727 positive, 0 negative.
 - Core: `open/empty-range`, `prefix/multipart/00`, `prefix/multipart/07`, `prefix/binary-keys/04`, `prefix/binary-keys/09` and 32 more
-- Generated: `pagination/range-scenario` (25), `prefix/prefix-only` (31), `prefix/prefix-with-bounds` (12), `range/boundary-page` (100), `range/boundary-part` (32), `range/boundary-row-group` (52), `range/bounds` (11), `range/end-at-key` (46), `range/seek-key` (135), `range/seek-with-columns` (77), `range/start-just-above-key` (75), `range/whole-dataset` (10), `repeated/boundaries` (36)
+- Generated: `pagination/range-scenario` (25), `prefix/prefix-only` (31), `prefix/prefix-with-bounds` (12), `range/boundary-page` (100), `range/boundary-part` (32), `range/boundary-row-group` (52), `range/bounds` (11), `range/end-at-key` (46), `range/seek-key` (135), `range/seek-with-columns` (77), `range/start-just-above-key` (75), `range/whole-dataset` (10), `repeated/boundaries` (84)
 
 ## RANGE-2
 
@@ -352,21 +352,21 @@ No case. writer's choice: not a reader obligation.
 
 ## PAGE-1
 
-- Evidence: 278 positive, 7 negative.
+- Evidence: 322 positive, 7 negative.
 - Core: `repeated/core/seek-group-start`, `repeated/core/lookup-whole-group`, `repeated/core/resume-inside-group`, `repeated/core/resume-across-part`, `repeated/core/exclusive-whole-group` and 5 more
-- Generated: `repeated/invalid-cursors` (7), `repeated/pagination` (268)
+- Generated: `repeated/invalid-cursors` (7), `repeated/pagination` (312)
 
 ## LIST-6
 
-- Evidence: 335 positive, 0 negative.
+- Evidence: 379 positive, 0 negative.
 - Core: `list/delimiter/after-inside-prefix-continuation`, `pagination/list/list-bounds/root-2f-limit1/page-00`, `pagination/list/list-bounds/root-2f-limit1/page-01`, `pagination/list/list-bounds/root-2f-limit1/page-02`, `pagination/list/list-bounds/root-2f-limit1/page-03` and 5 more
-- Generated: `list/bounds-and-after` (1), `pagination/list-scenario` (56), `repeated/pagination` (268)
+- Generated: `list/bounds-and-after` (1), `pagination/list-scenario` (56), `repeated/pagination` (312)
 
 ## PAGE-2
 
-- Evidence: 278 positive, 0 negative.
+- Evidence: 322 positive, 0 negative.
 - Core: `repeated/core/seek-group-start`, `repeated/core/lookup-whole-group`, `repeated/core/resume-inside-group`, `repeated/core/resume-across-part`, `repeated/core/exclusive-whole-group` and 5 more
-- Generated: `repeated/pagination` (268)
+- Generated: `repeated/pagination` (312)
 
 ## CHECK-1
 

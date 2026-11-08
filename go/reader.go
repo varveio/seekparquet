@@ -197,6 +197,7 @@ func openParts(ctx context.Context, inputs []partInput, opt PartsOptions) (_ *Re
 		r.key = *opt.Key
 	}
 	if r.key.Column == "" {
+		closeSources(inputs)
 		return nil, invalidRequest("empty key column")
 	}
 	r.closing, r.closeNow = context.WithCancelCause(context.Background())
@@ -413,7 +414,7 @@ func (r *Reader) noteFirst(g int, key []byte) error {
 	if g > 0 {
 		if prev := r.groups[g-1].first.Load(); prev != nil && r.outOfOrder(*prev, key) {
 			e := keyOrder(name, grp.physical, 0, key)
-			e.Detail = "the row group's first key is not above the previous row group's"
+			e.Detail = "row-group first keys violate the declared key order"
 			return e
 		}
 	}
@@ -421,7 +422,7 @@ func (r *Reader) noteFirst(g int, key []byte) error {
 		if next := r.groups[g+1].first.Load(); next != nil && r.outOfOrder(key, *next) {
 			n := r.groups[g+1]
 			e := keyOrder(r.parts[n.part].name, n.physical, 0, *next)
-			e.Detail = "the row group's first key is not above the previous row group's"
+			e.Detail = "row-group first keys violate the declared key order"
 			return e
 		}
 	}
@@ -431,7 +432,8 @@ func (r *Reader) noteFirst(g int, key []byte) error {
 }
 
 // groupFor returns the row group in which a read from from begins: the
-// last group whose first key is at or before from, or the first group of
+// predecessor of the first group whose first key reaches from in repeated
+// mode (passes from in unique mode), clamped to the first group of
 // the part that can hold from; len(groups) when no group can. Parts are
 // chosen by their bounds when every part has them; row groups by binary
 // search over their first keys, decoding a group's first key page the first
@@ -452,8 +454,9 @@ func (r *Reader) groupFor(ctx context.Context, from []byte, log *pageLog, stats 
 			return lo, nil
 		}
 	}
-	// The answer is the last group in [lo, hi) whose first key is at or
-	// before from, or lo: search (lo, hi) for the first group above from.
+	// Search for the first first key at or above from in repeated mode.
+	// Its predecessor can hold earlier rows of the same key. In unique
+	// mode an exact first-key match can start at that group directly.
 	a, b := lo+1, hi
 	for a < b {
 		mid := int(uint(a+b) >> 1)

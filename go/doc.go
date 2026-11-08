@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package seekparquet reads SeekParquet datasets: ordinary Parquet files
-// sorted by one byte-string key column named "key", split into key-disjoint
+// sorted by one manifest-named byte-string key column, split into key-disjoint
 // parts and committed by a manifest.json (SeekParquet format 1, draft
 // revision 1, stamped format_version 0).
 //
@@ -32,7 +32,7 @@
 //
 // Range, List and Scan check a row group's key page index before using the
 // group, and every key page they decode (CHECK-2): the page header matches
-// its OffsetIndex entry, one non-empty key per row, strictly ascending,
+// its OffsetIndex entry, one non-empty key per row, non-decreasing (strictly ascending when unique),
 // inside the page's ColumnIndex bounds and its part's manifest bounds, and
 // in dataset order with every other page the request decoded. A fault
 // ends the request with a *RefusalError carrying a stable Code.
@@ -41,6 +41,11 @@
 // beyond decoding them, the parts' SHA-256 digests, and that the files are
 // unchanged after opening. Full certification is validation, which this
 // package does not do.
+//
+// Equal-key groups retain producer file order and never cross parts. KeyRange
+// looks up one entire group. Range.Cursor and List.Cursor resume after a row
+// using its key and zero-based Row.Offset, or after a common prefix. Row.Cursor
+// and Entry.Cursor construct these continuations. Pages may end inside groups.
 //
 // # Errors
 //

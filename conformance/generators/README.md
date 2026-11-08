@@ -51,3 +51,8 @@ python generators/regenerate.py      # from conformance/, with generators/requir
   larger precisions are FIXED_LEN_BYTE_ARRAY of the minimum width (13 bytes for precision 30). Python's
   default `decimal` context (28 digits) silently rounds wider values; the generator uses an explicit one.
 - **Determinism.** Output is byte-identical across runs (no timestamps in the footer).
+
+The `repeated-keys`, `one-large-group` and `named-key` fixtures exercise equal keys across pages and
+row groups, whole-group bounds, exact key names and tagged row-offset/prefix cursors. Every source
+document and manifest declares the key column and uniqueness. Invalid fixtures declare key-order,
+split-group, manifest-key and footer key-stamp faults explicitly in `faults.json`.

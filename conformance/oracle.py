@@ -46,9 +46,9 @@ class Dataset:
             for r in part["rows"]:
                 self.rows.append((base64.b64decode(r["key_base64"], validate=True), r["values"], present))
         keys = [k for k, _v, _p in self.rows]
-        # Source rows of a valid dataset are unique and ascending (KEY-2, KEY-3).
+        # Source rows obey the declared ordering mode (KEY-2, KEY-3).
         assert all(keys), f"{self.name}: empty key in source rows"
-        assert all(a < b if self.unique else a <= b for a, b in zip(keys, keys[1:])), f"{self.name}: source rows not strictly ascending"
+        assert all(a < b if self.unique else a <= b for a, b in zip(keys, keys[1:])), f"{self.name}: source rows violate declared key order"
 
     def positioned(self):
         previous, offset = None, 0
@@ -87,6 +87,7 @@ class Dataset:
         """RANGE-1, RANGE-2, QUERY-2."""
         columns = list(columns)
         self._check(limit, columns)
+        cursor_allows(after, b"", 0)  # validate even on an empty dataset
         out = []
         for k, offset, v, present in self.positioned():
             if not cursor_allows(after, k, offset):
@@ -108,6 +109,8 @@ class Dataset:
         if delimiter is None or len(delimiter) != 1:
             raise InvalidRequest("delimiter must be exactly one byte")
         self._check(limit, columns)
+        if after is not None and not isinstance(after, bytes):
+            cursor_allows(after, b"", 0)
         out, seen = [], set()
         for k, offset, v, present in self.positioned():
             # candidate keys (LIST-7): begin with prefix, > after, < end
@@ -133,7 +136,7 @@ class Dataset:
                 out.append({"kind": "row", "key_base64": b64(k), "offset": offset, "values": self._values(k, v, present, columns)})
             if len(out) == limit:
                 break
-        # LIST-4: distinct and ascending by entry bytes.
+        # LIST-4: prefixes are distinct; row entries retain file order.
         eb = [base64.b64decode(e["key_base64"]) for e in out]
         assert all(a <= b for a, b in zip(eb, eb[1:])), "oracle: entries not ascending"
         return out
@@ -159,8 +162,18 @@ def cursor_allows(after, key, offset):
         n = after["offset"]
         if type(n) is not int or n < 0 or n > (1 << 63) - 1:
             raise InvalidRequest("invalid cursor offset")
-        k = base64.b64decode(after["key_base64"], validate=True)
+        k = cursor_bytes(after["key_base64"])
         return key > k or key == k and offset > n
     if set(after) == {"prefix_base64"}:
-        return key > base64.b64decode(after["prefix_base64"], validate=True)
+        return key > cursor_bytes(after["prefix_base64"])
     raise InvalidRequest("invalid cursor tag")
+
+
+def cursor_bytes(text):
+    try:
+        raw = base64.b64decode(text, validate=True)
+        if b64(raw) != text:
+            raise ValueError("noncanonical base64")
+        return raw
+    except (ValueError, TypeError):
+        raise InvalidRequest("cursor bytes must be canonical base64") from None

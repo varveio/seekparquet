@@ -111,7 +111,8 @@ func (c *keyCursor) advance() (key []byte, row int64, ok bool, err error) {
 // decode reads key page i and checks it (CHECK-2): its header locates
 // exactly one data page of the rows its OffsetIndex entry gives it (RG-3);
 // it holds one non-empty key per row (KEY-2), valid UTF-8 for a STRING key
-// (KEY-6), strictly ascending, inside the page's ColumnIndex bounds (RG-5),
+// (KEY-6), ordered according to the declared uniqueness mode, inside the
+// page's ColumnIndex bounds (RG-5),
 // inside its part's bounds and equal to them at the part's ends
 // (bounds_mismatch), and in dataset order with every other page the request
 // decoded (KEY-3).

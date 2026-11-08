@@ -97,15 +97,14 @@ type Dataset struct {
 	meta   Metadata
 }
 
-// Metadata is a read-only view of a dataset's manifest. Metadata returns a
-// copy each time, so a caller may keep and change it freely.
 // Key declares the exact key column and whether keys must be unique.
 type Key struct {
 	Column string
 	Unique bool
 }
 
-// Metadata is a copy of a dataset's manifest metadata.
+// Metadata is a read-only view of a dataset's manifest. Metadata returns a
+// copy each time, so a caller may keep and change it freely.
 type Metadata struct {
 	Key      Key
 	Version  Version
@@ -218,7 +217,7 @@ func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error)
 	handed = true
 	opt.Limits = lim
 	reader, err := openParts(ctx, inputs, PartsOptions{Options: opt, Key: &meta.Key, CheckGroup: func(name string, footer *parquet.File, physical int, group *format.RowGroup) error {
-		return checkSortedColumn(name, footer, physical, group, m.KeyColumn)
+		return checkSorted(name, footer, physical, group, m.KeyColumn)
 	}})
 	if err != nil {
 		return nil, err
@@ -319,11 +318,7 @@ func checkStamps(name string, footer *parquet.File, m *manifest.Manifest) error 
 
 // checkSorted applies RG-1: a non-empty row group declares the key column
 // ascending as its first sorting column.
-func checkSorted(name string, footer *parquet.File, physical int, group *format.RowGroup) error {
-	return checkSortedColumn(name, footer, physical, group, KeyColumn)
-}
-
-func checkSortedColumn(name string, footer *parquet.File, physical int, group *format.RowGroup, keyColumn string) error {
+func checkSorted(name string, footer *parquet.File, physical int, group *format.RowGroup, keyColumn string) error {
 	key, _ := footer.Schema().Lookup(keyColumn)
 	sorting := group.SortingColumns
 	if len(sorting) == 0 || int(sorting[0].ColumnIdx) != key.ColumnIndex || sorting[0].Descending {

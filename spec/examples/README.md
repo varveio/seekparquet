@@ -6,6 +6,7 @@ they name do not exist here. Complete datasets, valid and invalid, are in [`../.
 | File | Structurally | Why |
 |---|---|---|
 | `empty-manifest.json` | valid | an empty dataset (`parts: []`) |
+| `repeated-keys-manifest.json` | valid | groups may repeat within each part; `key.unique` is false |
 | `two-part-manifest.json` | valid | two parts, with producer metadata under `extensions` |
 | `invalid/unknown-member.json` | invalid (`invalid_manifest`, MAN-3) | `created_at` is not a defined member |
 | `invalid/draft-without-revision.json` | invalid (`invalid_manifest`, MAN-7) | `format_version` 0 without `draft_revision` |

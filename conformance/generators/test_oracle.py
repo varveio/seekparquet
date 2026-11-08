@@ -164,5 +164,51 @@ class HandWrittenExamples(unittest.TestCase):
             mini([b"a"]).list(delimiter=b"//", limit=1)
 
 
+class RepeatedGroups(unittest.TestCase):
+    def test_handwritten_offsets_and_values(self):
+        doc = {"dataset": "grouped", "key": {"column": "id", "unique": False},
+               "columns": [{"name": "v", "type": "int64"}],
+               "parts": [{"rows": [{"key_base64": "YQ==", "values": {"v": {"int": str(n)}}} for n in (9, 7, 8)]}]}
+        ds = oracle.Dataset(doc)
+        e = ds.range(after={"key_base64": "YQ==", "offset": 0}, limit=10, columns=["v", "id", "key"])
+        self.assertEqual([x["offset"] for x in e], [1, 2])
+        self.assertEqual([x["values"] for x in e], [[{"int": "7"}, {"bytes_base64": "YQ=="}, {"absent": True}],
+                                                   [{"int": "8"}, {"bytes_base64": "YQ=="}, {"absent": True}]])
+        self.assertEqual(ds.range(start=b"a", start_exclusive=True, limit=10), [])
+        self.assertEqual(ds.range(end=b"a", limit=10), [])
+
+    def test_tagged_pagination_all_group_offsets(self):
+        for name in ("repeated-keys", "one-large-group", "named-key"):
+            ds = oracle.Dataset.load(name)
+            for op in ("range", "list"):
+                for limit in (1, 2, 5, 7):
+                    args = {"limit": BIG, "columns": ["size"]}
+                    if op == "list":
+                        args["delimiter"] = b"/"
+                    query = getattr(ds, op)
+                    full = query(**args)
+                    args["limit"] = limit
+                    got = []
+                    while True:
+                        page = query(**args)
+                        got += page
+                        if len(page) < limit:
+                            break
+                        e = page[-1]
+                        args["after"] = ({"key_base64": e["key_base64"], "offset": e["offset"]}
+                                         if e["kind"] == "row" else {"prefix_base64": e["key_base64"]})
+                        self.assertLessEqual(len(got), len(ds.rows))
+                    self.assertEqual(got, full, (name, op, limit))
+
+    def test_malformed_cursors_even_on_empty(self):
+        ds = oracle.Dataset({"dataset": "empty", "columns": [], "parts": []})
+        for cursor in ({}, {"key_base64": "YQ==", "offset": True}, {"key_base64": "YQ==", "offset": -1},
+                       {"key_base64": "YQ==", "offset": 1 << 63}, {"key_base64": "YR==", "offset": 0},
+                       {"prefix_base64": "@@@@"}):
+            for query, args in ((ds.range, {}), (ds.list, {"delimiter": b"/"})):
+                with self.assertRaises(oracle.InvalidRequest):
+                    query(after=cursor, limit=1, **args)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -242,3 +242,19 @@ func FuzzRepeatedPagination(f *testing.F) {
 		compareRepeated(t, got, repeatedOracle(keys, seekparquet.Range{Limit: n + 1}, nil))
 	})
 }
+
+func TestNamedKeyAlongsideOrdinaryKeyColumn(t *testing.T) {
+	type record struct {
+		Payload string `parquet:"key"`
+		ID      []byte `parquet:"object.id"`
+	}
+	d := open(t, write(t, seekparquettest.Dataset{KeyColumn: "object.id", RepeatedKeys: true,
+		Parts: []seekparquettest.Part{{Rows: []record{{"z", []byte("a")}, {"y", []byte("a")}, {"x", []byte("b")}}, GroupRows: 1}}}), seekparquet.Options{VerifyOnOpen: true})
+	rows, err := d.Range(ctx, seekparquet.KeyRange([]byte("a"), 10, "key", "object.id"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[1].Offset != 1 || string(rows[0].Values[0].ByteArray()) != "z" || string(rows[1].Values[0].ByteArray()) != "y" {
+		t.Fatalf("wrong key column or file order: %+v", rows)
+	}
+}

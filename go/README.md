@@ -1,7 +1,7 @@
 # seekparquet for Go
 
 A Go reader for [SeekParquet](../spec/format-1.md) datasets: ordinary Parquet files sorted by one byte-string
-`key` column, split into key-disjoint parts and committed by a `manifest.json`. It finds the first row at or
+key column named by the manifest, split into key-disjoint parts and committed by a `manifest.json`. It finds the first row at or
 after a key, reads key ranges and prefixes, and lists a prefix with delimiter rollups, by reading the
 manifest, the footers, the key column's page index and a few pages.
 
@@ -40,9 +40,24 @@ for {
 		break
 	}
 	// entries[i].IsPrefix(), entries[i].CommonPrefix, entries[i].Row
-	req.After, req.Continuation = entries[len(entries)-1].Bytes(), true
+	req.Cursor = entries[len(entries)-1].Cursor()
 }
 ```
+
+The manifest requires `key: {"column": "<name>", "unique": true|false}`. Its exact name and
+uniqueness must match the footer stamps. `d.Metadata().Key` exposes the declaration.
+Equal-key groups retain file order, may span pages and row groups, and stay in one part.
+Start/end and prefix filters select whole groups; limits may split them.
+
+`KeyRange(key, limit, columns...)` looks up one group. To paginate a range, set
+`req.Cursor = rows[len(rows)-1].Cursor()`. `Row.Offset` is the zero-based position in the
+group, always zero in unique mode. `Entry.Cursor()` also tags common prefixes correctly.
+The existing `List.After` byte floor and `Continuation` remain available for explicit listing
+bounds; use `Cursor` to paginate repeated rows and do not combine it with `After`.
+
+`OpenParts` defaults to unique keys in column `key`; set `PartsOptions.Key` to an explicit
+`Key` declaration for other names or repeated keys. `seekparquettest.Dataset` supports
+`KeyColumn` and `RepeatedKeys` for writing such test data.
 
 Runnable examples are in [example_test.go](example_test.go).
 
@@ -76,7 +91,7 @@ or build the adapter first (`go -C go build -o /tmp/sp-adapter ./internal/cmd/co
 Opening checks what the specification's CHECK-1 requires, and by default nothing more: the manifest
 (strictly: duplicate member names, undefined members, exact integers, canonical base64, part paths, bound
 order), that every part exists with the manifest's size and row count, that its footer is readable,
-self-contained and unencrypted, its `seekparquet.*` stamps, the `key` column (type, repetition, annotation,
+self-contained and unencrypted, its `seekparquet.*` stamps, the manifest-named key column (type, repetition, annotation,
 `column_orders`), that columns agree across parts (COL-5), and `sorting_columns` on every non-empty row group.
 
 `Options.VerifyOnOpen` also checks, on open, every non-empty row group's key page index and first key page,
@@ -86,7 +101,7 @@ dataset, so it is off by default. Without it the same checks happen when a read 
 
 Every read checks each row group's key page index before it uses the group, and each key page it decodes
 (CHECK-2): the page header matches its OffsetIndex entry, one non-empty key per row, valid UTF-8 for a
-`STRING` key, strictly ascending, inside the page's bounds and the part's manifest bounds, and in dataset
+`STRING` key, non-decreasing (strictly ascending when `key.unique` is true), inside the page's bounds and the part's manifest bounds, and in dataset
 order with every other page the request decoded. Page bounds are used as Parquet defines them, as bounds
 whatever their length; overlapping bounds and `boundary_order` are never relied on.
 
@@ -135,7 +150,9 @@ must not call `Close` from a callback.
 Opening reads the manifest and every part's footer: a few reads per part, whatever its size. A read is
 routed to a part by its manifest bounds, and within the part by a binary search over its row groups' first
 keys; the first time a row group is needed, its key page index is loaded and its first key page decoded, and
-both are kept (`Limits.IndexMemory` bounds what is kept). A warm read then decodes the key pages from the one
+both are kept (`Limits.IndexMemory` bounds what is kept). Repeated-key seeks begin at the
+predecessor of the first row-group first key at or above the target, so earlier rows of a group
+are retained. Row-offset continuation counts forward from that group's start. A warm read then decodes the key pages from the one
 that can hold its start, and value pages only for the rows it returns; a value column without an OffsetIndex
 is decoded from the start of its chunk. A listing resumes after each common prefix at the prefix's successor,
 skipping the pages wholly under it, but the page it lands on, and the pages around a prefix's boundaries,

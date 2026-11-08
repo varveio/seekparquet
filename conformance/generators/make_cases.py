@@ -773,7 +773,7 @@ def refusal_groups(lock):
 
 def repeated_group():
     g = Group("repeated", "reader", "Repeated groups, exact key column names, whole-group bounds and tagged continuation.")
-    for name in ("repeated-keys", "one-large-group", "named-key"):
+    for name in ("repeated-keys", "one-large-group", "named-key", "basic"):
         ds = oracle.Dataset.load(name)
         g.fam("boundaries", "Inclusive and exclusive seeks at every group key, plus exact-group lookups and prefix reads")
         for i, key in enumerate(dict.fromkeys(ds.keys())):

@@ -15,8 +15,9 @@ import (
 // those that begin with Prefix, are above After when it is set, and are
 // below End when it is set. A candidate whose bytes after Prefix contain
 // Delimiter yields the common prefix up to and including that delimiter;
-// any other candidate yields its row. The entries are distinct, in
-// ascending byte order, at most Limit of them.
+// any other candidate yields its row. Common prefixes are distinct; equal
+// row keys retain file order. Entries are in non-decreasing byte order,
+// at most Limit of them.
 type List struct {
 	// Cursor resumes after a row or common prefix; mutually exclusive with After.
 	Cursor *Cursor
@@ -299,6 +300,7 @@ func (r *Reader) listRepeated(ctx context.Context, req List, stats *Stats) ([]En
 	var lastPrefix []byte
 	columns := slices.Clone(req.Columns)
 	values := listScan{r: r, columns: columns, stats: stats}
+	finished := false
 	for ; g < len(r.groups) && len(out) < req.Limit; g++ {
 		if end != nil && r.startsAtOrAfter(g, end) {
 			break
@@ -307,12 +309,14 @@ func (r *Reader) listRepeated(ctx context.Context, req List, stats *Stats) ([]En
 		if err != nil {
 			return nil, err
 		}
-		// Closing within the group bounds retained page buffers to one cursor.
+		// Release each group's pages before moving to the next.
+		reseek := false
 		err = func() error {
 			defer c.close()
 			key, row, ok, err := c.seek(from, !exclusive)
 			for ok && err == nil && len(out) < req.Limit {
 				if end != nil && bytes.Compare(key, end) >= 0 {
+					finished = true
 					return nil
 				}
 				offset := position.next(key)
@@ -324,6 +328,17 @@ func (r *Reader) listRepeated(ctx context.Context, req List, stats *Stats) ([]En
 							lastPrefix = bytes.Clone(prefix)
 							out = append(out, Entry{CommonPrefix: lastPrefix})
 						}
+						next, exists := Successor(prefix)
+						if !exists {
+							finished = true
+							return nil
+						}
+						from, exclusive, reseek = next, false, true
+						if len(out) == req.Limit {
+							break
+						}
+						key, row, ok, err = c.seek(from, true)
+						continue
 					} else {
 						run, at, err := values.valuesAt(ctx, g, row, req.Limit-len(out))
 						if err != nil {
@@ -332,12 +347,25 @@ func (r *Reader) listRepeated(ctx context.Context, req List, stats *Stats) ([]En
 						out = append(out, Entry{Row: &Row{Key: bytes.Clone(key), Offset: offset, Columns: columns, Values: rowValues(run, at)}})
 					}
 				}
+				if len(out) == req.Limit {
+					break
+				}
 				key, row, ok, err = c.advance()
 			}
 			return err
 		}()
 		if err != nil {
 			return nil, err
+		}
+		if finished {
+			break
+		}
+		if reseek && len(out) < req.Limit {
+			next, err := r.groupFor(ctx, from, &log, stats)
+			if err != nil {
+				return nil, err
+			}
+			g = max(g, next-1)
 		}
 	}
 	return out, nil

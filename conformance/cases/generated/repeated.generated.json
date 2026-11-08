@@ -18256,6 +18256,5422 @@
       }
     },
     {
+      "id": "repeated/basic/seek-0-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YS8xLnR4dA==",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YS8xLnR4dA=="
+              },
+              {
+                "int": "100"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YS8yLnR4dA=="
+              },
+              {
+                "int": "107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YS9iLzMudHh0"
+              },
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YWxwaGE="
+              },
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-0-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YS8xLnR4dA==",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YS8yLnR4dA=="
+              },
+              {
+                "int": "107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YS9iLzMudHh0"
+              },
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YWxwaGE="
+              },
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YS8xLnR4dA==",
+        "end_base64": "YS8xLnR4dAA=",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "YS8xLnR4dA==",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-1-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YS8yLnR4dA==",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YS8yLnR4dA=="
+              },
+              {
+                "int": "107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YS9iLzMudHh0"
+              },
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YWxwaGE="
+              },
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-1-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YS8yLnR4dA==",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YS9iLzMudHh0"
+              },
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YWxwaGE="
+              },
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YS8yLnR4dA==",
+        "end_base64": "YS8yLnR4dAA=",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "107"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "YS8yLnR4dA==",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "107"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-2-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YS9iLzMudHh0",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YS9iLzMudHh0"
+              },
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YWxwaGE="
+              },
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-2-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YS9iLzMudHh0",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YWxwaGE="
+              },
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-2",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YS9iLzMudHh0",
+        "end_base64": "YS9iLzMudHh0AA==",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "114"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-2",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "YS9iLzMudHh0",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "114"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-3-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YWxwaGE=",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YWxwaGE="
+              },
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-3-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YWxwaGE=",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-3",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YWxwaGE=",
+        "end_base64": "YWxwaGEA",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-3",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "YWxwaGE=",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-4-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yg==",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-4-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yg==",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-4",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yg==",
+        "end_base64": "YgA=",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-4",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "Yg==",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-5-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YnJhdm8=",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-5-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YnJhdm8=",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-5",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YnJhdm8=",
+        "end_base64": "YnJhdm8A",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-5",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "YnJhdm8=",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-6-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yy8=",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-6-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yy8=",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-6",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yy8=",
+        "end_base64": "Yy8A",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "142"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-6",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "Yy8=",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "int": "149"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-7-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yy9k",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-7-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yy9k",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-7",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yy9k",
+        "end_base64": "Yy9kAA==",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "int": "149"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-7",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "Yy9k",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "int": "149"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-8-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Y2hhcmxpZQ==",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-8-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Y2hhcmxpZQ==",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-8",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Y2hhcmxpZQ==",
+        "end_base64": "Y2hhcmxpZQA=",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-8",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "Y2hhcmxpZQ==",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-9-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "ZGVsdGE=",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZGVsdGE="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-9-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "ZGVsdGE=",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-9",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "ZGVsdGE=",
+        "end_base64": "ZGVsdGEA",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-9",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "ZGVsdGE=",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-10-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "ZWNobw==",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZWNobw=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-10-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "ZWNobw==",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-10",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "ZWNobw==",
+        "end_base64": "ZWNobwA=",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-10",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "ZWNobw==",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-11-0",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Zm94dHJvdA==",
+        "start_exclusive": false,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Zm94dHJvdA=="
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/seek-11-1",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "KEY-3",
+        "KEY-7",
+        "ROUTE-1",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Zm94dHJvdA==",
+        "start_exclusive": true,
+        "limit": 100000,
+        "columns": [
+          "key",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "repeated/basic/lookup-11",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Zm94dHJvdA==",
+        "end_base64": "Zm94dHJvdAA=",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/prefix-11",
+      "family": "repeated/boundaries",
+      "requirements": [
+        "RANGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "prefix_base64": "Zm94dHJvdA==",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/0",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 0,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/1",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 1,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YS8xLnR4dA==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "107"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/2",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 2,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YS8yLnR4dA==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "114"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/3",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 3,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YS9iLzMudHh0",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/4",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 4,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YWxwaGE=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/5",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 5,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/6",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 6,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YnJhdm8=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "142"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/7",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 7,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yy8=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "int": "149"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/8",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 8,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yy9k",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/9",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 9,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Y2hhcmxpZQ==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/10",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 10,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZGVsdGE=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/11",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 11,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZWNobw==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-1/12",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-1",
+      "step": 12,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Zm94dHJvdA==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "repeated/basic/range-2/0",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-2",
+      "step": 0,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 2,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "107"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-2/1",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-2",
+      "step": 1,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 2,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YS8yLnR4dA==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-2/2",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-2",
+      "step": 2,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 2,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YWxwaGE=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-2/3",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-2",
+      "step": 3,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 2,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YnJhdm8=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "int": "149"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-2/4",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-2",
+      "step": 4,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 2,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yy9k",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-2/5",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-2",
+      "step": 5,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 2,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZGVsdGE=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-2/6",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-2",
+      "step": 6,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 2,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Zm94dHJvdA==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "repeated/basic/range-5/0",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-5",
+      "step": 0,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 5,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-5/1",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-5",
+      "step": 1,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 5,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-5/2",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-5",
+      "step": 2,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 5,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZGVsdGE=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-7/0",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-7",
+      "step": 0,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 7,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "142"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/range-7/1",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/range-7",
+      "step": 1,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 7,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yy8=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-1/0",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-1",
+      "step": 0,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-1/1",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-1",
+      "step": 1,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "prefix_base64": "YS8="
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-1/2",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-1",
+      "step": 2,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YWxwaGE=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-1/3",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-1",
+      "step": 3,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-1/4",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-1",
+      "step": 4,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YnJhdm8=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Yy8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-1/5",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-1",
+      "step": 5,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "prefix_base64": "Yy8="
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-1/6",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-1",
+      "step": 6,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Y2hhcmxpZQ==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-1/7",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-1",
+      "step": 7,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZGVsdGE=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-1/8",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-1",
+      "step": 8,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZWNobw==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-1/9",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-1",
+      "step": 9,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Zm94dHJvdA==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "repeated/basic/list-2/0",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-2",
+      "step": 0,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 2,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-2/1",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-2",
+      "step": 1,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 2,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YWxwaGE=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-2/2",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-2",
+      "step": 2,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 2,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YnJhdm8=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Yy8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-2/3",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-2",
+      "step": 3,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 2,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Y2hhcmxpZQ==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-2/4",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-2",
+      "step": 4,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 2,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZWNobw==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-5/0",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-5",
+      "step": 0,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 5,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Yy8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-5/1",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-5",
+      "step": 1,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 5,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "prefix_base64": "Yy8="
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-7/0",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-7",
+      "step": 0,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 7,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Yy8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/basic/list-7/1",
+      "family": "repeated/pagination",
+      "scenario_id": "basic/list-7",
+      "step": 1,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "KEY-7"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 7,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZGVsdGE=",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "id": "repeated/invalid-cursor-0",
       "family": "repeated/invalid-cursors",
       "requirements": [
