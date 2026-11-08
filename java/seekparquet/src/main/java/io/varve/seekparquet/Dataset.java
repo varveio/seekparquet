@@ -9,19 +9,12 @@ import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -38,13 +31,16 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *
  * <h2>What opening checks</h2>
  *
- * Opening applies the CHECK-1 checks of the specification: the manifest (§3); that every part
- * exists with the manifest's exact size; that every footer is readable, self-contained and
- * unencrypted, with row counts that add up to the footer's and the manifest's; the footer stamps;
- * the key column (KEY-1, KEY-5); that columns agree across parts (COL-5); and that every non-empty
- * row group is sorted by key (RG-1). It reads the manifest and one footer per part, nothing else,
- * unless {@link OpenOptions#verifyPartBounds()} asks it to compare each part's first and last key
- * with the manifest.
+ * Opening checks the manifest (§3, CHECK-1) and reads nothing else: the manifest's exact part bounds
+ * and row counts route every request. A part is checked the first time a request touches it, before
+ * any of its data is used: that it exists with the manifest's exact size; that its footer is
+ * readable, self-contained and unencrypted, with row counts that add up to the footer's and the
+ * manifest's; the footer stamps; the key column (KEY-1, KEY-5); that its columns agree with those of
+ * every part checked before it (COL-5); and that every non-empty row group is sorted by key (RG-1). A
+ * request whose bounds the manifest places before a part does not touch it. A part's refusal ends the
+ * request that touched it and is kept for as long as the dataset is open, so every later request that
+ * touches the part is refused with the same code; storage failures and cancellation are not kept.
+ * Concurrent first touches of a part wait for one check. {@link #verify()} checks every part now.
  *
  * <h2>What reads check</h2>
  *
@@ -56,31 +52,29 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *
  * <h2>Thread safety and lifecycle</h2>
  *
- * A {@code Dataset} is immutable after opening, apart from caches of checked page indexes, and safe
- * for concurrent requests from many threads. Results are immutable. {@link #close()} cancels the
- * requests in progress (they end with {@link CancellationException}), waits for them to return, and
- * closes every part source; requests after it fail with {@link IllegalStateException}. The {@link
- * DatasetStorage} is not closed: it belongs to the caller.
+ * A {@code Dataset} is immutable after opening, apart from its checked parts and caches of checked
+ * page indexes, and safe for concurrent requests from many threads. Results are immutable. {@link
+ * #close()} cancels the requests in progress (they end with {@link CancellationException}), waits for
+ * them to return, and closes every part source it opened; requests after it fail with {@link
+ * IllegalStateException}. The {@link DatasetStorage} is not closed: it belongs to the caller, and
+ * must stay usable until the dataset is closed, since parts are opened when first touched.
  */
 public final class Dataset implements AutoCloseable {
 
     private final Manifest manifest;
-    private final PartFile[] parts;
+    private final Parts parts;
     private final Limits limits;
-    private final List<Column> columns;
-    /** Every column name some part has, mapped to whether it can be projected (COL-3). */
-    private final Map<String, Boolean> projectable;
+    private final int verifyConcurrency;
 
     private final ReentrantReadWriteLock lifecycle = new ReentrantReadWriteLock();
     private final Cancellation closing = Cancellation.create();
     private boolean closed;
 
-    private Dataset(Manifest manifest, PartFile[] parts, Limits limits, List<Column> columns, Map<String, Boolean> projectable) {
+    private Dataset(Manifest manifest, Parts parts, OpenOptions options) {
         this.manifest = manifest;
         this.parts = parts;
-        this.limits = limits;
-        this.columns = columns;
-        this.projectable = projectable;
+        this.limits = options.limits();
+        this.verifyConcurrency = options.verifyConcurrency();
     }
 
     /**
@@ -112,13 +106,13 @@ public final class Dataset implements AutoCloseable {
     }
 
     /**
-     * Opens a dataset (CHECK-1). On failure, every part source opened so far is closed.
+     * Opens a dataset, checking its manifest (CHECK-1). No part is opened until a request touches it.
      *
      * @param storage the dataset root
      * @param options the options
      * @param cancellation ends the opening early when cancelled
      * @return the open dataset
-     * @throws RefusalException if the dataset breaks the specification
+     * @throws RefusalException if the manifest breaks the specification
      * @throws UnsupportedFeatureException if it uses a feature this reader does not implement
      * @throws LimitExceededException if it declares a size above the configured limits
      * @throws StorageException if reading storage fails
@@ -148,153 +142,68 @@ public final class Dataset implements AutoCloseable {
         if (n > limits.maxParts()) {
             throw new LimitExceededException("maxParts", n, limits.maxParts(), "manifest.json");
         }
-        PartFile[] parts = openParts(storage, manifest, options, cancellation);
-        try {
-            return assemble(manifest, parts, options, cancellation);
-        } catch (RuntimeException | Error e) {
-            closeAll(Arrays.asList(parts), e);
-            throw e;
+        return new Dataset(manifest, new Parts(storage, manifest, limits), options);
+    }
+
+    /**
+     * Checks every part now, as the first request to touch each part would (CHECK-1), then decodes
+     * every row group's first key page and each part's last, and compares each part's first and last
+     * key with the manifest's bounds (CHECK-3). Parts already checked by a request are not checked
+     * again; {@link OpenOptions#verifyConcurrency()} parts are checked at once. It reads one footer per
+     * unchecked part, plus the key page index and one or two key pages per row group, never every row.
+     *
+     * @throws RefusalException if a part breaks the specification: the first such part in manifest
+     *     order among those checked
+     * @throws UnsupportedFeatureException if a part uses a feature this reader does not implement
+     * @throws LimitExceededException if a part declares a size above the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public void verify() {
+        verify(Cancellation.none());
+    }
+
+    /**
+     * Checks every part now, ending early when {@code cancellation} is cancelled; see {@link
+     * #verify()}.
+     *
+     * @param cancellation the request's cancellation
+     * @throws RefusalException if a part breaks the specification
+     * @throws UnsupportedFeatureException if a part uses a feature this reader does not implement
+     * @throws LimitExceededException if a part declares a size above the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public void verify(Cancellation cancellation) {
+        try (Request request = begin(cancellation)) {
+            parts.checkAll(verifyConcurrency, request.cancellation);
+            ReadContext ctx = request.ctx;
+            for (int i = 0; i < parts.size(); i++) {
+                verifyKeyPages(parts.get(i, ctx), ctx);
+            }
         }
     }
 
-    private static PartFile[] openParts(DatasetStorage storage, Manifest manifest, OpenOptions options, Cancellation cancellation) {
-        int n = manifest.parts().size();
-        PartFile[] parts = new PartFile[n];
-        IndexMemory indexMemory = new IndexMemory(options.limits().maxIndexMemoryBytes());
-        if (options.openConcurrency() == 1 || n <= 1) {
-            for (int i = 0; i < n; i++) {
-                try {
-                    parts[i] = PartFile.open(storage, manifest, i, new ReadContext(cancellation, options.limits()), indexMemory);
-                } catch (RuntimeException | Error e) {
-                    closeAll(Arrays.asList(parts), e);
-                    throw e;
+    /** CHECK-3: decodes each row group's first key page and the part's last, against the manifest bounds. */
+    private static void verifyKeyPages(PartFile part, ReadContext ctx) {
+        for (int s = 0; s < part.groups.length; s++) {
+            ctx.checkCancelled();
+            int physical = part.groups[s];
+            ctx.enterGroup(part.ordinal, physical);
+            KeyIndex index = part.keyIndex(physical, ctx);
+            byte[][] keys = part.keyPage(physical, index, 0, ctx);
+            ctx.checkKeyPage(part, physical, 0, keys);
+            if (s == 0 && !Arrays.equals(keys[0], part.entry.minKey().unsafeArray())) {
+                throw new RefusalException(RefusalCode.BOUNDS_MISMATCH, part.name, "the first key differs from the manifest's min_key");
+            }
+            if (s == part.groups.length - 1) {
+                if (index.pages() > 1) {
+                    keys = part.keyPage(physical, index, index.pages() - 1, ctx);
+                    ctx.checkKeyPage(part, physical, index.pages() - 1, keys);
                 }
-            }
-            return parts;
-        }
-        // A bounded number of workers own their results until every worker has drained.
-        // Never cancel a Future: cancellation can discard a successfully opened resource.
-        Cancellation scope = Cancellation.linkedTo(cancellation);
-        AtomicInteger next = new AtomicInteger();
-        List<Future<?>> futures = new ArrayList<>();
-        Throwable failure = null;
-        boolean interrupted = false;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (int worker = 0; worker < Math.min(n, options.openConcurrency()); worker++) {
-                futures.add(executor.submit(() -> {
-                    for (int ordinal; (ordinal = next.getAndIncrement()) < n;) {
-                        scope.throwIfCancelled();
-                        parts[ordinal] = PartFile.open(storage, manifest, ordinal, new ReadContext(scope, options.limits()), indexMemory);
-                    }
-                }));
-            }
-            for (Future<?> future : futures) {
-                boolean done = false;
-                while (!done) {
-                    try {
-                        future.get();
-                        done = true;
-                    } catch (ExecutionException e) {
-                        if (failure == null) {
-                            failure = e.getCause();
-                        }
-                        scope.cancel();
-                        done = true;
-                    } catch (InterruptedException e) {
-                        interrupted = true;
-                        scope.cancel();
-                        if (failure == null) {
-                            failure = new CancellationException("interrupted");
-                        }
-                    }
-                }
-            }
-        } finally {
-            scope.detach();
-            if (failure != null) {
-                closeAll(Arrays.asList(parts), failure);
-            }
-            if (interrupted) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        if (failure instanceof RuntimeException re) {
-            throw re;
-        }
-        if (failure instanceof Error err) {
-            throw err;
-        }
-        if (failure != null) {
-            throw new IllegalStateException(failure);
-        }
-        return parts;
-    }
-
-    private static Dataset assemble(Manifest manifest, PartFile[] parts, OpenOptions options, Cancellation cancellation) {
-        // COL-5 for every column, on open.
-        Map<String, String> signatures = new HashMap<>();
-        Map<String, String> owner = new HashMap<>();
-        Map<String, Column> columns = new LinkedHashMap<>();
-        Map<String, Boolean> projectable = new HashMap<>();
-        for (PartFile part : parts) {
-            for (PartSchema.Field f : part.schema.fields) {
-                String want = signatures.putIfAbsent(f.name(), f.signature());
-                if (want == null) {
-                    owner.put(f.name(), part.name);
-                } else if (!want.equals(f.signature())) {
-                    throw new RefusalException(RefusalCode.INCONSISTENT_COLUMN, part.name, "column " + f.name()
-                            + " differs in physical type, repetition or nesting from part " + owner.get(f.name()));
-                }
-            }
-            for (String name : part.schema.byName.keySet()) {
-                PartSchema.Field f = part.schema.byName.get(name);
-                Column prior = columns.get(name);
-                columns.put(name, new Column(name, f.type(), f.typeLength(), f.repetition(), prior == null ? 1 : prior.parts() + 1));
-                boolean ok = part.projectable.containsKey(name);
-                projectable.merge(name, ok, Boolean::logicalAnd);
-            }
-        }
-        if (options.verifyPartBounds()) {
-            for (PartFile part : parts) {
-                verifyBounds(part, new ReadContext(cancellation, options.limits()));
-            }
-        }
-        return new Dataset(manifest, parts, options.limits(), List.copyOf(columns.values()), Map.copyOf(projectable));
-    }
-
-    /** CHECK-3: compares a part's decoded first and last keys with its manifest bounds. */
-    private static void verifyBounds(PartFile part, ReadContext ctx) {
-        int firstGroup = part.groups[0];
-        KeyIndex first = part.keyIndex(firstGroup, ctx);
-        byte[][] keys = part.keyPage(firstGroup, first, 0, ctx);
-        if (!Arrays.equals(keys[0], part.entry.minKey().unsafeArray())) {
-            throw new RefusalException(RefusalCode.BOUNDS_MISMATCH, part.name, "the first key differs from the manifest's min_key");
-        }
-        int lastGroup = part.groups[part.groups.length - 1];
-        KeyIndex last = part.keyIndex(lastGroup, ctx);
-        if (lastGroup != firstGroup || last.pages() > 1) {
-            byte[][] lastKeys = part.keyPage(lastGroup, last, last.pages() - 1, ctx);
-            int order = Arrays.compareUnsigned(keys[keys.length - 1], lastKeys[0]);
-            if (order > 0 || (part.unique && order == 0)) {
-                throw new RefusalException(RefusalCode.KEY_ORDER, part.name, "the last key page does not follow the first key page");
-            }
-            keys = lastKeys;
-        }
-        if (!Arrays.equals(keys[keys.length - 1], part.entry.maxKey().unsafeArray())) {
-            throw new RefusalException(RefusalCode.BOUNDS_MISMATCH, part.name, "the last key differs from the manifest's max_key");
-        }
-    }
-
-    private static void closeAll(List<PartFile> parts, Throwable failure) {
-        for (PartFile p : parts) {
-            if (p == null) {
-                continue;
-            }
-            try {
-                p.close();
-            } catch (IOException | RuntimeException e) {
-                if (failure != null) {
-                    failure.addSuppressed(e);
+                if (!Arrays.equals(keys[keys.length - 1], part.entry.maxKey().unsafeArray())) {
+                    throw new RefusalException(RefusalCode.BOUNDS_MISMATCH, part.name, "the last key differs from the manifest's max_key");
                 }
             }
         }
@@ -317,21 +226,33 @@ public final class Dataset implements AutoCloseable {
     }
 
     /**
-     * {@return the top-level columns of the parts, the key included} They are in the order they
-     * first appear, parts taken in manifest order.
+     * {@return the top-level columns of the parts checked so far, the key included} They are in the
+     * order they first appear, parts taken in manifest order. After {@link #verify()} every part is
+     * checked.
      */
     public List<Column> columns() {
-        return columns;
+        Map<String, Column> columns = new LinkedHashMap<>();
+        for (int i = 0; i < parts.size(); i++) {
+            PartFile part = parts.checked(i);
+            if (part == null) {
+                continue;
+            }
+            for (PartSchema.Field f : part.schema.byName.values()) {
+                Column prior = columns.get(f.name());
+                columns.put(f.name(), new Column(f.name(), f.type(), f.typeLength(), f.repetition(), prior == null ? 1 : prior.parts() + 1));
+            }
+        }
+        return List.copyOf(columns.values());
     }
 
     /**
-     * Returns the description of a top-level column, when some part has it.
+     * Returns the description of a top-level column, when some part checked so far has it.
      *
      * @param name the column name
-     * @return the column, or empty when no part has it
+     * @return the column, or empty when no checked part has it
      */
     public Optional<Column> column(String name) {
-        for (Column c : columns) {
+        for (Column c : columns()) {
             if (c.name().equals(name)) {
                 return Optional.of(c);
             }
@@ -344,7 +265,7 @@ public final class Dataset implements AutoCloseable {
      *
      * @param query the query
      * @return the rows, in ascending key order, at most {@code query.limit()}
-     * @throws RefusalException if data the request decodes breaks the specification
+     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
      * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
      *     codec or encoding this reader does not implement
      * @throws LimitExceededException if a page declares a size above the configured limits
@@ -361,7 +282,7 @@ public final class Dataset implements AutoCloseable {
      * @param query the query
      * @param cancellation the request's cancellation
      * @return the rows, in ascending key order, at most {@code query.limit()}
-     * @throws RefusalException if data the request decodes breaks the specification
+     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
      * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
      *     codec or encoding this reader does not implement
      * @throws LimitExceededException if a page declares a size above the configured limits
@@ -382,7 +303,7 @@ public final class Dataset implements AutoCloseable {
      *
      * @param query the query
      * @return the entries, in ascending byte order, at most {@code query.limit()}
-     * @throws RefusalException if data the request decodes breaks the specification
+     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
      * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
      *     codec or encoding this reader does not implement
      * @throws LimitExceededException if a page declares a size above the configured limits
@@ -400,7 +321,7 @@ public final class Dataset implements AutoCloseable {
      * @param query the query
      * @param cancellation the request's cancellation
      * @return the entries, in ascending byte order, at most {@code query.limit()}
-     * @throws RefusalException if data the request decodes breaks the specification
+     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
      * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
      *     codec or encoding this reader does not implement
      * @throws LimitExceededException if a page declares a size above the configured limits
@@ -433,13 +354,15 @@ public final class Dataset implements AutoCloseable {
         return range(RangeQuery.lookup(key, limit).toBuilder().columns(columns).build());
     }
 
-    /** COL-3: a nested, repeated or INT96 column is rejected, never answered as absent. */
+    /**
+     * COL-3: a nested, repeated or INT96 column of a checked part is rejected, never answered as
+     * absent. A part checked later is held to the same rule when a row of it is projected.
+     */
     private void checkProjection(List<String> names) {
-        for (String name : names) {
-            Boolean ok = projectable.get(name);
-            if (ok != null && !ok) {
-                throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_PROJECTION,
-                        "column " + name + " is nested, repeated, of type INT96, or not unique in its part");
+        for (int i = 0; i < parts.size(); i++) {
+            PartFile part = parts.checked(i);
+            if (part != null) {
+                part.checkProjection(names);
             }
         }
     }
@@ -447,7 +370,7 @@ public final class Dataset implements AutoCloseable {
     /** A request in progress: it holds a read lease that close waits for. */
     private final class Request implements AutoCloseable {
         final ReadContext ctx;
-        private final Cancellation cancellation;
+        final Cancellation cancellation;
 
         Request(Cancellation caller) {
             this.cancellation = Cancellation.linkedTo(caller, closing);
@@ -478,7 +401,7 @@ public final class Dataset implements AutoCloseable {
 
     /**
      * Closes the dataset: cancels the requests in progress, waits for them to return, and closes every
-     * part source. Calling it again does nothing.
+     * part source it opened. Calling it again does nothing.
      *
      * @throws StorageException if closing a part source fails (every source is still closed)
      */
@@ -493,18 +416,7 @@ public final class Dataset implements AutoCloseable {
                 return;
             }
             closed = true;
-            IOException failure = null;
-            for (PartFile p : parts) {
-                try {
-                    p.close();
-                } catch (IOException e) {
-                    if (failure == null) {
-                        failure = e;
-                    } else {
-                        failure.addSuppressed(e);
-                    }
-                }
-            }
+            IOException failure = parts.close();
             if (failure != null) {
                 throw new StorageException("close the dataset's parts", failure);
             }
@@ -515,6 +427,6 @@ public final class Dataset implements AutoCloseable {
 
     @Override
     public String toString() {
-        return "Dataset[" + manifest.schemaId() + ", " + parts.length + " parts]";
+        return "Dataset[" + manifest.schemaId() + ", " + parts.size() + " parts]";
     }
 }

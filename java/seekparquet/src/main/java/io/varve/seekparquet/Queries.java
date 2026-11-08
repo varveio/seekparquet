@@ -19,7 +19,7 @@ final class Queries {
      * forward until the effective upper bound or the limit. Value pages are decoded only for the rows
      * returned. Row-group routing may probe key pages beyond the returned interval.
      */
-    static List<Row> range(PartFile[] parts, RangeQuery q, ReadContext ctx) {
+    static List<Row> range(Parts parts, RangeQuery q, ReadContext ctx) {
         byte[] prefix = q.prefix().unsafeArray();
         byte[] start = q.start().map(Bytes::unsafeArray).orElse(null);
         boolean exclusive = q.startExclusive();
@@ -36,11 +36,11 @@ final class Queries {
             start = after.bytes().unsafeArray();
             exclusive = false;
         }
-        if (parts.length == 0 || (end != null && start != null && Arrays.compareUnsigned(start, end) >= 0) || (end != null && end.length == 0)) {
+        if (parts.size() == 0 || (end != null && start != null && Arrays.compareUnsigned(start, end) >= 0) || (end != null && end.length == 0)) {
             return List.of();
         }
         List<String> columns = q.columns();
-        KeyCursor cursor = new KeyCursor(parts, ctx);
+        KeyCursor cursor = new KeyCursor(parts, end, ctx);
         List<Row> rows = new ArrayList<>(Math.min(q.limit(), 1024));
         boolean ok = cursor.seek(start, exclusive);
         if (ok && after instanceof Continuation.RowPosition r) {
@@ -70,7 +70,7 @@ final class Queries {
      * instead of decoding the keys under it (keys sharing a page with the keys around them are still
      * decoded).
      */
-    static List<ListEntry> list(PartFile[] parts, ListQuery q, ReadContext ctx) {
+    static List<ListEntry> list(Parts parts, ListQuery q, ReadContext ctx) {
         byte[] prefix = q.prefix().unsafeArray();
         byte delimiter = q.delimiter();
         byte[] from = prefix.length == 0 ? null : prefix;
@@ -91,11 +91,11 @@ final class Queries {
             exclusive = false;
         }
         byte[] to = min(q.end().map(Bytes::unsafeArray).orElse(null), q.prefix().successor());
-        if (parts.length == 0 || (to != null && to.length == 0) || (to != null && from != null && Arrays.compareUnsigned(from, to) >= 0)) {
+        if (parts.size() == 0 || (to != null && to.length == 0) || (to != null && from != null && Arrays.compareUnsigned(from, to) >= 0)) {
             return List.of();
         }
         List<String> columns = q.columns();
-        KeyCursor cursor = new KeyCursor(parts, ctx);
+        KeyCursor cursor = new KeyCursor(parts, to, ctx);
         List<ListEntry> out = new ArrayList<>(Math.min(q.limit(), 1024));
         boolean ok = cursor.seek(from, exclusive);
         if (ok && tagged instanceof Continuation.RowPosition r) {
@@ -140,6 +140,7 @@ final class Queries {
             return new Row(key, cursor.offset(), columns, List.of());
         }
         PartFile part = cursor.partFile();
+        part.checkProjection(columns);
         Value[] values = new Value[columns.size()];
         for (int i = 0; i < values.length; i++) {
             String name = columns.get(i);

@@ -5,6 +5,21 @@ independent of the specification's draft revisions.
 
 ## Unreleased
 
+### Changed
+
+- Lazy open (spec CHECK-1): `Dataset.open` checks the manifest only; each part is opened and checked
+  the first time a request touches it (existence, exact size, footer, row counts, stamps, KEY-1/KEY-5,
+  COL-5 against the parts already checked, RG-1). A part's refusal is kept for the dataset's lifetime;
+  storage failures, limits and cancellation are not. Concurrent first touches wait for one check. A
+  request whose bounds the manifest places before a part does not touch it.
+- `Dataset.verify()` checks every part now, then each row group's first key page and each part's last
+  against the manifest bounds (CHECK-3). It replaces `OpenOptions.verifyPartBounds`;
+  `OpenOptions.openConcurrency` becomes `verifyConcurrency` (8 by default).
+- `Dataset.columns()` describes the parts checked so far; projection of a nested, repeated or `INT96`
+  column is refused when the request reaches a part that holds it so (COL-3).
+- The conformance adapter claims the optional `verify` capability, and an `open` of a dataset it
+  holds opens it afresh.
+
 ### Completed
 
 - Named manifest keys (`KeyDefinition`) and exact `key_column`/`key_unique` footer stamps.

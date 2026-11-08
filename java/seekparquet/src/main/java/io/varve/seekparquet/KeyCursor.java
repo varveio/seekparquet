@@ -12,14 +12,21 @@ import java.util.Arrays;
  * row-group first keys, keeping the predecessor so repeated groups are never skipped. Shortened
  * page bounds are examined in order, never binary-searched. The request checks all decoded pages
  * against their neighbors in dataset order, including the out-of-order routing probes.
+ *
+ * <p>A part is checked the first time the cursor enters it (CHECK-1). A part whose manifest minimum
+ * key is at or above the request's upper bound is never entered: the cursor ends there instead.
  */
 final class KeyCursor {
 
-    private final PartFile[] parts;
+    private final Parts parts;
+    /** The request's exclusive upper bound, or null. */
+    private final byte[] end;
     private final ReadContext ctx;
 
     private int part = -1;
-    /** Index into {@code parts[part].groups}. */
+    /** The current part, once entered. */
+    private PartFile pf;
+    /** Index into {@code pf.groups}. */
     private int slot;
     private int physical;
     private KeyIndex index;
@@ -40,8 +47,9 @@ final class KeyCursor {
         return offsets[pos];
     }
 
-    KeyCursor(PartFile[] parts, ReadContext ctx) {
+    KeyCursor(Parts parts, byte[] end, ReadContext ctx) {
         this.parts = parts;
+        this.end = end;
         this.ctx = ctx;
     }
 
@@ -52,7 +60,7 @@ final class KeyCursor {
 
     /** The part of the current key. */
     PartFile partFile() {
-        return parts[part];
+        return pf;
     }
 
     /** The physical row group of the current key. */
@@ -94,12 +102,12 @@ final class KeyCursor {
         }
         // The first part that can hold such a key: its exact last key reaches the target.
         int p = part < 0 ? 0 : part;
-        if (part < 0 || !satisfies(parts[part].entry.maxKey().unsafeArray(), target, exclusive)) {
+        if (part < 0 || !satisfies(parts.entry(part).maxKey().unsafeArray(), target, exclusive)) {
             int lo = part < 0 ? 0 : part + 1;
-            int hi = parts.length;
+            int hi = parts.size();
             while (lo < hi) {
                 int mid = (lo + hi) >>> 1;
-                if (satisfies(parts[mid].entry.maxKey().unsafeArray(), target, exclusive)) {
+                if (satisfies(parts.entry(mid).maxKey().unsafeArray(), target, exclusive)) {
                     hi = mid;
                 } else {
                     lo = mid + 1;
@@ -107,11 +115,10 @@ final class KeyCursor {
             }
             p = lo;
         }
-        if (p >= parts.length) {
+        if (p >= parts.size() || (p != part && beyondEnd(p))) {
             exhausted = true;
             return false;
         }
-        PartFile pf = parts[p];
         int firstSlot = 0;
         if (p == part && keys != null) {
             // Later pages of the current row group first.
@@ -120,19 +127,20 @@ final class KeyCursor {
                 return decodeForward(p, slot, pg, target, exclusive);
             }
             firstSlot = slot + 1;
-        } else if (Arrays.compareUnsigned(pf.entry.minKey().unsafeArray(), target) >= 0) {
+        } else if (Arrays.compareUnsigned(parts.entry(p).minKey().unsafeArray(), target) >= 0) {
             // The whole part is at or after the target: start at its first key.
             return decodeForward(p, 0, 0, target, exclusive);
         }
+        PartFile candidate = parts.get(p, ctx);
         // Exact first-key probes are monotone in a valid sorted file. Keep the predecessor:
         // the target can start at its tail even when the following group starts with it.
         int lo = firstSlot;
-        if (pf.groups.length - firstSlot > 8) {
-            int hi = pf.groups.length;
+        if (candidate.groups.length - firstSlot > 8) {
+            int hi = candidate.groups.length;
             while (lo < hi) {
                 ctx.checkCancelled();
                 int mid = (lo + hi) >>> 1;
-                if (satisfies(pf.firstKey(pf.groups[mid], ctx), target, exclusive)) {
+                if (satisfies(candidate.firstKey(candidate.groups[mid], ctx), target, exclusive)) {
                     hi = mid;
                 } else {
                     lo = mid + 1;
@@ -141,20 +149,20 @@ final class KeyCursor {
             lo = Math.max(firstSlot, lo - 1);
         }
         // Bounds may overlap and be non-monotone; visit the earliest remaining candidate.
-        while (lo < pf.groups.length
-                && !satisfies(pf.keyIndex(pf.groups[lo], ctx).upper(), target, exclusive)) {
+        while (lo < candidate.groups.length
+                && !satisfies(candidate.keyIndex(candidate.groups[lo], ctx).upper(), target, exclusive)) {
             lo++;
         }
-        if (lo >= pf.groups.length) {
+        if (lo >= candidate.groups.length) {
             // No row group of the part reaches it: continue at the next part's first key.
-            if (p + 1 >= parts.length) {
+            if (p + 1 >= parts.size()) {
                 exhausted = true;
                 return false;
             }
             return decodeForward(p + 1, 0, 0, target, exclusive);
         }
-        int pg = pf.keyIndex(pf.groups[lo], ctx).pageFor(0, target, exclusive);
-        return decodeForward(p, lo, Math.min(pg, pf.keyIndex(pf.groups[lo], ctx).pages() - 1), target, exclusive);
+        int pg = candidate.keyIndex(candidate.groups[lo], ctx).pageFor(0, target, exclusive);
+        return decodeForward(p, lo, Math.min(pg, candidate.keyIndex(candidate.groups[lo], ctx).pages() - 1), target, exclusive);
     }
 
     /**
@@ -171,25 +179,22 @@ final class KeyCursor {
             return seek(target, true);
         }
         long displacement = after.offset() + 1 - offset();
-        int p = part;
         int s = slot;
         long r = row();
-        while (displacement >= parts[p].groupRows[parts[p].groups[s]] - r) {
+        while (displacement >= pf.groupRows[pf.groups[s]] - r) {
             ctx.checkCancelled();
-            displacement -= parts[p].groupRows[parts[p].groups[s]] - r;
+            displacement -= pf.groupRows[pf.groups[s]] - r;
             r = 0;
-            if (++s == parts[p].groups.length) {
-                s = 0;
-                if (++p == parts.length) {
-                    return seek(target, true);
-                }
+            if (++s == pf.groups.length) {
+                // Equal keys never cross parts (PART-4): the group ends with this part.
+                return seek(target, true);
             }
         }
         r += displacement;
-        KeyIndex destination = parts[p].keyIndex(parts[p].groups[s], ctx);
+        KeyIndex destination = pf.keyIndex(pf.groups[s], ctx);
         int pg = destination.pageAt(r);
         // Save the original position so an oversized continuation can seek the real group end.
-        if (p == part && s == slot && pg == page) {
+        if (s == slot && pg == page) {
             int next = (int) (r - index.firstRow[page]);
             if (!Arrays.equals(keys[next], target)) {
                 return seek(target, true);
@@ -197,16 +202,15 @@ final class KeyCursor {
             pos = next;
             return true;
         }
-        ctx.enterGroup(p, parts[p].groups[s]);
-        byte[][] decoded = parts[p].keyPage(parts[p].groups[s], destination, pg, ctx);
-        ctx.checkKeyPage(parts[p], parts[p].groups[s], pg, decoded);
+        ctx.enterGroup(part, pf.groups[s]);
+        byte[][] decoded = pf.keyPage(pf.groups[s], destination, pg, ctx);
+        ctx.checkKeyPage(pf, pf.groups[s], pg, decoded);
         int next = (int) (r - destination.firstRow[pg]);
         if (!Arrays.equals(decoded[next], target)) {
             return seek(target, true);
         }
-        part = p;
         slot = s;
-        physical = parts[p].groups[s];
+        physical = pf.groups[s];
         index = destination;
         page = pg;
         keys = decoded;
@@ -266,10 +270,10 @@ final class KeyCursor {
 
     /** Moves to the first page of the next non-empty row group, in this part or the next. */
     private boolean advanceGroup() {
-        if (slot + 1 < parts[part].groups.length) {
+        if (slot + 1 < pf.groups.length) {
             return enter(part, slot + 1, 0);
         }
-        if (part + 1 < parts.length) {
+        if (part + 1 < parts.size()) {
             return enter(part + 1, 0, 0);
         }
         exhausted = true;
@@ -277,21 +281,23 @@ final class KeyCursor {
     }
 
     private boolean enter(int p, int s, int pg) {
-        if (p >= parts.length) {
+        if (p >= parts.size() || (p != part && beyondEnd(p))) {
             exhausted = true;
             return false;
         }
-        part = p;
+        if (p != part) {
+            pf = parts.get(p, ctx);
+            part = p;
+        }
         slot = s;
-        physical = parts[p].groups[s];
-        index = parts[p].keyIndex(physical, ctx);
+        physical = pf.groups[s];
+        index = pf.keyIndex(physical, ctx);
         load(pg);
         return true;
     }
 
     /** Decodes a key page of the current row group and checks its order against the last page decoded. */
     private void load(int pg) {
-        PartFile pf = parts[part];
         ctx.enterGroup(part, physical);
         byte[][] decoded = pf.keyPage(physical, index, pg, ctx);
         ctx.checkKeyPage(pf, physical, pg, decoded);
@@ -316,6 +322,11 @@ final class KeyCursor {
         page = pg;
         keys = decoded;
         pos = 0;
+    }
+
+    /** {@return whether part p holds no key below the upper bound, by its manifest minimum key} */
+    private boolean beyondEnd(int p) {
+        return end != null && Arrays.compareUnsigned(parts.entry(p).minKey().unsafeArray(), end) >= 0;
     }
 
     /** {@return the first index at or after {@code from} whose key satisfies the target, or keys.length} */

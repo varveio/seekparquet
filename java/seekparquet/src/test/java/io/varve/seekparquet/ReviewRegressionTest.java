@@ -156,19 +156,28 @@ class ReviewRegressionTest {
                     };
                 }
             };
-            if (at == 3) {
-                try (Dataset ds = Dataset.open(storage)) {
-                    failRead.set(true);
-                    assertSame(timeout, assertThrows(StorageException.class, () -> ds.range(RangeQuery.all(1))).getCause());
-                }
-            } else {
+            if (at == 0) {
                 assertSame(timeout, assertThrows(StorageException.class, () -> Dataset.open(storage)).getCause());
+                continue;
+            }
+            // Opening reads no part: the first touch (at 1 and 2) or a later read (at 3) meets the timeout.
+            try (Dataset ds = Dataset.open(storage)) {
+                if (at == 3) {
+                    assertEquals(1, ds.range(RangeQuery.all(1)).size());
+                    failRead.set(true);
+                }
+                assertSame(timeout, assertThrows(StorageException.class, () -> ds.range(RangeQuery.all(1))).getCause());
+                if (at != 1) {
+                    // A storage failure is not kept: the next read checks the part again.
+                    failRead.set(false);
+                    assertEquals(1, ds.range(RangeQuery.all(1)).size());
+                }
             }
         }
     }
 
     @Test
-    void interruptedOpenDrainsSuccessfulTasksAndPreservesTheFlag() throws Exception {
+    void interruptedVerifyDrainsSuccessfulTasksAndPreservesTheFlag() throws Exception {
         Path root = dataset(3);
         CountDownLatch reading = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
@@ -199,9 +208,11 @@ class ReviewRegressionTest {
         };
         AtomicReference<Throwable> failure = new AtomicReference<>();
         AtomicBoolean interrupted = new AtomicBoolean();
+        Dataset ds = Dataset.open(storage, OpenOptions.DEFAULT.withVerifyConcurrency(2), Cancellation.none());
         Thread opener = Thread.ofPlatform().start(() -> {
-            try (Dataset ignored = Dataset.open(storage, OpenOptions.DEFAULT.withOpenConcurrency(2), Cancellation.none())) {
-                failure.set(new AssertionError("open should have been cancelled"));
+            try {
+                ds.verify();
+                failure.set(new AssertionError("verify should have been cancelled"));
             } catch (Throwable e) {
                 failure.set(e);
                 interrupted.set(Thread.currentThread().isInterrupted());
@@ -218,6 +229,7 @@ class ReviewRegressionTest {
         assertTrue(failure.get() instanceof CancellationException, String.valueOf(failure.get()));
         assertTrue(interrupted.get());
         assertEquals(2, opened.get());
+        ds.close();
         assertEquals(opened.get(), closed.get());
     }
 

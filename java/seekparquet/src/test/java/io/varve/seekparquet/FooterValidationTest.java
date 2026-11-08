@@ -44,8 +44,12 @@ class FooterValidationTest {
         Path manifest = root.resolve("manifest.json");
         Files.writeString(manifest, Files.readString(manifest).replace("\"bytes\":" + raw.length, "\"bytes\":" + out.size()));
         IndexedAccessTest.CountingStorage storage = new IndexedAccessTest.CountingStorage(root);
-        assertEquals(code, assertThrows(RefusalException.class, () -> Dataset.open(storage)).code());
-        assertEquals(1, storage.reads.get(), "invalid footer must fail before reading column data or indexes");
+        try (Dataset ds = Dataset.open(storage)) {
+            assertEquals(0, storage.footers.get(), "opening reads no part");
+            assertEquals(code, assertThrows(RefusalException.class, () -> ds.range(RangeQuery.all(1))).code());
+        }
+        assertEquals(1, storage.footers.get());
+        assertEquals(0, storage.reads.get(), "invalid footer must fail before reading column data or indexes");
     }
 
     @Test

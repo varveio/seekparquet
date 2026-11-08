@@ -2,8 +2,8 @@
 
 A reader for [SeekParquet](../spec/format-1.md), a sorted-key profile for Apache Parquet. Given a
 dataset (a `manifest.json` and the Parquet parts it lists), it answers range reads, prefix reads and
-delimited listings with projected columns. To do so it reads the manifest, the footers, a page index
-and a few pages, with no query engine and no catalog.
+delimited listings with projected columns. To do so it reads the manifest, the footer of each part a
+request touches, a page index and a few pages, with no query engine and no catalog.
 
 - **Format:** format 1, draft revision 1 (written on disk as `format_version` 0, `draft_revision` 1).
 - **JDK:** 21 or later.
@@ -93,11 +93,11 @@ spellings such as `-0`, `0.0` and `0e0` are rejected.
 ```java
 OpenOptions options = OpenOptions.DEFAULT
         .withLimits(new Limits(16 << 20, 100_000, 16 << 20, 4 << 20, 64 << 20, 1 << 22, 100_000))
-        .withOpenConcurrency(32)        // read footers concurrently, on virtual threads
-        .withVerifyPartBounds(false);   // true also decodes each part's first and last key on open
+        .withVerifyConcurrency(32);     // verify() reads footers concurrently, on virtual threads
 
 Cancellation cancel = Cancellation.create();
-try (Dataset dataset = Dataset.open(storage, options, cancel)) {
+try (Dataset dataset = Dataset.open(storage, options, cancel)) {   // reads the manifest only
+    dataset.verify(cancel);                          // optional: check every part now
     List<Row> rows = dataset.range(query, cancel);   // cancel.cancel() from any thread ends it
 }
 ```
@@ -138,7 +138,7 @@ public API never returns or accepts `null`; optional values are `Optional`.
 ### Thread safety
 
 `Dataset` is safe for concurrent requests from many threads. Footers and checked page indexes are
-shared and immutable once loaded. Each request decodes its own pages. Queries, results, `Bytes`,
+shared and immutable once loaded; concurrent first touches of a part wait for one check. Each request decodes its own pages. Queries, results, `Bytes`,
 `Manifest` and `Value`s are immutable. `Cancellation` is thread-safe. Query builders are not.
 
 ## Storage
@@ -149,14 +149,16 @@ reads, explicit cancellation and optional identity pinning to that contract. It 
 `io.varve.seekparquet.storage`:
 
 - `DatasetStorage` reads `manifest.json` and opens parts by their manifest path. The reader never
-  closes it; it belongs to the caller.
+  closes it; it belongs to the caller, and must stay usable until the dataset is closed, since a part
+  is opened when a request first touches it.
 - `PartSource` extends parquet-java’s `InputFile` and is one opened part: its actual `size()`, an optional pinned `version()`, and
   positioned `read(position, length, cancellation)` calls. It must be safe for concurrent reads.
   Its `newStream()` supplies an independent parquet-java `SeekableInputStream` without closing the
   source when that stream closes. `PartSource.of(path, inputFile, version)` adapts an existing
   `InputFile`, with a fresh stream for each positioned read and cancellation that closes that stream.
   Every read must return bytes of the object version that was opened, or fail with
-  `PartChangedException`. The reader closes every source it opened, including on a failed open.
+  `PartChangedException`. The reader closes every source it opened: a part refused by its check at
+  once, the others when the dataset closes.
 
 `openPart` receives the size the manifest records. An object-store adapter can use it as a hint,
 for example to fetch the footer with a single suffix-range request. It must still report the
@@ -170,24 +172,34 @@ with a storage error; reopening after interruption uses the same pinned parent h
 
 ## What opening checks, what reads check
 
-**Open (CHECK-1)** reads the manifest and one footer per part. It checks:
+**Open (CHECK-1)** reads the manifest and nothing else. It checks strict JSON, no duplicate names at
+any depth, no undefined members, exact integers, canonical base64, PART-1 paths, ascending disjoint
+bounds, and the version first (MAN-7). The manifest's exact part bounds and row counts are all a
+request needs to route, so no part file is opened.
 
-- the manifest: strict JSON, no duplicate names at any depth, no undefined members, exact integers,
-  canonical base64, PART-1 paths, ascending disjoint bounds, and the version first (MAN-7);
-- that each part exists and has exactly the manifest's size;
+**First touch (CHECK-1).** The first request routed to a part opens it and reads its footer, and
+before using any of its data checks:
+
+- that the part exists and has exactly the manifest's size;
 - that each footer is readable, unencrypted and self-contained (no `file_path`), with row group
   counts that sum to the footer's row count, which must equal the manifest's;
 - the `seekparquet.*` stamps;
 - the key column (KEY-1, KEY-5, with one `column_orders` entry per leaf);
-- that every column has the same physical type, type length, repetition and nesting in every part
-  (COL-5);
+- that every column has the same physical type, type length, repetition and nesting as in every part
+  checked before it (COL-5, incremental: untouched parts are not compared);
 - that every non-empty row group declares `key` ascending as its first sorting column (RG-1).
 
-It does not load page indexes or decode keys unless `verifyPartBounds` is set.
+A request whose bounds the manifest places before a part (a prefix or end at or below its `min_key`)
+does not touch it. A part's refusal ends the request that touched it and is kept for as long as the
+dataset is open: every later request that touches the part, and `verify()`, is refused with the same
+code. Storage failures, limits and cancellation are not kept; the next request checks the part again.
+Concurrent first touches wait for one check. `columns()` describes the parts checked so far.
 
-The specification now asks only the manifest to be checked on open, and each part when a read first
-routes to it (the Go reader does this); checking every part on open, as this reader still does, remains
-allowed (CHECK-1). Aligning the Java reader with lazy part checks is tracked separately.
+**Verify (CHECK-3).** `Dataset.verify()` checks every part not yet checked, `verifyConcurrency` at a
+time (8 by default), then decodes every row group's first key page and each part's last, and compares
+each part's first and last key with the manifest (`bounds_mismatch`). It throws the first failure in
+manifest order. It reads one footer per unchecked part plus a page index and one or two key pages per
+row group, never every row. Use it for eager, fail-fast checks of a long-lived local reader.
 
 **Reads (CHECK-2).** Requests binary-search the manifest's exact part bounds. Within large parts,
 they binary-search checked, decoded row-group first keys, retaining the predecessor so a repeated
@@ -215,8 +227,10 @@ bounding each combined read at 2× the useful index bytes rather than repeatedly
 This can trade one wide read for two narrow reads. Routing may decode probe pages outside the result
 interval; decoded page boundaries are held for the request to check their relative key order.
 
-The deterministic `SeekCostTest` counts storage calls and requested bytes after open, independently
-of latency. With 1,000 ten-row groups, a cold final-key lookup uses 28 reads / 1,877 bytes (previously
+**Cost model.** Opening reads the manifest: one read, whatever the number of parts. A cold request
+adds one footer read (two for a footer above 64 KiB) for each part it touches, independent of the part
+count, then the page indexes and pages above. The deterministic `SeekCostTest` counts a request's
+storage calls and requested bytes apart from those footer reads, independently of latency. With 1,000 ten-row groups, a cold final-key lookup uses 28 reads / 1,877 bytes (previously
 1,001 / 33,956,205); a warm lookup still uses one read. Paginating 10,000 identical keys in 100-row
 responses uses 219 reads / 165,479 bytes (previously 5,060 / 4,160,780). These synthetic layouts expose
 access patterns, not typical throughput. A complete lookup now uses 120 narrow reads / 84,299 bytes
@@ -227,8 +241,8 @@ data in the pages a request decodes is `invalid_parquet` (CHECK-5).
 
 **What it does not certify.** A successful request certifies nothing about rows it did not decode
 (CHECK-4). In particular, routing trusts the manifest's part bounds. If they are wrong
-(`bounds_mismatch`, which only validation must find), a seek may land in the wrong part. Turn on
-`verifyPartBounds` to compare each part's first and last key with the manifest on open.
+(`bounds_mismatch`, which only validation must find), a seek may land in the wrong part. Call
+`verify()` to compare each part's first and last key with the manifest.
 
 ## What it does not do
 

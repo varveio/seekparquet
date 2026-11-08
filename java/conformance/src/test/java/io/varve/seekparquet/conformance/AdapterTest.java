@@ -52,6 +52,20 @@ class AdapterTest {
     }
 
     @Test
+    void verifyChecksEveryPartOfAFreshOrHeldDataset() {
+        Adapter adapter = new Adapter();
+        assertTrue(adapter.handle("{\"id\":\"1\",\"op\":\"hello\"}").contains("\"verify\""));
+        assertTrue(adapter.handle(request("verify", "multipart", "1", "")).contains("\"status\":\"ok\""));
+        String missing = "invalid/missing-part";
+        assertTrue(adapter.handle(request("open", missing, "1", "")).contains("\"status\":\"ok\""));
+        for (String op : new String[] {"range", "verify", "open", "verify"}) {
+            String response = adapter.handle(request(op, missing, "100", ""));
+            String want = op.equals("open") ? "\"status\":\"ok\"" : "\"code\":\"missing_part\"";
+            assertTrue(response.contains(want), op + ": " + response);
+        }
+    }
+
+    @Test
     void internalPagesPreserveLimitsBoundsProjectionAndTaggedContinuations() {
         Adapter adapter = new Adapter();
         Adapter paged = new Adapter(2);

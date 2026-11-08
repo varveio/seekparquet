@@ -61,25 +61,43 @@ class RefusalTest {
         }
     }
 
+    /** A part fault: opening succeeds; a read touching the part and verification are refused with the code. */
+    private static RefusalCode touchRefusal(Path root) {
+        try (Dataset ds = Dataset.open(root)) {
+            assertEquals(5, ds.range(RangeQuery.builder().end(Bytes.utf8("f")).limit(10).build()).size());
+            RefusalCode code = assertThrows(RefusalException.class, () -> ds.range(RangeQuery.all(100))).code();
+            assertEquals(code, assertThrows(RefusalException.class, ds::verify).code());
+        }
+        try (Dataset ds = Dataset.open(root)) {
+            return assertThrows(RefusalException.class, ds::verify).code();
+        }
+    }
+
     @Test
-    void sizeRowsAndStampsAreCheckedOnOpen() throws IOException {
+    void sizeRowsAndStampsAreCheckedOnFirstTouch() throws IOException {
         Path root = TestDatasets.write(tmp.resolve("size"), new TestDatasets.Spec(), rows());
         Files.write(root.resolve("data/part-00001.parquet"), new byte[] {1}, java.nio.file.StandardOpenOption.APPEND);
-        assertEquals(RefusalCode.PART_MISMATCH, openRefusal(root));
+        assertEquals(RefusalCode.PART_MISMATCH, touchRefusal(root));
 
         Path missing = TestDatasets.write(tmp.resolve("missing"), new TestDatasets.Spec(), rows());
         Files.delete(missing.resolve("data/part-00001.parquet"));
-        assertEquals(RefusalCode.MISSING_PART, openRefusal(missing));
+        assertEquals(RefusalCode.MISSING_PART, touchRefusal(missing));
 
         Path stamps = TestDatasets.write(tmp.resolve("stamps"), new TestDatasets.Spec(), rows());
-        String m = Files.readString(stamps.resolve("manifest.json"));
-        Files.writeString(stamps.resolve("manifest.json"), m.replace("\"test/v1\"", "\"test/v2\""));
-        assertEquals(RefusalCode.STAMP_MISMATCH, openRefusal(stamps));
+        Files.write(stamps.resolve("data/part-00001.parquet"), TestDatasets.part(otherSchemaId(), rows().get(1)));
+        assertEquals(RefusalCode.STAMP_MISMATCH, touchRefusal(stamps));
 
         Path count = TestDatasets.write(tmp.resolve("count"), new TestDatasets.Spec(), rows());
-        m = Files.readString(count.resolve("manifest.json"));
+        String m = Files.readString(count.resolve("manifest.json"));
         Files.writeString(count.resolve("manifest.json"), m.replace("\"rows\":2", "\"rows\":3"));
-        assertEquals(RefusalCode.PART_MISMATCH, openRefusal(count));
+        assertEquals(RefusalCode.PART_MISMATCH, touchRefusal(count));
+    }
+
+    /** {@return a spec whose parts carry another schema id stamp of the same length} */
+    static TestDatasets.Spec otherSchemaId() {
+        TestDatasets.Spec spec = new TestDatasets.Spec();
+        spec.schemaId = "test/v2";
+        return spec;
     }
 
     @Test
@@ -88,21 +106,18 @@ class RefusalTest {
         String m = Files.readString(root.resolve("manifest.json"));
         // Part 1 claims "g" .. "h" ("aA==" is "h"); its real last key is "g" ("Zw==").
         Files.writeString(root.resolve("manifest.json"), m.replace("\"max_key_base64\":\"Zw==\"", "\"max_key_base64\":\"aA==\""));
-        Dataset.open(root).close();
-        OpenOptions verify = OpenOptions.DEFAULT.withVerifyPartBounds(true);
-        RefusalException e = assertThrows(RefusalException.class,
-                () -> Dataset.open(io.varve.seekparquet.storage.LocalStorage.of(root), verify, Cancellation.none()));
-        assertEquals(RefusalCode.BOUNDS_MISMATCH, e.code());
+        try (Dataset ds = Dataset.open(root)) {
+            assertEquals(RefusalCode.BOUNDS_MISMATCH, assertThrows(RefusalException.class, ds::verify).code());
+        }
     }
 
     @Test
-    void eagerBoundsChecksCompareEveryDistinctPageTheyDecode() throws IOException {
+    void verificationComparesEveryDistinctPageItDecodes() throws IOException {
         Path root = TestDatasets.write(tmp, new TestDatasets.Spec(), List.of(List.of(
                 TestRow.of("a", 1), TestRow.of("z", 2), TestRow.of("b", 3), TestRow.of("c", 4))));
-        Dataset.open(root).close();
-        assertEquals(RefusalCode.KEY_ORDER, assertThrows(RefusalException.class,
-                () -> Dataset.open(io.varve.seekparquet.storage.LocalStorage.of(root),
-                        OpenOptions.DEFAULT.withVerifyPartBounds(true), Cancellation.none())).code());
+        try (Dataset ds = Dataset.open(root)) {
+            assertEquals(RefusalCode.KEY_ORDER, assertThrows(RefusalException.class, ds::verify).code());
+        }
     }
 
     @Test

@@ -58,8 +58,8 @@ internally, external indexes over Parquet, and table formats.
 
 | Language | Status | Supports |
 |---|---|---|
-| [Go](go/README.md) | pre-release | format 1 draft revision 1: open, range, list, projection; validation at the structural, profile, full and digest levels (`seekparquet validate`) |
-| [Java](java/README.md) | pre-release draft reader; not yet published | format 1 draft revision 1: open, range, list, projection |
+| [Go](go/README.md) | pre-release | format 1 draft revision 1: open, range, list, projection, verify; validation at the structural, profile, full and digest levels (`seekparquet validate`) |
+| [Java](java/README.md) | pre-release draft reader; not yet published | format 1 draft revision 1: open, range, list, projection, verify |
 
 Both implementations read; the Go module also validates (§8 of the specification) and qualifies the suite's
 four validator targets. Neither is a production dataset writer. The shared conformance suite checks reader

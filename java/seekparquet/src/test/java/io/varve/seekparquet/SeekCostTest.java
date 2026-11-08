@@ -82,7 +82,7 @@ class SeekCostTest {
         CountingStorage storage = new CountingStorage(TestDatasets.write(tmp, spec, parts));
         for (int n : new int[] {1, 5}) {
             try (Dataset ds = Dataset.open(storage)) {
-                // Exclude CHECK-1 open, which checks every part, from query counters.
+                // The counters exclude the footer reads of CHECK-1, made when a request first touches a part.
                 for (boolean warm : new boolean[] {false, true}) {
                     storage.reads.set(0);
                     storage.bytes.set(0);
