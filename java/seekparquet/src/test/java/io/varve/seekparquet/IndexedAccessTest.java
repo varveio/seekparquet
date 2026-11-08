@@ -94,7 +94,7 @@ class IndexedAccessTest {
             List<Row> rows = ds.range(RangeQuery.builder().start(Bytes.utf8("p2/dir050/file02000")).limit(1).columns("size").build());
             assertEquals(Bytes.utf8("p2/dir050/file02000"), rows.getFirst().key());
             assertEquals(new Value.Int64(2000), rows.getFirst().values().getFirst());
-            // Row-group binary search (index loads), one key page, one value index, one value page.
+            // Scan row-group upper bounds (index loads), then read a key page, value index and value page.
             assertTrue(storage.reads.get() <= 8, "a point seek made " + storage.reads.get() + " reads");
 
             // A listing of 100 directories of 40 keys each skips to each directory's successor:

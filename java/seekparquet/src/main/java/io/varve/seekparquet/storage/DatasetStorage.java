@@ -18,6 +18,11 @@ import java.nio.file.NoSuchFileException;
  * /}-separated, no empty, {@code .} or {@code ..} segment, no backslash or control character), so
  * that joining them to the root cannot leave it. They are literal: an implementation must not
  * percent-decode or normalise them.
+ *
+ * <p>Cancellation follows the {@link PartSource} contract for manifest reads and part opens too:
+ * adapters signal it with {@link java.util.concurrent.CancellationException} or a non-timeout
+ * {@link java.io.InterruptedIOException}. A {@link java.net.SocketTimeoutException} remains a
+ * storage failure, with its original cause preserved by the reader.
  */
 public interface DatasetStorage {
 

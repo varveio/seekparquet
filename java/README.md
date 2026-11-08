@@ -85,7 +85,8 @@ List<Row> group = dataset.lookup(Bytes.utf8("photos/item"), 100, "size");
 `Continuation` alternatives: `RowPosition(key, offset)` and `CommonPrefix(bytes)`. A result limit
 can split a group. Resuming a row continues inside that group before later keys; resuming a common
 prefix skips its subtree. Ranges accept only row cursors; listings accept either cursor type.
-There is no separate byte-floor or continuation flag.
+The adapter accepts only unsigned decimal integer offsets in the range 0 through 2^63-1;
+spellings such as `-0`, `0.0` and `0e0` are rejected.
 
 ### Options, limits and cancellation
 

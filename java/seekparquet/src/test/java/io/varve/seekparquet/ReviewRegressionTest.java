@@ -69,6 +69,14 @@ class ReviewRegressionTest {
     void finalPackedGroupCanPadOnlyItsLastSevenValues() throws DataException {
         EncodingChecks.rleHybrid(new byte[] {3, 0}, 0, 2, 1, 1);
         assertThrows(DataException.class, () -> EncodingChecks.rleHybrid(new byte[] {5, 0, 0}, 0, 3, 1, 1));
+        // Huge and overflowing varints must be refused before run arithmetic or decoder allocation.
+        byte[] huge = {(byte) 0xff, (byte) 0xff, (byte) 0xff, (byte) 0xff, (byte) 0xff,
+                (byte) 0xff, (byte) 0xff, (byte) 0xff, 0x7f};
+        assertThrows(DataException.class, () -> EncodingChecks.rleHybrid(huge, 0, huge.length, 1, 8));
+        byte[] overflowing = Arrays.copyOf(huge, 10);
+        overflowing[8] = (byte) 0xff;
+        overflowing[9] = 1;
+        assertThrows(DataException.class, () -> EncodingChecks.rleHybrid(overflowing, 0, overflowing.length, 1, 8));
     }
 
     @Test
@@ -124,8 +132,9 @@ class ReviewRegressionTest {
     @Test
     void socketTimeoutsFromManifestOpenAndReadAreStorageFailures() throws IOException {
         Path root = dataset(1);
-        for (int stage = 0; stage < 3; stage++) {
+        for (int stage = 0; stage < 4; stage++) {
             int at = stage;
+            AtomicBoolean failRead = new AtomicBoolean(at == 2);
             SocketTimeoutException timeout = new SocketTimeoutException("remote timeout");
             Storage storage = new Storage(root) {
                 @Override public byte[] readManifest(int max, Cancellation c) throws IOException {
@@ -139,12 +148,22 @@ class ReviewRegressionTest {
                         @Override public String path() { return path; }
                         @Override public long size() { return inner.size(); }
                         @Override public Optional<String> version() { return inner.version(); }
-                        @Override public ByteBuffer read(long p, int n, Cancellation token) throws IOException { throw timeout; }
+                        @Override public ByteBuffer read(long p, int n, Cancellation token) throws IOException {
+                            if (failRead.get()) { throw timeout; }
+                            return inner.read(p, n, token);
+                        }
                         @Override public void close() throws IOException { inner.close(); }
                     };
                 }
             };
-            assertSame(timeout, assertThrows(StorageException.class, () -> Dataset.open(storage)).getCause());
+            if (at == 3) {
+                try (Dataset ds = Dataset.open(storage)) {
+                    failRead.set(true);
+                    assertSame(timeout, assertThrows(StorageException.class, () -> ds.range(RangeQuery.all(1))).getCause());
+                }
+            } else {
+                assertSame(timeout, assertThrows(StorageException.class, () -> Dataset.open(storage)).getCause());
+            }
         }
     }
 
@@ -263,6 +282,17 @@ class ReviewRegressionTest {
         try (Dataset ds = Dataset.open(LocalStorage.of(root),
                 OpenOptions.DEFAULT.withLimits(limits.withMaxIndexMemoryBytes(1)), Cancellation.none())) {
             assertThrows(LimitExceededException.class, () -> ds.range(RangeQuery.all(1)));
+        }
+    }
+
+    @Test
+    void retainedBudgetIsSharedAcrossParts() throws IOException {
+        Limits limits = Limits.DEFAULT.withMaxIndexMemoryBytes(400);
+        try (Dataset ds = Dataset.open(LocalStorage.of(dataset(2)), OpenOptions.DEFAULT.withLimits(limits), Cancellation.none())) {
+            assertEquals(1, ds.lookup(Bytes.utf8("k0"), 1).size());
+            assertEquals("maxIndexMemoryBytes", assertThrows(LimitExceededException.class,
+                    () -> ds.lookup(Bytes.utf8("k1"), 1)).limit());
+            assertEquals(1, ds.lookup(Bytes.utf8("k0"), 1).size());
         }
     }
 
