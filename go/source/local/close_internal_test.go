@@ -16,7 +16,7 @@ import (
 
 // openTwoParts writes a two-part dataset and opens it through a
 // one-descriptor cache, returning the dataset, the cache and its files.
-func openTwoParts(t *testing.T) (*seekparquet.Dataset, *FileCache, []*CachedFile) {
+func openTwoParts(t *testing.T) (*seekparquet.Dataset, *FileCache, []*cachedFile) {
 	t.Helper()
 	dir := t.TempDir()
 	if err := seekparquettest.Write(dir, seekparquettest.Dataset{Parts: []seekparquettest.Part{
@@ -25,7 +25,7 @@ func openTwoParts(t *testing.T) (*seekparquet.Dataset, *FileCache, []*CachedFile
 		t.Fatal(err)
 	}
 	cache := NewFileCache(1)
-	var files []*CachedFile
+	var files []*cachedFile
 	src := recordingSource{Dir: NewDir(dir, cache), files: &files}
 	d, err := seekparquet.OpenDataset(context.Background(), src, seekparquet.Options{})
 	if err != nil {
@@ -39,13 +39,13 @@ func openTwoParts(t *testing.T) (*seekparquet.Dataset, *FileCache, []*CachedFile
 
 type recordingSource struct {
 	*Dir
-	files *[]*CachedFile
+	files *[]*cachedFile
 }
 
-func (s recordingSource) Open(ctx context.Context, path string) (seekparquet.Part, error) {
+func (s recordingSource) Open(ctx context.Context, path string) (seekparquet.SourceFile, error) {
 	p, err := s.Dir.Open(ctx, path)
 	if err == nil {
-		*s.files = append(*s.files, p.(*CachedFile))
+		*s.files = append(*s.files, p.(*cachedFile))
 	}
 	return p, err
 }

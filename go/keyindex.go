@@ -7,12 +7,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"sort"
 	"unicode/utf8"
+	"unsafe"
 
 	"github.com/parquet-go/parquet-go"
-	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
 )
 
@@ -38,6 +37,9 @@ func (page *keyPage) mayHoldAtOrAfter(from []byte) bool {
 // groupIndex is a row group's checked key page index.
 type groupIndex struct {
 	pages []keyPage
+	// size is the memory the index retains, counted against
+	// Limits.IndexMemory.
+	size int64
 }
 
 // pageFor returns a page at or after start, and no later than the first
@@ -60,107 +62,54 @@ func (index *groupIndex) pageFor(start int, from []byte) int {
 	return lo
 }
 
-// supportedCodec reports whether parquet-go decodes codec.
-func supportedCodec(codec format.CompressionCodec) bool {
-	switch codec {
-	case format.Uncompressed, format.Snappy, format.Gzip, format.Brotli, format.Zstd, format.Lz4Raw:
-		return true
-	}
-	return false
-}
-
-// checkCodec reports a column chunk compressed with a codec this reader
-// does not decode as unsupported (ENC-1).
-func (p *part) checkCodec(physical, column int) error {
-	codec := p.footer.Metadata().RowGroups[physical].Columns[column].MetaData.Codec
-	if !supportedCodec(codec) {
-		return &UnsupportedError{Code: UnsupportedEncoding, Detail: "codec " + codec.String() + " in part " + p.name}
-	}
-	return nil
-}
-
-// chunkRange returns the byte range of a column chunk: from its dictionary
-// page (when it has one) or first data page, for its compressed size.
-func chunkRange(meta *format.ColumnMetaData) (start, end int64, ok bool) {
-	start = meta.DataPageOffset
-	if meta.DictionaryPageOffset > 0 && meta.DictionaryPageOffset < start {
-		start = meta.DictionaryPageOffset
-	}
-	if start < 0 || meta.TotalCompressedSize < 0 || start > maxInt64-meta.TotalCompressedSize {
-		return 0, 0, false
-	}
-	return start, start + meta.TotalCompressedSize, true
-}
-
-const maxInt64 = int64(^uint64(0) >> 1)
-
 // keyIndex returns the checked key page index of a non-empty physical row
-// group, loading it on first use (RG-2 to RG-4). Concurrent first uses may
-// both load it; one result is kept.
+// group, loading it on first use (RG-2 to RG-4), within the limits on page
+// indexes and on the memory the Reader retains for them. Concurrent first
+// uses may both load it; one result is kept.
 func (p *part) keyIndex(ctx context.Context, physical int) (*groupIndex, error) {
 	if index := p.index[physical].Load(); index != nil {
 		return index, nil
 	}
-	chunkMeta := &p.footer.Metadata().RowGroups[physical].Columns[p.key]
-	if chunkMeta.ColumnIndexOffset == 0 || chunkMeta.ColumnIndexLength == 0 || chunkMeta.OffsetIndexOffset == 0 || chunkMeta.OffsetIndexLength == 0 {
+	meta := &p.footer.Metadata().RowGroups[physical].Columns[p.key]
+	if meta.ColumnIndexOffset == 0 || meta.ColumnIndexLength == 0 || meta.OffsetIndexOffset == 0 || meta.OffsetIndexLength == 0 {
 		return nil, refusePart(CodeMissingPageIndex, p.name, physical, "the key column lacks a ColumnIndex or an OffsetIndex")
 	}
-	for _, loc := range [][2]int64{{chunkMeta.ColumnIndexOffset, int64(chunkMeta.ColumnIndexLength)}, {chunkMeta.OffsetIndexOffset, int64(chunkMeta.OffsetIndexLength)}} {
-		if loc[0] < 0 || loc[1] < 0 || loc[0] > p.size-loc[1] {
-			return nil, refusePart(CodeInvalidPageIndex, p.name, physical, "a key page index lies outside the file")
-		}
-	}
-	if err := p.checkCodec(physical, p.key); err != nil {
-		return nil, err
-	}
-	start, end, ok := chunkRange(&chunkMeta.MetaData)
-	if !ok || end > p.size {
-		return nil, refusePart(CodeInvalidFooter, p.name, physical, "the key column chunk lies outside the file")
-	}
-	chunk, err := p.chunk(physical, p.key)
+	start, end, err := p.openChunk(ctx, physical, p.key)
 	if err != nil {
 		return nil, err
 	}
-	columnIndex, err := p.readColumnIndex(ctx, chunkMeta)
+	raw, err := p.readIndexBytes(ctx, physical, meta.ColumnIndexOffset, meta.ColumnIndexLength)
 	if err != nil {
 		return nil, p.indexError(ctx, physical, "ColumnIndex", err)
 	}
-	offsets, err := chunk.OffsetIndexFrom(p.at(ctx))
+	var columns format.ColumnIndex
+	if _, err := decodeBounded(raw, &columns, p.r.limits.MetadataMemory); err != nil {
+		return nil, p.indexError(ctx, physical, "ColumnIndex", err)
+	}
+	offsets, err := p.loadOffsetIndex(ctx, physical, p.key)
 	if err != nil {
 		return nil, p.indexError(ctx, physical, "OffsetIndex", err)
 	}
-	index, err := checkKeyIndex(columnIndex, offsets, p.footer.Metadata().RowGroups[physical].NumRows, start, end, p.utf8Key)
+	index, err := checkKeyIndex(&columns, offsets, p.footer.Metadata().RowGroups[physical].NumRows, start, end, p.utf8Key)
 	if err != nil {
 		return nil, refusePart(CodeInvalidPageIndex, p.name, physical, "%v", err)
 	}
+	if limit := p.r.limits.IndexMemory; p.r.indexMemory.Add(index.size) > limit {
+		p.r.indexMemory.Add(-index.size)
+		return nil, exceeded("part %s: key page indexes need more than %d bytes (Limits.IndexMemory)", p.name, limit)
+	}
 	if !p.index[physical].CompareAndSwap(nil, index) {
+		p.r.indexMemory.Add(-index.size)
 		return p.index[physical].Load(), nil
 	}
 	return index, nil
 }
 
-// readColumnIndex reads and decodes the key chunk's ColumnIndex as
-// written, so that its parallel lists can be checked (RG-4); its location
-// has been checked to lie inside the file.
-func (p *part) readColumnIndex(ctx context.Context, chunk *format.ColumnChunk) (*format.ColumnIndex, error) {
-	raw := make([]byte, chunk.ColumnIndexLength)
-	if n, err := p.at(ctx).ReadAt(raw, chunk.ColumnIndexOffset); n < len(raw) {
-		if err == nil {
-			err = io.ErrUnexpectedEOF
-		}
-		return nil, err
-	}
-	var index format.ColumnIndex
-	if err := thrift.Unmarshal(new(thrift.CompactProtocol), raw, &index); err != nil {
-		return nil, err
-	}
-	return &index, nil
-}
-
 // indexError classifies an error loading a key page index.
 func (p *part) indexError(ctx context.Context, physical int, which string, err error) error {
+	var refusal *RefusalError
 	switch {
-	case isEnvironment(ctx, err):
+	case isEnvironment(ctx, err), errors.As(err, &refusal):
 		return err
 	case errors.Is(err, parquet.ErrMissingColumnIndex), errors.Is(err, parquet.ErrMissingOffsetIndex):
 		return refusePart(CodeMissingPageIndex, p.name, physical, "the key column has no %s", which)
@@ -178,7 +127,10 @@ func (p *part) indexError(ctx context.Context, physical int, which string, err e
 // page) and, for a STRING key, must be valid UTF-8 (KEY-6). The order of
 // bounds from page to page is not checked (RG-6), and boundary_order is
 // never read. The page headers are checked as each page is decoded.
-func checkKeyIndex(columns *format.ColumnIndex, offsets parquet.OffsetIndex, rows, start, end int64, utf8Key bool) (*groupIndex, error) {
+func checkKeyIndex(columns *format.ColumnIndex, offsets *parquet.FileOffsetIndex, rows, start, end int64, utf8Key bool) (*groupIndex, error) {
+	if offsets == nil {
+		return nil, errors.New("the key OffsetIndex is missing")
+	}
 	n := offsets.NumPages()
 	if n == 0 {
 		return nil, errors.New("the key OffsetIndex is empty")
@@ -186,7 +138,7 @@ func checkKeyIndex(columns *format.ColumnIndex, offsets parquet.OffsetIndex, row
 	if len(columns.NullPages) != n || len(columns.MinValues) != n || len(columns.MaxValues) != n {
 		return nil, errors.New("the key ColumnIndex lists and the OffsetIndex disagree on the page count")
 	}
-	index := &groupIndex{pages: make([]keyPage, n)}
+	index := &groupIndex{pages: make([]keyPage, n), size: int64(n) * int64(unsafe.Sizeof(keyPage{}))}
 	previousEnd := start
 	for i := range index.pages {
 		if columns.NullPages[i] {
@@ -214,6 +166,7 @@ func checkKeyIndex(columns *format.ColumnIndex, offsets parquet.OffsetIndex, row
 			return nil, errors.New("a key page bound is not valid UTF-8")
 		}
 		index.pages[i] = keyPage{lo: lo, hi: hi, first: first, rows: last - first, offset: off, size: size}
+		index.size += int64(len(lo) + len(hi))
 	}
 	return index, nil
 }

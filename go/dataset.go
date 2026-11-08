@@ -47,8 +47,8 @@ func SupportedVersions() []Version {
 	return out
 }
 
-// Part is one opened file of a dataset root.
-type Part interface {
+// SourceFile is one opened file of a dataset root: its manifest or a part.
+type SourceFile interface {
 	io.ReaderAt
 	// Size returns the file's length in bytes.
 	Size() int64
@@ -62,23 +62,30 @@ type Part interface {
 // it must still confine reads to the root.
 //
 // Open returns an error that wraps fs.ErrNotExist when the file does not
-// exist. Open should honour ctx. The returned Part must be safe for
-// concurrent ReadAt calls; it may implement ContextBinder, so that every
-// read of it is bounded by the operation's context.
+// exist, and should honour ctx. The returned file must be safe for
+// concurrent ReadAt calls and must read the same bytes until it is closed:
+// a remote source binds it to one stored object (one version or
+// generation) across all its range requests and retries. It may implement
+// ContextBinder, so that every read of it is bounded by the operation's
+// context.
 type Source interface {
-	Open(ctx context.Context, path string) (Part, error)
+	Open(ctx context.Context, path string) (SourceFile, error)
 }
 
 // Options configures OpenDataset.
 type Options struct {
 	// Expect lists column expectations, checked in every part on open.
 	Expect []ColumnExpectation
-	// MaxManifestBytes bounds the manifest's size; 0 is 64 MiB. A larger
-	// manifest fails the open with ErrLimitExceeded.
-	MaxManifestBytes int64
-	// MaxParts bounds the number of parts; 0 is 1,000,000. More fail the
-	// open with ErrLimitExceeded.
-	MaxParts int
+	// Limits bounds the resources the dataset can make the reader use.
+	Limits Limits
+	// VerifyOnOpen makes OpenDataset check every non-empty row group's key
+	// page index and decode its first key page, and decode each part's
+	// last key page, before it returns (CHECK-3): row-group first keys must
+	// then ascend and each part's first and last keys equal its manifest
+	// bounds. It suits a long-lived reader of local files. Without it,
+	// opening reads only the manifest and the footers (CHECK-1), and the
+	// rest is loaded, and checked, when a read first needs it.
+	VerifyOnOpen bool
 }
 
 // Dataset is an opened SeekParquet dataset: its manifest's metadata and a
@@ -147,41 +154,35 @@ func (m Metadata) clone() Metadata {
 // key column (KEY-1, KEY-5), consistent columns across parts (COL-5), and
 // key ascending as the first sorting column of every non-empty row group
 // (RG-1). Beyond CHECK-1 (as CHECK-3 allows) it checks every non-empty row
-// group's key page index and decodes its first key page, and decodes each
-// part's last key page, so that the row groups' first keys ascend strictly
-// and each part's first and last keys equal the manifest's bounds
-// (bounds_mismatch). It does not read every row: rows it does not decode
-// are not certified (CHECK-4).
+// (RG-1). It reads the manifest and every part's footer, and nothing more
+// unless Options.VerifyOnOpen asks for the first and last key pages too.
+// Reads are routed to a part by its manifest bounds, and within a part by
+// row groups' first keys, decoded when a read first needs them. Opening
+// does not read every row: rows a read does not decode are not certified
+// (CHECK-4).
 //
 // A dataset that breaks the specification is refused with a
 // *RefusalError (see CodeOf); a part that fails an expectation, with an
 // *ExpectationError. Other errors report I/O or the context.
 //
-// OpenDataset closes every Part it opened when it fails; on success,
+// OpenDataset closes every file it opened when it fails; on success,
 // Dataset.Close closes them. It never closes src.
 func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error) {
-	maxManifest := opt.MaxManifestBytes
-	if maxManifest <= 0 {
-		maxManifest = 64 << 20
-	}
-	maxParts := opt.MaxParts
-	if maxParts <= 0 {
-		maxParts = 1_000_000
-	}
-	raw, err := readManifest(ctx, src, maxManifest)
+	lim := opt.Limits.withDefaults()
+	raw, err := readManifest(ctx, src, lim.ManifestBytes)
 	if err != nil {
 		return nil, err
 	}
-	m, err := manifest.Parse(raw)
+	m, err := manifest.Parse(raw, lim.Parts)
 	if err != nil {
 		var e *manifest.Error
-		if errors.As(err, &e) {
+		switch {
+		case errors.As(err, &e):
 			return nil, refuse(Code(e.Code), "%s: %s", ManifestName, e.Detail)
+		case errors.Is(err, manifest.ErrTooManyParts):
+			return nil, exceeded("%s lists more than %d parts (Limits.Parts)", ManifestName, lim.Parts)
 		}
 		return nil, err
-	}
-	if len(m.Parts) > maxParts {
-		return nil, fmt.Errorf("%w: the manifest lists %d parts, more than %d", ErrLimitExceeded, len(m.Parts), maxParts)
 	}
 	meta := Metadata{Version: Version(m.Version), SchemaID: m.SchemaID, Extensions: m.Extensions, Manifest: raw}
 	for _, p := range m.Parts {
@@ -196,7 +197,7 @@ func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error)
 		}
 	}()
 	for _, entry := range m.Parts {
-		in, err := openDatasetPart(ctx, src, m, entry)
+		in, err := openDatasetPart(ctx, src, m, entry, &lim)
 		if in.File != nil {
 			inputs = append(inputs, in)
 		}
@@ -205,7 +206,7 @@ func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error)
 		}
 	}
 	handed = true
-	reader, err := openParts(ctx, inputs, PartsOptions{Expect: opt.Expect, CheckGroup: checkSorted})
+	reader, err := openParts(ctx, inputs, PartsOptions{Expect: opt.Expect, Limits: lim, VerifyOnOpen: opt.VerifyOnOpen, CheckGroup: checkSorted})
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +224,7 @@ func readManifest(ctx context.Context, src Source, limit int64) ([]byte, error) 
 	defer func() { _ = f.Close() }()
 	size := f.Size()
 	if size > limit {
-		return nil, fmt.Errorf("%w: %s is %d bytes, more than %d", ErrLimitExceeded, ManifestName, size, limit)
+		return nil, exceeded("%s is %d bytes (Limits.ManifestBytes %d)", ManifestName, size, limit)
 	}
 	raw := make([]byte, size)
 	n, err := bind(ctx, f).ReadAt(raw, 0)
@@ -239,7 +240,7 @@ func readManifest(ctx context.Context, src Source, limit int64) ([]byte, error) 
 // openDatasetPart opens one part, checks its size, footer, stamps and row
 // count, and returns it with its footer. The returned File is set whenever
 // the part was opened, even with an error, so that the caller closes it.
-func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part) (partInput, error) {
+func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, lim *Limits) (partInput, error) {
 	f, err := src.Open(ctx, entry.Path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -251,9 +252,9 @@ func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entr
 	if in.Size != entry.Bytes {
 		return in, refusePart(CodePartMismatch, entry.Path, -1, "the file is %d bytes, its manifest entry %d", in.Size, entry.Bytes)
 	}
-	footer, err := readFooter(ctx, f, in.Size)
+	footer, err := readFooter(ctx, entry.Path, f, in.Size, lim)
 	if err != nil {
-		return in, footerError(ctx, entry.Path, err)
+		return in, err
 	}
 	if err := checkStamps(entry.Path, footer, m); err != nil {
 		return in, err

@@ -21,15 +21,20 @@ import (
 // KeyColumn is the name of the column every part is sorted by (KEY-1).
 const KeyColumn = "key"
 
-// ContextBinder is implemented by a part file whose reads can be bounded by
-// a context. The reader calls WithContext once per operation (opening a
+// ContextBinder is implemented by a file whose reads can be bounded by a
+// context. The reader calls WithContext once per operation (reading a
 // footer, loading a page index, reading pages) and reads through the
-// returned io.ReaderAt, so a cancelled request, or Close, can end a read
-// that waits on the source (for a descriptor, a connection, a retry).
+// returned io.ReaderAt, so that a cancelled request, or Close, can end a
+// read that waits on the source (for a descriptor, a connection, a retry).
 //
-// A part file that does not implement it is read as a plain io.ReaderAt:
-// the reader checks its context between pages, but cannot interrupt a
-// ReadAt call that is already blocked.
+// WithContext may be called concurrently, for operations that run at the
+// same time. Each call must return an independent view bound to its own
+// context, and must not change shared state such as a "current" context
+// of the file.
+//
+// A file that does not implement ContextBinder is read as a plain
+// io.ReaderAt: the reader checks its context between pages, but cannot
+// interrupt a ReadAt call that is already blocked.
 type ContextBinder interface {
 	WithContext(ctx context.Context) io.ReaderAt
 }
@@ -39,14 +44,18 @@ type PartSource struct {
 	// Name identifies the part in errors.
 	Name string
 	// File reads the part. It must be safe for concurrent ReadAt calls (an
-	// *os.File is), and its bytes must not change while the Reader is
-	// open. It may implement ContextBinder and io.Closer.
+	// *os.File is), and must read the same immutable bytes for as long as
+	// the Reader is open: a remote file must stay bound to one stored
+	// object (one version or generation) across requests and retries. It
+	// may implement ContextBinder and io.Closer.
 	File io.ReaderAt
 	// Size is the part's length in bytes.
 	Size int64
 	// MinKey and MaxKey, when set, are the part's exact first and last
-	// keys (a manifest records them); OpenParts decodes both and refuses
-	// the parts with bounds_mismatch when they differ. Nil checks nothing.
+	// keys (a manifest records them). They route reads to the part without
+	// decoding its keys, and a decoded key outside them, or a first or last
+	// key that differs from them, is refused with bounds_mismatch. Parts
+	// without them are routed by probing their row groups' first keys.
 	MinKey, MaxKey []byte
 }
 
@@ -55,10 +64,12 @@ type PartSource struct {
 // fails the open with an *ExpectationError, which is the consumer's policy
 // failing, not a refusal of the data.
 //
-// Without an expectation, any column may still be projected: its values
-// come back as each part stores them, and may differ in type from part to
-// part.
+// Physical types, repetition and nesting must already agree across parts
+// (COL-5, checked on open without any expectation); an expectation adds the
+// consumer's own requirements, such as presence in every part or a
+// particular type.
 type ColumnExpectation struct {
+	// Name is the column's top-level name, matched exactly (COL-6).
 	Name string
 	// MustExist requires every part to have the column. Otherwise a part
 	// without it is accepted, and reads report the column absent (COL-2)
@@ -77,13 +88,20 @@ type ColumnExpectation struct {
 type PartsOptions struct {
 	// Expect lists column expectations.
 	Expect []ColumnExpectation
+	// Limits bounds the resources the parts can make the reader use.
+	Limits Limits
+	// VerifyOnOpen makes OpenParts check every non-empty row group's key
+	// page index and decode its first key page, and decode each part's
+	// last key page, before it returns (CHECK-3). Otherwise these are
+	// loaded when a read first needs them.
+	VerifyOnOpen bool
 	// CheckFooter, when set, is called once per part with its parsed
 	// footer, before the part's key column is checked. An error fails the
 	// open and is returned as is. The footer must not be modified.
 	CheckFooter func(part string, footer *parquet.File) error
 	// CheckGroup, when set, is called for every non-empty row group in key
-	// order with its part's footer, before the group's first key is
-	// decoded. An error fails the open and is returned as is.
+	// order with its part's footer. An error fails the open and is
+	// returned as is.
 	CheckGroup func(part string, footer *parquet.File, physical int, group *format.RowGroup) error
 }
 
@@ -94,9 +112,15 @@ type PartsOptions struct {
 // runs, or a Stats that another read is updating.
 type Reader struct {
 	parts   []*part
-	groups  []group
+	groups  []*group
 	columns []string
 	rows    int64
+	limits  Limits
+	// bounded reports that every part holding rows has its key bounds, so
+	// reads are routed to a part by its bounds; routed lists those parts.
+	bounded     bool
+	routed      []*part
+	indexMemory atomic.Int64
 
 	mu        sync.RWMutex
 	closed    bool
@@ -109,11 +133,17 @@ type Reader struct {
 // part is one opened part: its parsed footer, located columns and the key
 // page index of each row group, decoded once on first use.
 type part struct {
+	r      *Reader
 	name   string
 	file   io.ReaderAt
 	size   int64
 	footer *parquet.File
 	key    int
+	// minKey and maxKey are the part's exact bounds, nil when not given.
+	minKey, maxKey []byte
+	// firstGroup and endGroup delimit the part's non-empty row groups in
+	// Reader.groups.
+	firstGroup, endGroup int
 	// utf8Key reports a key column annotated STRING or UTF8 (KEY-6).
 	utf8Key bool
 	// signatures spell each top-level column's physical type, repetition
@@ -125,14 +155,18 @@ type part struct {
 	leaves      map[string]int
 	unsupported map[string]bool
 	index       []atomic.Pointer[groupIndex]
+	// checked records the page headers already checked against the
+	// limits, by column chunk and offset.
+	checked sync.Map
 }
 
 // group is one non-empty row group in global key order.
 type group struct {
 	part     int
 	physical int
-	first    []byte
 	rows     int64
+	// first is the group's decoded first key, once a read decoded it.
+	first atomic.Pointer[[]byte]
 }
 
 // partInput is a source with its footer when the caller already read it.
@@ -141,16 +175,14 @@ type partInput struct {
 	footer *parquet.File
 }
 
-// OpenParts opens parts given directly, in key order, decoding the first
-// key of every non-empty row group to route reads. It is the advanced
+// OpenParts opens parts given directly, in key order. It is the advanced
 // path: unlike OpenDataset it reads no manifest and checks no footer
 // stamps and no sorting_columns (RG-1); a caller adds such checks with
 // CheckFooter and CheckGroup. It checks that each footer is readable,
 // self-contained (FILE-1) and not encrypted (FILE-2), with row-group row
-// counts that sum to its own; the key column (KEY-1, KEY-5); that columns
-// agree across parts (COL-5); each non-empty row group's key page index
-// (RG-2 to RG-4) and first key page (CHECK-2), so that the row groups' first
-// keys ascend strictly; and each part's MinKey and MaxKey when given.
+// counts that sum to its own; the key column (KEY-1, KEY-5); and that
+// columns agree across parts (COL-5). With VerifyOnOpen it also checks every
+// row group's first key page and each part's last key page.
 //
 // OpenParts takes ownership of every File that implements io.Closer from
 // the call on: when it fails it closes them all before returning, and on
@@ -164,7 +196,7 @@ func OpenParts(ctx context.Context, parts []PartSource, opt PartsOptions) (*Read
 }
 
 func openParts(ctx context.Context, inputs []partInput, opt PartsOptions) (_ *Reader, err error) {
-	r := &Reader{}
+	r := &Reader{limits: opt.Limits.withDefaults(), bounded: true}
 	r.closing, r.closeNow = context.WithCancelCause(context.Background())
 	defer func() {
 		if err != nil {
@@ -174,12 +206,11 @@ func openParts(ctx context.Context, inputs []partInput, opt PartsOptions) (_ *Re
 	}()
 	signatures := map[string]string{} // COL-5: column name -> signature
 	owner := map[string]string{}      // column name -> first part holding it
-	var log pageLog
 	for i, in := range inputs {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		p, err := openPart(ctx, in, opt)
+		p, err := r.openPart(ctx, in, opt)
 		if err != nil {
 			return nil, err
 		}
@@ -193,34 +224,55 @@ func openParts(ctx context.Context, inputs []partInput, opt PartsOptions) (_ *Re
 			}
 		}
 		r.columns = mergeColumns(r.columns, p)
-		first, last := len(r.groups), -1
+		p.firstGroup = len(r.groups)
 		for physical := range p.footer.Metadata().RowGroups {
 			rg := &p.footer.Metadata().RowGroups[physical]
 			if rg.NumRows == 0 {
 				continue
-			}
-			if err := ctx.Err(); err != nil {
-				return nil, err
 			}
 			if opt.CheckGroup != nil {
 				if err := opt.CheckGroup(in.Name, p.footer, physical, rg); err != nil {
 					return nil, err
 				}
 			}
-			g := len(r.groups)
-			key, err := p.firstKey(ctx, g, physical, &log)
-			if err != nil {
-				return nil, err
-			}
-			r.groups = append(r.groups, group{part: i, physical: physical, first: key, rows: rg.NumRows})
+			r.groups = append(r.groups, &group{part: i, physical: physical, rows: rg.NumRows})
 			r.rows += rg.NumRows
-			last = g
 		}
-		if err := r.checkBounds(ctx, p, in.PartSource, first, last, &log); err != nil {
+		p.endGroup = len(r.groups)
+		if p.endGroup > p.firstGroup {
+			r.routed = append(r.routed, p)
+			if p.minKey == nil || p.maxKey == nil {
+				r.bounded = false
+			}
+		}
+		if p.endGroup == p.firstGroup && (p.minKey != nil || p.maxKey != nil) {
+			return nil, refusePart(CodeBoundsMismatch, in.Name, -1, "the part holds no rows but has key bounds")
+		}
+	}
+	if opt.VerifyOnOpen {
+		if err := r.verify(ctx); err != nil {
 			return nil, err
 		}
 	}
 	return r, nil
+}
+
+// verify decodes every row group's first key page and each bounded part's
+// last key page, in dataset order, as one request.
+func (r *Reader) verify(ctx context.Context) error {
+	var log pageLog
+	for g := range r.groups {
+		if _, err := r.first(ctx, g, &log, nil); err != nil {
+			return err
+		}
+		p := r.parts[r.groups[g].part]
+		if g == p.endGroup-1 && p.maxKey != nil {
+			if err := r.decodeLast(ctx, g, &log); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // closeSources closes every source that implements io.Closer.
@@ -232,68 +284,30 @@ func closeSources(inputs []partInput) {
 	}
 }
 
-// checkBounds compares a part's decoded first and last keys with the exact
-// bounds given for it.
-func (r *Reader) checkBounds(ctx context.Context, p *part, src PartSource, first, last int, log *pageLog) error {
-	if src.MinKey == nil && src.MaxKey == nil {
-		return nil
-	}
-	if last < 0 {
-		return refusePart(CodeBoundsMismatch, src.Name, -1, "the part holds no rows but has key bounds")
-	}
-	if src.MinKey != nil && !bytes.Equal(r.groups[first].first, src.MinKey) {
-		return refusePart(CodeBoundsMismatch, src.Name, r.groups[first].physical, "the decoded first key differs from the part's minimum key")
-	}
-	if src.MaxKey != nil {
-		key, err := p.lastKey(ctx, last, r.groups[last].physical, log)
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal(key, src.MaxKey) {
-			return refusePart(CodeBoundsMismatch, src.Name, r.groups[last].physical, "the decoded last key differs from the part's maximum key")
-		}
-	}
-	return nil
-}
-
-func openPart(ctx context.Context, in partInput, opt PartsOptions) (*part, error) {
+func (r *Reader) openPart(ctx context.Context, in partInput, opt PartsOptions) (*part, error) {
 	if in.File == nil {
 		return nil, fmt.Errorf("seekparquet: part %s has no file", in.Name)
 	}
 	footer := in.footer
 	if footer == nil {
 		var err error
-		if footer, err = readFooter(ctx, in.File, in.Size); err != nil {
-			return nil, footerError(ctx, in.Name, err)
+		if footer, err = readFooter(ctx, in.Name, in.File, in.Size, &r.limits); err != nil {
+			return nil, err
 		}
 	}
 	meta := footer.Metadata()
-	if err := checkSelfContained(in.Name, meta); err != nil {
-		return nil, err
-	}
-	if err := checkRowCounts(footer); err != nil {
-		return nil, refusePart(CodeInvalidFooter, in.Name, -1, "%v", err)
-	}
-	top, dup, err := topLevel(meta.Schema)
-	if err != nil {
-		return nil, refusePart(CodeInvalidFooter, in.Name, -1, "%v", err)
-	}
-	ncols := len(footer.Schema().Columns())
-	for g := range meta.RowGroups {
-		if len(meta.RowGroups[g].Columns) != ncols {
-			return nil, refusePart(CodeInvalidFooter, in.Name, g, "the row group's column chunks do not match the schema")
-		}
-	}
 	if opt.CheckFooter != nil {
 		if err := opt.CheckFooter(in.Name, footer); err != nil {
 			return nil, err
 		}
 	}
-	utf8Key, err := checkKeyColumn(in.Name, meta, top, dup)
+	top, dup := topLevel(meta.Schema)
+	utf8Key, err := checkKeyColumn(in.Name, meta, top, dup, leafCount(meta.Schema))
 	if err != nil {
 		return nil, err
 	}
-	p := &part{name: in.Name, file: in.File, size: in.Size, footer: footer, utf8Key: utf8Key,
+	p := &part{r: r, name: in.Name, file: in.File, size: in.Size, footer: footer, utf8Key: utf8Key,
+		minKey: bytes.Clone(in.MinKey), maxKey: bytes.Clone(in.MaxKey),
 		leaves: make(map[string]int), unsupported: make(map[string]bool), signatures: make(map[string]string)}
 	for name, e := range top {
 		p.signatures[name] = e.signature
@@ -348,23 +362,6 @@ func checkExpectation(partName string, schema *parquet.Schema, want ColumnExpect
 	return nil
 }
 
-// checkRowCounts checks that the row groups hold non-negative counts that
-// sum to the footer's row count.
-func checkRowCounts(footer *parquet.File) error {
-	metadata := footer.Metadata()
-	var total int64
-	for _, rg := range metadata.RowGroups {
-		if rg.NumRows < 0 || total+rg.NumRows < total {
-			return errors.New("row group row counts are invalid")
-		}
-		total += rg.NumRows
-	}
-	if total != metadata.NumRows {
-		return errors.New("the row groups do not hold the footer's row count")
-	}
-	return nil
-}
-
 // chunk returns the file-backed column chunk of leaf column in physical
 // row group.
 func (p *part) chunk(physical, column int) (*parquet.FileColumnChunk, error) {
@@ -375,35 +372,100 @@ func (p *part) chunk(physical, column int) (*parquet.FileColumnChunk, error) {
 	return chunk, nil
 }
 
-// firstKey decodes the first key of a non-empty row group, global index
-// g, from its first key page, after checking the group's key page index
-// (CHECK-2 applies to every row group a reader reads).
-func (p *part) firstKey(ctx context.Context, g, physical int, log *pageLog) ([]byte, error) {
-	index, err := p.keyIndex(ctx, physical)
+// first returns the first key of row group g, decoding its first key page
+// (with the group's key page index, CHECK-2) when no read has yet. The
+// page joins the request's log.
+func (r *Reader) first(ctx context.Context, g int, log *pageLog, stats *Stats) ([]byte, error) {
+	if k := r.groups[g].first.Load(); k != nil {
+		return *k, nil
+	}
+	c, err := r.cursor(ctx, g, log, stats)
 	if err != nil {
 		return nil, err
 	}
-	cursor := p.keyCursor(ctx, g, physical, index, nil, log)
-	defer cursor.close()
-	if err := cursor.decode(0); err != nil {
+	defer c.close()
+	if err := c.decode(0); err != nil {
 		return nil, err
 	}
-	return bytes.Clone(cursor.values[0].ByteArray()), nil
+	return *r.groups[g].first.Load(), nil
 }
 
-// lastKey decodes the last key of a non-empty row group from its last key
-// page, located through the OffsetIndex.
-func (p *part) lastKey(ctx context.Context, g, physical int, log *pageLog) ([]byte, error) {
-	index, err := p.keyIndex(ctx, physical)
+// decodeLast decodes the last key page of row group g.
+func (r *Reader) decodeLast(ctx context.Context, g int, log *pageLog) error {
+	c, err := r.cursor(ctx, g, log, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	cursor := p.keyCursor(ctx, g, physical, index, nil, log)
-	defer cursor.close()
-	if err := cursor.decode(len(index.pages) - 1); err != nil {
-		return nil, err
+	defer c.close()
+	return c.decode(len(c.index.pages) - 1)
+}
+
+// noteFirst records the decoded first key of row group g, after checking
+// it against the first keys already known of the groups around it.
+func (r *Reader) noteFirst(g int, key []byte) error {
+	if r.groups[g].first.Load() != nil {
+		return nil
 	}
-	return bytes.Clone(cursor.values[len(cursor.values)-1].ByteArray()), nil
+	grp := r.groups[g]
+	name := r.parts[grp.part].name
+	if g > 0 {
+		if prev := r.groups[g-1].first.Load(); prev != nil && bytes.Compare(*prev, key) >= 0 {
+			e := keyOrder(name, grp.physical, 0, key)
+			e.Detail = "the row group's first key is not above the previous row group's"
+			return e
+		}
+	}
+	if g+1 < len(r.groups) {
+		if next := r.groups[g+1].first.Load(); next != nil && bytes.Compare(key, *next) >= 0 {
+			n := r.groups[g+1]
+			e := keyOrder(r.parts[n.part].name, n.physical, 0, *next)
+			e.Detail = "the row group's first key is not above the previous row group's"
+			return e
+		}
+	}
+	k := bytes.Clone(key)
+	r.groups[g].first.CompareAndSwap(nil, &k)
+	return nil
+}
+
+// groupFor returns the row group in which a read from from begins: the
+// last group whose first key is at or before from, or the first group of
+// the part that can hold from; len(groups) when no group can. Parts are
+// chosen by their bounds when every part has them; row groups by binary
+// search over their first keys, decoding a group's first key page the first
+// time a search needs it.
+func (r *Reader) groupFor(ctx context.Context, from []byte, log *pageLog, stats *Stats) (int, error) {
+	if from == nil || len(r.groups) == 0 {
+		return 0, nil
+	}
+	lo, hi := 0, len(r.groups)
+	if r.bounded {
+		parts := r.routed
+		i := sort.Search(len(parts), func(i int) bool { return bytes.Compare(parts[i].maxKey, from) >= 0 })
+		if i == len(parts) {
+			return len(r.groups), nil
+		}
+		lo, hi = parts[i].firstGroup, parts[i].endGroup
+		if bytes.Compare(from, parts[i].minKey) <= 0 {
+			return lo, nil
+		}
+	}
+	// The answer is the last group in [lo, hi) whose first key is at or
+	// before from, or lo: search (lo, hi) for the first group above from.
+	a, b := lo+1, hi
+	for a < b {
+		mid := int(uint(a+b) >> 1)
+		key, err := r.first(ctx, mid, log, stats)
+		if err != nil {
+			return 0, err
+		}
+		if bytes.Compare(key, from) > 0 {
+			b = mid
+		} else {
+			a = mid + 1
+		}
+	}
+	return a - 1, nil
 }
 
 // bind returns file bound to ctx when it is a ContextBinder.
@@ -442,16 +504,6 @@ func mergeColumns(names []string, p *part) []string {
 		names = append(names, f.Name())
 	}
 	return names
-}
-
-// groupFor returns the row group that holds from: the last one whose first
-// key is at or before it, or the first group.
-func (r *Reader) groupFor(from []byte) int {
-	if from == nil {
-		return 0
-	}
-	n := sort.Search(len(r.groups), func(i int) bool { return bytes.Compare(r.groups[i].first, from) > 0 })
-	return max(n-1, 0)
 }
 
 // begin takes a read lease that Close waits for, and returns the request's

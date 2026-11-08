@@ -152,9 +152,11 @@ func (s *listScan) run(ctx context.Context) ([]Entry, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		g := r.groupFor(cursor)
-		grp := r.groups[g]
-		if s.to != nil && bytes.Compare(grp.first, s.to) >= 0 {
+		g, err := r.groupFor(ctx, cursor, &s.log, s.stats)
+		if err != nil {
+			return nil, err
+		}
+		if g == len(r.groups) || s.to != nil && r.startsAtOrAfter(g, s.to) {
 			break
 		}
 		// A row group whose first key and the next group's first key share
@@ -163,34 +165,38 @@ func (s *listScan) run(ctx context.Context) ([]Entry, error) {
 		// inside the group, the next group's first key is a key at or after
 		// it under the prefix, so the prefix is emitted without a read.
 		// When the prefix is not suppressed at the floor, that witness must
-		// also lie below the upper bound.
-		if g+1 < len(r.groups) {
-			whole := CommonPrefix(grp.first, req.Prefix, req.Delimiter)
-			next := r.groups[g+1].first
-			if whole != nil && bytes.Equal(whole, CommonPrefix(next, req.Prefix, req.Delimiter)) &&
-				(s.suppress || s.to == nil || bytes.Compare(next, s.to) < 0) {
-				s.stats.GroupShortcuts++
-				s.emitPrefix(whole)
-				successor, ok := Successor(whole)
-				if !ok {
-					break
+		// also lie below the upper bound. The shortcut is taken once the
+		// group's first key is known (decoded by an earlier read, a routing
+		// probe, or VerifyOnOpen).
+		if first := r.groups[g].first.Load(); first != nil && g+1 < len(r.groups) {
+			if whole := CommonPrefix(*first, req.Prefix, req.Delimiter); whole != nil {
+				next, err := r.first(ctx, g+1, &s.log, s.stats)
+				if err != nil {
+					return nil, err
 				}
-				cursor, inclusive = successor, true
-				continue
+				if bytes.Equal(whole, CommonPrefix(next, req.Prefix, req.Delimiter)) &&
+					(s.suppress || s.to == nil || bytes.Compare(next, s.to) < 0) {
+					s.stats.GroupShortcuts++
+					s.emitPrefix(whole)
+					successor, ok := Successor(whole)
+					if !ok {
+						break
+					}
+					cursor, inclusive = successor, true
+					continue
+				}
 			}
 		}
 		if s.cursorGroup != g {
 			if s.cursor != nil {
 				s.cursor.close()
+				s.cursor = nil
 			}
-			p := r.parts[grp.part]
-			index, err := p.keyIndex(ctx, grp.physical)
+			c, err := r.cursor(ctx, g, &s.log, s.stats)
 			if err != nil {
 				return nil, err
 			}
-			s.cursor = p.keyCursor(ctx, g, grp.physical, index, s.stats, &s.log)
-			s.cursorGroup = g
-			s.stats.GroupsOpened++
+			s.cursor, s.cursorGroup = c, g
 		}
 		key, row, ok, err := s.cursor.seek(cursor, inclusive)
 		if err != nil {
@@ -202,7 +208,11 @@ func (s *listScan) run(ctx context.Context) ([]Entry, error) {
 			if g+1 >= len(r.groups) {
 				break
 			}
-			cursor, inclusive = r.groups[g+1].first, true
+			next, err := r.first(ctx, g+1, &s.log, s.stats)
+			if err != nil {
+				return nil, err
+			}
+			cursor, inclusive = next, true
 			continue
 		}
 		if s.to != nil && bytes.Compare(key, s.to) >= 0 {

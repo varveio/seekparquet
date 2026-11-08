@@ -176,12 +176,16 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 	n := 0
 	from, inclusive := start, !exclusive
 	var log pageLog
-	for g := r.groupFor(from); g < len(r.groups) && n < rng.Limit; g++ {
+	g, err := r.groupFor(ctx, from, &log, stats)
+	if err != nil {
+		return err
+	}
+	for ; g < len(r.groups) && n < rng.Limit; g++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		grp := r.groups[g]
-		if end != nil && bytes.Compare(grp.first, end) >= 0 {
+		if end != nil && r.startsAtOrAfter(g, end) {
 			break
 		}
 		keys, first, done, err := r.readKeys(ctx, g, from, inclusive, end, rng.Limit-n, &log, stats)
@@ -217,19 +221,26 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 	return nil
 }
 
+// startsAtOrAfter reports whether row group g is known, without reading
+// it, to begin at or after key: its first key, or its part's minimum key
+// when it is the part's first group, is at or after key.
+func (r *Reader) startsAtOrAfter(g int, key []byte) bool {
+	if first := r.groups[g].first.Load(); first != nil {
+		return bytes.Compare(*first, key) >= 0
+	}
+	p := r.parts[r.groups[g].part]
+	return g == p.firstGroup && p.minKey != nil && bytes.Compare(p.minKey, key) >= 0
+}
+
 // readKeys reads the keys of up to want rows of one row group at or after
 // from and below end, and the row of the first; done reports that end was
 // reached. The keys share one new allocation, each capped at its own end.
 func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive bool, end []byte, want int, log *pageLog, stats *Stats) ([][]byte, int64, bool, error) {
-	grp := r.groups[g]
-	p := r.parts[grp.part]
-	index, err := p.keyIndex(ctx, grp.physical)
+	cursor, err := r.cursor(ctx, g, log, stats)
 	if err != nil {
 		return nil, 0, false, err
 	}
-	cursor := p.keyCursor(ctx, g, grp.physical, index, stats, log)
 	defer cursor.close()
-	stats.GroupsOpened++
 	key, row, ok, err := cursor.seek(from, inclusive)
 	if err != nil {
 		return nil, 0, false, err

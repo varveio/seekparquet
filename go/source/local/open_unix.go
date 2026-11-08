@@ -28,10 +28,10 @@ func DefaultMaxOpenFiles() int {
 // regular file and calls blocking.
 const openFlags = os.O_RDONLY | syscall.O_NONBLOCK
 
-// OpenFile opens path read-only without blocking on a special file,
+// openFile opens path read-only without blocking on a special file,
 // requires a regular file (ErrNotRegular) and makes its descriptor
 // blocking again.
-func OpenFile(path string) (*os.File, error) {
+func openFile(path string) (*os.File, error) {
 	f, err := os.OpenFile(path, openFlags, 0)
 	if err != nil {
 		return nil, err

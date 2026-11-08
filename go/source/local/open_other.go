@@ -18,9 +18,9 @@ func DefaultMaxOpenFiles() int { return 4096 }
 // not block on a special file here).
 const openFlags = os.O_RDONLY
 
-// OpenFile opens path read-only and requires a regular file
+// openFile opens path read-only and requires a regular file
 // (ErrNotRegular).
-func OpenFile(path string) (*os.File, error) {
+func openFile(path string) (*os.File, error) {
 	f, err := os.OpenFile(path, openFlags, 0)
 	if err != nil {
 		return nil, err

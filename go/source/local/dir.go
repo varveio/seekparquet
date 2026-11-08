@@ -41,8 +41,10 @@ func NewDir(path string, cache *FileCache) *Dir {
 func (d *Dir) Cache() *FileCache { return d.cache }
 
 // Open opens the file at the slash-separated path relative to the
-// directory, as a *CachedFile.
-func (d *Dir) Open(ctx context.Context, path string) (seekparquet.Part, error) {
+// directory, through the directory's FileCache. The file implements
+// seekparquet.ContextBinder: a read waiting for a descriptor ends with its
+// context.
+func (d *Dir) Open(ctx context.Context, path string) (seekparquet.SourceFile, error) {
 	open := func() (*os.File, error) {
 		root, err := os.OpenRoot(d.path)
 		if err != nil {
@@ -51,7 +53,7 @@ func (d *Dir) Open(ctx context.Context, path string) (seekparquet.Part, error) {
 		defer func() { _ = root.Close() }()
 		return root.OpenFile(filepath.FromSlash(path), openFlags, 0)
 	}
-	f, err := d.cache.Open(ctx, filepath.Join(d.path, filepath.FromSlash(path)), open)
+	f, err := d.cache.add(ctx, filepath.Join(d.path, filepath.FromSlash(path)), open)
 	if err != nil {
 		if errorsIsNotRegular(err) {
 			return nil, &os.PathError{Op: "open", Path: path, Err: notExist{err}}

@@ -26,7 +26,7 @@ const validManifest = `{
 }`
 
 func TestParseValid(t *testing.T) {
-	m, err := Parse([]byte(validManifest))
+	m, err := Parse([]byte(validManifest), 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestParseValid(t *testing.T) {
 	if !bytes.Contains(m.Extensions, []byte(`"complete": true`)) {
 		t.Fatalf("extensions %s", m.Extensions)
 	}
-	empty, err := Parse([]byte(`{"format":"seekparquet","format_version":0,"draft_revision":1,"schema_id":"x","parts":[]}`))
+	empty, err := Parse([]byte(`{"format":"seekparquet","format_version":0,"draft_revision":1,"schema_id":"x","parts":[]}`), 1000)
 	if err != nil || len(empty.Parts) != 0 || empty.Extensions != nil {
 		t.Fatalf("empty dataset: %+v, %v", empty, err)
 	}
@@ -120,7 +120,7 @@ func TestParseRefusals(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := Parse([]byte(c.raw))
+			_, err := Parse([]byte(c.raw), 1000)
 			var e *Error
 			if !errors.As(err, &e) || e.Code != c.code {
 				t.Fatalf("got %v, want %s", err, c.code)
@@ -146,7 +146,7 @@ func FuzzParse(f *testing.F) {
 	f.Add([]byte(`{"a":"𐀀","a":1}`))
 	f.Add([]byte(`{"format":"seekparquet","format_version":1e999999999}`))
 	f.Fuzz(func(t *testing.T, raw []byte) {
-		m, err := Parse(raw)
+		m, err := Parse(raw, 1000)
 		if err != nil {
 			var e *Error
 			if !errors.As(err, &e) {

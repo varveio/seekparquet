@@ -37,6 +37,31 @@ type Version struct {
 // Supported lists the version pairs this implementation reads.
 var Supported = []Version{{FormatVersion: 0, DraftRevision: 1}}
 
+// ErrTooManyParts reports a manifest listing more parts than its reader
+// allows: a limit of the reader, not a fault of the manifest.
+var ErrTooManyParts = errors.New("too many parts")
+
+// splitArray returns the elements of a JSON array, failing with
+// ErrTooManyParts as soon as there are more than max.
+func splitArray(raw json.RawMessage, max int) ([]json.RawMessage, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('[') {
+		return nil, invalid("parts is not an array")
+	}
+	out := []json.RawMessage{}
+	for dec.More() {
+		if len(out) == max {
+			return nil, ErrTooManyParts
+		}
+		var elem json.RawMessage
+		if err := dec.Decode(&elem); err != nil {
+			return nil, invalid("parts is not an array")
+		}
+		out = append(out, elem)
+	}
+	return out, nil
+}
+
 // Error is a manifest refusal: Code is one of the Code constants.
 type Error struct {
 	Code   string
@@ -81,7 +106,7 @@ type Part struct {
 // of a later revision is refused as unsupported rather than invalid; then
 // every member (MAN-3, PART-1 to PART-3); and last the order of the bounds
 // (PART-4).
-func Parse(raw []byte) (*Manifest, error) {
+func Parse(raw []byte, maxParts int) (*Manifest, error) {
 	if bytes.HasPrefix(raw, []byte("\xef\xbb\xbf")) {
 		return nil, invalid("the manifest begins with a byte order mark")
 	}
@@ -135,9 +160,9 @@ func Parse(raw []byte) (*Manifest, error) {
 	if !ok {
 		return nil, invalid("parts is missing")
 	}
-	var parts []json.RawMessage
-	if err := json.Unmarshal(rawParts, &parts); err != nil || parts == nil {
-		return nil, invalid("parts is not an array")
+	parts, err := splitArray(rawParts, maxParts)
+	if err != nil {
+		return nil, err
 	}
 	m.Parts = make([]Part, 0, len(parts))
 	paths := make(map[string]int, len(parts))

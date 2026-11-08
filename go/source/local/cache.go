@@ -15,8 +15,8 @@ import (
 	"github.com/varveio/seekparquet/go"
 )
 
-// FileCache bounds the descriptors a set of files holds open. Each file is
-// a *CachedFile: each read leases an open handle for its duration,
+// FileCache bounds the descriptors the files of one or more Dirs hold
+// open. Each read leases an open handle for its duration,
 // reopening the file when its handle was evicted, so any number of files
 // holds at most Max descriptors, the least recently used idle handle going
 // first when one more is needed. Every open, the first included, happens
@@ -38,7 +38,7 @@ type FileCache struct {
 	mu      sync.Mutex
 	changed chan struct{} // closed and replaced on every release, eviction or close
 	open    int           // descriptors open or being opened
-	idle    list.List     // *CachedFile with an open handle and no lease, oldest first
+	idle    list.List     // *cachedFile with an open handle and no lease, oldest first
 
 	peak, opens, evictions, waits int
 
@@ -127,7 +127,7 @@ func (c *FileCache) evictLocked() bool {
 	if e == nil {
 		return false
 	}
-	cf := e.Value.(*CachedFile)
+	cf := e.Value.(*cachedFile)
 	c.idle.Remove(e)
 	cf.elem = nil
 	_ = cf.f.Close()
@@ -137,10 +137,10 @@ func (c *FileCache) evictLocked() bool {
 	return true
 }
 
-// CachedFile is one file of a FileCache: an io.ReaderAt that holds a
+// cachedFile is one file of a FileCache: an io.ReaderAt that holds a
 // descriptor only while the cache keeps it. It implements
-// seekparquet.Part and seekparquet.ContextBinder.
-type CachedFile struct {
+// seekparquet.SourceFile and seekparquet.ContextBinder.
+type cachedFile struct {
 	cache *FileCache
 	name  string
 	open  func() (*os.File, error)
@@ -155,17 +155,17 @@ type CachedFile struct {
 	elem    *list.Element
 }
 
-// Open opens a file through open, after reserving its slot, and keeps it
+// add opens a file through open, after reserving its slot, and keeps it
 // as idle. name identifies it in errors. open is called for the first open
 // and again for each reopen after an eviction; it must open the file
-// read-only without blocking on a special file (OpenFile does both), and
+// read-only without blocking on a special file (openFile does both), and
 // it is where a caller confines the path to a directory (Dir opens through
 // an os.Root). A nil open opens name directly. A file that is not regular
 // is refused with ErrNotRegular. The file's size is taken at the first
 // open.
-func (c *FileCache) Open(ctx context.Context, name string, open func() (*os.File, error)) (*CachedFile, error) {
+func (c *FileCache) add(ctx context.Context, name string, open func() (*os.File, error)) (*cachedFile, error) {
 	if open == nil {
-		open = func() (*os.File, error) { return OpenFile(name) }
+		open = func() (*os.File, error) { return openFile(name) }
 	}
 	c.mu.Lock()
 	if err := c.reserveLocked(ctx); err != nil {
@@ -190,39 +190,39 @@ func (c *FileCache) Open(ctx context.Context, name string, open func() (*os.File
 		c.notifyLocked()
 		return nil, err
 	}
-	cf := &CachedFile{cache: c, name: name, open: open, id: info, size: info.Size(), f: f}
+	cf := &cachedFile{cache: c, name: name, open: open, id: info, size: info.Size(), f: f}
 	cf.elem = c.idle.PushBack(cf)
 	c.notifyLocked()
 	return cf, nil
 }
 
 // Name returns the name the file was opened with.
-func (f *CachedFile) Name() string { return f.name }
+func (f *cachedFile) Name() string { return f.name }
 
 // Size returns the file's size when it was opened.
-func (f *CachedFile) Size() int64 { return f.size }
+func (f *cachedFile) Size() int64 { return f.size }
 
 // ReadAt reads from the file through a leased handle, waiting for one
 // without a deadline. Readers with a context read through WithContext.
 // A ReadAt already in the operating system is not interrupted by anything.
-func (f *CachedFile) ReadAt(p []byte, off int64) (int, error) {
+func (f *cachedFile) ReadAt(p []byte, off int64) (int, error) {
 	return f.readAt(context.Background(), p, off)
 }
 
 // WithContext returns a reader of the file whose wait for a handle ends
 // with ctx (its error is then context.Cause(ctx)).
-func (f *CachedFile) WithContext(ctx context.Context) io.ReaderAt {
+func (f *cachedFile) WithContext(ctx context.Context) io.ReaderAt {
 	return contextFile{f, ctx}
 }
 
 type contextFile struct {
-	f   *CachedFile
+	f   *cachedFile
 	ctx context.Context
 }
 
 func (c contextFile) ReadAt(p []byte, off int64) (int, error) { return c.f.readAt(c.ctx, p, off) }
 
-func (f *CachedFile) readAt(ctx context.Context, p []byte, off int64) (int, error) {
+func (f *cachedFile) readAt(ctx context.Context, p []byte, off int64) (int, error) {
 	h, err := f.lease(ctx)
 	if err != nil {
 		return 0, err
@@ -231,7 +231,7 @@ func (f *CachedFile) readAt(ctx context.Context, p []byte, off int64) (int, erro
 	return h.ReadAt(p, off)
 }
 
-func (f *CachedFile) lease(ctx context.Context) (*os.File, error) {
+func (f *cachedFile) lease(ctx context.Context) (*os.File, error) {
 	c := f.cache
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -279,7 +279,7 @@ func (f *CachedFile) lease(ctx context.Context) (*os.File, error) {
 }
 
 // reopen opens the file again and checks it is the file first opened.
-func (f *CachedFile) reopen() (*os.File, error) {
+func (f *cachedFile) reopen() (*os.File, error) {
 	h, err := f.open()
 	if err == nil {
 		if err = blocking(h); err != nil {
@@ -300,11 +300,11 @@ func (f *CachedFile) reopen() (*os.File, error) {
 	return h, nil
 }
 
-func (f *CachedFile) closedError() error {
+func (f *cachedFile) closedError() error {
 	return fmt.Errorf("%s: %w (%w)", f.name, seekparquet.ErrClosed, os.ErrClosed)
 }
 
-func (f *CachedFile) release() {
+func (f *cachedFile) release() {
 	c := f.cache
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -319,7 +319,7 @@ func (f *CachedFile) release() {
 	c.notifyLocked()
 }
 
-func (f *CachedFile) closeLocked() {
+func (f *cachedFile) closeLocked() {
 	if f.elem != nil {
 		f.cache.idle.Remove(f.elem)
 		f.elem = nil
@@ -334,7 +334,7 @@ func (f *CachedFile) closeLocked() {
 // Close marks the file closed: reads waiting for its handle fail with
 // seekparquet.ErrClosed (and os.ErrClosed) at once, and its descriptor is
 // closed now or when the last read holding it ends. Later reads fail.
-func (f *CachedFile) Close() error {
+func (f *cachedFile) Close() error {
 	c := f.cache
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -346,7 +346,7 @@ func (f *CachedFile) Close() error {
 	return nil
 }
 
-var _ io.ReaderAt = (*CachedFile)(nil)
+var _ io.ReaderAt = (*cachedFile)(nil)
 
 // ErrNotRegular reports a path that names something other than a regular
 // file.
