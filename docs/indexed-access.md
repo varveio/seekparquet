@@ -20,7 +20,7 @@ encoding interoperability evidence.
 | Many groups | `TestIndexedAccessNonMonotoneScaling`: 10/100/1,000 groups; above test: 256 groups across 16 parts | `coldFinalKeyUsesLogarithmicProbesAndBoundedIndexOverfetch`: 10/100/1,000 groups, read and byte budgets | No 100,000-part open or remote workload qualification. |
 | Broad and nonmonotone bounds | `TestIndexedAccessNonMonotoneScaling` measures reads/bytes/decodes on alternating broad bounds; `TestLongKeys` checks overlapping-bound results | Alternating broad nonmonotone bounds above; `nonMonotoneBoundsKeepThePredecessorOfARepeatedGroup` checks complete repeated group | Broad bounds can require scanning within a group; no universal constant-read promise. The scaling case holds candidate group size constant at 16 rows. |
 | Large repeated group and adaptive row continuation | `TestLargeGroupResumeIsPageBounded` and `TestIndexedAccessRepeatedListingResume`: 5,000 equal keys, actual prior-row cursors, maximum decoded pages/request; listing also checks projection | `repeatedPaginationJumpsToPhysicalRowsForRangeAndList`: 10,000 equal keys, range and list, per-request and aggregate read/byte budgets | Both APIs check every expected offset; counts are data-page decodes in Go and logical source reads in Java. |
-| Sparse projection with/without value OffsetIndex | `TestSparseListingDecodesValuePageOnce`: exactly two decoded data pages; `TestSparseProjectionSkipsPages`: exact distinct selected pages, null/dictionary/absent values | Projected ranges above exercise value pages with OffsetIndex | Java sparse delimiter projection and missing-OffsetIndex counted decoder coverage remain open. Go's direct sparse projection test additionally exercises the internal production projector. |
+| Sparse projection with/without value OffsetIndex | `TestSparseListingDecodesValuePageOnce`: exactly two decoded data pages; `TestSparseProjectionSkipsPages`: exact distinct selected pages, null/dictionary/absent values | `sparseListingLoadsEachSelectedValuePageOnceWithAndWithoutOffsetIndex`: exact source load ranges for eight selected physical value pages, 24 skipped pages, null/absent values | Java counts selected value-page loads with a documented one-to-one decode-call correspondence for this successful PLAIN fixture; dictionary and direct decoder instrumentation remain outside this case. Go's direct sparse projection test additionally exercises the internal production projector. |
 | Large keys and retained metadata | `TestFirstKeysShareIndexBudget`: 32 × 128 KiB keys, exact retained-index/first-key charge and one-byte-short refusal | `retainedExactFirstKeysAreChargedOnceBeforePublication`: exact budget including aligned retained first-key copy | Resource accounting tests, not total heap measurements. Java lacks the same 128 KiB multi-group geometry. |
 
 The source wrappers count every requested range, including overlapping requests
@@ -31,6 +31,19 @@ header walking and index parsing. The sparse tests derive the distinct selected
 data pages from generated OffsetIndexes, then compare that geometry with decode
 counts. Source reads and decoder counts measure different work and should not
 be combined into one metric.
+
+The Java sparse-list test enumerates value pages from physical chunk ranges and
+page headers, independently of OffsetIndexes. Its `value_page_loads` metric
+matches exactly the header-plus-body range requested by the indexed
+`PartFile.valuePage` branch, or the exact body range requested by the branch
+without an OffsetIndex. In these successful PLAIN queries each matched load is
+followed by exactly one call to the production decoder. Header-window reads are
+counted separately and can include overlapping payload bytes; they are not
+additional page decodes. The test asserts one load for each of eight selected
+pages and none for 24 unselected pages, even though two selected file rows share
+each loaded page. Disabling request-local value-page reuse makes both variants
+fail on a repeated load. This establishes the narrow load/decode-call
+correspondence, rather than treating generic source reads as decoder counts.
 
 The new source budgets allow one index load and routing/key-page reads per
 visited group or emitted directory, plus selected value work. Warm ranges allow
