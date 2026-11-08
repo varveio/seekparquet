@@ -7,8 +7,10 @@ prefix with delimiter rollups, by reading the manifest, the footers, the key col
 few pages.
 
 ```
-go get github.com/varveio/seekparquet/go
+go get github.com/varveio/seekparquet/go@v0.1.0
 ```
+
+Versioning is described in [RELEASING.md](../RELEASING.md#go).
 
 | | |
 |---|---|
