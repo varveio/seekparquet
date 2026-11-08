@@ -12,7 +12,7 @@
     },
     {
       "code": "invalid_manifest",
-      "meaning": "The manifest is not valid: unparseable JSON, duplicate member names, a missing, extra or ill-typed member, a wrong format name, malformed base64, a part with no rows, or a part path that breaks PART-1. Also part bounds in the manifest that are not ascending and disjoint (PART-4).",
+      "meaning": "The manifest is not valid: unparseable JSON, duplicate member names, a missing, extra or ill-typed member, a wrong format name, malformed base64, a part with no rows, or a part path that breaks PART-1. Also part bounds in the manifest that are not ascending and disjoint (PART-4). A missing or malformed key declaration is also invalid_manifest.",
       "requirements": [
         "MAN-1",
         "MAN-2",
@@ -23,7 +23,8 @@
         "PART-3",
         "MAN-6",
         "MAN-7",
-        "PART-4"
+        "PART-4",
+        "MAN-8"
       ],
       "detect": "open"
     },
@@ -74,7 +75,7 @@
     },
     {
       "code": "invalid_key_column",
-      "meaning": "A part has no top-level REQUIRED BYTE_ARRAY column named key, the key column carries an annotation other than STRING or UTF8, or column_orders does not give it TYPE_ORDER.",
+      "meaning": "A part has no top-level REQUIRED BYTE_ARRAY column named by manifest key.column, the key column carries an annotation other than STRING or UTF8, or column_orders does not give it TYPE_ORDER.",
       "requirements": [
         "KEY-1",
         "KEY-5"
@@ -130,7 +131,7 @@
     },
     {
       "code": "key_order",
-      "meaning": "Keys are not unique and strictly ascending: within a page, across pages, row groups or parts.",
+      "meaning": "Keys decrease within a page or across pages, row groups or parts, or equal keys appear when manifest key.unique is true.",
       "requirements": [
         "KEY-3"
       ],

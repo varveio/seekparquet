@@ -2,5 +2,9 @@
   "format": "seekparquet",
   "format_version": 0,
   "schema_id": "example/objects/v1",
-  "parts": []
+  "parts": [],
+  "key": {
+    "column": "key",
+    "unique": true
+  }
 }

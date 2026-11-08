@@ -673,6 +673,21 @@ def build():
     R.append(derive("invalid-footer-file-path", "basic",
                     "Row group 0's key column chunk sets file_path (a reference to another file).",
                     None, parts={B: set_file_path(0, 0, b"other.parquet")}))
+    for name, value in (("manifest-key-null", None), ("manifest-key-empty", {}),
+                        ("manifest-key-unique-string", {"column": "key", "unique": "true"}),
+                        ("manifest-key-empty-column", {"column": "", "unique": True}),
+                        ("manifest-key-control-column", {"column": "bad\x7f", "unique": True}),
+                        ("manifest-key-extra", {"column": "key", "unique": True, "extra": 1})):
+        R.append(derive(name, "basic", "Malformed required manifest key declaration: " + name,
+                        manifest=set_member(["key"], value)))
+    R.append(derive("manifest-key-missing", "basic", "The required manifest key declaration is missing.",
+                    manifest=del_member(["key"])))
+    R.append(derive("named-key-absent", "basic", "The declared key column is absent from the part.",
+                    manifest=set_member(["key", "column"], "absent"),
+                    parts={B: set_stamp(b"seekparquet.key_column", b"absent")}))
+    for field in (b"seekparquet.key_column", b"seekparquet.key_unique"):
+        R.append(derive("stamp-duplicate-" + field.decode().split(".")[-1].replace("_", "-"), "basic",
+                        "The key declaration footer stamp appears twice.", parts={B: duplicate_stamp(field)}))
     R.append(derive("stamp-duplicate", "basic", "The footer holds seekparquet.schema_id twice (same value).",
                     None,
                     parts={B: duplicate_stamp(b"seekparquet.schema_id")}))

@@ -503,6 +503,12 @@ BASIC_VARIANTS = [
      {"version": (1, None)}),
 ]
 
+for _field in ("key_column", "key_unique"):
+    for _kind, _value in (("missing", None), ("mismatch", "other" if _field == "key_column" else "false"), ("noncanonical", "TRUE" if _field == "key_unique" else " key")):
+        BASIC_VARIANTS.append((f"stamp-{_field.replace('_', '-')}-{_kind}",
+                               f"The {_field} stamp is {_kind}.",
+                               {"stamps": {f"seekparquet.{_field}": _value}}))
+
 
 # --------------------------------------------------------------------------
 # Writing
@@ -553,6 +559,9 @@ def stamps_for(doc, version=(FORMAT_VERSION, DRAFT_REVISION), override=None):
     if dr is not None:
         st["seekparquet.draft_revision"] = str(dr)
     st["seekparquet.schema_id"] = doc["schema_id"]
+    key = doc.get("key", {"column": "key", "unique": True})
+    st["seekparquet.key_column"] = key["column"]
+    st["seekparquet.key_unique"] = str(key["unique"]).lower()
     if override is not None:
         if override == {}:
             return {}
@@ -577,7 +586,7 @@ def build_table(doc, part, fault):
     else:
         kt = pa.string() if doc["key_type"] == "string" else pa.binary()
         kv = [k.decode("utf-8") for k in keys] if doc["key_type"] == "string" else keys
-        kname = "id" if key_mode == "missing" else "key"
+        kname = "id" if key_mode == "missing" else doc.get("key", {}).get("column", "key")
         kfield, karr = pa.field(kname, kt, nullable=key_mode == "nullable"), pa.array(kv, kt)
     fields, arrays = [kfield], [karr]
     for n in names:
@@ -719,7 +728,7 @@ def assert_structure(data, doc, part, fault=None):
     leaves = pf.leaf_columns()
     if fault.get("key") is None:
         path, el, d, r = leaves[0]
-        assert path == ("key",) and el.get(pm.SE_TYPE) == 6 and el.get(pm.SE_REPETITION) == 0
+        assert path == (doc.get("key", {}).get("column", "key"),) and el.get(pm.SE_TYPE) == 6 and el.get(pm.SE_REPETITION) == 0
     keys = [b64d(r["key_base64"]) for r in part["rows"]]
     mrpp = part["writer"]["max_rows_per_page"]
     off = 0
@@ -773,8 +782,9 @@ def assert_structure(data, doc, part, fault=None):
     if fault.get("key") is None:
         t = pq.read_table(io.BytesIO(data))
         names = part.get("columns") or [c["name"] for c in doc["columns"]]
-        assert t.column_names == ["key"] + names
-        got_keys = [k if isinstance(k, bytes) else k.encode("utf-8") for k in t.column("key").to_pylist()]
+        key_name = doc.get("key", {}).get("column", "key")
+        assert t.column_names == [key_name] + names
+        got_keys = [k if isinstance(k, bytes) else k.encode("utf-8") for k in t.column(key_name).to_pylist()]
         assert got_keys == keys
         cols = {c["name"]: dict(c, **part.get("column_overrides", {}).get(c["name"], {})) for c in doc["columns"]}
         for n in names:
@@ -798,7 +808,7 @@ def manifest_for(doc, datas, version=(FORMAT_VERSION, DRAFT_REVISION)):
             mn = keys[1]
         parts.append(part_entry(part["path"], len(part["rows"]), data, mn, mx, mopt.get("sha256", False)))
     return manifest(parts, doc["schema_id"], format_version=version[0], draft_revision=version[1],
-                    extensions=mopt.get("extensions"))
+                    extensions=mopt.get("extensions"), key=doc.get("key"))
 
 
 def jsonable_rows_doc(doc):
@@ -841,7 +851,48 @@ def write_dataset(doc, out_dir, fault=None, check=True, extra_files=None):
     return m
 
 
-VALID = [def_empty, def_basic, def_multipart, def_binary_keys, def_projection, def_delimiter, def_list_bounds,
+def def_repeated():
+    keys = [b"a"] * 3 + [b"b"] * 12 + [b"c/x"] * 5 + [b"d"] * 4
+    return {"dataset": "repeated-keys", "description": "Repeated groups cross two-row pages and four-row row groups; groups stay within parts.",
+            "schema_id": "conformance/repeated/v1", "key_type": "binary", "key": {"column": "key", "unique": False},
+            "columns": [{"name": "size", "type": "int64", "nullable": False}],
+            "parts": [{"path": "data/part-00000.parquet", "row_groups": [4, 4, 4, 3], "writer": W(2),
+                       "rows": [{"key_base64": b64e(k), "values": {"size": I(i)}} for i, k in enumerate(keys[:15])]},
+                      {"path": "data/part-00001.parquet", "row_groups": [4, 5], "writer": W(2),
+                       "rows": [{"key_base64": b64e(k), "values": {"size": I(i+15)}} for i, k in enumerate(keys[15:])]}]}
+
+
+def def_large_group():
+    d = def_repeated()
+    d["dataset"] = "one-large-group"
+    d["description"] = "One group occupies an entire part, spanning six row groups and twelve pages."
+    d["parts"] = [d["parts"][0]]
+    d["parts"][0]["row_groups"] = [4] * 6
+    d["parts"][0]["rows"] = [{"key_base64": b64e(b"only"), "values": {"size": I(i)}} for i in range(24)]
+    return d
+
+
+def def_named_key():
+    d = def_repeated()
+    d["dataset"] = "named-key"
+    d["description"] = "The manifest names object.id as the key column; dots are literal."
+    d["key"]["column"] = "object.id"
+    return d
+
+
+def new_invalid_docs():
+    d = def_repeated()
+    d["dataset"] = "grouped-key-decreasing"
+    d["description"] = "A repeated-key dataset decreases inside a page."
+    d["parts"][0]["rows"][4]["key_base64"] = b64e(b"bb")
+    split = def_repeated()
+    split["dataset"] = "group-split-parts"
+    split["description"] = "A key group is split across parts; their manifest bounds overlap."
+    split["parts"][1]["rows"][0]["key_base64"] = b64e(b"b")
+    return [d, split]
+
+
+VALID = [def_repeated, def_large_group, def_named_key, def_empty, def_basic, def_multipart, def_binary_keys, def_projection, def_delimiter, def_list_bounds,
          def_non_utf8_keys, def_annotated, def_encodings, def_optional_codecs]
 
 
@@ -867,8 +918,9 @@ def rec(name, out_dir, rows_name, valid, desc, provenance="native", fault=None, 
 def build():
     records = []
     # 1. rows documents
-    docs = [f() for f in VALID] + def_invalid_native() + [def_key_order_across_parts()] + def_inconsistent_all()
+    docs = [f() for f in VALID] + def_invalid_native() + [def_key_order_across_parts()] + def_inconsistent_all() + new_invalid_docs()
     for d in docs:
+        d.setdefault("key", {"column": "key", "unique": True})
         write_text(ROWS / f"{d['dataset']}.json", dumps(jsonable_rows_doc(d)))
 
     # 2. valid datasets, from the rows documents as written
@@ -894,7 +946,7 @@ def build():
     for name in ("key-order-within-page", "key-order-duplicate", "key-order-across-pages",
                  "key-order-across-row-groups", "key-order-duplicate-across-row-groups", "invalid-key-empty",
                  "missing-column-index-native", "inconsistent-column-type", "inconsistent-column-width",
-                 "inconsistent-column-repetition", "key-order-across-parts"):
+                 "inconsistent-column-repetition", "key-order-across-parts", "grouped-key-decreasing", "group-split-parts"):
         doc = restore_rows_doc(load_rows(name))
         out = DATASETS / "invalid" / name
         write_dataset(doc, out, fault=native_writer_options.get(name, {}), check=True)

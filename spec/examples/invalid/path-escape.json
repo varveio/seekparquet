@@ -18,5 +18,9 @@
       "source": "s3://example-bucket/logs/",
       "complete": true
     }
+  },
+  "key": {
+    "column": "key",
+    "unique": true
   }
 }

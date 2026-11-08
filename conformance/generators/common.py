@@ -74,11 +74,12 @@ def load_rows(name: str) -> dict:
 
 
 def manifest(parts, schema_id, *, format_version=FORMAT_VERSION, draft_revision=DRAFT_REVISION,
-             extensions=None) -> dict:
+             extensions=None, key=None) -> dict:
     m = {"format": "seekparquet", "format_version": format_version}
     if draft_revision is not None:
         m["draft_revision"] = draft_revision
     m["schema_id"] = schema_id
+    m["key"] = key or {"column": "key", "unique": True}
     m["parts"] = parts
     if extensions is not None:
         m["extensions"] = extensions
