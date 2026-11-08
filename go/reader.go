@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -150,6 +151,11 @@ func openParts(ctx context.Context, inputs []partInput, key Key, opt Options) (_
 			}
 			if err := checkSorted(p, physical, rg); err != nil {
 				return nil, err
+			}
+			// Row-group positions and cursor arithmetic use signed dataset
+			// ordinals. Per-part checks do not bound this cross-part sum.
+			if rg.NumRows > math.MaxInt64-r.rows {
+				return nil, exceeded("dataset row count exceeds %d at part %s row group %d", math.MaxInt64, in.name, physical)
 			}
 			r.groups = append(r.groups, &group{part: i, physical: physical, rows: rg.NumRows, start: r.rows})
 			r.rows += rg.NumRows
