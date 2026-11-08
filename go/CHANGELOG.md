@@ -5,7 +5,9 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
-First public version.
+## v0.1.0 (2026-11-08)
+
+First public version. Implements format 1 draft revision 1; passes conformance revision `0.1.0-draft.4`.
 
 - Reads SeekParquet format 1, draft revision 1 (`format_version` 0, `draft_revision` 1).
 - One public package. `OpenDataset` opens a dataset through a `Source`; `OpenDir` opens a local
