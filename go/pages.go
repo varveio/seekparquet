@@ -664,12 +664,13 @@ func (p *part) dataError(ctx context.Context, physical int, err error) error {
 	return refusePart(CodeInvalidParquet, p.name, physical, "%v", err)
 }
 
-// readColumn hands n rows of a value column of a physical row group from
-// row on to emit, a page at a time. Through the chunk's OffsetIndex it
-// reads only the pages holding them, each checked against its entry;
-// without one (COL-4) it walks the page headers from the chunk's start,
-// reading and decoding only the pages holding them.
-func (p *part) readColumn(ctx context.Context, physical int, col leaf, row int64, n int, st *stats, emit func([]parquet.Value)) error {
+// readColumn hands the selected rows of a value column to emit in order.
+// selected is non-empty, ascending, and confined to this physical row group.
+// Through the OffsetIndex it reads only pages holding selected rows; without
+// one (COL-4) it walks headers, decoding only pages holding selected rows.
+// Each data page is decoded at most once, and only the current decoded page
+// and chunk dictionary are retained, regardless of gaps in the selection.
+func (p *part) readColumn(ctx context.Context, physical int, col leaf, selected []position, st *stats, emit func(int, parquet.Value)) error {
 	c, err := p.openChunk(ctx, physical, col, st)
 	if err != nil {
 		return err
@@ -679,29 +680,34 @@ func (p *part) readColumn(ctx context.Context, physical int, col leaf, row int64
 	if err != nil {
 		return c.corrupt(fmt.Errorf("the OffsetIndex: %w", err))
 	}
-	end := row + int64(n)
-	clip := func(values []parquet.Value, first int64) []parquet.Value {
-		return values[max(row-first, 0):min(end-first, int64(len(values)))]
+	next := 0
+	emitPage := func(values []parquet.Value, first int64) {
+		end := first + int64(len(values))
+		for next < len(selected) && selected[next].row < end {
+			emit(next, values[selected[next].row-first])
+			next++
+		}
 	}
 	if index != nil {
 		locs, err := checkLocations(index, rows, c.start, c.end)
 		if err != nil {
 			return c.corrupt(err)
 		}
-		for i := pageAt(locs, row); i < len(locs) && locs[i].first < end; i++ {
+		for next < len(selected) {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
+			i := pageAt(locs, selected[next].row)
 			values, err := c.indexed(i, locs[i])
 			if err != nil {
 				return err
 			}
-			emit(clip(values, locs[i].first))
+			emitPage(values, locs[i].first)
 		}
 		return nil
 	}
 	first := int64(0)
-	for off := c.start; first < end; {
+	for off := c.start; next < len(selected); {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -713,7 +719,7 @@ func (p *part) readColumn(ctx context.Context, physical int, col leaf, row int64
 			return err
 		}
 		pageRows, isData := dataRows(h)
-		if isData && first+pageRows > row {
+		if isData && first+pageRows > selected[next].row {
 			data, err := c.payload(h, off, length, raw)
 			if err != nil {
 				return err
@@ -725,7 +731,7 @@ func (p *part) readColumn(ctx context.Context, physical int, col leaf, row int64
 			if int64(len(values)) != pageRows {
 				return c.corrupt(fmt.Errorf("a page declares %d rows and holds %d", pageRows, len(values)))
 			}
-			emit(clip(values, first))
+			emitPage(values, first)
 		}
 		first += pageRows
 		off += length + int64(h.CompressedPageSize)
