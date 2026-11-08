@@ -222,11 +222,8 @@ python3 conformance/harness/run.py \
     --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
 ```
 
-The complete reader qualification run passes **1,379 cases**: **157 core** and **1,222 generated**,
-including **432 repeated-key cases**, with **zero failures** and no skipped reader cases. The
-**207 skipped cases** belong to unclaimed validator targets. See [QUALIFICATION.md](QUALIFICATION.md).
-
-The Java build passes **89 JUnit 5 tests**, with no failures or skipped tests.
+The adapter claims the `reader` target and must pass every case of it; validator targets are not claimed
+yet, so the harness skips their cases. CI runs both the unit tests and the suite.
 
 The build uses the checked-in Gradle wrapper (Gradle 8.14.3) and a Java 21 toolchain. The unit
 tests write their Parquet files to temporary directories, using a small test-only writer. They also

@@ -20,7 +20,7 @@ independent of the specification's draft revisions.
 - Configurable result-entry limits and request caches scoped to the current row group.
 - Updated fixtures and regression tests for grouped pagination, footer validation, storage
   interoperability, resource limits, and optional eager checks. Lazy CHECK-1 opening remains the default.
-- Complete reader conformance: 1,379 passed, zero failed, zero skipped reader cases.
+- Passes the conformance suite's `reader` target.
 
 ### Added
 

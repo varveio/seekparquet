@@ -132,22 +132,14 @@ python3 conformance/harness/run.py \
   --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
 ```
 
-| Selection | Passed | Failed | Skipped |
-|---|---:|---:|---:|
-| Reader, core | 157 | 0 | 0 |
-| Reader, generated | 1,222 | 0 | 0 |
-| Reader total | **1,379** | **0** | **0** |
-| Unclaimed validator cases | 0 | 0 | 207 |
-
-The harness reports `qualified_targets: ["reader"]`, no run errors, and a complete selection.
-All **432 repeated-key cases** pass, including groups split across pages and row groups, named key
-columns, `(key, offset)` continuation and lookup. No reader case is filtered or skipped.
-This qualifies semantic reading; the planned indexed-access target is not claimed.
+The adapter claims the `reader` target and qualifies when every reader case passes, including the
+repeated-key cases (groups split across pages and row groups, named key columns, `(key, offset)`
+continuation and lookup). Validator targets are not claimed, so their cases are skipped. This
+qualifies semantic reading; the planned indexed-access target is not claimed.
 
 The build passes compilation with warnings as errors, strict Javadoc, JUnit 5 tests and adapter
 installation. Unit tests include independent fixture reads, deterministic corruption trials,
 concurrent requests, cancellation and resource cleanup, early footer refusals, and grouped pagination.
-JUnit 5 reports **89 tests, zero failures, zero errors and zero skipped tests**.
 The focused indexed-read unit test passes; this is not a separate indexed-access qualification.
 
 `parquet-common` is an API dependency because the public storage interface extends `InputFile`.
