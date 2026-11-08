@@ -35,7 +35,7 @@ public final class Adapter {
 
     private final Map<String, Dataset> open = new HashMap<>();
 
-    private Adapter() {}
+    Adapter() {}
 
     /**
      * Runs the adapter until stdin closes.

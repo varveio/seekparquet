@@ -119,12 +119,11 @@ logger.
 
 ## Reader qualification (2026-11-08)
 
-JDK 21 at `/usr/lib/jvm/java-21-openjdk-amd64`; Gradle wrapper 8.14.3. The complete,
-unfiltered semantic conformance run used suite `0.1.0-draft.4`, SHA-256
-`2fb739de436d2d50e49137708642e65c6778e3c4153854102343c7898934bed5`:
+Use JDK 21 and the checked-in Gradle wrapper. To qualify against the current suite, run the complete,
+unfiltered semantic conformance command:
 
 ```sh
-export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+# Set JAVA_HOME to your JDK 21 installation.
 cd java
 ./gradlew build :conformance:installDist
 cd ..

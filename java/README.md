@@ -84,9 +84,8 @@ List<Row> group = dataset.lookup(Bytes.utf8("photos/item"), 100, "size");
 `RangeQuery.next(Row)` and `ListQuery.next(ListEntry)` keep the original bounds and use the sealed
 `Continuation` alternatives: `RowPosition(key, offset)` and `CommonPrefix(bytes)`. A result limit
 can split a group. Resuming a row continues inside that group before later keys; resuming a common
-prefix skips its subtree. `ListQuery.Builder.after(Bytes)` remains an exclusive byte floor;
-`continuation(true)` suppresses previously listed prefixes for that legacy form. It cannot be
-combined with a tagged cursor.
+prefix skips its subtree. Ranges accept only row cursors; listings accept either cursor type.
+There is no separate byte-floor or continuation flag.
 
 ### Options, limits and cancellation
 
@@ -111,7 +110,12 @@ progress, waits for them to return, then closes the part sources.
 `Limits` bound what the data may make the reader allocate (spec §11): the manifest size, the number
 of parts, footer, page index and page sizes, page value counts, and the maximum requested result
 entries (1,000,000 by default). Per-request dictionaries and value pages are retained only for the
-current row group. A size above a limit fails with
+current row group. `Limits.withMaxIndexMemoryBytes(bytes)` sets a dataset-wide budget for retained
+key and value indexes (256 MiB by default), using conservative estimates of their decoded arrays,
+bounds and cache entries. Publication is charged once under a shared lock; a budget failure leaves
+already cached indexes usable. Delta decoders also check padded scratch arrays against `maxPageBytes`
+before initialization. Page and entry limits are not a total request-memory guarantee: concurrent
+requests each retain their own pages, dictionaries and results. A size above a limit fails with
 `LimitExceededException`, which is not a refusal.
 
 ### Errors
@@ -159,8 +163,9 @@ object's real size, which the reader compares with the manifest. Caching or requ
 layers are decorators of these interfaces.
 
 `LocalStorage` is the only implementation in this module. It uses positioned reads on one
-`FileChannel` per part, confines parts to the dataset root (symbolic links included), and detects a
-part file that changes size or is replaced. Object-store adapters belong in separate modules.
+`FileChannel` per part, opens parts through pinned directory handles and rejects symbolic links in each part-path component, and detects a
+part file that changes size or is replaced. Filesystems without `SecureDirectoryStream` are refused
+with a storage error; reopening after interruption uses the same pinned parent handle. Object-store adapters belong in separate modules.
 
 ## What opening checks, what reads check
 
@@ -213,7 +218,7 @@ data in the pages a request decodes is `invalid_parquet` (CHECK-5).
 ## Building and running the conformance suite
 
 ```sh
-export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+# Set JAVA_HOME to your JDK 21 installation.
 cd java
 ./gradlew build                       # compile, javadoc, unit tests
 ./gradlew :conformance:installDist    # build the adapter launcher
@@ -223,7 +228,8 @@ python3 conformance/harness/run.py \
 ```
 
 The adapter claims the `reader` target and must pass every case of it; validator targets are not claimed
-yet, so the harness skips their cases. CI runs both the unit tests and the suite.
+yet, so the harness skips their cases. Run both commands above for Java verification; the repository
+CI workflow does not yet gate Java changes.
 
 The build uses the checked-in Gradle wrapper (Gradle 8.14.3) and a Java 21 toolchain. The unit
 tests write their Parquet files to temporary directories, using a small test-only writer. They also

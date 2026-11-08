@@ -10,6 +10,9 @@ plugins {
 
 dependencies {
     implementation(project(":seekparquet"))
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
     // parquet-java logs through SLF4J; the adapter discards it (stdout carries responses only).
     runtimeOnly(libs.slf4j.nop)
 }

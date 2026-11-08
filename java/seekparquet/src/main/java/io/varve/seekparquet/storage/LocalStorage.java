@@ -7,16 +7,21 @@ import io.varve.seekparquet.Cancellation;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InterruptedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.DirectoryStream;
+import java.nio.file.SecureDirectoryStream;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
 import java.util.Optional;
@@ -25,8 +30,8 @@ import java.util.Optional;
  * A dataset root in a local directory.
  *
  * <p>Parts are read with positioned reads on one {@link FileChannel} per part, shared by all
- * requests. A part resolves within the root: a part path whose real path (after symbolic links)
- * lies outside the root's real path is not opened. A part is pinned to the file it opened: a read
+ * requests. Parts are opened relative to pinned directory handles, rejecting symbolic links in
+ * every part-path component. Filesystems without secure directory streams are rejected. A part is pinned to the file it opened: a read
  * fails with {@link PartChangedException} when the file's size changes, or when the channel had to
  * be reopened (after a thread interrupt closed it) and the path now names another file. Rewriting a
  * file in place without changing its size cannot be detected cheaply; parts must be immutable
@@ -80,24 +85,35 @@ public final class LocalStorage implements DatasetStorage {
                 || path.chars().anyMatch(c -> c < 32 || c == 127)) {
             throw new IOException("part path is not a plain relative path");
         }
-        Path file = root;
-        for (String segment : path.split("/", -1)) {
+        String[] segments = path.split("/", -1);
+        for (String segment : segments) {
             if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) {
                 throw new IOException("part path " + path + " is not a plain relative path");
             }
-            file = file.resolve(segment);
         }
-        if (!Files.exists(file)) {
-            throw new NoSuchFileException(file.toString());
+        DirectoryStream<Path> directory = Files.newDirectoryStream(root);
+        if (!(directory instanceof SecureDirectoryStream<Path>)) {
+            directory.close();
+            throw new IOException("the filesystem does not support secure part-path traversal");
         }
-        Path real = file.toRealPath();
-        if (!real.startsWith(root.toRealPath())) {
-            throw new IOException("part " + path + " resolves outside the dataset root");
+        @SuppressWarnings("unchecked")
+        SecureDirectoryStream<Path> parent = (SecureDirectoryStream<Path>) directory;
+        try {
+            for (int i = 0; i < segments.length - 1; i++) {
+                SecureDirectoryStream<Path> child = parent.newDirectoryStream(Path.of(segments[i]), LinkOption.NOFOLLOW_LINKS);
+                try {
+                    parent.close();
+                } catch (IOException e) {
+                    child.close();
+                    throw e;
+                }
+                parent = child;
+            }
+            return new LocalPart(path, parent, Path.of(segments[segments.length - 1]));
+        } catch (IOException | RuntimeException | Error e) {
+            try { parent.close(); } catch (IOException suppressed) { e.addSuppressed(suppressed); }
+            throw e;
         }
-        if (!Files.isRegularFile(real)) {
-            throw new IOException("part " + path + " is not a regular file");
-        }
-        return new LocalPart(path, real);
     }
 
     @Override
@@ -108,26 +124,42 @@ public final class LocalStorage implements DatasetStorage {
     /** One part file. */
     private static final class LocalPart implements PartSource {
         private final String path;
+        private final SecureDirectoryStream<Path> parent;
         private final Path file;
         private final Object fileKey;
         private final long size;
         private final String version;
-        private volatile FileChannel channel;
+        private volatile SeekableByteChannel channel;
         private volatile boolean closed;
 
-        LocalPart(String path, Path file) throws IOException {
+        LocalPart(String path, SecureDirectoryStream<Path> parent, Path file) throws IOException {
             this.path = path;
+            this.parent = parent;
             this.file = file;
-            this.channel = FileChannel.open(file, StandardOpenOption.READ);
+            BasicFileAttributes attributes = attributes();
+            if (!attributes.isRegularFile()) {
+                throw new IOException("part " + path + " is not a regular file");
+            }
+            this.fileKey = attributes.fileKey();
+            this.channel = openChannel();
             try {
-                BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-                this.fileKey = attributes.fileKey();
+                if (!Objects.equals(fileKey, attributes().fileKey())) {
+                    throw new PartChangedException("part " + path + " changed while opening");
+                }
                 this.size = channel.size();
                 this.version = (fileKey == null ? "" : fileKey + "@") + attributes.lastModifiedTime().toMillis() + ":" + size;
             } catch (IOException | RuntimeException e) {
                 channel.close();
                 throw e;
             }
+        }
+
+        private BasicFileAttributes attributes() throws IOException {
+            return parent.getFileAttributeView(file, BasicFileAttributeView.class, LinkOption.NOFOLLOW_LINKS).readAttributes();
+        }
+
+        private SeekableByteChannel openChannel() throws IOException {
+            return parent.newByteChannel(file, Set.of(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS));
         }
 
         @Override
@@ -152,48 +184,67 @@ public final class LocalStorage implements DatasetStorage {
             }
             cancellation.throwIfCancelled();
             ByteBuffer buffer = ByteBuffer.allocate(length);
-            while (buffer.hasRemaining()) {
+            while (true) {
                 cancellation.throwIfCancelled();
-                FileChannel ch = channel;
+                SeekableByteChannel ch = channel;
                 if (closed) {
                     throw new ClosedChannelException();
                 }
                 try {
-                    int n = ch.read(buffer, position + buffer.position());
-                    if (n < 0) {
-                        throw new PartChangedException("part " + path + " is shorter than when it was opened");
+                    if (buffer.hasRemaining()) {
+                        int n;
+                        if (ch instanceof FileChannel fc) {
+                            n = fc.read(buffer, position + buffer.position());
+                        } else {
+                            synchronized (ch) {
+                                ch.position(position + buffer.position());
+                                n = ch.read(buffer);
+                            }
+                        }
+                        if (n < 0) {
+                            throw new PartChangedException("part " + path + " is shorter than when it was opened");
+                        }
+                        continue;
                     }
+                    if (ch.size() != size) {
+                        throw new PartChangedException("part " + path + " changed size after it was opened");
+                    }
+                    cancellation.throwIfCancelled();
+                    return buffer.flip();
                 } catch (ClosedByInterruptException e) {
-                    // This thread was interrupted; the channel is closed for every thread.
-                    reopen(ch);
-                    InterruptedIOException interrupted = new InterruptedIOException("read interrupted");
-                    interrupted.initCause(e);
-                    throw interrupted;
+                    // Leave repair to a surviving request; this thread must retain its flag.
+                    throw interrupted(e);
                 } catch (ClosedChannelException e) {
+                    cancellation.throwIfCancelled();
                     if (closed) {
                         throw e;
                     }
-                    // Another thread's interrupt closed the shared channel: reopen it and retry.
                     reopen(ch);
                 }
             }
-            if (channel.size() != size) {
-                throw new PartChangedException("part " + path + " changed size after it was opened");
-            }
-            return buffer.flip();
         }
 
-        /** Replaces a channel closed by a thread interrupt, if no other thread has yet. */
-        private synchronized void reopen(FileChannel broken) throws IOException {
+        private static CancellationException interrupted(IOException cause) {
+            Thread.currentThread().interrupt();
+            CancellationException failure = new CancellationException("read interrupted");
+            failure.initCause(cause);
+            return failure;
+        }
+
+        /** Reopens through the pinned parent handle, with no pathname re-resolution. */
+        private synchronized void reopen(SeekableByteChannel broken) throws IOException {
             if (closed || channel != broken) {
                 return;
             }
-            FileChannel fresh = FileChannel.open(file, StandardOpenOption.READ);
+            SeekableByteChannel fresh = openChannel();
             try {
-                Object key = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).fileKey();
+                Object key = attributes().fileKey();
                 if (!Objects.equals(key, fileKey) || fresh.size() != size) {
                     throw new PartChangedException("part " + path + " was replaced after it was opened");
                 }
+            } catch (ClosedByInterruptException e) {
+                fresh.close();
+                throw interrupted(e);
             } catch (IOException | RuntimeException e) {
                 fresh.close();
                 throw e;
@@ -204,7 +255,7 @@ public final class LocalStorage implements DatasetStorage {
         @Override
         public synchronized void close() throws IOException {
             closed = true;
-            channel.close();
+            try { channel.close(); } finally { parent.close(); }
         }
 
         @Override
