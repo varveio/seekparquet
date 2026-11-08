@@ -102,7 +102,12 @@ class SeekCostTest {
         List<TestRow> rows = new ArrayList<>();
         for (int i = 0; i < 350; i++) rows.add(TestRow.of(i < 3 ? "a" : i < 206 ? "b" : "c", i));
         try (Dataset ds = Dataset.open(TestDatasets.write(tmp, spec, List.of(rows)))) {
-            List<Row> expected = ds.range(RangeQuery.all(1000).toBuilder().columns("size").build());
+            List<Row> expected = new ArrayList<>();
+            for (int i = 0; i < 350; i++) {
+                String key = i < 3 ? "a" : i < 206 ? "b" : "c";
+                long offset = i < 3 ? i : i < 206 ? i - 3 : i - 206;
+                expected.add(new Row(Bytes.utf8(key), offset, List.of("size"), List.of(new Value.Int64(i))));
+            }
             RangeQuery query = RangeQuery.all(11).toBuilder().columns("size").build();
             List<Row> actual = new ArrayList<>();
             while (true) {

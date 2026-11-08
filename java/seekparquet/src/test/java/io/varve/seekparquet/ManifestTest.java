@@ -6,6 +6,7 @@ package io.varve.seekparquet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,27 @@ class ManifestTest {
     @Test
     void anEmptyPartListIsAnEmptyDataset() {
         assertEquals(List.of(), parse(manifest("", "")).parts());
+    }
+
+    @Test
+    void rowTotalsHaveAnExactAccessorWithoutChangingManifestValidity() {
+        String first = PART.replace("\"rows\":3", "\"rows\":" + (Long.MAX_VALUE - 1));
+        String second = PART.replace("data/p.parquet", "data/q.parquet")
+                .replace("YQ==", "ZA==").replace("Yw==", "ZQ==")
+                .replace("\"rows\":3", "\"rows\":1");
+        Manifest boundary = parse(manifest(first + "," + second, ""));
+        assertEquals(Long.MAX_VALUE, boundary.rows());
+        assertEquals(BigInteger.valueOf(Long.MAX_VALUE), boundary.rowsExact());
+        Manifest overflow = parse(manifest(first + "," + second.replace("\"rows\":1", "\"rows\":2"), ""));
+        assertThrows(ArithmeticException.class, overflow::rows);
+        assertEquals(BigInteger.ONE.shiftLeft(63), overflow.rowsExact());
+        String half = Long.toString(1L << 62);
+        Manifest twoHalves = parse(manifest(first.replace(Long.toString(Long.MAX_VALUE - 1), half)
+                + "," + second.replace("\"rows\":1", "\"rows\":" + half), ""));
+        assertThrows(ArithmeticException.class, twoHalves::rows);
+        assertEquals(BigInteger.ONE.shiftLeft(63), twoHalves.rowsExact());
+        assertEquals(BigInteger.ZERO, parse(manifest("", "")).rowsExact());
+        assertEquals(BigInteger.valueOf(3), parse(manifest(PART, "")).rowsExact());
     }
 
     @Test

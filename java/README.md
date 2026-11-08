@@ -267,3 +267,10 @@ read the shared fixtures under `conformance/datasets`.
 |---|---|
 | `seekparquet/` | The library: public API in `io.varve.seekparquet`, storage interfaces in `io.varve.seekparquet.storage`. Everything else is package-private. |
 | `conformance/` | The conformance adapter (`io.varve.seekparquet.conformance.Adapter`), not part of the library. |
+
+`Manifest.rows()` returns a signed 64-bit total and throws `ArithmeticException`
+if the sum exceeds `Long.MAX_VALUE`, preserving its existing signature and overflow
+behavior. `Manifest.rowsExact()` returns the exact `BigInteger` total, including
+zero for an empty dataset. This accessor limit is not a format refusal: parsing,
+opening, and queries do not reject a dataset merely because its total exceeds the
+range of `rows()`.
