@@ -9,8 +9,7 @@
       "rows": 3,
       "bytes": 1843,
       "min_key_base64": "bG9ncy8yMDI2LzAxL2EuZ3o=",
-      "max_key_base64": "bG9ncy8yMDI2LzAxL3ouZ3o=",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      "max_key_base64": "bG9ncy8yMDI2LzAxL3ouZ3o="
     },
     {
       "path": "data/part-00001.parquet",

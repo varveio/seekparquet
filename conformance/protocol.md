@@ -9,15 +9,20 @@ implementation needs another implementation's toolchain to run the suite.
 
 - The harness starts the adapter as a child process (`run.py --adapter "COMMAND ..."`).
 - Each request is one line of JSON on the adapter's stdin; each response is one line of JSON on its stdout,
-  in the same order. The adapter writes nothing else to stdout. Diagnostics go to stderr.
-- Every request has an `id`; the response repeats it.
+  in the same order. Lines are UTF-8 without a byte order mark; objects have unique member names. The adapter
+  writes nothing else to stdout. Diagnostics go to stderr.
+- Every request has an `id`, a string; the response repeats it.
 - The adapter exits when stdin closes.
 
 ## Encoding
 
 - Byte strings (keys, prefixes, delimiters, `BYTE_ARRAY` and `FIXED_LEN_BYTE_ARRAY` values) are standard
   base64 with padding, in members whose names end in `_base64`.
-- Projected values, one per requested column in request order:
+- Projected values are **physical** Parquet values, one per requested column in request order. Logical
+  annotations (string, decimal, date, timestamp, unsigned integers) are ignored: an `INT32` annotated as
+  unsigned is still reported as its signed 32-bit value. Floating-point values are reported by their exact
+  bits, so NaN payloads and the sign of zero are preserved. Column names match top-level field names exactly
+  (spec COL-6).
 
   | JSON | Meaning |
   |---|---|
@@ -42,11 +47,16 @@ implementation needs another implementation's toolchain to run the suite.
 ```json
 {"id": "1", "status": "ok", "implementation": "seekparquet-go", "version": "v0.0.0-dev",
  "supports": [{"format_version": 0, "draft_revision": 1}],
- "capabilities": ["open", "range", "list", "projection", "validate:structural", "validate:profile"]}
+ "targets": ["reader"],
+ "capabilities": ["open", "range", "list", "projection"]}
 ```
 
-The harness skips cases whose `requires` lists a capability the adapter does not report, and fails the run
-if a mandatory capability (`open`, `range`, `list`, `projection`) is missing.
+`capabilities` and `targets` use the names in [capabilities.json](capabilities.json). A **target** is a
+conformance claim (for example `reader`, the semantic reader target; `validator-profile`); each target
+lists the capabilities it needs. For every target an adapter claims, every case of that target runs:
+skipping one is a failure. Cases outside the claimed targets are skipped and reported as skipped. The run
+fails if a claimed target's capability is not reported, or if the adapter does not support the suite's
+format version and draft revision.
 
 ### `open`
 
@@ -61,10 +71,10 @@ path.
 
 ```json
 {"id": "3", "op": "range", "dataset": "/abs/path/datasets/basic",
- "start_base64": "YQ==", "start_inclusive": true, "end_base64": "Yw==", "limit": 10, "columns": ["size"]}
+ "start_base64": "YQ==", "start_exclusive": false, "end_base64": "Yw==", "limit": 10, "columns": ["size"]}
 ```
 
-`start_base64` and `end_base64` are optional; `start_inclusive` defaults to true; `columns` defaults to `[]`.
+`start_base64` and `end_base64` are optional (absent or null) and may be empty strings (spec QUERY-2); `start_exclusive` defaults to false; `columns` defaults to `[]`.
 The adapter opens the dataset first if it has not.
 
 ### `list`
@@ -75,7 +85,7 @@ The adapter opens the dataset first if it has not.
  "end_base64": null, "limit": 100, "columns": []}
 ```
 
-`after_base64` and `end_base64` are optional (absent or null); `continuation` defaults to false.
+`after_base64` and `end_base64` are optional (absent or null); `prefix_base64` defaults to empty; `continuation` defaults to false and has no effect without `after_base64`; `columns` defaults to `[]`.
 
 ### `validate`
 
@@ -83,17 +93,28 @@ The adapter opens the dataset first if it has not.
 {"id": "5", "op": "validate", "dataset": "/abs/path/datasets/basic", "level": "profile"}
 ```
 
+Validation runs the requested level and its prerequisites (spec §8) and reports each level it attempted:
+
+```json
+{"id": "5", "status": "ok", "levels": {
+  "structural": {"result": "complete"},
+  "profile": {"result": "failed", "code": "key_order"}}}
+```
+
+`result` is `complete`, `failed` (with `code`) or `incomplete` (with `reason`). The `digest` level adds
+`checked`, the number of digests it compared. `status` is `ok` whenever validation ran, whatever it found.
+
 ## Responses
 
 | `status` | Members | Meaning |
 |---|---|---|
-| `ok` | `entries` for `range` and `list`; `levels_completed` for `validate` | success |
+| `ok` | `entries` for `range` and `list`; `levels` for `validate` | success |
 | `refused` | `code` | the data breaks the specification; `code` is from `spec/refusal-codes.json` |
 | `invalid_request` | `message` (optional) | the request is malformed (QUERY-1, LIST-1) |
 | `unsupported` | `code`, `message` (optional) | the data is valid but uses an unsupported feature |
 | `error` | `message` | anything else; the harness counts it as a failure |
 
-Entries:
+Entries (a row always has `values`, empty when no columns were requested; a prefix never has them):
 
 ```json
 {"kind": "row", "key_base64": "Yg==", "values": [{"int": "12"}]}
@@ -102,15 +123,27 @@ Entries:
 
 ## How the harness judges refusals
 
-A case's `detect` field says when its refusal must appear at the latest (see `spec/refusal-codes.json`):
+A refusal case has a `detect` stage, the latest point at which the refusal must appear (see
+`spec/refusal-codes.json`), and an expected `code` (or a list of acceptable `codes`). The harness runs the
+stages in order and stops at the first refusal:
 
-- `open`: the `open` response must be `refused` with the expected code.
-- `read`: `open` may succeed or be refused with the expected code; if it succeeds, the case's request must be
-  refused with the expected code.
-- `validate:<level>`: `open` and the request may succeed, or be refused with the expected code; a `validate`
-  request at that level must be refused with it.
+1. **open.** It sends `open`. A refusal with an acceptable code completes the case (whatever its `detect`). A
+   refusal with another code fails it. If `detect` is `open` and `open` succeeds, the case fails.
+2. **read.** If `detect` is `read`, it sends the case's request, which must be refused with an acceptable
+   code.
+3. **validate.** If `detect` is `validate:<level>`, it sends the case's request if it has one (success, or
+   a refusal with an acceptable code, which completes the case), then `validate` at that level, whose
+   report must show that level `failed` with an acceptable code.
 
-Where a case lists several acceptable codes (`codes`), any of them passes.
+A `read` case's request must decode the faulty data under every correct access path: for example a range
+that starts before the faulty page and whose limit covers it. Faults that an index-guided reader may
+legitimately skip (CHECK-4) belong in `validate` cases. Fixtures carry one fault each where practical;
+otherwise the case lists every acceptable code.
+
+## Malformed requests
+
+Cases that test `invalid_request` use `raw_request` instead of `request`: an object the harness sends as it
+is, adding only `id` and `dataset`, so that a fractional limit or malformed base64 can be expressed.
 
 ## Suites
 

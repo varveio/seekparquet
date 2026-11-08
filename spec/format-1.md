@@ -54,12 +54,24 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
 ### 3.1 Encoding
 
 - [MAN-1] `manifest.json` is a single JSON object (RFC 8259) encoded in UTF-8 without a byte order mark.
-- [MAN-2] An object in the manifest MUST NOT contain the same member name twice. A reader MUST refuse a
-  manifest with duplicate names (`invalid_manifest`).
+  Every string, including member names and strings inside `extensions`, is a sequence of Unicode scalar
+  values: an escaped unpaired surrogate is not allowed.
+- [MAN-2] An object in the manifest, including any object inside `extensions`, MUST NOT contain the same
+  member name twice, compared after decoding escapes. A reader MUST refuse a manifest with duplicate names
+  (`invalid_manifest`).
 - [MAN-3] The manifest MUST conform to [manifest.schema.json](manifest.schema.json). Members not defined by
   this document are not allowed, at the top level or in a part, except inside `extensions` (§3.4). A reader
   MUST refuse a manifest with an undefined member (`invalid_manifest`). New members arrive only with a new
   format version or draft revision.
+- [MAN-6] Integer members are written as JSON numbers with no fraction, exponent or leading zeros, and lie
+  between 0 and 2^63 − 1. A reader MUST parse them exactly, without rounding, and refuse any other spelling
+  or range (`invalid_manifest`).
+- [MAN-7] A reader determines the version before anything else. It first reads `format`, `format_version`
+  and, if present, `draft_revision`. If `format` is not `"seekparquet"`, or these members are missing or
+  not integers, the manifest is `invalid_manifest`. If they are well formed but name a version the reader
+  does not support, it MUST refuse with `unsupported_version` without applying the rest of this section.
+  Only then does it apply the rules of the version it supports. The JSON Schema accepts any
+  `format_version` structurally; that does not authorise writing a version this document does not define.
 
 ### 3.2 Top-level members
 
@@ -89,14 +101,17 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
 | `sha256` | string | no | Lowercase hexadecimal SHA-256 of the part file's exact bytes. |
 
 - [PART-1] `path` is a sequence of segments separated by `/`. Each segment is non-empty, is neither `.` nor
-  `..`, and contains no `\` and no NUL. The path does not begin with `/`. Paths are unique within a
-  manifest. A reader MUST refuse a manifest that breaks any of these rules (`invalid_manifest`) and MUST NOT
-  read any file outside the dataset root on account of a part path.
+  `..`, and contains no `\` and no control character (U+0000 to U+001F and U+007F). The path does not begin
+  with `/`. Paths are literal: a reader MUST NOT percent-decode, Unicode-normalise or otherwise reinterpret
+  them. Paths are unique within a manifest, compared as exact strings; writers SHOULD NOT produce paths that
+  differ only in letter case. A reader MUST refuse a manifest that breaks any of these rules
+  (`invalid_manifest`) and MUST NOT read any file outside the dataset root on account of a part path.
 - [PART-2] A published part holds at least one row. A part with `rows` 0 is not allowed
   (`invalid_manifest`).
 - [PART-3] `min_key_base64` and `max_key_base64` are the exact first and last keys of the part, never
-  truncated. A reader decodes them and compares bytes, never base64 text. A malformed base64 value is
-  `invalid_manifest`.
+  truncated. A reader decodes them and compares bytes, never base64 text. The encoding is canonical: no
+  whitespace, padding present, and unused bits in the last group zero, so that decoding and re-encoding
+  gives back the same string. Any other value is `invalid_manifest`.
 - [PART-4] Within a part, `min_key` ≤ `max_key` (equal for a one-row part). Across parts, each part's
   `max_key` is strictly less than the next part's `min_key`. A manifest whose bounds break this is refused
   (`bounds_mismatch`).
@@ -131,11 +146,22 @@ an ordinary Parquet reader that reads every part gets exactly the dataset's rows
 
 Each part is a Parquet file that any conforming Parquet reader can read.
 
+- [FILE-1] Every part is self-contained: its column data, dictionaries and indexes are in the part itself.
+  No column chunk may set `file_path`. A reader MUST check this on open, before following any reference
+  (`invalid_footer`).
+- [FILE-2] Parquet modular encryption is outside this draft. A reader MAY report an encrypted part as
+  unsupported (`unsupported_encryption`).
+
 ### 5.1 The key column
 
 - [KEY-1] The schema has a top-level column named `key` whose physical type is `BYTE_ARRAY`, whose
-  repetition is `REQUIRED`, and which is not nested. It MAY carry a logical type annotation (for example
-  `STRING`); the annotation does not change the comparison, which is always the byte order of §1.
+  repetition is `REQUIRED`, and which is not nested. It is either unannotated or annotated `STRING` (or the
+  legacy converted type `UTF8`). Both annotations order values by unsigned bytes, as §1 does; no other
+  annotation is allowed.
+- [KEY-5] The file's `column_orders` is present and gives the `key` column `TYPE_ORDER`, without which
+  Parquet leaves the meaning of its statistics and page bounds undefined.
+- [KEY-6] When `key` is annotated `STRING` or `UTF8`, every key is valid UTF-8, and so is every page bound,
+  shortened or not. An unannotated key may hold any bytes.
 - [KEY-2] Every key is non-empty.
 - [KEY-3] Keys are unique and strictly ascending across the whole dataset: within each page, from page to
   page, from row group to row group, and from part to part in manifest order.
@@ -149,19 +175,24 @@ and are ignored.
 - [RG-1] The row group's `sorting_columns` is present and its first entry names the `key` column with
   `descending` false. Further entries MAY follow and are ignored.
 - [RG-2] The `key` column chunk has both a ColumnIndex and an OffsetIndex.
-- [RG-3] The OffsetIndex lists the chunk's data pages in order. The first page's `first_row_index` is 0,
-  `first_row_index` strictly increases, and every value is less than the row group's row count. Each page
-  location lies inside the file.
-- [RG-4] The ColumnIndex has one entry per OffsetIndex page, and no page is marked as a null page.
+- [RG-3] The OffsetIndex lists every data page of the chunk, in order, and only those: each entry's
+  `offset` and `compressed_page_size` locate exactly one data page header and its page within the column
+  chunk. The first page's `first_row_index` is 0, `first_row_index` strictly increases, every value is less
+  than the row group's row count, and each page holds exactly the rows from its `first_row_index` up to the
+  next page's (or the end of the row group). The list is not empty, and every location lies inside the
+  column chunk and the file, computed without integer overflow.
+- [RG-4] The ColumnIndex has the same number of entries as the OffsetIndex in each of its parallel lists
+  (`null_pages`, `min_values`, `max_values`), and no page is marked as a null page.
 - [RG-5] For every page, `min_values[i]` is less than or equal to the page's first key, and `max_values[i]` is
   greater than or equal to the page's last key. These are Parquet's own lower and upper bound rules: a writer
   MAY shorten a bound to save space, but a shortened bound MUST still be a bound. In particular, a writer
   that cannot shorten a maximum to a value that is still at least the page's last key (for example because
   its retained bytes are all `0xFF`) MUST write the full maximum.
-- [RG-6] Because bounds may be shortened, the bounds of adjacent pages MAY overlap. A reader MUST NOT treat
-  overlapping bounds as an error and MUST NOT rely on `boundary_order`. A writer SHOULD set
-  `boundary_order` to `ASCENDING` when both bound sequences are non-decreasing, and otherwise to
-  `UNORDERED`.
+- [RG-6] Because bounds may be shortened, the bounds of adjacent pages MAY overlap, and the sequences of
+  minima and maxima need not be monotone. A reader MUST NOT treat overlapping or non-monotone bounds as an
+  error, MUST NOT rely on `boundary_order`, and MUST NOT infer from a bound's length whether it is exact or
+  how far it was shortened. A writer SHOULD set `boundary_order` to `ASCENDING` when both bound sequences
+  are non-decreasing, and otherwise to `UNORDERED`.
 - [RG-7] A reader MUST refuse a row group whose key column lacks either index (`missing_page_index`), and
   one whose indexes break RG-3 or RG-4, or whose decoded keys contradict RG-5 (`invalid_page_index`).
 
@@ -177,6 +208,11 @@ and are ignored.
   column were absent.
 - [COL-4] Value columns SHOULD carry an OffsetIndex, so that a reader can seek to the rows it needs. A reader
   MUST still read a value column that lacks one.
+- [COL-5] A column that appears in several parts has the same physical type, repetition and nesting in each.
+  A reader MUST check this on open for the columns it is asked to project, and SHOULD check it for all
+  columns (`inconsistent_column`).
+- [COL-6] Column names are matched exactly against top-level field names; a `.` in a name is a literal
+  character, not a path separator.
 
 ### 5.4 Footer key-value metadata
 
@@ -188,8 +224,10 @@ and are ignored.
   | `seekparquet.draft_revision` | the manifest's `draft_revision`, in decimal; present iff `format_version` is 0 |
   | `seekparquet.schema_id` | the manifest's `schema_id` |
 
-- [STAMP-2] A reader MUST refuse a part whose stamps are missing or differ from its manifest
-  (`stamp_mismatch`). Other key-value entries MAY be present and are ignored.
+- [STAMP-2] Each of these keys appears exactly once, and `seekparquet.draft_revision` does not appear when
+  `format_version` is not 0. Version values are written in canonical decimal (no sign, no leading zeros)
+  and compared as exact strings. A reader MUST refuse a part whose stamps are missing, duplicated, forbidden
+  or different from its manifest (`stamp_mismatch`). Other key-value entries MAY be present and are ignored.
 
 ### 5.5 Geometry and encoding
 
@@ -210,83 +248,111 @@ The following affect speed and size, not validity.
 These are the results a reader returns. They are defined on the dataset's rows, independent of how a reader
 finds them. A reader MAY use any access path, provided its results are these.
 
-All queries take a **limit**, a positive integer: the maximum number of entries returned. A limit that is
-not a positive integer is an invalid request, not an empty result [QUERY-1].
+### 6.1 Arguments
 
-### 6.1 Range
+| Argument | Range | List | Default | Meaning |
+|---|---|---|---|---|
+| start | ✓ | | unbounded below | lower bound on keys |
+| start exclusive | ✓ | | false (inclusive) | whether the start itself is excluded |
+| prefix | | ✓ | empty | keys must begin with it |
+| delimiter | | ✓ | required | exactly one byte |
+| after | | ✓ | none | keys must be strictly greater |
+| continuation | | ✓ | false | see LIST-5; has no effect without `after` |
+| end | ✓ | ✓ | unbounded above | keys must be strictly less |
+| limit | ✓ | ✓ | required | maximum number of entries; a positive integer |
+| columns | ✓ | ✓ | none | columns to project, by exact name (COL-6) |
 
-A range request has a start key (optional), whether the start is inclusive (default inclusive), an end key
-(optional, always exclusive), a limit, and a list of columns to project.
+- [QUERY-1] A limit that is not a positive integer, or a delimiter that is not exactly one byte, is an
+  invalid request, not an empty result.
+- [QUERY-2] Boundaries are byte strings and MAY be empty. An empty start includes every key; an empty end
+  includes none, since every key is non-empty and so greater than the empty string.
+- [QUERY-3] "All results" below means the results of the same request with a limit at least the number of
+  rows in the dataset.
 
-- [RANGE-1] The result is the rows whose keys are at or after the start (after, when the start is
-  exclusive) and before the end, in ascending key order, at most limit of them. A missing start is
-  unbounded below; a missing end, unbounded above.
+### 6.2 Range
+
+- [RANGE-1] The result is the rows whose keys are at or after the start (strictly after, when the start is
+  exclusive) and strictly before the end, in ascending key order, at most limit of them.
 - [RANGE-2] Each returned row carries its key and, for each projected column in request order, the value,
-  null, or absent (§5.3).
+  null, or absent (COL-2).
 
 A **prefix** read of prefix `p` is the range from `p` inclusive to `successor(p)`, or unbounded above when
 `p` has no successor.
 
-### 6.2 Delimited listing
+### 6.3 Delimited listing
 
-A list request has a prefix `p` (possibly empty), a delimiter `d`, an optional `after` key, a `continuation`
-flag, an optional end key, a limit, and a list of columns to project. In this draft `d` is exactly one byte
-[LIST-1]; multi-byte delimiters are an open question for format 1.
+The **candidate keys** are the keys `k` that begin with the prefix `p`, are greater than `after` when it is
+given, and are less than the end when it is given. Each candidate key yields one entry:
 
-The candidate keys are the keys `k` that begin with `p`, are greater than `after` when it is given, and are
-less than the end when it is given. Each candidate key yields one entry:
-
-- [LIST-2] If the part of `k` after `p` contains `d`, the entry is the **common prefix** `k[0 .. len(p)+i]`,
-  where `i` is the position of the first `d` in `k` after `p`: `k` up to and including that delimiter.
+- [LIST-2] If the part of `k` after `p` contains the delimiter `d`, let `i` be the index in `k` of the
+  first `d` at or after position `len(p)`. The entry is the **common prefix** `k[0 : i+1]` (half-open: `k`
+  up to and including that delimiter byte).
 - [LIST-3] Otherwise the entry is the **row** `k`, with its projected values. In particular a key equal to
-  `p` is a row, and a key that ends with `d` immediately after `p` (for example `p` = `a/`, `k` = `a/b/`)
-  rolls up to itself as a common prefix.
+  `p` is a row, and a key that ends with `d` right after `p` (for example `p` = `a/`, `k` = `a/b/`) rolls up
+  to itself as a common prefix.
 - [LIST-4] Entries are distinct, and are returned in ascending byte order of the entry's bytes (a common
-  prefix compares as its own bytes, a row as its key), at most limit of them. Because every key under a
-  common prefix sorts at or after the prefix and before any key outside it, this is the order in which the
-  entries' first keys occur.
-- [LIST-5] When `continuation` is true, a common prefix that sorts at or before `after` is not returned,
-  because the page that ended at `after` already returned it. When `continuation` is false, a common prefix
-  is returned if any candidate key rolls up to it, even if the prefix itself sorts at or before `after`.
+  prefix compares as its own bytes, a row as its key), at most limit of them. Every key under a common
+  prefix sorts at or after the prefix and before any key outside it, so this is the order in which the
+  entries' first candidate keys occur.
+- [LIST-5] When `continuation` is true and `after` is given, a common prefix that sorts at or before
+  `after` is not returned, because the page that ended at `after` already returned it. Otherwise a common
+  prefix is returned if any candidate key rolls up to it, even if the prefix itself sorts at or before
+  `after`.
+- [LIST-7] Bounds apply to candidate keys, not to entries. For example, with `p` empty, `d` = `/` and end
+  `a/b`, the keys `a/a` and `a/z` give the common prefix `a/` only because `a/a` is a candidate; if `a/a`
+  did not exist, `a/z` alone would not make `a/` appear.
 
 **Pagination.** To read the page after a page whose last entry is `e`, repeat the request with `after` set
-to `e`'s bytes and `continuation` true [LIST-6]. Concatenating the pages of a listing gives the same entries,
-without duplicates or gaps, as one request with an unlimited limit. A reader MAY, after a common prefix
-`c`, resume directly at `successor(c)`.
+to `e`'s bytes and `continuation` true [LIST-6]. Concatenating the pages of a listing gives exactly all
+results (QUERY-3), with no duplicates or gaps. After a common prefix `c`, a reader MAY resume directly at
+`successor(c)`; when `c` has no successor, the listing is exhausted.
 
 ## 7. What readers check, and when
 
 A reader checks what it reads. It does not certify data it skips.
 
-- [CHECK-1] **On open**, a reader MUST check the manifest (§3), that every part file exists and has the
-  manifest's exact size, that every part's footer is readable and its stamps agree (§5.4), that every part's
-  row count equals the manifest's, and that every part's `key` column has the shape of KEY-1. It MUST check
-  RG-1 for every non-empty row group. A failure refuses the dataset.
-- [CHECK-2] **On read**, a reader MUST check every key page it decodes: one non-empty key per row, strictly
-  ascending, within the page's bounds (RG-5), and after every key it decoded before in the same request. It
-  MUST check RG-2 to RG-4 for a row group before it uses that row group's key indexes. A failure is reported
-  with its code and ends the request; it MAY also mark the dataset unusable.
+- [CHECK-1] **On open**, a reader MUST check the manifest (§3); that every part file exists and has the
+  manifest's exact size; that every part's footer is readable, self-contained (FILE-1) and has row-group row
+  counts that sum to the manifest's row count; that its stamps agree (§5.4); that its `key` column meets
+  KEY-1 and KEY-5; COL-5 as required there; and RG-1 for every non-empty row group. A failure refuses the
+  dataset.
+- [CHECK-2] **On read**, for every row group a reader reads, whether or not it uses the page index, it MUST
+  first check RG-2 to RG-4 (the parts of RG-3 that need page headers, as it reaches each page). For every key
+  page it decodes, it MUST check that the page holds exactly the rows its OffsetIndex entry gives it, that
+  every key is non-empty (KEY-2) and valid UTF-8 where KEY-6 applies, that the keys are strictly ascending
+  within the page and lie within the page's bounds (RG-5), and that the page's keys are consistent with the
+  dataset order of every other page it has decoded in the same request, whatever order it decoded them in. A
+  page read again, or served from a cache of already checked pages, needs no new check. A failure is
+  reported with its code and ends the request; the reader MAY also mark the dataset unusable.
 - [CHECK-3] A reader MAY check more on open, for example by decoding the first key of every row group, or
   each part's first and last key against the manifest. It MUST NOT be required to read every row to open a
   dataset.
 - [CHECK-4] A successful query does not certify rows the reader did not decode. Full certification is
   validation (§8).
+- [CHECK-5] Corruption in the Parquet data itself (a page that does not decompress or decode, a malformed
+  dictionary, a value count that does not match the rows) is reported as `invalid_parquet` when a reader
+  meets it. A failure to read storage is not a refusal of the data, and a valid feature the reader does not
+  support is reported as unsupported (§10).
 
 ## 8. Validation
 
-Validation is a separate procedure that reads the dataset completely, independently of the seek path (a
-validator MUST NOT let the indexes it is checking decide which rows it visits).
+Validation is a separate procedure. A validator MUST NOT let the indexes it is checking decide which rows it
+visits: it enumerates pages and rows independently of the seek path.
 
-| Level | Checks |
-|---|---|
-| `structural` | everything in CHECK-1, plus RG-2 to RG-4 for every non-empty row group |
-| `profile` | `structural`, plus every key in every part: KEY-2, KEY-3, RG-5 for every page, and each part's exact first and last key and row count against the manifest (PART-3, PART-4) |
-| `full` | `profile`, plus decoding every value of every column the validator supports |
-| `digest` | `sha256` of every part that declares one (PART-5) |
+| Level | Requires | Checks |
+|---|---|---|
+| `structural` | – | CHECK-1, plus RG-2 to RG-4 for every non-empty row group, reading page headers but not page data |
+| `profile` | `structural` | every page of every `key` column chunk, enumerated from the page headers and compared with the OffsetIndex (offsets, sizes, row positions, count: RG-3); every key (KEY-2, KEY-3, KEY-6); RG-5 for every page; and each part's exact first and last key and row count against the manifest (PART-3, PART-4) |
+| `full` | `profile` | every stored column decoded in full: every page decompresses and decodes, and every column holds exactly the row group's row count |
+| `digest` | – | `sha256` of every part that declares one (PART-5); independent of the other levels |
 
-- [VAL-1] A validator reports which levels it completed. If it meets a column, encoding or codec it does not
-  support, the levels that depend on it are incomplete, never successful.
-- [VAL-2] Validation checks the dataset as stored. It cannot show that the manifest was published
+- [VAL-1] A validator reports, for each level, whether it completed, failed (with the refusal code), or is
+  incomplete (with the reason). A level is complete only if its prerequisite is complete. If a column,
+  encoding or codec the level needs is not supported, the level is incomplete, never complete; levels below
+  it keep their result.
+- [VAL-2] The `digest` level completes when every declared `sha256` matches. When no part declares one it
+  completes with nothing checked, and the report says so.
+- [VAL-3] Validation checks the dataset as stored. It cannot show that the manifest was published
   atomically, or that a producer captured its whole source; such properties belong to producers and their
   extensions.
 
@@ -312,9 +378,9 @@ Several version identities move independently:
 
 When a reader refuses a dataset or ends a request because the data breaks this document, it reports one of
 the codes in [refusal-codes.json](refusal-codes.json). Codes are stable; diagnostic text is not part of the
-contract. A request that is malformed (for example a limit that is not positive) is an invalid request, and
-a dataset that is valid but uses a feature the reader does not support is unsupported; neither is a refusal
-of the data.
+contract. A request that is malformed (QUERY-1) is an invalid request, and a dataset that is valid but uses a
+feature the reader does not support is unsupported, with one of the `unsupported_*` codes; neither is a
+refusal of the data. A failure to read storage is an error of the environment, not a refusal.
 
 When one dataset has several faults, a reader MAY report any code that applies to a fault it detected.
 
