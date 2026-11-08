@@ -92,6 +92,10 @@ jobs:
       - name: harness and Thrift codec self-tests
         working-directory: conformance
         run: python -m unittest harness/test_run.py harness/test_manifest_schema.py harness/test_check_indexed_access.py generators/test_parquet_meta.py generators/test_oracle.py generators/test_case_generation.py generators/test_independent.py
+      - name: Python validator oracle (tests, 207 validator cases, valid and invalid corpus)
+        run: |
+          python -m unittest discover -s conformance/validator -v
+          python conformance/harness/run.py --adapter "python conformance/validator/validator_adapter.py" --targets validator-structural,validator-profile,validator-full,validator-digest
       - name: fixtures regenerate byte for byte
         run: python conformance/generators/check_reproducible.py
       - name: reference adapter (full-scan oracle)
