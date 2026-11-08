@@ -11,3 +11,12 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: {interval: monthly}
+  - package-ecosystem: gradle
+    directory: /java
+    schedule: {interval: weekly}
+    groups:
+      java-minor: {update-types: [minor, patch], exclude-patterns: ["org.apache.parquet:*"]}
+    ignore:
+      # slf4j-nop must match the slf4j-api 1.7 line that parquet-java is built against.
+      - dependency-name: "org.slf4j:*"
+        update-types: [version-update:semver-major, version-update:semver-minor]

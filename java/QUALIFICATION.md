@@ -136,7 +136,7 @@ repeated-key cases (groups split across pages and row groups, named key columns,
 continuation and lookup). Validator targets are not claimed, so their cases are skipped. This
 qualifies semantic reading; the planned indexed-access target is not claimed.
 
-The build passes compilation with warnings as errors, strict Javadoc, JUnit 5 tests and adapter
+The build passes compilation with warnings as errors, strict Javadoc, JUnit Jupiter tests and adapter
 installation. Unit tests include independent fixture reads, deterministic corruption trials,
 concurrent requests, cancellation and resource cleanup, early footer refusals, and grouped pagination.
 The focused indexed-read unit test passes; this is not a separate indexed-access qualification.
