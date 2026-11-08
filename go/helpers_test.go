@@ -182,3 +182,13 @@ func short(b []byte) string {
 }
 
 var ctx = context.Background()
+
+// openErr opens the dataset at dir and returns the error, closing a dataset
+// that opened.
+func openErr(dir string, opt seekparquet.Options) (*seekparquet.Dataset, error) {
+	d, err := local.OpenDataset(context.Background(), dir, opt)
+	if err == nil {
+		_ = d.Close()
+	}
+	return d, err
+}

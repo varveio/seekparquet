@@ -19,7 +19,6 @@ import argparse
 import base64
 import binascii
 import json
-import os
 import queue
 import re
 import shlex

@@ -484,7 +484,7 @@ def build():
     R.append(derive("manifest-unknown-part-member", "basic", "Part member checksum is not defined.",
                     mi(["MAN-3"]), manifest=set_member(["parts", 0, "checksum"], "abc")))
     R.append(derive("manifest-extension-not-object", "basic", "extensions is a string, not an object.",
-                    mi(["MAN-3"]), manifest=set_member(["extensions"], "swath")))
+                    mi(["MAN-3"]), manifest=set_member(["extensions"], "producer-metadata")))
     R.append(derive("manifest-missing-schema-id", "basic", "The required member schema_id is absent.",
                     mi(["MAN-3"]), manifest=del_member(["schema_id"])))
     R.append(derive("manifest-missing-parts", "basic", "The required member parts is absent.",

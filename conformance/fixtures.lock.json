@@ -7,7 +7,7 @@
     "requirements": "generators/requirements.txt"
   },
   "reproducibility": "Byte-reproducible with the pinned pyarrow: two regenerations produce identical files (pyarrow 26.0.1 footers carry no timestamps). If a future writer is not byte-reproducible, the checked-in bytes stay authoritative and STRUCTURE.txt must remain identical.",
-  "total_bytes": 508460,
+  "total_bytes": 508472,
   "largest_file_bytes": 9076,
   "datasets": [
     {
@@ -1765,7 +1765,7 @@
       "producer": "generators/mutate_metadata.py",
       "derived_from": "datasets/basic",
       "changes": [
-        "manifest: extensions \"<absent>\" -> \"swath\""
+        "manifest: extensions \"<absent>\" -> \"producer-metadata\""
       ],
       "fault": {
         "codes": [
@@ -1788,8 +1788,8 @@
         },
         {
           "path": "datasets/invalid/manifest-extension-not-object/manifest.json",
-          "bytes": 331,
-          "sha256": "c7a7d9da70b9f94e7d55b19f24ad0c9c76d81d128456d3be6864eb1f18777d0c",
+          "bytes": 343,
+          "sha256": "ad56e433af7a38609a85c8f066ef1a6c340dd308f6e02c9d2e940f3a3ff8a8df",
           "producer": "generators/mutate_metadata.py",
           "provenance": "mutated",
           "command": "python generators/regenerate.py"

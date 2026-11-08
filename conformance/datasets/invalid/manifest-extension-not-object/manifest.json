@@ -12,5 +12,5 @@
       "max_key_base64": "Zm94dHJvdA=="
     }
   ],
-  "extensions": "swath"
+  "extensions": "producer-metadata"
 }

@@ -271,11 +271,11 @@ func WritePart(path string, part Part, stamps map[string]string) (first, last []
 	keyOf := func(i int) []byte {
 		row := schema.Deconstruct(nil, rowsValue.Index(i).Interface())
 		for _, v := range row {
-			if v.Column() == keyLeaf.ColumnIndex {
-				return bytes.Clone(v.ByteArray())
+			if v.Column() == keyLeaf.ColumnIndex && !v.IsNull() {
+				return bytes.Clone(v.Bytes())
 			}
 		}
-		return nil
+		return []byte("null")
 	}
 	fail := func(err error) ([]byte, []byte, int, error) {
 		_ = f.Close()

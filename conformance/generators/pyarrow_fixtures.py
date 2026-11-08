@@ -32,8 +32,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 import parquet_meta as pm
-from common import (CONF, DATASETS, DRAFT_REVISION, FORMAT_VERSION, ROWS, b64d, b64e, dumps, f32_hex,
-                    f64_hex, hex_f32, hex_f64, load_rows, manifest, part_entry, write_json, write_text)
+from common import (CONF, DATASETS, DRAFT_REVISION, FORMAT_VERSION, ROWS, b64d, b64e, dumps, hex_f32, hex_f64,
+                    load_rows, manifest, part_entry, write_json, write_text)
 
 PRODUCER = f"pyarrow {pa.__version__}"
 COMMAND = "python generators/regenerate.py"

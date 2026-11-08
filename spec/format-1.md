@@ -20,7 +20,8 @@ The key words MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT and MAY are to be int
 RFC 8174 when, and only when, they appear in capitals.
 
 Each requirement has an identifier in brackets, for example [KEY-1]. Conformance cases cite these
-identifiers. Identifiers are never reused for a different requirement.
+identifiers. Identifiers are never reused for a different requirement. Retired identifiers: LIST-1 (the
+one-byte delimiter rule, now part of QUERY-1).
 
 **Keys and byte order.** A key is a non-empty sequence of bytes. Keys compare in unsigned lexicographic byte
 order: the first differing byte decides, compared as an unsigned integer from 0 to 255, and a key that is a
@@ -67,8 +68,9 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
   between 0 and 2^63 − 1. A reader MUST parse them exactly, without rounding, and refuse any other spelling
   or range (`invalid_manifest`).
 - [MAN-7] A reader determines the version before anything else. It first reads `format`, `format_version`
-  and, if present, `draft_revision`. If `format` is not `"seekparquet"`, or these members are missing or
-  not integers, the manifest is `invalid_manifest`. If they are well formed but name a version the reader
+  and `draft_revision`. If `format` is not `"seekparquet"`, if `format_version` is missing or not an
+  integer, or if `draft_revision` is missing when `format_version` is 0, present when it is not, or not an
+  integer, the manifest is `invalid_manifest`. If they are well formed but name a version the reader
   does not support, it MUST refuse with `unsupported_version` without applying the rest of this section.
   Only then does it apply the rules of the version it supports. The JSON Schema accepts any
   `format_version` structurally; that does not authorise writing a version this document does not define.
@@ -114,7 +116,8 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
   gives back the same string. Any other value is `invalid_manifest`.
 - [PART-4] Within a part, `min_key` ≤ `max_key` (equal for a one-row part). Across parts, each part's
   `max_key` is strictly less than the next part's `min_key`. A manifest whose bounds break this is refused
-  (`bounds_mismatch`).
+  on open (`invalid_manifest`). A part whose actual first or last key differs from its manifest bounds is
+  `bounds_mismatch` (§8).
 - [PART-5] When `sha256` is present it MUST match the file's bytes. Checking it reads the whole file, so a
   reader MUST NOT be required to check it on open; validation at the `digest` level does (§8).
 
@@ -209,8 +212,9 @@ and are ignored.
 - [COL-4] Value columns SHOULD carry an OffsetIndex, so that a reader can seek to the rows it needs. A reader
   MUST still read a value column that lacks one.
 - [COL-5] A column that appears in several parts has the same physical type, repetition and nesting in each.
-  A reader MUST check this on open for the columns it is asked to project, and SHOULD check it for all
-  columns (`inconsistent_column`).
+  A reader MUST check this for a column no later than the first request that projects it, and SHOULD check
+  it for all columns on open (`inconsistent_column`). Structural validation checks it for all columns.
+- [COL-7] Projecting a column that no part has is not an error: the column is absent in every row.
 - [COL-6] Column names are matched exactly against top-level field names; a `.` in a name is a literal
   character, not a path separator.
 
@@ -254,7 +258,7 @@ finds them. A reader MAY use any access path, provided its results are these.
 |---|---|---|---|---|
 | start | ✓ | | unbounded below | lower bound on keys |
 | start exclusive | ✓ | | false (inclusive) | whether the start itself is excluded |
-| prefix | | ✓ | empty | keys must begin with it |
+| prefix | ✓ | ✓ | empty | keys must begin with it |
 | delimiter | | ✓ | required | exactly one byte |
 | after | | ✓ | none | keys must be strictly greater |
 | continuation | | ✓ | false | see LIST-5; has no effect without `after` |
@@ -271,13 +275,14 @@ finds them. A reader MAY use any access path, provided its results are these.
 
 ### 6.2 Range
 
-- [RANGE-1] The result is the rows whose keys are at or after the start (strictly after, when the start is
-  exclusive) and strictly before the end, in ascending key order, at most limit of them.
+- [RANGE-1] The result is the rows whose keys begin with the prefix, are at or after the start (strictly
+  after, when the start is exclusive) and are strictly before the end, in ascending key order, at most limit
+  of them.
 - [RANGE-2] Each returned row carries its key and, for each projected column in request order, the value,
   null, or absent (COL-2).
 
-A **prefix** read of prefix `p` is the range from `p` inclusive to `successor(p)`, or unbounded above when
-`p` has no successor.
+A **prefix** read of prefix `p` is a range with that prefix and no other bounds: equivalently, the range from
+`p` inclusive to `successor(p)`, or unbounded above when `p` has no successor.
 
 ### 6.3 Delimited listing
 
@@ -312,8 +317,9 @@ results (QUERY-3), with no duplicates or gaps. After a common prefix `c`, a read
 A reader checks what it reads. It does not certify data it skips.
 
 - [CHECK-1] **On open**, a reader MUST check the manifest (§3); that every part file exists and has the
-  manifest's exact size; that every part's footer is readable, self-contained (FILE-1) and has row-group row
-  counts that sum to the manifest's row count; that its stamps agree (§5.4); that its `key` column meets
+  manifest's exact size; that every part's footer is readable and self-contained (FILE-1), and that its
+  row groups' row counts sum to the footer's own row count (`invalid_footer` otherwise), which equals the
+  manifest's `rows` (`part_mismatch` otherwise); that its stamps agree (§5.4); that its `key` column meets
   KEY-1 and KEY-5; COL-5 as required there; and RG-1 for every non-empty row group. A failure refuses the
   dataset.
 - [CHECK-2] **On read**, for every row group a reader reads, whether or not it uses the page index, it MUST

@@ -290,13 +290,13 @@ def list_group():
     add("delimiter/slash", L, D, rq_list(prefix=b"/"), "delimiter at the start of keys")
     add("delimiter/slash-slash", L, D, rq_list(prefix=b"//"))
     add("delimiter/no-match", L, D, rq_list(prefix=b"q"), "no key has the prefix")
-    add("delimiter/ff-delim-root", L + ["LIST-1"], D, rq_list(delimiter=b"\xff"), "non-ASCII delimiter 0xFF")
-    add("delimiter/ff-delim-x", L + ["LIST-1"], D, rq_list(prefix=b"x", delimiter=b"\xff"))
-    add("delimiter/ff-delim-xff", L + ["LIST-1"], D, rq_list(prefix=b"x\xff", delimiter=b"\xff"),
+    add("delimiter/ff-delim-root", L + ["QUERY-1"], D, rq_list(delimiter=b"\xff"), "non-ASCII delimiter 0xFF")
+    add("delimiter/ff-delim-x", L + ["QUERY-1"], D, rq_list(prefix=b"x", delimiter=b"\xff"))
+    add("delimiter/ff-delim-xff", L + ["QUERY-1"], D, rq_list(prefix=b"x\xff", delimiter=b"\xff"),
         "x\\xff\\xff rolls up to itself")
-    add("delimiter/utf8-lead-byte", L + ["LIST-1"], D, rq_list(prefix=b"caf", delimiter=b"\xc3"),
+    add("delimiter/utf8-lead-byte", L + ["QUERY-1"], D, rq_list(prefix=b"caf", delimiter=b"\xc3"),
         "delimiter equal to a UTF-8 lead byte")
-    add("delimiter/utf8-cont-byte", L + ["LIST-1"], D, rq_list(prefix=b"caf\xc3", delimiter=b"\xa9"),
+    add("delimiter/utf8-cont-byte", L + ["QUERY-1"], D, rq_list(prefix=b"caf\xc3", delimiter=b"\xa9"),
         "delimiter equal to a UTF-8 continuation byte")
     add("delimiter/prefix-ff", L, D, rq_list(prefix=b"\xff"), "prefix 0xFF has no successor")
     add("delimiter/prefix-ff-ff", L, D, rq_list(prefix=b"\xff\xff"))
@@ -342,12 +342,12 @@ def list_group():
     add("multipart/tmp", L, M, rq_list(prefix=b"tmp/"))
     add("multipart/delim-dot", L, M, rq_list(prefix=b"logs/2027/01/", delimiter=b"."))
     BK = "binary-keys"
-    add("binary-keys/nul-delim", L + ["LIST-1"], BK, rq_list(delimiter=b"\x00"))
-    add("binary-keys/nul-delim-a", L + ["LIST-1"], BK, rq_list(prefix=b"a", delimiter=b"\x00"))
-    add("binary-keys/ff-delim", L + ["LIST-1"], BK, rq_list(delimiter=b"\xff"))
-    add("binary-keys/ff-delim-ff", L + ["LIST-1"], BK, rq_list(prefix=b"\xff", delimiter=b"\xff"))
-    add("binary-keys/upper-l-delim", L + ["LIST-1"], BK, rq_list(delimiter=b"L"))
-    add("truncated-bounds-2/ff-delim-ff", L + ["LIST-1", "RG-6"], "truncated-bounds-2",
+    add("binary-keys/nul-delim", L + ["QUERY-1"], BK, rq_list(delimiter=b"\x00"))
+    add("binary-keys/nul-delim-a", L + ["QUERY-1"], BK, rq_list(prefix=b"a", delimiter=b"\x00"))
+    add("binary-keys/ff-delim", L + ["QUERY-1"], BK, rq_list(delimiter=b"\xff"))
+    add("binary-keys/ff-delim-ff", L + ["QUERY-1"], BK, rq_list(prefix=b"\xff", delimiter=b"\xff"))
+    add("binary-keys/upper-l-delim", L + ["QUERY-1"], BK, rq_list(delimiter=b"L"))
+    add("truncated-bounds-2/ff-delim-ff", L + ["QUERY-1", "RG-6"], "truncated-bounds-2",
         rq_list(prefix=b"\xff", delimiter=b"\xff"), src=BK)
     add("truncated-bounds-2/upper-m-prefix", L + ["RG-6"], "truncated-bounds-2", rq_list(prefix=b"M", delimiter=b"\xff"),
         src=BK)

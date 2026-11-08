@@ -35,6 +35,8 @@ implementation needs another implementation's toolchain to run the suite.
   | `{"bytes_base64": "..."}` | `BYTE_ARRAY` or `FIXED_LEN_BYTE_ARRAY` |
 
 - Dataset paths are absolute local paths.
+- This revision of the protocol defines no representation for nested or repeated values, so the suite has no
+  case that projects one successfully.
 
 ## Requests
 
@@ -70,11 +72,11 @@ path.
 ### `range`
 
 ```json
-{"id": "3", "op": "range", "dataset": "/abs/path/datasets/basic",
+{"id": "3", "op": "range", "dataset": "/abs/path/datasets/basic", "prefix_base64": "",
  "start_base64": "YQ==", "start_exclusive": false, "end_base64": "Yw==", "limit": 10, "columns": ["size"]}
 ```
 
-`start_base64` and `end_base64` are optional (absent or null) and may be empty strings (spec QUERY-2); `start_exclusive` defaults to false; `columns` defaults to `[]`.
+`prefix_base64`, `start_base64` and `end_base64` are optional (absent or null) and may be empty strings (spec QUERY-2); `start_exclusive` defaults to false; `columns` defaults to `[]`.
 The adapter opens the dataset first if it has not.
 
 ### `list`
@@ -101,7 +103,9 @@ Validation runs the requested level and its prerequisites (spec §8) and reports
   "profile": {"result": "failed", "code": "key_order"}}}
 ```
 
-`result` is `complete`, `failed` (with `code`) or `incomplete` (with `reason`). The `digest` level adds
+`result` is `complete`, `failed` (with `code`) or `incomplete` (with `reason`). A `validate` request never
+answers `refused`: a dataset that cannot be opened reports `structural` as `failed` with the refusal code.
+Validator targets therefore include the open-stage faults. The `digest` level adds
 `checked`, the number of digests it compared. `status` is `ok` whenever validation ran, whatever it found.
 
 ## Responses

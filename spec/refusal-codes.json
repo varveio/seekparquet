@@ -12,7 +12,7 @@
     },
     {
       "code": "invalid_manifest",
-      "meaning": "The manifest is not valid: unparseable JSON, duplicate member names, a missing, extra or ill-typed member, a wrong format name, malformed base64, a part with no rows, or a part path that breaks PART-1.",
+      "meaning": "The manifest is not valid: unparseable JSON, duplicate member names, a missing, extra or ill-typed member, a wrong format name, malformed base64, a part with no rows, or a part path that breaks PART-1. Also part bounds in the manifest that are not ascending and disjoint (PART-4).",
       "requirements": [
         "MAN-1",
         "MAN-2",
@@ -20,7 +20,10 @@
         "MAN-4",
         "PART-1",
         "PART-2",
-        "PART-3"
+        "PART-3",
+        "MAN-6",
+        "MAN-7",
+        "PART-4"
       ],
       "detect": "open"
     },
@@ -45,7 +48,7 @@
     },
     {
       "code": "part_mismatch",
-      "meaning": "A part's size in bytes or its row count differs from its manifest entry.",
+      "meaning": "A part's size in bytes, or its footer's row count, differs from its manifest entry.",
       "requirements": [
         "CHECK-1"
       ],
@@ -53,7 +56,7 @@
     },
     {
       "code": "invalid_footer",
-      "meaning": "A part's Parquet footer cannot be read, its row groups' row counts do not sum to the manifest's, or a column chunk refers to another file (file_path set).",
+      "meaning": "A part's Parquet footer cannot be read, its row groups' row counts do not sum to the footer's row count, or a column chunk refers to another file (file_path set).",
       "requirements": [
         "CHECK-1",
         "FILE-1"
@@ -84,8 +87,8 @@
       "requirements": [
         "COL-5"
       ],
-      "detect": "open",
-      "notes": "Required on open for columns a request projects; recommended for all columns."
+      "detect": "read",
+      "notes": "Must be detected no later than the first request that projects the column; should be detected on open for all columns; structural validation checks all columns."
     },
     {
       "code": "missing_sorting_columns",
@@ -144,13 +147,13 @@
     },
     {
       "code": "bounds_mismatch",
-      "meaning": "The manifest's part bounds are not ascending and disjoint, or a part's actual first or last key differs from its manifest bounds.",
+      "meaning": "A part's actual first or last key differs from its manifest bounds.",
       "requirements": [
         "PART-3",
         "PART-4"
       ],
       "detect": "validate:profile",
-      "notes": "Bounds that are not ascending and disjoint in the manifest itself must be detected on open; a disagreement between the manifest and the decoded keys must be detected by profile validation and may be detected earlier."
+      "notes": "Readers that decode a part's first and last key on open may report it then."
     },
     {
       "code": "digest_mismatch",
