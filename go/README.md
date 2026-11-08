@@ -90,7 +90,7 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `Verify`, `Metadata` and `Close`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `PlanRanges`, `Verify`, `Metadata` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
 | `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
 | `cmd/seekparquet` | the `seekparquet validate` command |
@@ -244,6 +244,18 @@ hold its start, and value pages only for the rows it returns; a value column wit
 page headers walked from the start of its chunk, decoding only the pages it returns rows from. A listing
 resumes after each common prefix at the prefix's successor, skipping the pages wholly under it, but the page
 it lands on, and the pages around a prefix's boundaries, still decode some of the keys under it.
+
+**Planned selections.** `d.PlanRanges(ctx, ranges, columns)` plans reading every row of a set of ranges
+(their bounds and cursors; rows several ranges select count once). Planning decodes the key pages at the two
+ends of each range, as a `Range` starting there would, and with columns reads the OffsetIndex of each
+projected column chunk the rows span, but no data page. `Count()` is the row count, exact once every part
+holding a selected row is checked: always with columns, and otherwise only when no part between the ends is
+still untouched. `ProjectedBytes()` is the compressed bytes `Scan` will request for the projected columns:
+the extent of each page holding a selected row and of its chunk's dictionary, once each however many ranges
+share them; it is not exact when a projected chunk has no OffsetIndex. `Scan(ctx, stats, fn)` yields the
+rows in dataset order with their values, reading each counted extent in one request, and checks every key
+page it decodes. A page an OffsetIndex locates is read in one request of exactly its extent, by `Range` and
+`List` too, and a chunk's dictionary with it.
 
 **Read statistics.** Set `Range.Stats` or `List.Stats` to a `*ReadStats` to see what one request did: key and
 value pages decoded, keys decoded, row groups opened and key page indexes loaded, page-index seeks and prefix

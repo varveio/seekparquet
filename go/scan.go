@@ -31,6 +31,10 @@ type scan struct {
 	// dataset ordinal of its first row.
 	groupKey   []byte
 	groupStart int64
+	// bound is, once the scan is exhausted, the dataset ordinal of the
+	// first row it did not reach: the first at or after the upper bound, or
+	// the dataset's row count.
+	bound int64
 }
 
 func (r *reader) newScan(ctx context.Context, end []byte, st *ReadStats) *scan {
@@ -178,7 +182,7 @@ func (s *scan) next() error {
 func (s *scan) land(key []byte, row int64) {
 	s.key, s.row = key, row
 	if s.end != nil && bytes.Compare(key, s.end) >= 0 {
-		s.key = nil
+		s.key, s.bound = nil, s.ordinal()
 	}
 }
 
@@ -193,7 +197,7 @@ func (s *scan) open(g groupRef) (bool, error) {
 	}
 	for {
 		if g.part >= len(s.r.parts) || s.end != nil && s.r.startsAtOrAfter(g, s.end) {
-			s.key = nil
+			s.key, s.bound = nil, s.r.startOf(g)
 			return false, nil
 		}
 		if err := s.ctx.Err(); err != nil {

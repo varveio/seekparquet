@@ -3,8 +3,9 @@
 
 package seekparquet
 
-// ReadStats counts the work of one Range or List request. Set it as the
-// request's Stats field to receive it. The counts are exact for the request
+// ReadStats counts the work of one Range or List request, one PlanRanges
+// (RangePlan.Stats) or one RangePlan.Scan. Set it as the request's Stats
+// field, or pass it to Scan, to receive it. The counts are exact for the request
 // and are filled whether it succeeds or fails, up to the point it stopped.
 //
 // They are diagnostics of this reader's access path, not part of the

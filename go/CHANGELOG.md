@@ -5,6 +5,16 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Selection planning: `Dataset.PlanRanges(ctx, ranges, columns)` returns a `RangePlan` for every row of a set
+  of ranges. `Count()` is its row count, from the key pages at the ends, row-group row counts and OffsetIndex
+  row positions, and reports whether it is exact (every part holding a row checked). `ProjectedBytes()` is the
+  compressed bytes `Scan` will request for the projected columns, shared pages and dictionaries once, and
+  reports whether it is exact (every projected chunk has an OffsetIndex). `Scan(ctx, stats, fn)` yields the
+  rows in dataset order. A plan is bound to its `Dataset`. No format change.
+- A page that an OffsetIndex locates is read in one request of exactly its extent instead of a 4 KiB header
+  window and a second read for a larger payload; a value chunk's dictionary page is read with it, as the
+  extent before the chunk's first data page, before that chunk's first page.
+
 - `PartWriter.WritePage` writes a page column by column from the caller's own values, without copying
   them and checking only the keys (KEY-2, KEY-3): with swath's binding it writes swath's bytes at its old
   writer's speed (`BenchmarkSwathWriter`). `WriteRows` still copies, for callers that reuse their rows.
