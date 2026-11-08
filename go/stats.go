@@ -19,8 +19,8 @@ package seekparquet
 // decoded first key is reused without decoding.
 type ReadStats struct {
 	// PartsOpened is the number of parts the request was the first to
-	// touch: it opened each from the Source and checked its footer
-	// (CHECK-1). The footer reads are in SourceReads.
+	// touch and opened from the Source to check (CHECK-1), whether or not
+	// the check passed. The footer reads are in SourceReads.
 	PartsOpened int64
 	// KeyPagesDecoded is the number of key column data pages the request
 	// decoded successfully (a page whose values do not decode is not

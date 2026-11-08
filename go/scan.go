@@ -224,12 +224,12 @@ func (s *scan) open(g groupRef) (bool, error) {
 // is a candidate witness for it below the upper bound. The listing then
 // emits the prefix without reading the group. It is taken once the
 // group's first key is known (decoded by an earlier read, a routing probe,
-// or Verify). A next group in a part known from its bounds to begin at or
-// after the upper bound is not touched.
+// or Verify). A group, or a next group, in a part known from its bounds to
+// begin at or after the upper bound is not touched.
 func (s *scan) shortcut(from, prefix []byte, delim byte) ([]byte, error) {
 	g, err := s.r.groupFor(s.ctx, from, true, &s.log, s.stats)
-	if err != nil || g.part >= len(s.r.parts) {
-		return nil, err
+	if err != nil || g.part >= len(s.r.parts) || s.end != nil && s.r.startsAtOrAfter(g, s.end) {
+		return nil, err // the seek after it applies the upper bound without touching the part
 	}
 	if _, err := s.r.part(s.ctx, g.part, s.stats); err != nil || g.index >= len(s.r.parts[g.part].groups) {
 		return nil, err

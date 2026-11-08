@@ -666,3 +666,16 @@ func TestValidateKeyValueCount(t *testing.T) {
 	rewrite(t, dir, 0, func(m *format.FileMetaData) { m.RowGroups[1].Columns[0].MetaData.NumValues++ })
 	expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelStructural: "complete", LevelProfile: "invalid_parquet"})
 }
+
+// TestValidateStructuralRowGroupLocation reports a part refused for its
+// second row group (RG-1) at that row group.
+func TestValidateStructuralRowGroupLocation(t *testing.T) {
+	dir := write(t, parts(testutil.Part{GroupRows: 2}, []string{"a", "b", "c", "d"}))
+	rewrite(t, dir, 0, func(m *format.FileMetaData) { m.RowGroups[1].SortingColumns = nil })
+	report, err := ValidateDir(ctx, dir, ValidateOptions{Level: LevelStructural})
+	must(t, err)
+	lr, ok := report.Level(LevelStructural)
+	if !ok || CodeOf(lr.Failure) != CodeMissingSortingColumns || lr.At.Part != testutil.PartPath(0) || lr.At.RowGroup != 1 {
+		t.Fatalf("structural: %+v", lr)
+	}
+}

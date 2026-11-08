@@ -243,9 +243,10 @@ func (r *reader) checkBounds(i int) error {
 // its stamps agree with the manifest (STAMP-2), its key column meets KEY-1
 // and KEY-5, every non-empty row group meets RG-1, and its columns agree
 // with those of every part checked before it (COL-5). Concurrent reads
-// wait for one check. A refusal is kept: the part stays refused for the
-// reader's lifetime. Other failures (the source, the context, a limit) are
-// not kept, so a later read checks the part again.
+// wait for one check. A refusal reached with a live context is kept: the
+// part stays refused for the reader's lifetime. Other failures (the source,
+// a limit), and any failure once ctx is done, are not kept, so a later read
+// checks the part again.
 func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) {
 	p := r.parts[i]
 	if p.ready.Load() {
@@ -264,6 +265,9 @@ func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) 
 		return nil, p.err
 	}
 	if err := r.checkPart(ctx, i, st); err != nil {
+		if ctx.Err() != nil { // a check cut short is not an outcome: the part stays unchecked
+			return nil, ctx.Err()
+		}
 		var refusal *RefusalError
 		var unsupported *UnsupportedError
 		if errors.As(err, &refusal) || errors.As(err, &unsupported) {
@@ -280,13 +284,14 @@ func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) 
 func (r *reader) checkPart(ctx context.Context, i int, st *ReadStats) error {
 	p := r.parts[i]
 	in := partInput{name: p.name, file: p.file, size: p.size}
-	if r.fetch != nil {
+	if r.fetch != nil { // counts the part opened once the Source opens it
 		var err error
 		if in, err = r.fetch(ctx, i, st); err != nil {
 			return err
 		}
+	} else {
+		st.PartsOpened++
 	}
-	st.PartsOpened++
 	err := r.fill(ctx, p, in, st)
 	if err != nil && r.fetch != nil {
 		closeFile(in.file)
@@ -303,12 +308,17 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 			return err
 		}
 	}
+	// A row count given with the part (the manifest's) is never rewritten:
+	// reads route by it while other parts are checked.
 	rows := p.rows
-	if rows == 0 { // a part given without its row count
+	switch {
+	case rows == 0: // a part given without its row count, checked when the reader opens
 		if footer.NumRows() > math.MaxInt64-p.start {
 			return exceeded("dataset row count exceeds %d at part %s", int64(math.MaxInt64), p.name)
 		}
 		rows = footer.NumRows()
+	case footer.NumRows() != rows:
+		return refusePart(CodePartMismatch, in.name, -1, "the part holds %d rows, its manifest entry %d", footer.NumRows(), rows)
 	}
 	meta := footer.Metadata()
 	top, dup := topLevel(meta.Schema)
@@ -364,7 +374,10 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 			r.columns[name] = signatures[i]
 		}
 	}
-	p.file, p.size, p.rows, p.groups = in.file, in.size, rows, groups
+	if p.rows == 0 {
+		p.rows = rows
+	}
+	p.file, p.size, p.groups = in.file, in.size, groups
 	return nil
 }
 

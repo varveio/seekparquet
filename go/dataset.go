@@ -229,6 +229,7 @@ func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entr
 		}
 		return partInput{}, err
 	}
+	st.PartsOpened++
 	defer func() {
 		if err != nil {
 			_ = f.Close()

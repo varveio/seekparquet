@@ -4,6 +4,9 @@
 package seekparquet
 
 import (
+	"context"
+	"errors"
+	"os"
 	"sync"
 	"testing"
 
@@ -78,6 +81,10 @@ func TestLazyPartRefusal(t *testing.T) {
 			t.Fatalf("%s: %v, want stamp_mismatch", describe(rng), err)
 		}
 	}
+	var st ReadStats
+	if _, err := d.List(ctx, List{Prefix: []byte("d/"), Limit: 5, Stats: &st}); CodeOf(err) != CodeStampMismatch || st.PartsOpened != 0 {
+		t.Fatalf("list after the refusal: %v, %d parts opened", err, st.PartsOpened)
+	}
 	if _, err := d.List(ctx, List{Prefix: []byte("d/"), Limit: 5}); CodeOf(err) != CodeStampMismatch {
 		t.Fatalf("list: %v, want stamp_mismatch", err)
 	}
@@ -141,5 +148,120 @@ func TestLazyConcurrentFirstTouch(t *testing.T) {
 	wg.Wait()
 	if src.opened.Load() != 2 {
 		t.Fatalf("%d files opened, want the manifest and part 1", src.opened.Load())
+	}
+}
+
+// TestLazyRefusedPartCounted counts a part whose check fails: the read
+// opened and read it, so PartsOpened and SourceReads include it.
+func TestLazyRefusedPartCounted(t *testing.T) {
+	dir := write(t, lazyParts())
+	rewrite(t, dir, 1, func(m *format.FileMetaData) { m.KeyValueMetadata = nil })
+	d := open(t, dir, Options{})
+	var st ReadStats
+	if _, err := d.Range(ctx, Range{Prefix: []byte("b/"), Limit: 5, Stats: &st}); CodeOf(err) != CodeStampMismatch {
+		t.Fatalf("%v, want stamp_mismatch", err)
+	}
+	if st.PartsOpened != 1 || st.SourceReads == 0 {
+		t.Fatalf("refused part: %+v, want it counted as opened and read", st)
+	}
+}
+
+// TestLazyFirstTouchRacesResume resumes a cursor inside a repeated-key
+// group of part 0, which locates the row after the cursor by dataset
+// ordinal across every part's row count, while other reads touch part 1
+// for the first time. Run with -race: a part's row count, from the
+// manifest, is never rewritten by its check.
+func TestLazyFirstTouchRacesResume(t *testing.T) {
+	doc := parts(testutil.Part{GroupRows: 1}, []string{"a", "a", "a", "b"}, dirKeys(map[string]int{"c": 20}, "c"))
+	doc.RepeatedKeys = true
+	dir := write(t, doc)
+	for range 20 {
+		d := open(t, dir, Options{})
+		var wg sync.WaitGroup
+		for i := range 8 {
+			wg.Go(func() {
+				if i%2 == 0 {
+					rows, err := d.Range(ctx, Range{Cursor: &Cursor{Key: []byte("a"), Offset: 0}, Limit: 1})
+					if err != nil || len(rows) != 1 || string(rows[0].Key) != "a" || rows[0].Offset != 1 {
+						t.Errorf("resume: %+v, %v", rows, err)
+					}
+				} else if rows, err := d.Range(ctx, PrefixRange([]byte("c/"), 100)); err != nil || len(rows) != 20 {
+					t.Errorf("part 1: %d rows, %v", len(rows), err)
+				}
+			})
+		}
+		wg.Wait()
+	}
+}
+
+// cancellingSource cancels a context on the first read of one file.
+type cancellingSource struct {
+	Source
+	path   string
+	cancel context.CancelFunc
+	opened int
+}
+
+type cancellingFile struct {
+	SourceFile
+	cancel context.CancelFunc
+}
+
+func (f cancellingFile) ReadAt(p []byte, off int64) (int, error) {
+	f.cancel()
+	return f.SourceFile.ReadAt(p, off)
+}
+
+func (s *cancellingSource) Open(c context.Context, path string) (SourceFile, error) {
+	f, err := s.Source.Open(c, path)
+	if err != nil || path != s.path {
+		return f, err
+	}
+	s.opened++
+	if s.opened == 1 {
+		return cancellingFile{f, s.cancel}, nil
+	}
+	return f, nil
+}
+
+// TestLazyCancelledCheckNotKept cancels a read during its first touch of a
+// part with bad stamps: the read fails with the context's error, and the
+// refusal it reached is not kept, so the next read checks the part again
+// and is refused.
+func TestLazyCancelledCheckNotKept(t *testing.T) {
+	dir := write(t, lazyParts())
+	rewrite(t, dir, 1, func(m *format.FileMetaData) { m.KeyValueMetadata = nil })
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	src := &cancellingSource{Source: dirOf(t, dir), path: testutil.PartPath(1), cancel: cancel}
+	d, err := OpenDataset(ctx, src, Options{})
+	must(t, err)
+	t.Cleanup(func() { _ = d.Close() })
+	if _, err := d.Range(cctx, PrefixRange([]byte("b/"), 5)); !errors.Is(err, context.Canceled) || CodeOf(err) != "" {
+		t.Fatalf("cancelled first touch: %v, want context.Canceled", err)
+	}
+	if _, err := d.Range(ctx, PrefixRange([]byte("b/"), 5)); CodeOf(err) != CodeStampMismatch {
+		t.Fatalf("second touch: %v, want stamp_mismatch", err)
+	}
+	if src.opened != 2 {
+		t.Fatalf("part opened %d times, want 2: the cancelled check was kept", src.opened)
+	}
+}
+
+// TestLazyListBoundsBeforeTouch lists a prefix that the manifest's bounds
+// place before the only part, whose file is missing: the bounds prove the
+// result empty, so neither a listing nor a range touches the part.
+func TestLazyListBoundsBeforeTouch(t *testing.T) {
+	dir := write(t, parts(testutil.Part{}, []string{"b/x", "b/y"}))
+	must(t, os.Remove(partFile(dir, 0)))
+	d := open(t, dir, Options{})
+	if out, err := d.List(ctx, List{Prefix: []byte("a/"), Delimiter: '/', Limit: 10}); err != nil || len(out) != 0 {
+		t.Fatalf("list: %v, %v", out, err)
+	}
+	if rows, err := d.Range(ctx, PrefixRange([]byte("a/"), 10)); err != nil || len(rows) != 0 {
+		t.Fatalf("range: %v, %v", rows, err)
+	}
+	if _, err := d.Range(ctx, PrefixRange([]byte("b/"), 10)); CodeOf(err) != CodeMissingPart {
+		t.Fatalf("touching the part: %v, want missing_part", err)
 	}
 }

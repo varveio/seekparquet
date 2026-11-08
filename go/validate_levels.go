@@ -61,8 +61,8 @@ func (v *validator) structural(lr *LevelReport) error {
 		return err
 	}
 	v.d = d
-	for i, p := range d.r.parts {
-		lr.At = Location{Part: p.name, RowGroup: -1, Page: -1}
+	// A part's refusal carries its own location, row group included.
+	for i := range d.r.parts {
 		if _, err := d.r.part(v.ctx, i, &v.st); err != nil {
 			return err
 		}
