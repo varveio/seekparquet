@@ -1,0 +1,111 @@
+{
+  "group": "open",
+  "target": "reader",
+  "generated": false,
+  "description": "Opening every valid dataset succeeds (CHECK-1), including datasets with unusual but valid layouts. Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "open/empty",
+      "description": "parts: [] is a committed, empty dataset: open succeeds (no part files to check).",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/empty",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/basic",
+      "description": "The simplest valid dataset (one part, two row groups, uncompressed PLAIN pages) opens.",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/multipart",
+      "description": "Parts listed out of file-name order, empty row groups, three codecs, sha256 members, an extension and a stray unlisted file under the root: none of these may cause a refusal (LAYOUT-1, LAYOUT-3, EXT-1, PART-5: no digest check on open).",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "LAYOUT-3",
+        "EXT-1",
+        "ENC-1",
+        "PART-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/extensions-numbers",
+      "description": "Fractional, exponent, negative, huge and nested values inside extensions are ordinary JSON: MAN-6's integer rules apply only to the defined members, so open succeeds.",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "EXT-1",
+        "MAN-6"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/optional-codecs",
+      "description": "Value columns use LZ4_RAW and BROTLI (outside ENC-1). The dataset is valid: open succeeds, or answers unsupported_encoding; a refusal is wrong.",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "ENC-1"
+      ],
+      "dataset": "datasets/optional-codecs",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok",
+        "accept_unsupported": [
+          "unsupported_encoding"
+        ]
+      }
+    },
+    {
+      "id": "open/empty-range",
+      "description": "A range over the empty dataset returns no entries rather than failing.",
+      "requirements": [
+        "RANGE-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/empty",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    }
+  ]
+}

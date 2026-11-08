@@ -1,0 +1,41 @@
+# key-order-across-parts
+
+valid: no
+description: Part 0 ends with k09, part 1 starts with k05. The manifest hides this by declaring part 0's max key as k04 (so the manifest bounds look disjoint).
+provenance: native
+producer: pyarrow 26.0.1
+source rows: generators/rows/key-order-across-parts.json
+fault (generators/faults.json): key-order-across-parts: key_order or bounds_mismatch; reader detects on read; lowest validation level profile (KEY-3, CHECK-2, PART-3); location: key column data pages (rows written in this order by pyarrow)
+secondary fault: bounds_mismatch: The fault is hidden by declaring part 0's max key below its actual last key, so the manifest bounds also differ from the decoded keys.
+
+manifest: format_version 0, 2 parts
+  part 0: 'data/part-00000.parquet', rows 6, bytes 1492, keys 'k00' .. 'k04'
+  part 1: 'data/part-00001.parquet', rows 6, bytes 1492, keys 'k05' .. 'k11'
+
+file data/part-00000.parquet: 1492 bytes, footer 1119 bytes
+  num_rows 6, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  row_group 0: rows 6, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 3 pages, first_row_index [0, 2, 4]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [3, 3, 3]
+      max lengths [3, 3, 3]
+
+file data/part-00001.parquet: 1492 bytes, footer 1119 bytes
+  num_rows 6, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  row_group 0: rows 6, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 3 pages, first_row_index [0, 2, 4]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [3, 3, 3]
+      max lengths [3, 3, 3]

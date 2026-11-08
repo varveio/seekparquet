@@ -1,0 +1,26 @@
+{
+  "format": "seekparquet",
+  "format_version": 0,
+  "draft_revision": 1,
+  "schema_id": "example/objects/v1",
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "rows": 0,
+      "bytes": 1843,
+      "min_key_base64": "bG9ncy8yMDI2LzAxL2EuZ3o=",
+      "max_key_base64": "bG9ncy8yMDI2LzAxL3ouZ3o=",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "extensions": {
+    "example-producer": {
+      "source": "s3://example-bucket/logs/",
+      "complete": true
+    }
+  },
+  "key": {
+    "column": "key",
+    "unique": true
+  }
+}

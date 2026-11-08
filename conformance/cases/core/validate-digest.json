@@ -1,0 +1,110 @@
+{
+  "group": "validate-digest",
+  "target": "validator-digest",
+  "generated": false,
+  "description": "Validation at the digest level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code, and a dataset that cannot be opened shows structural failed. Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "validate-digest/empty",
+      "description": "The empty dataset declares no digests: digest completes with checked 0.",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/empty",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/digest-mixed",
+      "description": "Two of three parts declare sha256: digest completes with exactly 2 checked.",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/digest-mixed",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 2
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/digest-mismatch",
+      "description": "A declared sha256 differs from the part's bytes: digest fails with digest_mismatch.",
+      "fault_id": "digest-mismatch",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/invalid/digest-mismatch",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "failed",
+            "code": "digest_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/digest-on-profile-invalid",
+      "description": "The dataset has a key_order fault but its declared digest matches: digest is independent of the other levels and completes with 1 checked.",
+      "fault_id": "digest-on-profile-invalid",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/invalid/digest-on-profile-invalid",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 1
+          }
+        }
+      }
+    }
+  ]
+}

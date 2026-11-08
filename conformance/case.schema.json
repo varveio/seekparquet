@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/varveio/seekparquet/conformance/case.schema.json",
+  "title": "SeekParquet conformance case file",
+  "description": "Structure only. check_suite.py also checks requirement IDs against the specification, codes against refusal-codes.json and capability names against capabilities.json.",
+  "type": "object",
+  "required": ["group", "target", "generated", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "group": {"type": "string", "minLength": 1},
+    "target": {"type": "string", "description": "The conformance target these cases belong to (capabilities.json)."},
+    "generated": {"type": "boolean", "description": "false for hand-reviewed core files (cases/core/), true for generator output (cases/generated/)."},
+    "generator": {"type": "string", "description": "The script that writes this file (generated files only)."},
+    "families": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Generated families in this file and what each varies."},
+    "description": {"type": "string"},
+    "cases": {"type": "array", "items": {"$ref": "#/$defs/case"}}
+  },
+  "allOf": [
+    {"if": {"properties": {"generated": {"const": false}}},
+     "then": {"not": {"anyOf": [{"required": ["generator"]}, {"required": ["families"]}]},
+              "properties": {"cases": {"items": {"required": ["description"], "properties": {"description": {"minLength": 20}}}}}}},
+    {"if": {"properties": {"generated": {"const": true}}},
+     "then": {"required": ["generator", "families"], "properties": {"cases": {"items": {"required": ["family"]}}}}}
+  ],
+  "$defs": {
+    "b64": {"type": "string", "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$", "not": {"pattern": "[^A-Za-z0-9+/=]"}},
+    "optb64": {"oneOf": [{"$ref": "#/$defs/b64"}, {"type": "null"}]},
+    "row_cursor": {"type": "object", "required": ["key_base64", "offset"], "additionalProperties": false,
+      "properties": {"key_base64": {"$ref": "#/$defs/b64"}, "offset": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807}}},
+    "prefix_cursor": {"type": "object", "required": ["prefix_base64"], "additionalProperties": false,
+      "properties": {"prefix_base64": {"$ref": "#/$defs/b64"}}},
+    "codes": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "case": {
+      "type": "object",
+      "required": ["id", "requirements", "dataset", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9/_.-]*$", "not": {"pattern": "[\\u0000-\\u001f]"}},
+        "description": {"type": "string"},
+        "family": {"type": "string", "description": "The generated family (a key of the file's families)."},
+        "fault_id": {"type": "string", "description": "The fault in generators/faults.json that the case exercises."},
+        "scenario_id": {"type": "string", "description": "A multi-request scenario (for example one paginated listing)."},
+        "step": {"type": "integer", "minimum": 0, "description": "The case's position in its scenario."},
+        "requirements": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[A-Z]+-[0-9]+$"}},
+        "requires": {"type": "array", "items": {"type": "string"}},
+        "dataset": {"type": "string", "description": "Path of the dataset root, relative to the conformance directory."},
+        "detect": {"enum": ["open", "read", "validate:structural", "validate:profile", "validate:full", "validate:digest"]},
+        "request": {"$ref": "#/$defs/request"},
+        "raw_request": {"type": "object", "description": "Sent as is (plus id and dataset), for invalid_request cases."},
+        "expect": {"$ref": "#/$defs/expect"}
+      },
+      "oneOf": [
+        {"required": ["request"], "not": {"required": ["raw_request"]}},
+        {"required": ["raw_request"], "not": {"required": ["request"]}}
+      ],
+      "allOf": [
+        {
+          "if": {"properties": {"expect": {"properties": {"status": {"const": "refused"}}}}},
+          "then": {"required": ["detect"]}
+        },
+        {
+          "if": {"required": ["raw_request"]},
+          "then": {"properties": {"expect": {"properties": {"status": {"const": "invalid_request"}}}}}
+        },
+        {
+          "description": "A successful range or list expectation states its entries.",
+          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"enum": ["range", "list"]}}},
+                                                         "expect": {"properties": {"status": {"const": "ok"}}}}},
+          "then": {"properties": {"expect": {"required": ["entries"]}}}
+        },
+        {
+          "description": "A validate expectation is always status ok with levels: validate never answers refused.",
+          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"const": "validate"}}}}},
+          "then": {"properties": {"expect": {"required": ["levels"], "properties": {"status": {"const": "ok"}}}}}
+        },
+        {
+          "description": "entries only for range and list, levels only for validate.",
+          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"enum": ["open", "validate"]}}}}},
+          "then": {"properties": {"expect": {"not": {"required": ["entries"]}}}}
+        },
+        {
+          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"enum": ["open", "range", "list"]}}}}},
+          "then": {"properties": {"expect": {"not": {"required": ["levels"]}}}}
+        }
+      ]
+    },
+    "request": {
+      "type": "object",
+      "required": ["op"],
+      "additionalProperties": false,
+      "properties": {
+        "op": {"enum": ["open", "range", "list", "validate"]},
+        "start_base64": {"$ref": "#/$defs/optb64"},
+        "start_exclusive": {"type": "boolean"},
+        "end_base64": {"$ref": "#/$defs/optb64"},
+        "prefix_base64": {"$ref": "#/$defs/b64"},
+        "delimiter_base64": {"$ref": "#/$defs/b64"},
+        "after": {"oneOf": [{"$ref": "#/$defs/row_cursor"}, {"$ref": "#/$defs/prefix_cursor"}]},
+        "limit": {"type": "integer"},
+        "columns": {"type": "array", "items": {"type": "string"}},
+        "level": {"enum": ["structural", "profile", "full", "digest"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"op": {"enum": ["range", "list"]}}}, "then": {"required": ["limit"]}},
+        {"description": "Range accepts only a row cursor (PAGE-1).",
+         "if": {"properties": {"op": {"const": "range"}}}, "then": {"properties": {"after": {"$ref": "#/$defs/row_cursor"}}}},
+        {"if": {"properties": {"op": {"const": "list"}}}, "then": {"required": ["delimiter_base64"]}},
+        {"if": {"properties": {"op": {"const": "validate"}}}, "then": {"required": ["level"]}}
+      ]
+    },
+    "expect": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {"enum": ["ok", "refused", "invalid_request", "unsupported"]},
+        "code": {"type": "string"},
+        "codes": {"$ref": "#/$defs/codes"},
+        "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+        "accept_unsupported": {
+          "description": "Optional features: an unsupported response with one of these codes also passes. Only with status ok.",
+          "type": "array", "minItems": 1, "items": {"type": "string"}
+        },
+        "levels": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "structural": {"$ref": "#/$defs/level"},
+            "profile": {"$ref": "#/$defs/level"},
+            "full": {"$ref": "#/$defs/level"},
+            "digest": {"$ref": "#/$defs/level"}
+          }
+        }
+      },
+      "allOf": [
+        {"if": {"properties": {"status": {"enum": ["refused", "unsupported"]}}},
+         "then": {"oneOf": [{"required": ["code"], "not": {"required": ["codes"]}}, {"required": ["codes"], "not": {"required": ["code"]}}]}},
+        {"if": {"properties": {"status": {"enum": ["ok", "invalid_request"]}}},
+         "then": {"not": {"anyOf": [{"required": ["code"]}, {"required": ["codes"]}]}}},
+        {"if": {"properties": {"status": {"not": {"const": "ok"}}}},
+         "then": {"not": {"anyOf": [{"required": ["accept_unsupported"]}, {"required": ["entries"]}, {"required": ["levels"]}]}}}
+      ]
+    },
+    "level": {
+      "type": "object",
+      "required": ["result"],
+      "additionalProperties": false,
+      "properties": {
+        "result": {"enum": ["complete", "failed", "incomplete"]},
+        "code": {"type": "string"},
+        "codes": {"$ref": "#/$defs/codes"},
+        "checked": {"type": "integer", "minimum": 0},
+        "accept": {
+          "description": "Further results that also pass, for levels that depend on optional features (for example a full level that may be incomplete when a codec is unsupported).",
+          "type": "array", "minItems": 1, "items": {"enum": ["complete", "failed", "incomplete"]}
+        }
+      },
+      "if": {"properties": {"result": {"const": "failed"}}},
+      "then": {"oneOf": [{"required": ["code"]}, {"required": ["codes"]}]}
+    },
+    "entry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "key_base64", "values", "offset"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {"const": "row"},
+            "offset": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+            "key_base64": {"$ref": "#/$defs/b64"},
+            "values": {"type": "array", "items": {"$ref": "#/$defs/value"}}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "key_base64"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {"const": "prefix"},
+            "key_base64": {"$ref": "#/$defs/b64"}
+          }
+        }
+      ]
+    },
+    "value": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "absent": {"const": true},
+        "null": {"const": true},
+        "bool": {"type": "boolean"},
+        "int": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)$", "not": {"pattern": "[^-0-9]"}},
+        "float32": {"type": "string", "pattern": "^[0-9a-f]{8}$", "not": {"pattern": "[^0-9a-f]"}},
+        "float64": {"type": "string", "pattern": "^[0-9a-f]{16}$", "not": {"pattern": "[^0-9a-f]"}},
+        "bytes_base64": {"$ref": "#/$defs/b64"}
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "format": "seekparquet",
+  "format_version": 0,
+  "draft_revision": 1,
+  "schema_id": "conformance/objects/v1",
+  "key": {
+    "column": "key",
+    "unique": true
+  },
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "rows": 12,
+      "bytes": 2046,
+      "min_key_base64": "azAw",
+      "max_key_base64": "azEx",
+      "sha256": "34a9ebb2c05b3c18102b23bef380b1b09a59f3c13781e18956249163327c62a0"
+    }
+  ]
+}

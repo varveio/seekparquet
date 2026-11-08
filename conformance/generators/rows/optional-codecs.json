@@ -1,0 +1,137 @@
+{
+  "dataset": "optional-codecs",
+  "description": "Valid, but two value columns use codecs outside the ENC-1 baseline: lz4col is LZ4_RAW and brcol is BROTLI. The key and size columns are SNAPPY. A reader or validator may support these codecs or report them unsupported.",
+  "schema_id": "conformance/objects/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "size",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "name": "lz4col",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "name": "brcol",
+      "type": "string",
+      "nullable": false
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        6
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "snappy",
+        "use_dictionary": false,
+        "data_page_version": "1.0",
+        "column_compression": {
+          "lz4col": "lz4",
+          "brcol": "brotli"
+        },
+        "expect_codecs": {
+          "key": "SNAPPY",
+          "size": "SNAPPY",
+          "lz4col": "LZ4_RAW",
+          "brcol": "BROTLI"
+        }
+      },
+      "rows": [
+        {
+          "key_base64": "b3B0LTAw",
+          "values": {
+            "size": {
+              "int": "0"
+            },
+            "lz4col": {
+              "int": "0"
+            },
+            "brcol": {
+              "bytes_base64": "YnJvdGxpLTA="
+            }
+          }
+        },
+        {
+          "key_base64": "b3B0LTAx",
+          "values": {
+            "size": {
+              "int": "1"
+            },
+            "lz4col": {
+              "int": "1000"
+            },
+            "brcol": {
+              "bytes_base64": "YnJvdGxpLTE="
+            }
+          }
+        },
+        {
+          "key_base64": "b3B0LTAy",
+          "values": {
+            "size": {
+              "int": "2"
+            },
+            "lz4col": {
+              "int": "2000"
+            },
+            "brcol": {
+              "bytes_base64": "YnJvdGxpLTI="
+            }
+          }
+        },
+        {
+          "key_base64": "b3B0LTAz",
+          "values": {
+            "size": {
+              "int": "3"
+            },
+            "lz4col": {
+              "int": "3000"
+            },
+            "brcol": {
+              "bytes_base64": "YnJvdGxpLTM="
+            }
+          }
+        },
+        {
+          "key_base64": "b3B0LTA0",
+          "values": {
+            "size": {
+              "int": "4"
+            },
+            "lz4col": {
+              "int": "4000"
+            },
+            "brcol": {
+              "bytes_base64": "YnJvdGxpLTQ="
+            }
+          }
+        },
+        {
+          "key_base64": "b3B0LTA1",
+          "values": {
+            "size": {
+              "int": "5"
+            },
+            "lz4col": {
+              "int": "5000"
+            },
+            "brcol": {
+              "bytes_base64": "YnJvdGxpLTU="
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "key": {
+    "column": "key",
+    "unique": true
+  }
+}

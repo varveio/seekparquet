@@ -1,0 +1,123 @@
+{
+  "group": "validate-profile",
+  "target": "validator-profile",
+  "generated": false,
+  "description": "Validation at the profile level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code, and a dataset that cannot be opened shows structural failed. Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "validate-profile/binary-keys",
+      "description": "Valid binary keys (NUL, 0x7F/0x80, 0xFF, invalid UTF-8): structural and profile complete.",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/bounds-first-key-differs",
+      "description": "The manifest's min key for part 1 is below its actual first key: only decoding keys shows it, so structural completes and profile fails with bounds_mismatch.",
+      "fault_id": "bounds-first-key-differs",
+      "requirements": [
+        "PART-3",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/bounds-first-key-differs",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "bounds_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/key-order-duplicate",
+      "description": "A key stored twice in one page: profile fails with key_order while structural completes.",
+      "fault_id": "key-order-duplicate",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/key-order-duplicate",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/prerequisite/missing-part",
+      "description": "Profile requested on a structural fault: structural failed with missing_part, profile incomplete with a reason (VAL-1).",
+      "fault_id": "missing-part",
+      "requirements": [
+        "LAYOUT-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/missing-part",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_part"
+          },
+          "profile": {
+            "result": "incomplete"
+          }
+        }
+      }
+    }
+  ]
+}

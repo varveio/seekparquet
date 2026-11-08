@@ -1,0 +1,243 @@
+{
+  "dataset": "group-split-parts",
+  "description": "A key group is split across parts; their manifest bounds overlap.",
+  "schema_id": "conformance/repeated/v1",
+  "key_type": "binary",
+  "key": {
+    "column": "key",
+    "unique": false
+  },
+  "columns": [
+    {
+      "name": "size",
+      "type": "int64",
+      "nullable": false
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        4,
+        4,
+        4,
+        3
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "YQ==",
+          "values": {
+            "size": {
+              "int": "0"
+            }
+          }
+        },
+        {
+          "key_base64": "YQ==",
+          "values": {
+            "size": {
+              "int": "1"
+            }
+          }
+        },
+        {
+          "key_base64": "YQ==",
+          "values": {
+            "size": {
+              "int": "2"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "3"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "4"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "5"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "6"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "7"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "8"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "9"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "10"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "11"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "12"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "13"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "14"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "data/part-00001.parquet",
+      "row_groups": [
+        4,
+        5
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "15"
+            }
+          }
+        },
+        {
+          "key_base64": "Yy94",
+          "values": {
+            "size": {
+              "int": "16"
+            }
+          }
+        },
+        {
+          "key_base64": "Yy94",
+          "values": {
+            "size": {
+              "int": "17"
+            }
+          }
+        },
+        {
+          "key_base64": "Yy94",
+          "values": {
+            "size": {
+              "int": "18"
+            }
+          }
+        },
+        {
+          "key_base64": "Yy94",
+          "values": {
+            "size": {
+              "int": "19"
+            }
+          }
+        },
+        {
+          "key_base64": "ZA==",
+          "values": {
+            "size": {
+              "int": "20"
+            }
+          }
+        },
+        {
+          "key_base64": "ZA==",
+          "values": {
+            "size": {
+              "int": "21"
+            }
+          }
+        },
+        {
+          "key_base64": "ZA==",
+          "values": {
+            "size": {
+              "int": "22"
+            }
+          }
+        },
+        {
+          "key_base64": "ZA==",
+          "values": {
+            "size": {
+              "int": "23"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

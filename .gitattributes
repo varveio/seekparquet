@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.parquet binary
+# Fixture bytes are checksummed: never normalise them.
+conformance/datasets/** -text -diff

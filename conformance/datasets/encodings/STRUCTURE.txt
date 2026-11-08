@@ -1,0 +1,50 @@
+# encodings
+
+valid: yes
+description: Data pages that use the remaining mandatory encodings: part 0 is written as Parquet format 1.0 with dictionaries, so key and value data pages are PLAIN_DICTIONARY; part 1 uses DELTA_BINARY_PACKED for INT32 and INT64 and DELTA_LENGTH_BYTE_ARRAY for BYTE_ARRAY columns (including the key), with data page v2. Asserted from the page headers.
+provenance: native
+producer: pyarrow 26.0.1
+source rows: generators/rows/encodings.json
+
+manifest: format_version 0, 2 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 3262, keys 'enc/000' .. 'enc/011'
+  part 1: 'data/part-00001.parquet', rows 12, bytes 2647, keys 'enc/012' .. 'enc/023'
+
+file data/part-00000.parquet: 3262 bytes, footer 1891 bytes
+  num_rows 12, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/encodings/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column i32: INT32 OPTIONAL def=1 rep=0
+  column i64: INT64 REQUIRED def=0 rep=0
+  column s: BYTE_ARRAY OPTIONAL def=1 rep=0
+  row_group 0: rows 6, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings PLAIN_DICTIONARY,RLE
+    page headers: DICTIONARY_PAGE(6) DATA_PAGE(3) DATA_PAGE(3)
+    offset index: 2 pages, first_row_index [0, 3]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [7, 7]
+      max lengths [7, 7]
+  row_group 1: rows 6, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings PLAIN_DICTIONARY,RLE
+    page headers: DICTIONARY_PAGE(6) DATA_PAGE(3) DATA_PAGE(3)
+    offset index: 2 pages, first_row_index [0, 3]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [7, 7]
+      max lengths [7, 7]
+
+file data/part-00001.parquet: 2647 bytes, footer 1458 bytes
+  num_rows 12, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/encodings/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column i32: INT32 OPTIONAL def=1 rep=0
+  column i64: INT64 REQUIRED def=0 rep=0
+  column s: BYTE_ARRAY OPTIONAL def=1 rep=0
+  row_group 0: rows 12, sorting_columns [col0 asc]
+    key chunk: codec SNAPPY, encodings RLE,DELTA_LENGTH_BYTE_ARRAY
+    page headers: DATA_PAGE_V2(4) DATA_PAGE_V2(4) DATA_PAGE_V2(4)
+    offset index: 3 pages, first_row_index [0, 4, 8]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [7, 7, 7]
+      max lengths [7, 7, 7]

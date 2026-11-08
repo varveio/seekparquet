@@ -1,0 +1,40 @@
+# inconsistent-column-repetition
+
+valid: no
+description: Column size is REQUIRED in part 0 and OPTIONAL in part 1.
+provenance: native
+producer: pyarrow 26.0.1
+source rows: generators/rows/inconsistent-column-repetition.json
+fault (generators/faults.json): inconsistent-column-repetition: inconsistent_column; reader detects on read; lowest validation level structural (COL-5, CHECK-1); location: footer schema of part 1 versus part 0
+
+manifest: format_version 0, 2 parts
+  part 0: 'data/part-00000.parquet', rows 4, bytes 1378, keys 'k00' .. 'k03'
+  part 1: 'data/part-00001.parquet', rows 4, bytes 1424, keys 'k04' .. 'k07'
+
+file data/part-00000.parquet: 1378 bytes, footer 1116 bytes
+  num_rows 4, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  row_group 0: rows 4, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [3, 3]
+      max lengths [3, 3]
+
+file data/part-00001.parquet: 1424 bytes, footer 1144 bytes
+  num_rows 4, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 OPTIONAL def=1 rep=0
+  row_group 0: rows 4, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [3, 3]
+      max lengths [3, 3]

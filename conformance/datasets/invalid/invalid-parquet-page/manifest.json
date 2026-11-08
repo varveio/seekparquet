@@ -1,0 +1,42 @@
+{
+  "format": "seekparquet",
+  "format_version": 0,
+  "draft_revision": 1,
+  "schema_id": "conformance/objects/v1",
+  "key": {
+    "column": "key",
+    "unique": true
+  },
+  "parts": [
+    {
+      "path": "shards/c.parquet",
+      "rows": 45,
+      "bytes": 7381,
+      "min_key_base64": "UkVBRE1F",
+      "max_key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+      "sha256": "3ffd9a48e6f4a84938dc8428e65ea2a86fbc6234e6374f7f3f2bb8001fea65b1"
+    },
+    {
+      "path": "shards/a.parquet",
+      "rows": 45,
+      "bytes": 6522,
+      "min_key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+      "max_key_base64": "bG9ncy8yMDI2LzAzL2YwMDguZ3o=",
+      "sha256": "525c95df656d28f4263bb448e8468b5fce900ef2b8802bfba57d8066d56f04d9"
+    },
+    {
+      "path": "shards/b.parquet",
+      "rows": 44,
+      "bytes": 7260,
+      "min_key_base64": "bG9ncy8yMDI2LzAzL2YwMDkuZ3o=",
+      "max_key_base64": "enotbGFzdA==",
+      "sha256": "c6bb040398c045858aa97187182a4d301d0391f5260a089f3525cf8cf6fda786"
+    }
+  ],
+  "extensions": {
+    "conformance": {
+      "synthetic": true,
+      "note": "ignored by readers"
+    }
+  }
+}

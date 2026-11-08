@@ -1,0 +1,104 @@
+# bounds-first-key-differs
+
+valid: no
+description: Part 1's declared min key is below its actual first key (still above part 0's max).
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/multipart
+fault (generators/faults.json): bounds-first-key-differs: bounds_mismatch; reader detects on validate; lowest validation level profile (PART-3, VAL-1); location: manifest.json
+changes:
+  - manifest: parts.1.min_key_base64 "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=" -> "bG9ncy8yMDI2LzAyL2YwMDQ="
+
+manifest: format_version 0, 3 parts
+  part 0: 'shards/c.parquet', rows 45, bytes 7381, keys 'README' .. 'logs/2026/02/f003.gz'
+  part 1: 'shards/a.parquet', rows 45, bytes 6522, keys 'logs/2026/02/f004' .. 'logs/2026/03/f008.gz'
+  part 2: 'shards/b.parquet', rows 44, bytes 7260, keys 'logs/2026/03/f009.gz' .. 'zz-last'
+
+file shards/a.parquet: 6522 bytes, footer 2419 bytes
+  num_rows 45, row_groups 3, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  column storage_class: BYTE_ARRAY OPTIONAL def=1 rep=0
+  column mtime: INT64 OPTIONAL def=1 rep=0
+  row_group 0: rows 15, sorting_columns [col0 asc]
+    key chunk: codec ZSTD, encodings RLE,DELTA_BYTE_ARRAY
+    page headers: DATA_PAGE_V2(5) DATA_PAGE_V2(5) DATA_PAGE_V2(5)
+    offset index: 3 pages, first_row_index [0, 5, 10]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20]
+      max lengths [20, 20, 20]
+  row_group 1: rows 15, sorting_columns [col0 asc]
+    key chunk: codec ZSTD, encodings RLE,DELTA_BYTE_ARRAY
+    page headers: DATA_PAGE_V2(5) DATA_PAGE_V2(5) DATA_PAGE_V2(5)
+    offset index: 3 pages, first_row_index [0, 5, 10]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20]
+      max lengths [20, 20, 20]
+  row_group 2: rows 15, sorting_columns [col0 asc]
+    key chunk: codec ZSTD, encodings RLE,DELTA_BYTE_ARRAY
+    page headers: DATA_PAGE_V2(5) DATA_PAGE_V2(5) DATA_PAGE_V2(5)
+    offset index: 3 pages, first_row_index [0, 5, 10]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20]
+      max lengths [20, 20, 20]
+
+file shards/b.parquet: 7260 bytes, footer 2260 bytes
+  num_rows 44, row_groups 3, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  column storage_class: BYTE_ARRAY OPTIONAL def=1 rep=0
+  column mtime: INT64 OPTIONAL def=1 rep=0
+  row_group 0: rows 20, sorting_columns [col0 asc]
+    key chunk: codec GZIP, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(20) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(2)
+    offset index: 7 pages, first_row_index [0, 3, 6, 9, 12, 15, 18]
+    column index: 7 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20, 20, 20, 20, 20]
+      max lengths [20, 20, 20, 20, 20, 20, 20]
+  row_group 1: rows 24, sorting_columns [col0 asc]
+    key chunk: codec GZIP, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(24) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3)
+    offset index: 8 pages, first_row_index [0, 3, 6, 9, 12, 15, 18, 21]
+    column index: 8 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20, 20, 20, 20, 20, 4]
+      max lengths [20, 20, 20, 20, 20, 20, 20, 7]
+  row_group 2: rows 0, sorting_columns [col0 asc]
+    (no rows; ignored by SeekParquet, RG-1..RG-7 do not apply)
+
+file shards/c.parquet: 7381 bytes, footer 2910 bytes
+  num_rows 45, row_groups 5, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  column storage_class: BYTE_ARRAY OPTIONAL def=1 rep=0
+  column mtime: INT64 OPTIONAL def=1 rep=0
+  row_group 0: rows 0, sorting_columns [col0 asc]
+    (no rows; ignored by SeekParquet, RG-1..RG-7 do not apply)
+  row_group 1: rows 16, sorting_columns [col0 asc]
+    key chunk: codec SNAPPY, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(16) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(4)
+    offset index: 4 pages, first_row_index [0, 4, 8, 12]
+    column index: 4 pages, boundary_order ASCENDING, null_pages none
+      min lengths [6, 14, 14, 20]
+      max lengths [14, 14, 20, 20]
+  row_group 2: rows 16, sorting_columns [col0 asc]
+    key chunk: codec SNAPPY, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(16) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(4)
+    offset index: 4 pages, first_row_index [0, 4, 8, 12]
+    column index: 4 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20, 20]
+      max lengths [20, 20, 20, 20]
+  row_group 3: rows 0, sorting_columns [col0 asc]
+    (no rows; ignored by SeekParquet, RG-1..RG-7 do not apply)
+  row_group 4: rows 13, sorting_columns [col0 asc]
+    key chunk: codec SNAPPY, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(13) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(1)
+    offset index: 4 pages, first_row_index [0, 4, 8, 12]
+    column index: 4 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20, 20]
+      max lengths [20, 20, 20, 20]

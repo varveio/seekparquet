@@ -1,0 +1,585 @@
+{
+  "group": "list",
+  "target": "reader",
+  "generated": false,
+  "description": "Delimited listing (LIST-2 to LIST-7). Expected entries come from oracle.py. Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "list/delimiter/root",
+      "description": "Empty prefix, delimiter '/': keys starting with '/' roll up to the common prefix '/', a/ ... roll up to a/, and keys without '/' (a, a0, ab, b, caf\u00e9...) are rows.",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Lw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YTA=",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6k=",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Y2Fmw6kv"
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqQ==",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqXo=",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95/3o=",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP96",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP//",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/y8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "//8v"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "////Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/a-slash",
+      "description": "prefix a/: the key a/ equal to the prefix is a row (LIST-3); a// rolls up to a// and a/b/ to a/b/; a/b, a/bc, a/c are rows.",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v"
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": [],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/a-slash-slash",
+      "description": "prefix a//: the first delimiter after the prefix decides, so a/// rolls up to a/// while a// and a//b are rows.",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8v",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8v",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8vLw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8vYg==",
+            "values": [],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/slash",
+      "description": "prefix '/': the delimiter search starts after the prefix, so '//' and '//x' roll up to '//' while '/a' is a row and '/a/b' rolls up to '/a/'.",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "Lw==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Lw==",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Ly8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "L2E=",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "L2Ev"
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/ff-delim-xff",
+      "description": "delimiter 0xFF with prefix x ff: x ff ff rolls up to itself, x ff y ff z rolls up to x ff y ff; x ff y and x ff z are rows.",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "QUERY-1"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "eP8=",
+        "delimiter_base64": "/w==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "eP95",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "eP95/w=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP96",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "eP//"
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/utf8-cont-byte",
+      "description": "delimiter 0xA9, a UTF-8 continuation byte: byte-level matching splits caf\u00e9 inside the \u00e9 character; no UTF-8 decoding is involved.",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "QUERY-1"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "Y2Fmww==",
+        "delimiter_base64": "qQ==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Y2Fmw6k="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/prefix-ff",
+      "description": "prefix 0xFF has no successor: the listing must still see the last keys of the dataset (ff, ff/..., ff ff...).",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "/w==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/y8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "//8v"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "////Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/after-inside-prefix",
+      "description": "Row cursor (a/b/c, 0): a/b/ is still returned, although it sorts before the cursor key, because a/b/c/, a/b/c/d and a/b/d are candidates that roll up to it (LIST-5).",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "LIST-5",
+        "PAGE-1"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after": {
+          "key_base64": "YS9iL2M=",
+          "offset": 0
+        },
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": [],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/after-inside-prefix-continuation",
+      "description": "Prefix cursor a/b/: every key under a/b/ is skipped, so a/b/ is not returned again and the listing resumes at a/bc (LIST-6).",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "LIST-5",
+        "PAGE-1",
+        "LIST-6"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after": {
+          "prefix_base64": "YS9iLw=="
+        },
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": [],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/end-at-prefix",
+      "description": "end a/b/ excludes the key a/b/ and everything under it, so the common prefix a/b/ does not appear (bounds apply to candidates, LIST-7).",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "end_base64": "YS9iLw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v"
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": [],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/list-bounds/worked-example",
+      "description": "LIST-7 worked example: end a/b keeps candidate a/a, so a/ appears even though a/z is beyond the end.",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "end_base64": "YS9i",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/list-bounds/worked-example-without-a-a",
+      "description": "With the row cursor (a/a, 0), the only remaining key under a/ is a/z, which is beyond end a/b: no entry at all (a/ must not appear).",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after": {
+          "key_base64": "YS9h",
+          "offset": 0
+        },
+        "end_base64": "YS9i",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "list/multipart/logs-2026",
+      "description": "prefix logs/2026/: the common prefix logs/2026/02/ has keys in two parts and must be returned once.",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8yMDI2Lw==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI2LzAxLw=="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI2LzAyLw=="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI2LzAzLw=="
+          }
+        ]
+      }
+    }
+  ]
+}

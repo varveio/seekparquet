@@ -1,0 +1,3145 @@
+{
+  "group": "validate-structural",
+  "target": "validator-structural",
+  "generated": true,
+  "generator": "generators/make_cases.py",
+  "description": "Validation at the structural level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code, and a dataset that cannot be opened shows structural failed.",
+  "families": {
+    "validate-structural/valid-dataset": "every valid dataset completes this level and its prerequisites",
+    "validate-structural/fault-at-lowest-level": "each fault at the lowest validation level that detects it (validation_level in generators/faults.json)"
+  },
+  "cases": [
+    {
+      "id": "validate-structural/repeated-keys",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/one-large-group",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/named-key",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/named-key",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/empty",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/empty",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/multipart",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/binary-keys",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/projection",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/delimiter",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/list-bounds",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/non-utf8-keys",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/non-utf8-keys",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/annotated",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encodings",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/optional-codecs",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/optional-codecs",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/truncated-bounds",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/binary-bounds-truncated-16-byte",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/non-monotone-bounds",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/non-monotone-bounds",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/key-legacy-utf8",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/key-legacy-utf8",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/extensions-numbers",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/digest-mixed",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/digest-mixed",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/no-value-page-index",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/no-value-page-index",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/missing-column-index-native",
+      "description": "Row group 1 holds a 5002-byte key; pyarrow omits the whole ColumnIndex of that key chunk (statistics larger than its 4096-byte limit) but keeps the OffsetIndex.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "missing-column-index-native",
+      "requirements": [
+        "RG-2",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/missing-column-index-native",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/inconsistent-column-type",
+      "description": "Column size is INT64 in part 0 and INT32 in part 1.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "inconsistent-column-type",
+      "requirements": [
+        "COL-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/inconsistent-column-type",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "inconsistent_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/inconsistent-column-width",
+      "description": "Column h is FIXED_LEN_BYTE_ARRAY(4) in part 0 and FIXED_LEN_BYTE_ARRAY(8) in part 1.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "inconsistent-column-width",
+      "requirements": [
+        "COL-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/inconsistent-column-width",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "inconsistent_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-wrong-schema-id",
+      "description": "Footer seekparquet.schema_id differs from the manifest's.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-wrong-schema-id",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-wrong-schema-id",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-wrong-revision",
+      "description": "Footer seekparquet.draft_revision is 2; the manifest says 1.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-wrong-revision",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-wrong-revision",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-noncanonical-revision",
+      "description": "Footer seekparquet.draft_revision is \"01\" (not canonical decimal).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-noncanonical-revision",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-noncanonical-revision",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-missing-revision",
+      "description": "Footer lacks seekparquet.draft_revision although format_version is 0.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-missing-revision",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-missing-revision",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/key-nullable",
+      "description": "The key column is OPTIONAL (no nulls are stored).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "key-nullable",
+      "requirements": [
+        "KEY-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/key-nullable",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/key-int64",
+      "description": "The key column is INT64.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "key-int64",
+      "requirements": [
+        "KEY-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/key-int64",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/key-missing",
+      "description": "No column is named key (it is named id).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "key-missing",
+      "requirements": [
+        "KEY-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/key-missing",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/key-nested",
+      "description": "key is a group column (struct with one BYTE_ARRAY child).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "key-nested",
+      "requirements": [
+        "KEY-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/key-nested",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/sorting-columns-missing",
+      "description": "Row groups carry no sorting_columns.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "sorting-columns-missing",
+      "requirements": [
+        "RG-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/sorting-columns-missing",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_sorting_columns"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/sorting-columns-descending",
+      "description": "sorting_columns declares key descending.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "sorting-columns-descending",
+      "requirements": [
+        "RG-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/sorting-columns-descending",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_sorting_columns"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/sorting-columns-other-first",
+      "description": "sorting_columns names column size first, then key.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "sorting-columns-other-first",
+      "requirements": [
+        "RG-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/sorting-columns-other-first",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_sorting_columns"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/unsupported-version-draft-2",
+      "description": "Manifest and stamps say format_version 0, draft_revision 2.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "unsupported-version-draft-2",
+      "requirements": [
+        "MAN-4",
+        "MAN-5",
+        "VER-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/unsupported-version-draft-2",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "unsupported_version"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/unsupported-version-1",
+      "description": "Manifest and stamps say format_version 1 (reserved until format 1 is final).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "unsupported-version-1",
+      "requirements": [
+        "MAN-4",
+        "MAN-5",
+        "VER-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/unsupported-version-1",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "unsupported_version"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-not-json",
+      "description": "manifest.json is truncated mid-object.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-not-json",
+      "requirements": [
+        "MAN-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-not-json",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-bom",
+      "description": "manifest.json begins with a UTF-8 byte order mark.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-bom",
+      "requirements": [
+        "MAN-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-bom",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-not-object",
+      "description": "manifest.json is a JSON array holding the manifest object.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-not-object",
+      "requirements": [
+        "MAN-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-not-object",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-duplicate-member",
+      "description": "The top-level member schema_id appears twice.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-duplicate-member",
+      "requirements": [
+        "MAN-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-duplicate-member",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-duplicate-part-member",
+      "description": "A part object has the member rows twice.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-duplicate-part-member",
+      "requirements": [
+        "MAN-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-duplicate-part-member",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-unknown-member",
+      "description": "Top-level member created_at is not defined.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-unknown-member",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-unknown-member",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-unknown-part-member",
+      "description": "Part member checksum is not defined.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-unknown-part-member",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-unknown-part-member",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-extension-not-object",
+      "description": "extensions is a string, not an object.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-extension-not-object",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-extension-not-object",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-missing-schema-id",
+      "description": "The required member schema_id is absent.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-missing-schema-id",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-missing-schema-id",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-missing-parts",
+      "description": "The required member parts is absent.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-missing-parts",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-missing-parts",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-rows-string",
+      "description": "A part's rows is the string \"12\".",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-rows-string",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-rows-string",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-wrong-format",
+      "description": "format is \"parquet\".",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-wrong-format",
+      "requirements": [
+        "MAN-4",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-wrong-format",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-draft-without-revision",
+      "description": "format_version is 0 but draft_revision is absent.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-draft-without-revision",
+      "requirements": [
+        "MAN-3",
+        "MAN-4",
+        "MAN-7",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-draft-without-revision",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-bad-base64",
+      "description": "min_key_base64 contains characters outside the base64 alphabet.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-bad-base64",
+      "requirements": [
+        "PART-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-bad-base64",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-base64-unpadded",
+      "description": "min_key_base64 omits its padding.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-base64-unpadded",
+      "requirements": [
+        "PART-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-base64-unpadded",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-base64-url-alphabet",
+      "description": "Part 1's max_key_base64 (0xFF*81) is written in the URL-safe alphabet ('_' for '/').",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-base64-url-alphabet",
+      "requirements": [
+        "PART-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-base64-url-alphabet",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-path-escape",
+      "description": "The part path climbs out of the dataset root to a real, valid part of another dataset.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-path-escape",
+      "requirements": [
+        "PART-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-path-escape",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-path-absolute",
+      "description": "The part path begins with '/'.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-path-absolute",
+      "requirements": [
+        "PART-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-path-absolute",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-path-dot-segment",
+      "description": "The part path has a '.' segment (it would resolve to the real part).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-path-dot-segment",
+      "requirements": [
+        "PART-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-path-dot-segment",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-path-empty-segment",
+      "description": "The part path has an empty segment.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-path-empty-segment",
+      "requirements": [
+        "PART-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-path-empty-segment",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-path-backslash",
+      "description": "The part path contains a backslash.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-path-backslash",
+      "requirements": [
+        "PART-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-path-backslash",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-path-duplicate",
+      "description": "Two parts name the same path (their declared bounds are disjoint and ascending).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-path-duplicate",
+      "requirements": [
+        "PART-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-path-duplicate",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-rows-zero",
+      "description": "A part declares rows 0.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-rows-zero",
+      "requirements": [
+        "PART-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-rows-zero",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-rows-fraction",
+      "description": "A part's rows is written 12.0.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-rows-fraction",
+      "requirements": [
+        "MAN-6",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-rows-fraction",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-rows-exponent",
+      "description": "A part's rows is written 1.2e1.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-rows-exponent",
+      "requirements": [
+        "MAN-6",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-rows-exponent",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-bytes-too-large",
+      "description": "A part's bytes is 2^63, beyond the allowed range.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-bytes-too-large",
+      "requirements": [
+        "MAN-6",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-bytes-too-large",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-format-version-fraction",
+      "description": "format_version is written 0.0.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-format-version-fraction",
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-format-version-fraction",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-base64-noncanonical",
+      "description": "min_key_base64 is YS8xLnR4dB==: it decodes to the right key but its unused bits are not zero.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-base64-noncanonical",
+      "requirements": [
+        "PART-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-base64-noncanonical",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-path-control-character",
+      "description": "The part path contains U+0001.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-path-control-character",
+      "requirements": [
+        "PART-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-path-control-character",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-extensions-duplicate-member",
+      "description": "An object inside extensions has the member a twice.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-extensions-duplicate-member",
+      "requirements": [
+        "MAN-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-extensions-duplicate-member",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-duplicate-member-escaped",
+      "description": "schema_id appears twice, once spelled with an escape (schema\\u005fid).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-duplicate-member-escaped",
+      "requirements": [
+        "MAN-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-duplicate-member-escaped",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-unpaired-surrogate",
+      "description": "schema_id ends with the escaped lone surrogate \\ud800.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-unpaired-surrogate",
+      "requirements": [
+        "MAN-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-unpaired-surrogate",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-draft-revision-zero",
+      "description": "draft_revision is 0.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-draft-revision-zero",
+      "requirements": [
+        "MAN-7",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-draft-revision-zero",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-format-1-with-draft-revision",
+      "description": "format_version 1 with a draft_revision (only format_version 0 may carry one).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-format-1-with-draft-revision",
+      "requirements": [
+        "MAN-7",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-format-1-with-draft-revision",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-format-version-overflow",
+      "description": "format_version is 2^63, beyond the integer range of MAN-6 (it must not wrap or be read as unsupported).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-format-version-overflow",
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-format-version-overflow",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-format-version-negative",
+      "description": "format_version is -1.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-format-version-negative",
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-format-version-negative",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/unsupported-version-2-unknown-member",
+      "description": "format_version 2 with a member draft 1 does not define: the version is decided first (MAN-7).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "unsupported-version-2-unknown-member",
+      "requirements": [
+        "MAN-7",
+        "VER-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/unsupported-version-2-unknown-member",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "unsupported_version"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/part-size-larger",
+      "description": "The manifest's bytes is one more than the file's size.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "part-size-larger",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/part-size-larger",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "part_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/part-size-smaller",
+      "description": "The manifest's bytes is one less than the file's size.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "part-size-smaller",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/part-size-smaller",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "part_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/part-rows-mismatch",
+      "description": "The manifest's rows is 13; the part holds 12.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "part-rows-mismatch",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/part-rows-mismatch",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "part_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/bounds-min-above-max",
+      "description": "The part's declared min key is greater than its max key.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "bounds-min-above-max",
+      "requirements": [
+        "PART-4",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/bounds-min-above-max",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/bounds-overlap",
+      "description": "The first part's declared max key is raised to the second part's min key (manifest bounds overlap).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "bounds-overlap",
+      "requirements": [
+        "PART-4",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/bounds-overlap",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/bounds-parts-out-of-order",
+      "description": "The manifest lists the parts with the last part first (bounds not ascending).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "bounds-parts-out-of-order",
+      "requirements": [
+        "PART-4",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/bounds-parts-out-of-order",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/invalid-footer-magic",
+      "description": "The part's trailing magic is PAR0 instead of PAR1.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "invalid-footer-magic",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-magic",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/invalid-footer-length",
+      "description": "The footer length field exceeds the file size.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "invalid-footer-length",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-length",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/invalid-footer-row-count",
+      "description": "FileMetaData.num_rows is 13 while its row groups hold 12 rows; the manifest says 13, matching the footer's num_rows.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "invalid-footer-row-count",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-row-count",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/invalid-footer-file-path",
+      "description": "Row group 0's key column chunk sets file_path (a reference to another file).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "invalid-footer-file-path",
+      "requirements": [
+        "FILE-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-file-path",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-duplicate",
+      "description": "The footer holds seekparquet.schema_id twice (same value).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-duplicate",
+      "requirements": [
+        "STAMP-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-duplicate",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/key-annotation-json",
+      "description": "The key column is annotated JSON.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "key-annotation-json",
+      "requirements": [
+        "KEY-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/key-annotation-json",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/column-orders-missing",
+      "description": "The footer has no column_orders.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "column-orders-missing",
+      "requirements": [
+        "KEY-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/column-orders-missing",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/column-orders-short",
+      "description": "column_orders holds only the key's TYPE_ORDER entry; the schema has three leaf columns.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "column-orders-short",
+      "requirements": [
+        "KEY-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/column-orders-short",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/column-orders-long",
+      "description": "column_orders has one entry more than there are leaf columns.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "column-orders-long",
+      "requirements": [
+        "KEY-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/column-orders-long",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/sorting-columns-missing-second-row-group",
+      "description": "Only row group 1 lacks sorting_columns.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "sorting-columns-missing-second-row-group",
+      "requirements": [
+        "RG-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/sorting-columns-missing-second-row-group",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_sorting_columns"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/missing-column-index",
+      "description": "Row group 1's key chunk has no ColumnIndex.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "missing-column-index",
+      "requirements": [
+        "RG-2",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/missing-column-index",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/page-index-null-page",
+      "description": "Row group 1's key ColumnIndex marks page 1 as a null page.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "page-index-null-page",
+      "requirements": [
+        "RG-4",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/page-index-null-page",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/page-index-count-mismatch",
+      "description": "Row group 0's key ColumnIndex has one entry fewer than its OffsetIndex.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "page-index-count-mismatch",
+      "requirements": [
+        "RG-4",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/page-index-count-mismatch",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/page-index-first-row-nonzero",
+      "description": "Row group 1's key OffsetIndex starts at first_row_index 1.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "page-index-first-row-nonzero",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/page-index-first-row-nonzero",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/page-index-first-row-not-increasing",
+      "description": "Row group 0's key OffsetIndex repeats first_row_index 2 for pages 1 and 2.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "page-index-first-row-not-increasing",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/page-index-first-row-not-increasing",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/page-index-first-row-out-of-range",
+      "description": "Row group 1's last key page claims first_row_index 6, equal to the row group's row count.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "page-index-first-row-out-of-range",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/page-index-first-row-out-of-range",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/page-index-location-outside-file",
+      "description": "Row group 1's last key page location points past the end of the file.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "page-index-location-outside-file",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/page-index-location-outside-file",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/page-index-rows-mismatch",
+      "description": "Row group 0's key OffsetIndex says first_row_index [0, 1, 4] for pages of 2 rows each: page 0 holds 2 rows but its indexed interval is 1 row.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "page-index-rows-mismatch",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/page-index-rows-mismatch",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/page-index-list-length-mismatch",
+      "description": "Row group 1's key ColumnIndex max_values has one entry fewer than null_pages and min_values.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "page-index-list-length-mismatch",
+      "requirements": [
+        "RG-4",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/page-index-list-length-mismatch",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/page-index-location-mismatch",
+      "description": "Row group 0's key OffsetIndex locates page 1 one byte after its real header.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "page-index-location-mismatch",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/page-index-location-mismatch",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-column-missing",
+      "description": "The key_column stamp is missing.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-column-missing",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-column-missing",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-column-mismatch",
+      "description": "The key_column stamp is other, not key.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-column-mismatch",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-column-mismatch",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-column-noncanonical",
+      "description": "The key_column stamp is ' key', with a leading space.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-column-noncanonical",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-column-noncanonical",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-duplicate-key-column",
+      "description": "The key declaration footer stamp appears twice.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-duplicate-key-column",
+      "requirements": [
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-duplicate-key-column",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-unique-missing",
+      "description": "The key_unique stamp is missing.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-unique-missing",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-unique-missing",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-unique-mismatch",
+      "description": "The key_unique stamp is false, not true.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-unique-mismatch",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-unique-mismatch",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-unique-noncanonical",
+      "description": "The key_unique stamp is TRUE, not lowercase true.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-unique-noncanonical",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-unique-noncanonical",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-duplicate-key-unique",
+      "description": "The key declaration footer stamp appears twice.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-duplicate-key-unique",
+      "requirements": [
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-duplicate-key-unique",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-null",
+      "description": "Malformed required manifest key declaration: manifest-key-null",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-null",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-null",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-empty",
+      "description": "Malformed required manifest key declaration: manifest-key-empty",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-empty",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-empty",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-unique-string",
+      "description": "Malformed required manifest key declaration: manifest-key-unique-string",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-unique-string",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-unique-string",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-empty-column",
+      "description": "Malformed required manifest key declaration: manifest-key-empty-column",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-empty-column",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-empty-column",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-control-column",
+      "description": "Malformed required manifest key declaration: manifest-key-control-column",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-control-column",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-control-column",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-extra",
+      "description": "Malformed required manifest key declaration: manifest-key-extra",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-extra",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-extra",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-missing",
+      "description": "The required manifest key declaration is missing.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-missing",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-missing",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/named-key-absent",
+      "description": "The declared key column is absent from the part.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "named-key-absent",
+      "requirements": [
+        "KEY-1",
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/named-key-absent",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/group-split-parts",
+      "description": "A key group is split across parts; their manifest bounds overlap.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "group-split-parts",
+      "requirements": [
+        "PART-4",
+        "KEY-7",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/group-split-parts",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    }
+  ]
+}

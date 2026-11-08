@@ -1,0 +1,24 @@
+name: Bug report
+description: An implementation or the conformance suite does something wrong.
+labels: [bug]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options: [Go implementation, conformance suite, specification text, other]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: Include the request, the dataset (or how to produce it) and the output.
+    validations:
+      required: true

@@ -1,0 +1,12 @@
+{
+  "format": "seekparquet",
+  "format_version": 0,
+  "draft_revision": 1,
+  "schema_id": "example/objects/v1",
+  "parts": [],
+  "created_at": "2026-11-08T00:00:00Z",
+  "key": {
+    "column": "key",
+    "unique": true
+  }
+}

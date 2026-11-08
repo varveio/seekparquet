@@ -1,0 +1,205 @@
+{
+  "description": "Stable refusal codes for SeekParquet format 1, draft revision 1. 'detect' is the latest point at which a reader must detect the fault: 'open' on opening the dataset, 'read' no later than decoding the affected data, 'validate' only by validation at the stated level. A reader may always detect a fault earlier.",
+  "draft_revision": 1,
+  "codes": [
+    {
+      "code": "no_manifest",
+      "meaning": "The dataset root has no manifest.json.",
+      "requirements": [
+        "LAYOUT-1"
+      ],
+      "detect": "open"
+    },
+    {
+      "code": "invalid_manifest",
+      "meaning": "The manifest is not valid: unparseable JSON, duplicate member names, a missing, extra or ill-typed member, a wrong format name, malformed base64, a part with no rows, or a part path that breaks PART-1. Also part bounds in the manifest that are not ascending and disjoint (PART-4). A missing or malformed key declaration is also invalid_manifest.",
+      "requirements": [
+        "MAN-1",
+        "MAN-2",
+        "MAN-3",
+        "MAN-4",
+        "PART-1",
+        "PART-2",
+        "PART-3",
+        "MAN-6",
+        "MAN-7",
+        "PART-4",
+        "MAN-8"
+      ],
+      "detect": "open"
+    },
+    {
+      "code": "unsupported_version",
+      "meaning": "The manifest's format_version and draft_revision pair is not one the reader supports.",
+      "requirements": [
+        "MAN-4",
+        "MAN-5",
+        "VER-1"
+      ],
+      "detect": "open"
+    },
+    {
+      "code": "missing_part",
+      "meaning": "A part the manifest lists does not exist.",
+      "requirements": [
+        "LAYOUT-1",
+        "CHECK-1"
+      ],
+      "detect": "open"
+    },
+    {
+      "code": "part_mismatch",
+      "meaning": "A part's size in bytes, or its footer's row count, differs from its manifest entry.",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "detect": "open"
+    },
+    {
+      "code": "invalid_footer",
+      "meaning": "A part's Parquet footer cannot be read, its row groups' row counts do not sum to the footer's row count, or a column chunk refers to another file (file_path set).",
+      "requirements": [
+        "CHECK-1",
+        "FILE-1"
+      ],
+      "detect": "open"
+    },
+    {
+      "code": "stamp_mismatch",
+      "meaning": "A part's seekparquet.* footer metadata is missing, duplicated, forbidden (a draft_revision stamp on a non-draft file), not canonical, or different from the manifest.",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "detect": "open"
+    },
+    {
+      "code": "invalid_key_column",
+      "meaning": "A part has no top-level REQUIRED BYTE_ARRAY column named by manifest key.column, the key column carries an annotation other than STRING or UTF8, or column_orders does not give it TYPE_ORDER.",
+      "requirements": [
+        "KEY-1",
+        "KEY-5"
+      ],
+      "detect": "open"
+    },
+    {
+      "code": "inconsistent_column",
+      "meaning": "A column appears in several parts with different physical types, repetition or nesting.",
+      "requirements": [
+        "COL-5"
+      ],
+      "detect": "read",
+      "notes": "Must be detected no later than the first request that projects the column; should be detected on open for all columns; structural validation checks all columns."
+    },
+    {
+      "code": "missing_sorting_columns",
+      "meaning": "A non-empty row group does not declare key ascending as its first sorting column.",
+      "requirements": [
+        "RG-1"
+      ],
+      "detect": "open"
+    },
+    {
+      "code": "missing_page_index",
+      "meaning": "A non-empty row group's key column lacks a ColumnIndex or an OffsetIndex.",
+      "requirements": [
+        "RG-2",
+        "RG-7"
+      ],
+      "detect": "read"
+    },
+    {
+      "code": "invalid_page_index",
+      "meaning": "A key column's page index is inconsistent with itself or with the physical pages: list lengths differ, a null page, an empty list, row positions or locations out of range, an entry that does not locate exactly one data page, a page whose row count differs from its indexed interval, a bound that is not valid UTF-8 where KEY-6 applies, or decoded keys outside the page's bounds.",
+      "requirements": [
+        "RG-3",
+        "RG-4",
+        "RG-5",
+        "RG-7",
+        "KEY-6"
+      ],
+      "detect": "read"
+    },
+    {
+      "code": "invalid_key",
+      "meaning": "An empty key, or a key that is not valid UTF-8 in a key column annotated STRING or UTF8.",
+      "requirements": [
+        "KEY-2",
+        "KEY-6"
+      ],
+      "detect": "read"
+    },
+    {
+      "code": "key_order",
+      "meaning": "Keys decrease within a page or across pages, row groups or parts, or equal keys appear when manifest key.unique is true.",
+      "requirements": [
+        "KEY-3"
+      ],
+      "detect": "read"
+    },
+    {
+      "code": "invalid_parquet",
+      "meaning": "Corruption in the Parquet data itself: a page that does not decompress or decode, a malformed dictionary, or a value count that does not match the rows.",
+      "requirements": [
+        "CHECK-5"
+      ],
+      "detect": "validate:full",
+      "notes": "A reader reports it for any data it decodes; full validation finds it anywhere."
+    },
+    {
+      "code": "bounds_mismatch",
+      "meaning": "A part's actual first or last key differs from its manifest bounds.",
+      "requirements": [
+        "PART-3",
+        "PART-4"
+      ],
+      "detect": "validate:profile",
+      "notes": "Readers that decode a part's first and last key on open may report it then."
+    },
+    {
+      "code": "digest_mismatch",
+      "meaning": "A part's sha256 differs from the manifest's.",
+      "requirements": [
+        "PART-5"
+      ],
+      "detect": "validate:digest"
+    }
+  ],
+  "non_refusals": [
+    {
+      "status": "invalid_request",
+      "meaning": "The request itself is malformed: a limit that is not a positive integer, a delimiter that is not one byte, malformed base64, a malformed cursor, a prefix cursor in a range request.",
+      "requirements": [
+        "QUERY-1"
+      ]
+    },
+    {
+      "status": "unsupported",
+      "meaning": "The dataset is valid but uses a feature the reader does not support.",
+      "requirements": [
+        "ENC-1",
+        "COL-3",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "codes": [
+        {
+          "code": "unsupported_encoding",
+          "meaning": "a codec or encoding outside what the reader implements"
+        },
+        {
+          "code": "unsupported_projection",
+          "meaning": "a request to project a nested or repeated column"
+        },
+        {
+          "code": "unsupported_encryption",
+          "meaning": "an encrypted part"
+        }
+      ]
+    },
+    {
+      "status": "error",
+      "meaning": "Anything else, such as a failure to read storage. Not a statement about the data."
+    }
+  ]
+}

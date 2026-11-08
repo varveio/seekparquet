@@ -1,0 +1,909 @@
+{
+  "group": "validate-full",
+  "target": "validator-full",
+  "generated": true,
+  "generator": "generators/make_cases.py",
+  "description": "Validation at the full level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code, and a dataset that cannot be opened shows structural failed.",
+  "families": {
+    "validate-full/valid-dataset": "every valid dataset completes this level and its prerequisites",
+    "validate-full/fault-at-lowest-level": "each fault at the lowest validation level that detects it (validation_level in generators/faults.json)",
+    "validate-full/prerequisite": "a lower-level fault with validation requested at a higher level: the failing level is reported failed and every dependent level incomplete with a reason"
+  },
+  "cases": [
+    {
+      "id": "validate-full/repeated-keys",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/one-large-group",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/named-key",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/named-key",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/empty",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/empty",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/basic",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/multipart",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/binary-keys",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/delimiter",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/list-bounds",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/non-utf8-keys",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/non-utf8-keys",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/annotated",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/encodings",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/optional-codecs",
+      "description": "value columns use LZ4_RAW and BROTLI (outside ENC-1): full is complete, or incomplete with a reason for a validator without those codecs; structural and profile must complete",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1",
+        "ENC-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/optional-codecs",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete",
+            "accept": [
+              "incomplete"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/truncated-bounds",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/binary-bounds-truncated-16-byte",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/truncated-bounds-2",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/non-monotone-bounds",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/non-monotone-bounds",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/key-legacy-utf8",
+      "description": "the dataset has nested/repeated columns (meta (struct) and tags (list)); a validator that does not decode them reports full incomplete with a reason (VAL-1); lower levels complete",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/key-legacy-utf8",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete",
+            "accept": [
+              "incomplete"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/extensions-numbers",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/digest-mixed",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/digest-mixed",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/no-value-page-index",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/no-value-page-index",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/invalid-parquet-dictionary",
+      "description": "The dictionary page of column s in part 0, row group 0 is malformed: its first value claims a length of 2^31-1 bytes.",
+      "family": "validate-full/fault-at-lowest-level",
+      "fault_id": "invalid-parquet-dictionary",
+      "requirements": [
+        "CHECK-5",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/invalid-parquet-dictionary",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "failed",
+            "code": "invalid_parquet"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/invalid-parquet-page",
+      "description": "The first data page of column size in row group 1 of shards/c.parquet does not decompress.",
+      "family": "validate-full/fault-at-lowest-level",
+      "fault_id": "invalid-parquet-page",
+      "requirements": [
+        "CHECK-5",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/invalid-parquet-page",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "failed",
+            "code": "invalid_parquet"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/prerequisite/manifest-unknown-member",
+      "description": "a structural fault (manifest-unknown-member) with validation requested at full",
+      "family": "validate-full/prerequisite",
+      "fault_id": "manifest-unknown-member",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/manifest-unknown-member",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          },
+          "profile": {
+            "result": "incomplete"
+          },
+          "full": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/prerequisite/missing-part",
+      "description": "a structural fault (missing-part) with validation requested at full",
+      "family": "validate-full/prerequisite",
+      "fault_id": "missing-part",
+      "requirements": [
+        "LAYOUT-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/missing-part",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_part"
+          },
+          "profile": {
+            "result": "incomplete"
+          },
+          "full": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/prerequisite/stamp-wrong-schema-id",
+      "description": "a structural fault (stamp-wrong-schema-id) with validation requested at full",
+      "family": "validate-full/prerequisite",
+      "fault_id": "stamp-wrong-schema-id",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/stamp-wrong-schema-id",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          },
+          "profile": {
+            "result": "incomplete"
+          },
+          "full": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/prerequisite/inconsistent-column-type",
+      "description": "a structural fault (inconsistent-column-type) with validation requested at full",
+      "family": "validate-full/prerequisite",
+      "fault_id": "inconsistent-column-type",
+      "requirements": [
+        "COL-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/inconsistent-column-type",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "inconsistent_column"
+          },
+          "profile": {
+            "result": "incomplete"
+          },
+          "full": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/prerequisite/missing-column-index",
+      "description": "a structural fault (missing-column-index) with validation requested at full",
+      "family": "validate-full/prerequisite",
+      "fault_id": "missing-column-index",
+      "requirements": [
+        "RG-2",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/missing-column-index",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_page_index"
+          },
+          "profile": {
+            "result": "incomplete"
+          },
+          "full": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/prerequisite/bounds-last-key-differs",
+      "description": "a profile fault (bounds-last-key-differs) with validation requested at full",
+      "family": "validate-full/prerequisite",
+      "fault_id": "bounds-last-key-differs",
+      "requirements": [
+        "PART-3",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/bounds-last-key-differs",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "bounds_mismatch"
+          },
+          "full": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/prerequisite/page-index-min-above-first-key",
+      "description": "a profile fault (page-index-min-above-first-key) with validation requested at full",
+      "family": "validate-full/prerequisite",
+      "fault_id": "page-index-min-above-first-key",
+      "requirements": [
+        "RG-5",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/page-index-min-above-first-key",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          },
+          "full": {
+            "result": "incomplete"
+          }
+        }
+      }
+    }
+  ]
+}

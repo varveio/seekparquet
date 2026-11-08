@@ -1,0 +1,8 @@
+# Pinned dependencies of the fixture generators and the reference adapter (Python 3.13).
+# The harness (harness/run.py) needs only the standard library; harness/check_suite.py needs jsonschema.
+pyarrow==26.0.1
+jsonschema==4.26.0
+attrs==26.1.0
+jsonschema-specifications==2025.9.1
+referencing==0.37.0
+rpds-py==2026.9.1

@@ -1,0 +1,358 @@
+{
+  "dataset": "delimiter",
+  "description": "Folder-like keys: keys equal to prefixes, trailing and repeated delimiters, a delimiter at the start, non-ASCII bytes used as delimiters, keys beginning with 0xFF, and the common prefix a/b/ spanning a part boundary. Pages of 2 rows.",
+  "schema_id": "conformance/objects/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "size",
+      "type": "int64",
+      "nullable": false
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        13
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "Lw==",
+          "values": {
+            "size": {
+              "int": "0"
+            }
+          }
+        },
+        {
+          "key_base64": "Ly8=",
+          "values": {
+            "size": {
+              "int": "10"
+            }
+          }
+        },
+        {
+          "key_base64": "Ly94",
+          "values": {
+            "size": {
+              "int": "20"
+            }
+          }
+        },
+        {
+          "key_base64": "L2E=",
+          "values": {
+            "size": {
+              "int": "30"
+            }
+          }
+        },
+        {
+          "key_base64": "L2EvYg==",
+          "values": {
+            "size": {
+              "int": "40"
+            }
+          }
+        },
+        {
+          "key_base64": "YQ==",
+          "values": {
+            "size": {
+              "int": "50"
+            }
+          }
+        },
+        {
+          "key_base64": "YS8=",
+          "values": {
+            "size": {
+              "int": "60"
+            }
+          }
+        },
+        {
+          "key_base64": "YS8v",
+          "values": {
+            "size": {
+              "int": "70"
+            }
+          }
+        },
+        {
+          "key_base64": "YS8vLw==",
+          "values": {
+            "size": {
+              "int": "80"
+            }
+          }
+        },
+        {
+          "key_base64": "YS8vYg==",
+          "values": {
+            "size": {
+              "int": "90"
+            }
+          }
+        },
+        {
+          "key_base64": "YS9i",
+          "values": {
+            "size": {
+              "int": "100"
+            }
+          }
+        },
+        {
+          "key_base64": "YS9iLw==",
+          "values": {
+            "size": {
+              "int": "110"
+            }
+          }
+        },
+        {
+          "key_base64": "YS9iL2M=",
+          "values": {
+            "size": {
+              "int": "120"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "data/part-00001.parquet",
+      "row_groups": [
+        4,
+        9
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "snappy",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "YS9iL2Mv",
+          "values": {
+            "size": {
+              "int": "130"
+            }
+          }
+        },
+        {
+          "key_base64": "YS9iL2MvZA==",
+          "values": {
+            "size": {
+              "int": "140"
+            }
+          }
+        },
+        {
+          "key_base64": "YS9iL2Q=",
+          "values": {
+            "size": {
+              "int": "150"
+            }
+          }
+        },
+        {
+          "key_base64": "YS9iYw==",
+          "values": {
+            "size": {
+              "int": "160"
+            }
+          }
+        },
+        {
+          "key_base64": "YS9j",
+          "values": {
+            "size": {
+              "int": "170"
+            }
+          }
+        },
+        {
+          "key_base64": "YTA=",
+          "values": {
+            "size": {
+              "int": "180"
+            }
+          }
+        },
+        {
+          "key_base64": "YWI=",
+          "values": {
+            "size": {
+              "int": "190"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "200"
+            }
+          }
+        },
+        {
+          "key_base64": "Yi8=",
+          "values": {
+            "size": {
+              "int": "210"
+            }
+          }
+        },
+        {
+          "key_base64": "Yi94",
+          "values": {
+            "size": {
+              "int": "220"
+            }
+          }
+        },
+        {
+          "key_base64": "Y2Fmw6k=",
+          "values": {
+            "size": {
+              "int": "230"
+            }
+          }
+        },
+        {
+          "key_base64": "Y2Fmw6kveA==",
+          "values": {
+            "size": {
+              "int": "240"
+            }
+          }
+        },
+        {
+          "key_base64": "Y2Fmw6nDqQ==",
+          "values": {
+            "size": {
+              "int": "250"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "data/part-00002.parquet",
+      "row_groups": [
+        11
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "Y2Fmw6nDqXo=",
+          "values": {
+            "size": {
+              "int": "260"
+            }
+          }
+        },
+        {
+          "key_base64": "eP95",
+          "values": {
+            "size": {
+              "int": "270"
+            }
+          }
+        },
+        {
+          "key_base64": "eP95/3o=",
+          "values": {
+            "size": {
+              "int": "280"
+            }
+          }
+        },
+        {
+          "key_base64": "eP96",
+          "values": {
+            "size": {
+              "int": "290"
+            }
+          }
+        },
+        {
+          "key_base64": "eP//",
+          "values": {
+            "size": {
+              "int": "300"
+            }
+          }
+        },
+        {
+          "key_base64": "/w==",
+          "values": {
+            "size": {
+              "int": "310"
+            }
+          }
+        },
+        {
+          "key_base64": "/y9h",
+          "values": {
+            "size": {
+              "int": "320"
+            }
+          }
+        },
+        {
+          "key_base64": "/y9iL2M=",
+          "values": {
+            "size": {
+              "int": "330"
+            }
+          }
+        },
+        {
+          "key_base64": "//8=",
+          "values": {
+            "size": {
+              "int": "340"
+            }
+          }
+        },
+        {
+          "key_base64": "//8vYQ==",
+          "values": {
+            "size": {
+              "int": "350"
+            }
+          }
+        },
+        {
+          "key_base64": "////L3g=",
+          "values": {
+            "size": {
+              "int": "360"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "key": {
+    "column": "key",
+    "unique": true
+  }
+}

@@ -1,0 +1,359 @@
+// Copyright 2026 Varve Systems Ltd
+// SPDX-License-Identifier: Apache-2.0
+
+package seekparquet
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"strconv"
+
+	"github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go/format"
+
+	"github.com/varveio/seekparquet/go/internal/manifest"
+)
+
+// manifestName is the name of the manifest file in a dataset root.
+const manifestName = "manifest.json"
+
+// Footer stamps of a part (STAMP-1), in the order they are checked.
+var stampKeys = []string{
+	"seekparquet.format_version",
+	"seekparquet.draft_revision",
+	"seekparquet.schema_id",
+	"seekparquet.key_column",
+	"seekparquet.key_unique",
+}
+
+// Version is a (format_version, draft_revision) pair. DraftRevision is 0
+// for a final format version, which has none.
+type Version struct {
+	FormatVersion int64
+	DraftRevision int64
+}
+
+// SupportedVersions returns the version pairs this package reads (VER-1):
+// format_version 0 with draft_revision 1. Every other pair is refused with
+// unsupported_version.
+func SupportedVersions() []Version {
+	out := make([]Version, len(manifest.Supported))
+	for i, v := range manifest.Supported {
+		out[i] = Version(v)
+	}
+	return out
+}
+
+// ContextBinder is implemented by a file whose reads can be bounded by a
+// context. The reader calls WithContext once per operation (reading a
+// footer, loading a page index, reading pages) and reads through the
+// returned io.ReaderAt, so that a cancelled request, or Close, can end a
+// read that waits on the source (for a connection, a retry).
+//
+// WithContext may be called concurrently, for operations that run at the
+// same time. Each call must return an independent view bound to its own
+// context, and must not change shared state such as a "current" context
+// of the file.
+//
+// A file that does not implement ContextBinder is read as a plain
+// io.ReaderAt: the reader checks its context between pages, but cannot
+// interrupt a ReadAt call that is already blocked.
+type ContextBinder interface {
+	WithContext(ctx context.Context) io.ReaderAt
+}
+
+// SourceFile is one opened file of a dataset root: its manifest or a part.
+type SourceFile interface {
+	io.ReaderAt
+	// Size returns the file's length in bytes.
+	Size() int64
+	Close() error
+}
+
+// Source is a dataset root: it opens files by their slash-separated paths
+// relative to the root. OpenDataset opens the root's manifest.json and
+// each part path the manifest lists, after checking that path against
+// PART-1, so a Source is never asked for an absolute path or one with a
+// "." or ".." segment; it must still confine reads to the root.
+//
+// Open returns an error that wraps fs.ErrNotExist when the file does not
+// exist, and should honour ctx. The returned file must be safe for
+// concurrent ReadAt calls and must read the same bytes until it is closed:
+// a remote source binds it to one stored object (one version or
+// generation) across all its range requests and retries. It may implement
+// ContextBinder, so that every read of it is bounded by the operation's
+// context.
+type Source interface {
+	Open(ctx context.Context, path string) (SourceFile, error)
+}
+
+// Options configures OpenDataset.
+type Options struct {
+	// Limits bounds the resources the dataset can make the reader use.
+	Limits Limits
+	// VerifyOnOpen makes OpenDataset check every non-empty row group's key
+	// page index and decode its first key page, and decode each part's
+	// last key page, before it returns (CHECK-3): row-group first keys must
+	// then be in the declared order and each part's first and last keys
+	// equal its manifest bounds. It suits a long-lived reader of local
+	// files. Without it, opening reads only the manifest and the footers
+	// (CHECK-1), and the rest is loaded, and checked, when a read first
+	// needs it.
+	VerifyOnOpen bool
+}
+
+// Key declares the exact key column and whether keys must be unique.
+type Key struct {
+	Column string
+	Unique bool
+}
+
+// Metadata is a read-only view of a dataset's manifest. Metadata returns a
+// copy each time, so a caller may keep and change it freely.
+type Metadata struct {
+	Key      Key
+	Version  Version
+	SchemaID string
+	Parts    []PartInfo
+	// Extensions is the manifest's extensions object exactly as written
+	// (EXT-2), nil when the manifest has none; an empty object is "{}".
+	Extensions json.RawMessage
+	// Manifest is the manifest exactly as read.
+	Manifest []byte
+}
+
+// PartInfo is one part's manifest entry.
+type PartInfo struct {
+	Path   string
+	Rows   int64
+	Bytes  int64
+	MinKey []byte
+	MaxKey []byte
+	// SHA256 is the declared lowercase hex digest, "" when none. Opening
+	// does not check it (PART-5).
+	SHA256 string
+}
+
+// Extension returns the value of one extensions namespace exactly as
+// written, and whether the manifest has it.
+func (m Metadata) Extension(namespace string) (json.RawMessage, bool) {
+	if m.Extensions == nil {
+		return nil, false
+	}
+	var ext map[string]json.RawMessage
+	if err := json.Unmarshal(m.Extensions, &ext); err != nil {
+		return nil, false
+	}
+	v, ok := ext[namespace]
+	return v, ok
+}
+
+func (m Metadata) clone() Metadata {
+	out := m
+	out.Parts = make([]PartInfo, len(m.Parts))
+	for i, p := range m.Parts {
+		p.MinKey, p.MaxKey = bytes.Clone(p.MinKey), bytes.Clone(p.MaxKey)
+		out.Parts[i] = p
+	}
+	out.Extensions = bytes.Clone(m.Extensions)
+	out.Manifest = bytes.Clone(m.Manifest)
+	return out
+}
+
+// Dataset is an opened SeekParquet dataset: its manifest's metadata, and
+// bounded, ordered reads over its parts. It is safe for concurrent use:
+// footers and page indexes are shared, and immutable once loaded.
+type Dataset struct {
+	meta Metadata
+	r    *reader
+}
+
+// OpenDataset opens the dataset at src (CHECK-1). It reads and validates
+// the manifest (§3); opens every part, requiring it to exist and have the
+// manifest's size; reads every footer, requiring it to be self-contained
+// and unencrypted (FILE-1, FILE-2), the seekparquet.* stamps to agree with
+// the manifest (STAMP-2), the row count to equal the manifest's, a valid
+// key column (KEY-1, KEY-5), consistent columns across parts (COL-5), and
+// the key column ascending as the first sorting column of every non-empty
+// row group (RG-1). It reads the manifest and every part's footer, and
+// nothing more unless Options.VerifyOnOpen asks for the first and last key
+// pages too. Reads are routed to a part by its manifest bounds, and within
+// a part by row groups' first keys, decoded when a read first needs them.
+// Opening does not read every row: rows a read does not decode are not
+// certified (CHECK-4).
+//
+// A dataset that breaks the specification is refused with a *RefusalError
+// (see CodeOf). Other errors report I/O, a limit or the context.
+//
+// OpenDataset closes every file it opened when it fails; on success,
+// Dataset.Close closes them.
+func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error) {
+	opt.Limits = opt.Limits.withDefaults()
+	raw, err := readManifest(ctx, src, opt.Limits.ManifestBytes)
+	if err != nil {
+		return nil, err
+	}
+	m, err := manifest.Parse(raw, opt.Limits.Parts)
+	if err != nil {
+		var e *manifest.Error
+		switch {
+		case errors.As(err, &e):
+			return nil, refuse(Code(e.Code), "%s: %s", manifestName, e.Detail)
+		case errors.Is(err, manifest.ErrTooManyParts):
+			return nil, exceeded("%s lists more than %d parts (Limits.Parts)", manifestName, opt.Limits.Parts)
+		}
+		return nil, err
+	}
+	meta := Metadata{Key: Key{Column: m.KeyColumn, Unique: m.KeyUnique}, Version: Version(m.Version), SchemaID: m.SchemaID,
+		Extensions: m.Extensions, Manifest: raw}
+	inputs := make([]partInput, 0, len(m.Parts))
+	for _, entry := range m.Parts {
+		meta.Parts = append(meta.Parts, PartInfo(entry))
+		in, err := openDatasetPart(ctx, src, m, entry, &opt.Limits)
+		if in.file != nil {
+			inputs = append(inputs, in)
+		}
+		if err != nil {
+			for _, in := range inputs {
+				closeFile(in.file)
+			}
+			return nil, err
+		}
+	}
+	r, err := openParts(ctx, inputs, meta.Key, opt)
+	if err != nil {
+		return nil, err
+	}
+	return &Dataset{meta: meta, r: r}, nil
+}
+
+func readManifest(ctx context.Context, src Source, limit int64) ([]byte, error) {
+	f, err := src.Open(ctx, manifestName)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, refuse(CodeNoManifest, "the dataset root has no %s", manifestName)
+		}
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	size := f.Size()
+	if size > limit {
+		return nil, exceeded("%s is %d bytes (Limits.ManifestBytes %d)", manifestName, size, limit)
+	}
+	raw := make([]byte, size)
+	if err := readFull(bind(ctx, f), raw, 0); err != nil {
+		return nil, fmt.Errorf("read %s: %w", manifestName, err)
+	}
+	return raw, nil
+}
+
+// openDatasetPart opens one part, checks its size, footer, stamps and row
+// count, and returns it with its footer. The returned file is set whenever
+// the part was opened, even with an error, so that the caller closes it.
+func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, lim *Limits) (partInput, error) {
+	f, err := src.Open(ctx, entry.Path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return partInput{}, refusePart(CodeMissingPart, entry.Path, -1, "%v", err)
+		}
+		return partInput{}, err
+	}
+	in := partInput{name: entry.Path, file: f, size: f.Size(), minKey: entry.MinKey, maxKey: entry.MaxKey}
+	if in.size != entry.Bytes {
+		return in, refusePart(CodePartMismatch, entry.Path, -1, "the file is %d bytes, its manifest entry %d", in.size, entry.Bytes)
+	}
+	footer, err := readFooter(ctx, entry.Path, f, in.size, lim)
+	if err != nil {
+		return in, err
+	}
+	if err := checkStamps(entry.Path, footer, m); err != nil {
+		return in, err
+	}
+	if footer.NumRows() != entry.Rows {
+		return in, refusePart(CodePartMismatch, entry.Path, -1, "the part holds %d rows, its manifest entry %d", footer.NumRows(), entry.Rows)
+	}
+	in.footer = footer
+	return in, nil
+}
+
+// checkStamps applies STAMP-1 and STAMP-2: each stamp exactly once, no
+// draft_revision stamp unless format_version is 0, values compared as exact
+// strings with the manifest's canonical decimal and schema_id.
+func checkStamps(name string, footer *parquet.File, m *manifest.Manifest) error {
+	want := []string{
+		strconv.FormatInt(m.Version.FormatVersion, 10),
+		strconv.FormatInt(m.Version.DraftRevision, 10),
+		m.SchemaID,
+		m.KeyColumn,
+		strconv.FormatBool(m.KeyUnique),
+	}
+	got := make([][]string, len(stampKeys))
+	for _, kv := range footer.Metadata().KeyValueMetadata {
+		for i, key := range stampKeys {
+			if kv.Key == key {
+				got[i] = append(got[i], kv.Value)
+			}
+		}
+	}
+	for i, key := range stampKeys {
+		values := got[i]
+		required := i != 1 || m.Version.FormatVersion == 0 // draft_revision only on a draft
+		switch {
+		case !required && len(values) > 0:
+			return refusePart(CodeStampMismatch, name, -1, "%s is present on a final format version", key)
+		case !required:
+		case len(values) == 0:
+			return refusePart(CodeStampMismatch, name, -1, "the footer has no %s", key)
+		case len(values) > 1:
+			return refusePart(CodeStampMismatch, name, -1, "the footer has %s %d times", key, len(values))
+		case values[0] != want[i]:
+			return refusePart(CodeStampMismatch, name, -1, "%s is %q, the manifest's %q", key, values[0], want[i])
+		}
+	}
+	return nil
+}
+
+// checkSorted applies RG-1: a non-empty row group declares the key column
+// ascending as its first sorting column.
+func checkSorted(p *part, physical int, group *format.RowGroup) error {
+	sorting := group.SortingColumns
+	if len(sorting) == 0 || int(sorting[0].ColumnIdx) != p.key.index || sorting[0].Descending {
+		return refusePart(CodeMissingSortingColumns, p.name, physical, "the row group does not declare %s ascending as its first sorting column", p.r.key.Column)
+	}
+	return nil
+}
+
+// Metadata returns a copy of the dataset's manifest metadata.
+func (d *Dataset) Metadata() Metadata { return d.meta.clone() }
+
+// Range returns the rows of rng. It decodes key pages only from the page
+// that can hold its start, or the cursor's row, and value pages only for
+// the rows it returns. A limit that is not positive, or a malformed or
+// prefix cursor, is ErrInvalidRequest; projecting a nested or repeated
+// column is an *UnsupportedError; a page that breaks the specification
+// ends the read with a *RefusalError.
+func (d *Dataset) Range(ctx context.Context, rng Range) ([]Row, error) {
+	return d.r.readRange(ctx, rng, nil)
+}
+
+// List returns the entries of req. After a common prefix it continues at
+// the prefix's successor through the routing index and the page index
+// instead of decoding the keys under it, and a row group whose first key
+// and the next group's first key share a common prefix is skipped without
+// a read. Keys under a prefix that share a page with the keys around them
+// are decoded. Errors are those of Range.
+func (d *Dataset) List(ctx context.Context, req List) ([]Entry, error) {
+	return d.r.readList(ctx, req, nil)
+}
+
+// Close ends the reads in progress as soon as they reach a cancellation
+// point (a context-bound source read, or a page boundary), waits for them
+// to return, closes every part file, and fails reads after it with
+// ErrClosed. It is safe to call more than once; later calls return the
+// first call's result.
+func (d *Dataset) Close() error { return d.r.close() }

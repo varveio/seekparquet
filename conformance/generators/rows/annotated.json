@@ -1,0 +1,302 @@
+{
+  "dataset": "annotated",
+  "description": "Columns with logical annotations whose physical values the protocol reports: DATE (INT32 days), TIMESTAMP millis and micros/UTC (INT64), DECIMAL stored as INT32, INT64 and FIXED_LEN_BYTE_ARRAY(13) (unscaled two's complement), STRING (BYTE_ARRAY).",
+  "schema_id": "conformance/annotated/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "d",
+      "type": "date32",
+      "nullable": true
+    },
+    {
+      "name": "ts_ms",
+      "type": "timestamp:ms",
+      "nullable": true
+    },
+    {
+      "name": "ts_utc",
+      "type": "timestamp:us:UTC",
+      "nullable": true
+    },
+    {
+      "name": "dec9",
+      "type": "decimal:9:2",
+      "nullable": true
+    },
+    {
+      "name": "dec18",
+      "type": "decimal:18:4",
+      "nullable": true
+    },
+    {
+      "name": "dec30",
+      "type": "decimal:30:5",
+      "nullable": true
+    },
+    {
+      "name": "s",
+      "type": "string",
+      "nullable": true
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        8
+      ],
+      "writer": {
+        "max_rows_per_page": 4,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0",
+        "decimal_as_integer": true,
+        "expect_physical": {
+          "d": [
+            "INT32",
+            null
+          ],
+          "ts_ms": [
+            "INT64",
+            null
+          ],
+          "ts_utc": [
+            "INT64",
+            null
+          ],
+          "dec9": [
+            "INT32",
+            null
+          ],
+          "dec18": [
+            "INT64",
+            null
+          ],
+          "dec30": [
+            "FIXED_LEN_BYTE_ARRAY",
+            13
+          ],
+          "s": [
+            "BYTE_ARRAY",
+            null
+          ]
+        }
+      },
+      "rows": [
+        {
+          "key_base64": "YW5uLTA=",
+          "values": {
+            "d": {
+              "int": "-719162"
+            },
+            "ts_ms": {
+              "int": "-62135596800000"
+            },
+            "ts_utc": {
+              "int": "0"
+            },
+            "dec9": {
+              "int": "0"
+            },
+            "dec18": {
+              "int": "0"
+            },
+            "dec30": {
+              "bytes_base64": "AAAAAAAAAAAAAAAAAA=="
+            },
+            "s": {
+              "bytes_base64": ""
+            }
+          }
+        },
+        {
+          "key_base64": "YW5uLTE=",
+          "values": {
+            "d": {
+              "int": "-1"
+            },
+            "ts_ms": {
+              "int": "-1"
+            },
+            "ts_utc": {
+              "int": "1767225600123456"
+            },
+            "dec9": {
+              "int": "1"
+            },
+            "dec18": {
+              "int": "999999999999999999"
+            },
+            "dec30": {
+              "bytes_base64": "DJ8snNBGdO3qP////w=="
+            },
+            "s": {
+              "bytes_base64": "cGxhaW4="
+            }
+          }
+        },
+        {
+          "key_base64": "YW5uLTI=",
+          "values": {
+            "d": {
+              "int": "0"
+            },
+            "ts_ms": {
+              "int": "0"
+            },
+            "ts_utc": {
+              "int": "-1"
+            },
+            "dec9": {
+              "int": "-1"
+            },
+            "dec18": {
+              "int": "-999999999999999999"
+            },
+            "dec30": {
+              "bytes_base64": "82DTYy+5ixIVwAAAAQ=="
+            },
+            "s": {
+              "bytes_base64": "Y2Fmw6k="
+            }
+          }
+        },
+        {
+          "key_base64": "YW5uLTM=",
+          "values": {
+            "d": {
+              "int": "1"
+            },
+            "ts_ms": {
+              "int": "1"
+            },
+            "ts_utc": {
+              "null": true
+            },
+            "dec9": {
+              "int": "999999999"
+            },
+            "dec18": {
+              "int": "1"
+            },
+            "dec30": {
+              "bytes_base64": "/////////////////w=="
+            },
+            "s": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "YW5uLTQ=",
+          "values": {
+            "d": {
+              "int": "19000"
+            },
+            "ts_ms": {
+              "int": "1767225600123"
+            },
+            "ts_utc": {
+              "int": "9223372036854775807"
+            },
+            "dec9": {
+              "int": "-999999999"
+            },
+            "dec18": {
+              "null": true
+            },
+            "dec30": {
+              "bytes_base64": "AAAAAAAAAAAAAAAAAQ=="
+            },
+            "s": {
+              "bytes_base64": "5pel5pys"
+            }
+          }
+        },
+        {
+          "key_base64": "YW5uLTU=",
+          "values": {
+            "d": {
+              "int": "20454"
+            },
+            "ts_ms": {
+              "int": "253402300799999"
+            },
+            "ts_utc": {
+              "int": "-9223372036854775808"
+            },
+            "dec9": {
+              "int": "12345"
+            },
+            "dec18": {
+              "int": "-5"
+            },
+            "dec30": {
+              "null": true
+            },
+            "s": {
+              "bytes_base64": "eg=="
+            }
+          }
+        },
+        {
+          "key_base64": "YW5uLTY=",
+          "values": {
+            "d": {
+              "int": "2932896"
+            },
+            "ts_ms": {
+              "null": true
+            },
+            "ts_utc": {
+              "int": "5"
+            },
+            "dec9": {
+              "null": true
+            },
+            "dec18": {
+              "int": "100000000000000000"
+            },
+            "dec30": {
+              "bytes_base64": "AY7pD/bDc+DuTj8K0g=="
+            },
+            "s": {
+              "bytes_base64": "YWFhYWFhYWFhYWFhYWFhYWFhYWE="
+            }
+          }
+        },
+        {
+          "key_base64": "YW5uLTc=",
+          "values": {
+            "d": {
+              "null": true
+            },
+            "ts_ms": {
+              "int": "42"
+            },
+            "ts_utc": {
+              "int": "6"
+            },
+            "dec9": {
+              "int": "7"
+            },
+            "dec18": {
+              "int": "3"
+            },
+            "dec30": {
+              "bytes_base64": "////////////////AA=="
+            },
+            "s": {
+              "bytes_base64": "ZW5k"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "key": {
+    "column": "key",
+    "unique": true
+  }
+}

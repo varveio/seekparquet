@@ -1,0 +1,757 @@
+{
+  "group": "refusals-open",
+  "target": "reader",
+  "generated": true,
+  "generator": "generators/make_cases.py",
+  "description": "Faults a reader must detect when opening the dataset (reader_detect open in generators/faults.json).",
+  "families": {
+    "refusals-open/fault": "one case per fault that a reader must refuse on open"
+  },
+  "cases": [
+    {
+      "id": "refusals-open/stamp-missing",
+      "description": "Parts carry no seekparquet.* footer metadata.",
+      "family": "refusals-open/fault",
+      "fault_id": "stamp-missing",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/stamp-missing",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-wrong-revision",
+      "description": "Footer seekparquet.draft_revision is 2; the manifest says 1.",
+      "family": "refusals-open/fault",
+      "fault_id": "stamp-wrong-revision",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/stamp-wrong-revision",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-missing-revision",
+      "description": "Footer lacks seekparquet.draft_revision although format_version is 0.",
+      "family": "refusals-open/fault",
+      "fault_id": "stamp-missing-revision",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/stamp-missing-revision",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/key-int64",
+      "description": "The key column is INT64.",
+      "family": "refusals-open/fault",
+      "fault_id": "key-int64",
+      "requirements": [
+        "KEY-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/key-int64",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key_column"
+      }
+    },
+    {
+      "id": "refusals-open/key-missing",
+      "description": "No column is named key (it is named id).",
+      "family": "refusals-open/fault",
+      "fault_id": "key-missing",
+      "requirements": [
+        "KEY-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/key-missing",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key_column"
+      }
+    },
+    {
+      "id": "refusals-open/key-nested",
+      "description": "key is a group column (struct with one BYTE_ARRAY child).",
+      "family": "refusals-open/fault",
+      "fault_id": "key-nested",
+      "requirements": [
+        "KEY-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/key-nested",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key_column"
+      }
+    },
+    {
+      "id": "refusals-open/sorting-columns-missing",
+      "description": "Row groups carry no sorting_columns.",
+      "family": "refusals-open/fault",
+      "fault_id": "sorting-columns-missing",
+      "requirements": [
+        "RG-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/sorting-columns-missing",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "missing_sorting_columns"
+      }
+    },
+    {
+      "id": "refusals-open/sorting-columns-other-first",
+      "description": "sorting_columns names column size first, then key.",
+      "family": "refusals-open/fault",
+      "fault_id": "sorting-columns-other-first",
+      "requirements": [
+        "RG-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/sorting-columns-other-first",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "missing_sorting_columns"
+      }
+    },
+    {
+      "id": "refusals-open/unsupported-version-draft-2",
+      "description": "Manifest and stamps say format_version 0, draft_revision 2.",
+      "family": "refusals-open/fault",
+      "fault_id": "unsupported-version-draft-2",
+      "requirements": [
+        "MAN-4",
+        "MAN-5",
+        "VER-1"
+      ],
+      "dataset": "datasets/invalid/unsupported-version-draft-2",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "unsupported_version"
+      }
+    },
+    {
+      "id": "refusals-open/unsupported-version-1",
+      "description": "Manifest and stamps say format_version 1 (reserved until format 1 is final).",
+      "family": "refusals-open/fault",
+      "fault_id": "unsupported-version-1",
+      "requirements": [
+        "MAN-4",
+        "MAN-5",
+        "VER-1"
+      ],
+      "dataset": "datasets/invalid/unsupported-version-1",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "unsupported_version"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-not-object",
+      "description": "manifest.json is a JSON array holding the manifest object.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-not-object",
+      "requirements": [
+        "MAN-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-not-object",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-duplicate-member",
+      "description": "The top-level member schema_id appears twice.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-duplicate-member",
+      "requirements": [
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-duplicate-member",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-duplicate-part-member",
+      "description": "A part object has the member rows twice.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-duplicate-part-member",
+      "requirements": [
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-duplicate-part-member",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-unknown-part-member",
+      "description": "Part member checksum is not defined.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-unknown-part-member",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-unknown-part-member",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-extension-not-object",
+      "description": "extensions is a string, not an object.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-extension-not-object",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-extension-not-object",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-missing-schema-id",
+      "description": "The required member schema_id is absent.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-missing-schema-id",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-missing-schema-id",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-missing-parts",
+      "description": "The required member parts is absent.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-missing-parts",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-missing-parts",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-rows-string",
+      "description": "A part's rows is the string \"12\".",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-rows-string",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-rows-string",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-wrong-format",
+      "description": "format is \"parquet\".",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-wrong-format",
+      "requirements": [
+        "MAN-4",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-wrong-format",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-bad-base64",
+      "description": "min_key_base64 contains characters outside the base64 alphabet.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-bad-base64",
+      "requirements": [
+        "PART-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-bad-base64",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-base64-unpadded",
+      "description": "min_key_base64 omits its padding.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-base64-unpadded",
+      "requirements": [
+        "PART-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-base64-unpadded",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-base64-url-alphabet",
+      "description": "Part 1's max_key_base64 (0xFF*81) is written in the URL-safe alphabet ('_' for '/').",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-base64-url-alphabet",
+      "requirements": [
+        "PART-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-base64-url-alphabet",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-path-absolute",
+      "description": "The part path begins with '/'.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-path-absolute",
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-path-absolute",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-path-empty-segment",
+      "description": "The part path has an empty segment.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-path-empty-segment",
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-path-empty-segment",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-path-backslash",
+      "description": "The part path contains a backslash.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-path-backslash",
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-path-backslash",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-path-duplicate",
+      "description": "Two parts name the same path (their declared bounds are disjoint and ascending).",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-path-duplicate",
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-path-duplicate",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-rows-exponent",
+      "description": "A part's rows is written 1.2e1.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-rows-exponent",
+      "requirements": [
+        "MAN-6",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-rows-exponent",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-bytes-too-large",
+      "description": "A part's bytes is 2^63, beyond the allowed range.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-bytes-too-large",
+      "requirements": [
+        "MAN-6",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-bytes-too-large",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-format-version-fraction",
+      "description": "format_version is written 0.0.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-format-version-fraction",
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-format-version-fraction",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-path-control-character",
+      "description": "The part path contains U+0001.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-path-control-character",
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-path-control-character",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-draft-revision-zero",
+      "description": "draft_revision is 0.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-draft-revision-zero",
+      "requirements": [
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-draft-revision-zero",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-format-version-negative",
+      "description": "format_version is -1.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-format-version-negative",
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-format-version-negative",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/part-size-smaller",
+      "description": "The manifest's bytes is one less than the file's size.",
+      "family": "refusals-open/fault",
+      "fault_id": "part-size-smaller",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/part-size-smaller",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "part_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/bounds-min-above-max",
+      "description": "The part's declared min key is greater than its max key.",
+      "family": "refusals-open/fault",
+      "fault_id": "bounds-min-above-max",
+      "requirements": [
+        "PART-4",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/bounds-min-above-max",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/bounds-parts-out-of-order",
+      "description": "The manifest lists the parts with the last part first (bounds not ascending).",
+      "family": "refusals-open/fault",
+      "fault_id": "bounds-parts-out-of-order",
+      "requirements": [
+        "PART-4",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/bounds-parts-out-of-order",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/invalid-footer-length",
+      "description": "The footer length field exceeds the file size.",
+      "family": "refusals-open/fault",
+      "fault_id": "invalid-footer-length",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-length",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "refusals-open/invalid-footer-thrift",
+      "description": "The footer bytes are overwritten with 0xFF (same length).",
+      "family": "refusals-open/fault",
+      "fault_id": "invalid-footer-thrift",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-thrift",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "refusals-open/column-orders-missing",
+      "description": "The footer has no column_orders.",
+      "family": "refusals-open/fault",
+      "fault_id": "column-orders-missing",
+      "requirements": [
+        "KEY-5",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/column-orders-missing",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key_column"
+      }
+    },
+    {
+      "id": "refusals-open/column-orders-long",
+      "description": "column_orders has one entry more than there are leaf columns.",
+      "family": "refusals-open/fault",
+      "fault_id": "column-orders-long",
+      "requirements": [
+        "KEY-5",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/column-orders-long",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key_column"
+      }
+    }
+  ]
+}

@@ -1,0 +1,2977 @@
+{
+  "group": "projection",
+  "target": "reader",
+  "generated": false,
+  "description": "Projection (RANGE-2, COL-2, COL-3, COL-6): physical values of every mandatory type, null versus absent, request order, nested columns. Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "projection/column/f32",
+      "description": "FLOAT values are reported by exact bits: signed zero 80000000, quiet and signalling NaNs with payloads (7fc00001, 7f800001), negative NaN; nulls stay null.",
+      "requirements": [
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "f32"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "float32": "3fc00000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "float32": "80000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "float32": "7f800000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "float32": "ff800000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "float32": "7fc00001"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "float32": "7f800001"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "float32": "ffc00000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "float32": "7f7fffff"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "float32": "3fc00000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "float32": "80000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "float32": "7f800000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "float32": "ff800000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "float32": "7fc00001"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "float32": "7f800001"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "float32": "ffc00000"
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/column/f64",
+      "description": "DOUBLE by exact bits, including a NaN payload and the smallest subnormal; part 1 lacks the column, so its rows are absent, not null.",
+      "requirements": [
+        "RANGE-2",
+        "COL-3",
+        "COL-2"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "f64"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "float64": "3ff8000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "float64": "8000000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "float64": "7ff0000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "float64": "7ff8000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "float64": "7ff8000000000001"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "float64": "7ff0000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "float64": "7ff8000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "float64": "7ff8000000000001"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "float64": "7ff0000000000001"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "float64": "fff8000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/column/u32",
+      "description": "An INT32 annotated as unsigned is reported as its signed physical value: 4294967295 becomes -1, 2147483648 becomes -2147483648.",
+      "requirements": [
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "u32"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "int": "1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "int": "-2147483648"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "int": "1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "int": "-2147483648"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "int": "1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "int": "-2147483648"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "int": "1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "int": "-2147483648"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "int": "1"
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/column/u64",
+      "description": "An INT64 annotated as unsigned: 18446744073709551615 is reported as -1.",
+      "requirements": [
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "u64"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "int": "1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "int": "-9223372036854775808"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "int": "1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "int": "-9223372036854775808"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "int": "-9223372036854775808"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "int": "1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "int": "-9223372036854775808"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "int": "1"
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/column/a.b",
+      "description": "COL-6: the column is literally named a.b; the dot is not a path separator.",
+      "requirements": [
+        "RANGE-2",
+        "COL-3",
+        "COL-6"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "a.b"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "int": "3"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "int": "6"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "int": "9"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "int": "12"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "int": "15"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "int": "18"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "int": "21"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "int": "24"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "int": "27"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "int": "30"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "int": "33"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "int": "36"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "int": "39"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "int": "42"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "int": "45"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "int": "48"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "int": "51"
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/column/fx",
+      "description": "FIXED_LEN_BYTE_ARRAY(4) values as raw bytes, including 0x00 and 0xFF bytes.",
+      "requirements": [
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "fx"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "bytes_base64": "AAD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "bytes_base64": "AQD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "bytes_base64": "AgD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "bytes_base64": "AwD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "bytes_base64": "BQD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "bytes_base64": "BgD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "bytes_base64": "BwD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "bytes_base64": "CAD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "bytes_base64": "CgD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "bytes_base64": "CwD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "bytes_base64": "DAD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "bytes_base64": "DQD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "bytes_base64": "DwD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "bytes_base64": "EAD/fw=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "bytes_base64": "EQD/fw=="
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/columns/span-parts",
+      "description": "Rows from all three parts with columns f64, req, extra, i32: absent where the part lacks the column, null where the value is null; the two are never conflated.",
+      "requirements": [
+        "RANGE-2",
+        "COL-2"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "start_base64": "cm93LTA1",
+        "end_base64": "cm93LTEz",
+        "limit": 100000,
+        "columns": [
+          "f64",
+          "req",
+          "extra",
+          "i32"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "995"
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "2147483647"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "-2147483648"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "float64": "7ff0000000000000"
+              },
+              {
+                "int": "988"
+              },
+              {
+                "int": "-12"
+              },
+              {
+                "int": "2147483647"
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/columns/absent-mix",
+      "description": "extra exists only in part 2, req and f64 are missing from part 1: request order is kept and each row reports absent per part.",
+      "requirements": [
+        "RANGE-2",
+        "COL-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "extra",
+          "req",
+          "f64"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "int": "1000"
+              },
+              {
+                "float64": "3ff8000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "int": "999"
+              },
+              {
+                "float64": "8000000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "int": "998"
+              },
+              {
+                "float64": "7ff0000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "int": "997"
+              },
+              {
+                "float64": "7ff8000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "int": "996"
+              },
+              {
+                "float64": "7ff8000000000001"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "int": "995"
+              },
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "int": "-12"
+              },
+              {
+                "int": "988"
+              },
+              {
+                "float64": "7ff0000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "int": "-13"
+              },
+              {
+                "int": "987"
+              },
+              {
+                "float64": "7ff8000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "int": "-14"
+              },
+              {
+                "int": "986"
+              },
+              {
+                "float64": "7ff8000000000001"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "int": "-15"
+              },
+              {
+                "int": "985"
+              },
+              {
+                "float64": "7ff0000000000001"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "int": "-16"
+              },
+              {
+                "int": "984"
+              },
+              {
+                "float64": "fff8000000000000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "int": "-17"
+              },
+              {
+                "int": "983"
+              },
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/col-7/unknown",
+      "description": "COL-7: a column no part has is absent in every row, not an error.",
+      "requirements": [
+        "COL-7",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "no_such_column"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/col-6/no-path-lookup",
+      "description": "Requesting a is not a lookup into a.b or a nested field: it is a column no part has, so every row is absent.",
+      "requirements": [
+        "COL-6",
+        "COL-7"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "a"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "absent": true
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/key/basic-01",
+      "description": "key projected between other columns and twice: each occurrence carries the key's own bytes, in request order.",
+      "requirements": [
+        "RANGE-2",
+        "KEY-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yg==",
+        "limit": 5,
+        "columns": [
+          "size",
+          "key",
+          "etag",
+          "key"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": [
+              {
+                "int": "128"
+              },
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNA=="
+              },
+              {
+                "bytes_base64": "Yg=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": [
+              {
+                "int": "135"
+              },
+              {
+                "bytes_base64": "YnJhdm8="
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNQ=="
+              },
+              {
+                "bytes_base64": "YnJhdm8="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": [
+              {
+                "int": "142"
+              },
+              {
+                "bytes_base64": "Yy8="
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNg=="
+              },
+              {
+                "bytes_base64": "Yy8="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": [
+              {
+                "int": "149"
+              },
+              {
+                "bytes_base64": "Yy9k"
+              },
+              {
+                "null": true
+              },
+              {
+                "bytes_base64": "Yy9k"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "values": [
+              {
+                "int": "156"
+              },
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              },
+              {
+                "bytes_base64": "ZXRhZy0wOA=="
+              },
+              {
+                "bytes_base64": "Y2hhcmxpZQ=="
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/key/projection-03",
+      "description": "A STRING-annotated key projected: its physical BYTE_ARRAY bytes.",
+      "requirements": [
+        "RANGE-2",
+        "KEY-1"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "key",
+          "i32"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "bytes_base64": "cm93LTAw"
+              },
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "bytes_base64": "cm93LTAx"
+              },
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "bytes_base64": "cm93LTAy"
+              },
+              {
+                "int": "2147483647"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "bytes_base64": "cm93LTAz"
+              },
+              {
+                "int": "-2147483648"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "bytes_base64": "cm93LTA0"
+              },
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "bytes_base64": "cm93LTA1"
+              },
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "bytes_base64": "cm93LTA2"
+              },
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "bytes_base64": "cm93LTA3"
+              },
+              {
+                "int": "2147483647"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "bytes_base64": "cm93LTA4"
+              },
+              {
+                "int": "-2147483648"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "bytes_base64": "cm93LTA5"
+              },
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "bytes_base64": "cm93LTEw"
+              },
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "bytes_base64": "cm93LTEx"
+              },
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "bytes_base64": "cm93LTEy"
+              },
+              {
+                "int": "2147483647"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "bytes_base64": "cm93LTEz"
+              },
+              {
+                "int": "-2147483648"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "bytes_base64": "cm93LTE0"
+              },
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "bytes_base64": "cm93LTE1"
+              },
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "bytes_base64": "cm93LTE2"
+              },
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "bytes_base64": "cm93LTE3"
+              },
+              {
+                "int": "2147483647"
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/annotated/dec30",
+      "description": "DECIMAL(30,5) stored as FIXED_LEN_BYTE_ARRAY(13): reported as the 13 bytes of the unscaled two's-complement value, not as a decimal number.",
+      "requirements": [
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "dec30"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTA=",
+            "values": [
+              {
+                "bytes_base64": "AAAAAAAAAAAAAAAAAA=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTE=",
+            "values": [
+              {
+                "bytes_base64": "DJ8snNBGdO3qP////w=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTI=",
+            "values": [
+              {
+                "bytes_base64": "82DTYy+5ixIVwAAAAQ=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTM=",
+            "values": [
+              {
+                "bytes_base64": "/////////////////w=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTQ=",
+            "values": [
+              {
+                "bytes_base64": "AAAAAAAAAAAAAAAAAQ=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTU=",
+            "values": [
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTY=",
+            "values": [
+              {
+                "bytes_base64": "AY7pD/bDc+DuTj8K0g=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTc=",
+            "values": [
+              {
+                "bytes_base64": "////////////////AA=="
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/annotated/ts_utc",
+      "description": "TIMESTAMP(us, UTC) reported as the physical INT64, including the INT64 extremes.",
+      "requirements": [
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "ts_utc"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTA=",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTE=",
+            "values": [
+              {
+                "int": "1767225600123456"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTI=",
+            "values": [
+              {
+                "int": "-1"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTM=",
+            "values": [
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTQ=",
+            "values": [
+              {
+                "int": "9223372036854775807"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTU=",
+            "values": [
+              {
+                "int": "-9223372036854775808"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTY=",
+            "values": [
+              {
+                "int": "5"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTc=",
+            "values": [
+              {
+                "int": "6"
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/annotated/keys-only",
+      "description": "Only key is requested: unrequested annotated columns must not affect the answer.",
+      "requirements": [
+        "RANGE-2"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "key"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTA=",
+            "values": [
+              {
+                "bytes_base64": "YW5uLTA="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTE=",
+            "values": [
+              {
+                "bytes_base64": "YW5uLTE="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTI=",
+            "values": [
+              {
+                "bytes_base64": "YW5uLTI="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTM=",
+            "values": [
+              {
+                "bytes_base64": "YW5uLTM="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTQ=",
+            "values": [
+              {
+                "bytes_base64": "YW5uLTQ="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTU=",
+            "values": [
+              {
+                "bytes_base64": "YW5uLTU="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTY=",
+            "values": [
+              {
+                "bytes_base64": "YW5uLTY="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTc=",
+            "values": [
+              {
+                "bytes_base64": "YW5uLTc="
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/nested/meta",
+      "description": "meta is a struct. The protocol has no encoding for nested values, so the only acceptable answer is unsupported_projection; it must never be reported as absent (COL-3).",
+      "requirements": [
+        "COL-3"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "i32",
+          "meta"
+        ]
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_projection"
+      }
+    },
+    {
+      "id": "projection/optional-codecs/lz4col",
+      "description": "An LZ4_RAW column: the exact values, or unsupported_encoding. A refusal or wrong values fail.",
+      "requirements": [
+        "RANGE-2",
+        "ENC-1"
+      ],
+      "dataset": "datasets/optional-codecs",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "lz4col"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b3B0LTAw",
+            "values": [
+              {
+                "int": "0"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "b3B0LTAx",
+            "values": [
+              {
+                "int": "1000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "b3B0LTAy",
+            "values": [
+              {
+                "int": "2000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "b3B0LTAz",
+            "values": [
+              {
+                "int": "3000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "b3B0LTA0",
+            "values": [
+              {
+                "int": "4000"
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "b3B0LTA1",
+            "values": [
+              {
+                "int": "5000"
+              }
+            ],
+            "offset": 0
+          }
+        ],
+        "accept_unsupported": [
+          "unsupported_encoding"
+        ]
+      }
+    },
+    {
+      "id": "projection/basic/repeated-column",
+      "description": "etag requested twice: both positions carry the value (or null) in request order.",
+      "requirements": [
+        "RANGE-2"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YnJhdm8=",
+        "limit": 4,
+        "columns": [
+          "etag",
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0wNQ=="
+              },
+              {
+                "int": "135"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNQ=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0wNg=="
+              },
+              {
+                "int": "142"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNg=="
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "149"
+              },
+              {
+                "null": true
+              }
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0wOA=="
+              },
+              {
+                "int": "156"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wOA=="
+              }
+            ],
+            "offset": 0
+          }
+        ]
+      }
+    }
+  ]
+}

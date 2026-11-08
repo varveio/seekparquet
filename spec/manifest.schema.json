@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/varveio/seekparquet/spec/manifest.schema.json",
+  "title": "SeekParquet manifest, format 1 draft revision 1",
+  "description": "Structure of manifest.json. Structure only: byte order, exact bounds and agreement with the part files are semantic checks defined in format-1.md. Duplicate member names are also forbidden (MAN-2), which JSON Schema cannot express.",
+  "type": "object",
+  "required": [
+    "format",
+    "format_version",
+    "schema_id",
+    "key",
+    "parts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "seekparquet"
+    },
+    "format_version": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Structural only: a reader determines and checks the version first (MAN-7). This document defines 0 (drafts) and 1 (final)."
+    },
+    "draft_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "schema_id": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "[\\u0000-\\u001f\\u007f]"
+      }
+    },
+    "parts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/part"
+      },
+      "description": "In ascending key order. An empty array is an empty dataset."
+    },
+    "extensions": {
+      "type": "object",
+      "propertyNames": {
+        "minLength": 1
+      }
+    },
+    "key": {
+      "type": "object",
+      "required": [
+        "column",
+        "unique"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "type": "string",
+          "minLength": 1,
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          }
+        },
+        "unique": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "format_version": {
+            "const": 0
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "draft_revision"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "draft_revision"
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "part": {
+      "type": "object",
+      "required": [
+        "path",
+        "rows",
+        "bytes",
+        "min_key_base64",
+        "max_key_base64"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*//)(?!.*/$)(?!(.*/)?\\.\\.?(/|$))[^\\\\]+$",
+          "not": {
+            "pattern": "[\\u0000-\\u001f\\u007f]"
+          },
+          "description": "PART-1. Control characters are excluded by 'not', so the lookaheads never meet a line terminator."
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        },
+        "min_key_base64": {
+          "$ref": "#/$defs/key"
+        },
+        "max_key_base64": {
+          "$ref": "#/$defs/key"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "not": {
+            "pattern": "[^0-9a-f]"
+          }
+        }
+      }
+    },
+    "key": {
+      "description": "A non-empty key in canonical standard base64 with padding (RFC 4648 section 4). The schema checks the alphabet and shape; canonical unused bits (PART-3) need a decode and re-encode.",
+      "type": "string",
+      "minLength": 4,
+      "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{4})$",
+      "not": {
+        "pattern": "[^A-Za-z0-9+/=]"
+      }
+    }
+  }
+}

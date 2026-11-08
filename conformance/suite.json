@@ -1,0 +1,187 @@
+{
+  "suite": "seekparquet-conformance-semantic",
+  "revision": "0.1.0-draft.4",
+  "status": "draft",
+  "specification": "spec/format-1.md",
+  "format_version": 0,
+  "draft_revision": 1,
+  "mandatory_targets": [
+    "reader"
+  ],
+  "mandatory_capabilities": [
+    "open",
+    "range",
+    "list",
+    "projection"
+  ],
+  "case_files": [
+    "cases/core/list.json",
+    "cases/core/open.json",
+    "cases/core/pagination.json",
+    "cases/core/prefix.json",
+    "cases/core/projection.json",
+    "cases/core/range.json",
+    "cases/core/refusals-open.json",
+    "cases/core/refusals-read.json",
+    "cases/core/repeated.json",
+    "cases/core/requests.json",
+    "cases/core/validate-digest.json",
+    "cases/core/validate-full.json",
+    "cases/core/validate-profile.json",
+    "cases/core/validate-structural.json",
+    "cases/generated/repeated.generated.json",
+    "cases/generated/open.generated.json",
+    "cases/generated/range.generated.json",
+    "cases/generated/prefix.generated.json",
+    "cases/generated/list.generated.json",
+    "cases/generated/pagination.generated.json",
+    "cases/generated/projection.generated.json",
+    "cases/generated/requests.generated.json",
+    "cases/generated/refusals-open.generated.json",
+    "cases/generated/refusals-read.generated.json",
+    "cases/generated/validate-structural.generated.json",
+    "cases/generated/validate-profile.generated.json",
+    "cases/generated/validate-full.generated.json",
+    "cases/generated/validate-digest.generated.json"
+  ],
+  "subsets": [
+    "subsets/smoke.json"
+  ],
+  "case_counts": {
+    "cases/core/list.json": 13,
+    "cases/core/open.json": 6,
+    "cases/core/pagination.json": 8,
+    "cases/core/prefix.json": 8,
+    "cases/core/projection.json": 18,
+    "cases/core/range.json": 20,
+    "cases/core/refusals-open.json": 32,
+    "cases/core/refusals-read.json": 12,
+    "cases/core/repeated.json": 33,
+    "cases/core/requests.json": 10,
+    "cases/core/validate-digest.json": 4,
+    "cases/core/validate-full.json": 4,
+    "cases/core/validate-profile.json": 4,
+    "cases/core/validate-structural.json": 10,
+    "cases/generated/repeated.generated.json": 451,
+    "cases/generated/open.generated.json": 17,
+    "cases/generated/range.generated.json": 538,
+    "cases/generated/prefix.generated.json": 43,
+    "cases/generated/list.generated.json": 38,
+    "cases/generated/pagination.generated.json": 81,
+    "cases/generated/projection.generated.json": 35,
+    "cases/generated/requests.generated.json": 8,
+    "cases/generated/refusals-open.generated.json": 39,
+    "cases/generated/refusals-read.generated.json": 19,
+    "cases/generated/validate-structural.generated.json": 115,
+    "cases/generated/validate-profile.generated.json": 39,
+    "cases/generated/validate-full.generated.json": 29,
+    "cases/generated/validate-digest.generated.json": 2
+  },
+  "totals": {
+    "core": 182,
+    "generated": 1454
+  },
+  "renamed_datasets": {
+    "datasets/truncated-bounds": "datasets/binary-bounds-truncated-16-byte",
+    "datasets/truncated-bounds-2": "datasets/binary-bounds-truncated-2-byte"
+  },
+  "retired_case_ids": [
+    {
+      "id": "range/projection/row-group-0.1.0/inclusive-at-last",
+      "duplicate_of": "range/projection/page-0.0.1/start-at-first"
+    },
+    {
+      "id": "range/projection/part-1.0.0/inclusive-at-last",
+      "duplicate_of": "range/projection/page-0.1.1/start-at-first"
+    },
+    {
+      "id": "range/projection/row-group-1.1.0/inclusive-at-last",
+      "duplicate_of": "range/projection/page-1.0.1/start-at-first"
+    },
+    {
+      "id": "range/projection/part-2.0.0/inclusive-at-last",
+      "duplicate_of": "range/projection/page-1.1.1/start-at-first"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-00",
+      "duplicate_of": "range/binary-keys/seek-01"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-02",
+      "duplicate_of": "range/binary-keys/page-0.0.1/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-05",
+      "duplicate_of": "range/binary-keys/page-0.0.2/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-08",
+      "duplicate_of": "range/binary-keys/page-0.0.3/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-11",
+      "duplicate_of": "range/binary-keys/row-group-0.1.0/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-14",
+      "duplicate_of": "range/binary-keys/page-0.1.1/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-16",
+      "duplicate_of": "range/binary-keys/seek-17"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-17",
+      "duplicate_of": "range/binary-keys/seek-18"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-23",
+      "duplicate_of": "range/binary-keys/part-1.0.0/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-30",
+      "duplicate_of": "range/binary-keys/seek-31"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-32",
+      "duplicate_of": "range/binary-keys/row-group-1.1.0/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-38",
+      "duplicate_of": "range/binary-keys/seek-39"
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-miss-00",
+      "duplicate_of": "range/truncated-bounds-2/seek-01"
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-miss-16",
+      "duplicate_of": "range/truncated-bounds-2/seek-17"
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-miss-17",
+      "duplicate_of": "range/truncated-bounds-2/seek-18"
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-miss-30",
+      "duplicate_of": "range/truncated-bounds-2/seek-31"
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-miss-38",
+      "duplicate_of": "range/truncated-bounds-2/seek-39"
+    },
+    {
+      "id": "list/delimiter/after-equals-prefix-continuation",
+      "duplicate_of": "list/delimiter/after-inside-prefix-continuation"
+    },
+    {
+      "id": "list/empty/root",
+      "duplicate_of": "open/empty-list"
+    },
+    {
+      "id": "list/delimiter/continuation-without-after",
+      "reason": "tested the removed continuation member"
+    }
+  ],
+  "content_sha256": "fb2201fe8bf6c6900806c0c320cc5dfdccfadf3071aef36f208d596b541d491a"
+}

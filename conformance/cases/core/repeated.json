@@ -1,0 +1,1223 @@
+{
+  "group": "repeated",
+  "target": "reader",
+  "generated": false,
+  "description": "Copyright 2026 Varve Systems Ltd; SPDX-License-Identifier: Apache-2.0. Authored examples of repeated groups, exact key names and tagged cursors.",
+  "cases": [
+    {
+      "id": "repeated/core/seek-group-start",
+      "description": "Seeking b must find offset zero in the first row group, even though later row groups also begin with b.",
+      "requirements": [
+        "KEY-7",
+        "ROUTE-1",
+        "PAGE-1",
+        "PAGE-2",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 3,
+        "columns": [
+          "size"
+        ],
+        "start_base64": "Yg=="
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/lookup-whole-group",
+      "description": "The exact-key range returns all twelve b rows in producer file order across four row groups.",
+      "requirements": [
+        "KEY-7",
+        "ROUTE-1",
+        "PAGE-1",
+        "PAGE-2",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 100,
+        "columns": [
+          "size"
+        ],
+        "start_base64": "Yg==",
+        "end_base64": "YgA="
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/resume-inside-group",
+      "description": "A page ending at b offset 2 resumes with offsets 3, 4 and 5, preserving distinct projected row values.",
+      "requirements": [
+        "KEY-7",
+        "ROUTE-1",
+        "PAGE-1",
+        "PAGE-2",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 3,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 2
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/resume-across-part",
+      "description": "Continuation finishes b then starts the next part at c/x offset zero; group offsets reset only on a new key.",
+      "requirements": [
+        "KEY-7",
+        "ROUTE-1",
+        "PAGE-1",
+        "PAGE-2",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 3,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 10
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/exclusive-whole-group",
+      "description": "An exclusive start at b excludes all twelve b rows, including those in later row groups.",
+      "requirements": [
+        "KEY-7",
+        "ROUTE-1",
+        "PAGE-1",
+        "PAGE-2",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 3,
+        "columns": [
+          "size"
+        ],
+        "start_base64": "Yg==",
+        "start_exclusive": true
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/end-whole-group",
+      "description": "An exclusive end at b excludes its whole group and retains all three a rows.",
+      "requirements": [
+        "KEY-7",
+        "ROUTE-1",
+        "PAGE-1",
+        "PAGE-2",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 100,
+        "columns": [
+          "size"
+        ],
+        "start_base64": "YQ==",
+        "end_base64": "Yg=="
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "0"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "1"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "2"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/listing-repeated-rows",
+      "description": "Each repeated b row is a separate row entry, so a listing page may stop inside the group.",
+      "requirements": [
+        "LIST-3",
+        "LIST-4",
+        "PAGE-1",
+        "PAGE-2"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 3,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 8
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/listing-prefix-continuation",
+      "description": "A prefix cursor c/ skips every key under c/, so c/ is not returned again, then returns all d rows.",
+      "requirements": [
+        "LIST-6",
+        "PAGE-1",
+        "PAGE-2"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 10,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "prefix_base64": "Yy8="
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/large-group-seek",
+      "description": "When six row groups all begin with only, seeking it must start at the first row group.",
+      "requirements": [
+        "KEY-7",
+        "ROUTE-1",
+        "PAGE-1",
+        "PAGE-2",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 3,
+        "columns": [
+          "size"
+        ],
+        "start_base64": "b25seQ=="
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "0"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "1"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "2"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/large-group-resume",
+      "description": "A cursor in a large single-key part resumes across row groups without losing or repeating rows.",
+      "requirements": [
+        "KEY-7",
+        "ROUTE-1",
+        "PAGE-1",
+        "PAGE-2",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 4,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 17
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 18,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 19,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 20,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 21,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/offset-beyond-group",
+      "description": "A row cursor whose offset is beyond the last of b's twelve rows skips the rest of that group and resumes at c/x offset zero: the comparison rule applies, with no existence check and no error.",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "RANGE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 3,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 40
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/listing-row-cursor-inside-rollup",
+      "description": "A hand-made row cursor inside the c/x group: the remaining c/x rows are candidates, so the common prefix c/ is returned although it sorts before the cursor key (LIST-5), followed by d rows.",
+      "requirements": [
+        "LIST-5",
+        "PAGE-1",
+        "KEY-7"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 3,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yy94",
+          "offset": 1
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Yy8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/range-prefix-cursor-invalid",
+      "description": "A prefix cursor is valid only for listings: a range request carrying one is an invalid request, never an empty or unfiltered result.",
+      "requirements": [
+        "PAGE-1",
+        "QUERY-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "raw_request": {
+        "op": "range",
+        "limit": 2,
+        "after": {
+          "prefix_base64": "Yy8="
+        }
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "repeated/core/unique-nonzero-offset",
+      "description": "In unique mode every returned offset is 0, but a nonzero cursor offset is not an error: (alpha, 3) means after alpha, so the next keys follow.",
+      "requirements": [
+        "PAGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 2,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YWxwaGE=",
+          "offset": 3
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/core/literal-key-column",
+      "description": "object.id is the exact manifest key column name; projecting key reports absent, and the dot is literal.",
+      "requirements": [
+        "MAN-8",
+        "KEY-1",
+        "COL-6",
+        "COL-7",
+        "STAMP-1"
+      ],
+      "dataset": "datasets/named-key",
+      "request": {
+        "op": "range",
+        "start_base64": "Yg==",
+        "limit": 2,
+        "columns": [
+          "object.id",
+          "key"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 1,
+            "values": [
+              {
+                "bytes_base64": "Yg=="
+              },
+              {
+                "absent": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "refusals-open/stamp-key-column-missing",
+      "description": "The stamp-key-column-missing fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "dataset": "datasets/invalid/stamp-key-column-missing",
+      "detect": "open",
+      "fault_id": "stamp-key-column-missing",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-key-column-mismatch",
+      "description": "The stamp-key-column-mismatch fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "dataset": "datasets/invalid/stamp-key-column-mismatch",
+      "detect": "open",
+      "fault_id": "stamp-key-column-mismatch",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-key-column-noncanonical",
+      "description": "The stamp-key-column-noncanonical fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "dataset": "datasets/invalid/stamp-key-column-noncanonical",
+      "detect": "open",
+      "fault_id": "stamp-key-column-noncanonical",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-duplicate-key-column",
+      "description": "The stamp-duplicate-key-column fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "STAMP-2"
+      ],
+      "dataset": "datasets/invalid/stamp-duplicate-key-column",
+      "detect": "open",
+      "fault_id": "stamp-duplicate-key-column",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-key-unique-missing",
+      "description": "The stamp-key-unique-missing fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "dataset": "datasets/invalid/stamp-key-unique-missing",
+      "detect": "open",
+      "fault_id": "stamp-key-unique-missing",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-key-unique-mismatch",
+      "description": "The stamp-key-unique-mismatch fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "dataset": "datasets/invalid/stamp-key-unique-mismatch",
+      "detect": "open",
+      "fault_id": "stamp-key-unique-mismatch",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-key-unique-noncanonical",
+      "description": "The stamp-key-unique-noncanonical fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "dataset": "datasets/invalid/stamp-key-unique-noncanonical",
+      "detect": "open",
+      "fault_id": "stamp-key-unique-noncanonical",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-duplicate-key-unique",
+      "description": "The stamp-duplicate-key-unique fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "STAMP-2"
+      ],
+      "dataset": "datasets/invalid/stamp-duplicate-key-unique",
+      "detect": "open",
+      "fault_id": "stamp-duplicate-key-unique",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-key-null",
+      "description": "The manifest-key-null fixture must report invalid_manifest at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "MAN-8"
+      ],
+      "dataset": "datasets/invalid/manifest-key-null",
+      "detect": "open",
+      "fault_id": "manifest-key-null",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-key-empty",
+      "description": "The manifest-key-empty fixture must report invalid_manifest at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "MAN-8"
+      ],
+      "dataset": "datasets/invalid/manifest-key-empty",
+      "detect": "open",
+      "fault_id": "manifest-key-empty",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-key-unique-string",
+      "description": "The manifest-key-unique-string fixture must report invalid_manifest at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "MAN-8"
+      ],
+      "dataset": "datasets/invalid/manifest-key-unique-string",
+      "detect": "open",
+      "fault_id": "manifest-key-unique-string",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-key-empty-column",
+      "description": "The manifest-key-empty-column fixture must report invalid_manifest at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "MAN-8"
+      ],
+      "dataset": "datasets/invalid/manifest-key-empty-column",
+      "detect": "open",
+      "fault_id": "manifest-key-empty-column",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-key-control-column",
+      "description": "The manifest-key-control-column fixture must report invalid_manifest at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "MAN-8"
+      ],
+      "dataset": "datasets/invalid/manifest-key-control-column",
+      "detect": "open",
+      "fault_id": "manifest-key-control-column",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-key-extra",
+      "description": "The manifest-key-extra fixture must report invalid_manifest at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "MAN-8"
+      ],
+      "dataset": "datasets/invalid/manifest-key-extra",
+      "detect": "open",
+      "fault_id": "manifest-key-extra",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-key-missing",
+      "description": "The manifest-key-missing fixture must report invalid_manifest at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "MAN-8"
+      ],
+      "dataset": "datasets/invalid/manifest-key-missing",
+      "detect": "open",
+      "fault_id": "manifest-key-missing",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/named-key-absent",
+      "description": "The named-key-absent fixture must report invalid_key_column at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "KEY-1",
+        "MAN-8"
+      ],
+      "dataset": "datasets/invalid/named-key-absent",
+      "detect": "open",
+      "fault_id": "named-key-absent",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key_column"
+      }
+    },
+    {
+      "id": "refusals-read/grouped-key-decreasing",
+      "description": "The grouped-key-decreasing fixture must report key_order at read; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/grouped-key-decreasing",
+      "detect": "read",
+      "fault_id": "grouped-key-decreasing",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "key_order"
+      }
+    },
+    {
+      "id": "refusals-open/group-split-parts",
+      "description": "The group-split-parts fixture must report invalid_manifest at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "requirements": [
+        "PART-4",
+        "KEY-7"
+      ],
+      "dataset": "datasets/invalid/group-split-parts",
+      "detect": "open",
+      "fault_id": "group-split-parts",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    }
+  ]
+}

@@ -1,0 +1,586 @@
+{
+  "group": "refusals-open",
+  "target": "reader",
+  "generated": false,
+  "description": "Faults a reader must detect when opening the dataset (reader_detect open in generators/faults.json). Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "refusals-open/no-manifest",
+      "description": "The part file is present but manifest.json is not. open must refuse with no_manifest.",
+      "fault_id": "no-manifest",
+      "requirements": [
+        "LAYOUT-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/no-manifest",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "no_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-not-json",
+      "description": "manifest.json is truncated mid-object. open must refuse with invalid_manifest.",
+      "fault_id": "manifest-not-json",
+      "requirements": [
+        "MAN-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-not-json",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-bom",
+      "description": "manifest.json begins with a UTF-8 byte order mark. open must refuse with invalid_manifest.",
+      "fault_id": "manifest-bom",
+      "requirements": [
+        "MAN-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-bom",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-duplicate-member-escaped",
+      "description": "schema_id appears twice, once spelled with an escape (schema\\u005fid). open must refuse with invalid_manifest.",
+      "fault_id": "manifest-duplicate-member-escaped",
+      "requirements": [
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-duplicate-member-escaped",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-extensions-duplicate-member",
+      "description": "An object inside extensions has the member a twice. open must refuse with invalid_manifest.",
+      "fault_id": "manifest-extensions-duplicate-member",
+      "requirements": [
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-extensions-duplicate-member",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-unknown-member",
+      "description": "Top-level member created_at is not defined. open must refuse with invalid_manifest.",
+      "fault_id": "manifest-unknown-member",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-unknown-member",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-unpaired-surrogate",
+      "description": "schema_id ends with the escaped lone surrogate \\ud800. open must refuse with invalid_manifest.",
+      "fault_id": "manifest-unpaired-surrogate",
+      "requirements": [
+        "MAN-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-unpaired-surrogate",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-rows-fraction",
+      "description": "A part's rows is written 12.0. open must refuse with invalid_manifest.",
+      "fault_id": "manifest-rows-fraction",
+      "requirements": [
+        "MAN-6",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-rows-fraction",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-base64-noncanonical",
+      "description": "min_key_base64 is YS8xLnR4dB==: it decodes to the right key but its unused bits are not zero. open must refuse with invalid_manifest.",
+      "fault_id": "manifest-base64-noncanonical",
+      "requirements": [
+        "PART-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-base64-noncanonical",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-path-escape",
+      "description": "The part path climbs out of the dataset root to a real, valid part of another dataset. open must refuse with invalid_manifest.",
+      "fault_id": "manifest-path-escape",
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-path-escape",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-path-dot-segment",
+      "description": "The part path has a '.' segment (it would resolve to the real part). open must refuse with invalid_manifest.",
+      "fault_id": "manifest-path-dot-segment",
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-path-dot-segment",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-rows-zero",
+      "description": "A part declares rows 0. open must refuse with invalid_manifest.",
+      "fault_id": "manifest-rows-zero",
+      "requirements": [
+        "PART-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-rows-zero",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-draft-without-revision",
+      "description": "format_version is 0 but draft_revision is absent. open must refuse with invalid_manifest.",
+      "fault_id": "manifest-draft-without-revision",
+      "requirements": [
+        "MAN-3",
+        "MAN-4",
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-draft-without-revision",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-format-1-with-draft-revision",
+      "description": "format_version 1 with a draft_revision (only format_version 0 may carry one). open must refuse with invalid_manifest.",
+      "fault_id": "manifest-format-1-with-draft-revision",
+      "requirements": [
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-format-1-with-draft-revision",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-format-version-overflow",
+      "description": "format_version is 2^63, beyond the integer range of MAN-6 (it must not wrap or be read as unsupported). open must refuse with invalid_manifest.",
+      "fault_id": "manifest-format-version-overflow",
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-format-version-overflow",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/unsupported-version-2",
+      "description": "format_version is 2 (well formed, not defined by this draft). open must refuse with unsupported_version.",
+      "fault_id": "unsupported-version-2",
+      "requirements": [
+        "MAN-4",
+        "MAN-7",
+        "VER-1"
+      ],
+      "dataset": "datasets/invalid/unsupported-version-2",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "unsupported_version"
+      }
+    },
+    {
+      "id": "refusals-open/unsupported-version-2-unknown-member",
+      "description": "format_version 2 with a member draft 1 does not define: the version is decided first (MAN-7). open must refuse with unsupported_version.",
+      "fault_id": "unsupported-version-2-unknown-member",
+      "requirements": [
+        "MAN-7",
+        "VER-1"
+      ],
+      "dataset": "datasets/invalid/unsupported-version-2-unknown-member",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "unsupported_version"
+      }
+    },
+    {
+      "id": "refusals-open/missing-part",
+      "description": "The manifest lists a second part that does not exist. open must refuse with missing_part.",
+      "fault_id": "missing-part",
+      "requirements": [
+        "LAYOUT-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/missing-part",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "missing_part"
+      }
+    },
+    {
+      "id": "refusals-open/part-size-larger",
+      "description": "The manifest's bytes is one more than the file's size. open must refuse with part_mismatch.",
+      "fault_id": "part-size-larger",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/part-size-larger",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "part_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/part-rows-mismatch",
+      "description": "The manifest's rows is 13; the part holds 12. open must refuse with part_mismatch.",
+      "fault_id": "part-rows-mismatch",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/part-rows-mismatch",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "part_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/bounds-overlap",
+      "description": "The first part's declared max key is raised to the second part's min key (manifest bounds overlap). open must refuse with invalid_manifest.",
+      "fault_id": "bounds-overlap",
+      "requirements": [
+        "PART-4",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/bounds-overlap",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/invalid-footer-magic",
+      "description": "The part's trailing magic is PAR0 instead of PAR1. open must refuse with invalid_footer.",
+      "fault_id": "invalid-footer-magic",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-magic",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "refusals-open/invalid-footer-row-count",
+      "description": "FileMetaData.num_rows is 13 while its row groups hold 12 rows; the manifest says 13, matching the footer's num_rows. open must refuse with invalid_footer.",
+      "fault_id": "invalid-footer-row-count",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-row-count",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "refusals-open/invalid-footer-file-path",
+      "description": "Row group 0's key column chunk sets file_path (a reference to another file). open must refuse with invalid_footer.",
+      "fault_id": "invalid-footer-file-path",
+      "requirements": [
+        "FILE-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-file-path",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-wrong-schema-id",
+      "description": "Footer seekparquet.schema_id differs from the manifest's. open must refuse with stamp_mismatch.",
+      "fault_id": "stamp-wrong-schema-id",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/stamp-wrong-schema-id",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-noncanonical-revision",
+      "description": "Footer seekparquet.draft_revision is \"01\" (not canonical decimal). open must refuse with stamp_mismatch.",
+      "fault_id": "stamp-noncanonical-revision",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/stamp-noncanonical-revision",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/stamp-duplicate",
+      "description": "The footer holds seekparquet.schema_id twice (same value). open must refuse with stamp_mismatch.",
+      "fault_id": "stamp-duplicate",
+      "requirements": [
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/stamp-duplicate",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    },
+    {
+      "id": "refusals-open/key-nullable",
+      "description": "The key column is OPTIONAL (no nulls are stored). open must refuse with invalid_key_column.",
+      "fault_id": "key-nullable",
+      "requirements": [
+        "KEY-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/key-nullable",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key_column"
+      }
+    },
+    {
+      "id": "refusals-open/key-annotation-json",
+      "description": "The key column is annotated JSON. open must refuse with invalid_key_column.",
+      "fault_id": "key-annotation-json",
+      "requirements": [
+        "KEY-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/key-annotation-json",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key_column"
+      }
+    },
+    {
+      "id": "refusals-open/column-orders-short",
+      "description": "column_orders holds only the key's TYPE_ORDER entry; the schema has three leaf columns. open must refuse with invalid_key_column.",
+      "fault_id": "column-orders-short",
+      "requirements": [
+        "KEY-5",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/column-orders-short",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key_column"
+      }
+    },
+    {
+      "id": "refusals-open/sorting-columns-descending",
+      "description": "sorting_columns declares key descending. open must refuse with missing_sorting_columns.",
+      "fault_id": "sorting-columns-descending",
+      "requirements": [
+        "RG-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/sorting-columns-descending",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "missing_sorting_columns"
+      }
+    },
+    {
+      "id": "refusals-open/sorting-columns-missing-second-row-group",
+      "description": "Only row group 1 lacks sorting_columns. open must refuse with missing_sorting_columns.",
+      "fault_id": "sorting-columns-missing-second-row-group",
+      "requirements": [
+        "RG-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/sorting-columns-missing-second-row-group",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "missing_sorting_columns"
+      }
+    }
+  ]
+}

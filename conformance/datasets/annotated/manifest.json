@@ -1,0 +1,19 @@
+{
+  "format": "seekparquet",
+  "format_version": 0,
+  "draft_revision": 1,
+  "schema_id": "conformance/annotated/v1",
+  "key": {
+    "column": "key",
+    "unique": true
+  },
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "rows": 8,
+      "bytes": 3713,
+      "min_key_base64": "YW5uLTA=",
+      "max_key_base64": "YW5uLTc="
+    }
+  ]
+}

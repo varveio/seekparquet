@@ -1,0 +1,18 @@
+{
+  "dataset": "empty",
+  "description": "A committed dataset with no parts.",
+  "schema_id": "conformance/objects/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "size",
+      "type": "int64",
+      "nullable": false
+    }
+  ],
+  "parts": [],
+  "key": {
+    "column": "key",
+    "unique": true
+  }
+}

@@ -1,0 +1,324 @@
+{
+  "group": "open",
+  "target": "reader",
+  "generated": true,
+  "generator": "generators/make_cases.py",
+  "description": "Opening every valid dataset succeeds (CHECK-1), including datasets with unusual but valid layouts.",
+  "families": {
+    "open/valid-dataset": "open each valid dataset; it must succeed",
+    "open/empty-dataset": "queries on the dataset with no parts"
+  },
+  "cases": [
+    {
+      "id": "open/repeated-keys",
+      "description": "Repeated groups cross two-row pages and four-row row groups; groups stay within parts.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/one-large-group",
+      "description": "One group occupies an entire part, spanning six row groups and twelve pages.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/named-key",
+      "description": "The manifest names object.id as the key column; dots are literal.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/named-key",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/binary-keys",
+      "description": "Keys exercising unsigned byte order: NUL, 0x7F/0x80, 0xFF, invalid UTF-8, UTF-8 whose UTF-16 order differs, prefix chains, keys longer than 64 bytes (pyarrow does not shorten bounds), and long keys of 0xFF bytes. Pages of 3 rows.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/projection",
+      "description": "Projected values of every mandatory physical type with nulls, special floats given by exact bits (signed zero, infinities, NaN payloads), unsigned-annotated INT32/INT64 reported as signed physical values, and a top-level column literally named a.b; the key column carries the STRING annotation; part 1 lacks columns f64 and req, only part 2 has column extra; meta (struct) and tags (list) are nested.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3",
+        "KEY-1",
+        "KEY-6"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/delimiter",
+      "description": "Folder-like keys: keys equal to prefixes, trailing and repeated delimiters, a delimiter at the start, non-ASCII bytes used as delimiters, keys beginning with 0xFF, and the common prefix a/b/ spanning a part boundary. Pages of 2 rows.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/list-bounds",
+      "description": "Keys a/a, a/z, b/1, b/2, c: the worked example of LIST-7 (bounds apply to candidate keys).",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/non-utf8-keys",
+      "description": "An unannotated key column holding keys that are not valid UTF-8 (allowed, KEY-6). Each invalid key is in the middle of a 3-row page, so every page bound is valid UTF-8.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/non-utf8-keys",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/annotated",
+      "description": "Columns with logical annotations whose physical values the protocol reports: DATE (INT32 days), TIMESTAMP millis and micros/UTC (INT64), DECIMAL stored as INT32, INT64 and FIXED_LEN_BYTE_ARRAY(13) (unscaled two's complement), STRING (BYTE_ARRAY).",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/encodings",
+      "description": "Data pages that use the remaining mandatory encodings: part 0 is written as Parquet format 1.0 with dictionaries, so key and value data pages are PLAIN_DICTIONARY; part 1 uses DELTA_BINARY_PACKED for INT32 and INT64 and DELTA_LENGTH_BYTE_ARRAY for BYTE_ARRAY columns (including the key), with data page v2. Asserted from the page headers.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3",
+        "ENC-1"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/truncated-bounds",
+      "description": "binary-keys with every key-page bound longer than 16 bytes shortened conservatively (lower bounds to a 16-byte prefix, upper bounds to an incremented prefix, except that an upper bound whose first 16 bytes are all 0xFF is kept full). Adjacent page bounds overlap. Row group 1 of part 0 is marked UNORDERED.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/binary-bounds-truncated-16-byte",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/truncated-bounds-2",
+      "description": "binary-keys with every key-page bound longer than 2 bytes shortened to 2 bytes the same way: e.g. a page ending at ff ff ff keeps its full maximum while its siblings are shortened, and many adjacent bounds overlap.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/non-monotone-bounds",
+      "description": "basic with valid but non-monotone key page bounds (a looser minimum and maximum) and boundary_order UNORDERED.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/non-monotone-bounds",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/key-legacy-utf8",
+      "description": "projection with the key annotated only by the legacy converted type UTF8 (KEY-1 allows it).",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3",
+        "KEY-1",
+        "KEY-6"
+      ],
+      "dataset": "datasets/key-legacy-utf8",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/digest-mixed",
+      "description": "multipart with sha256 declared for parts 0 and 2 only: digest validation checks exactly 2.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/digest-mixed",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/no-value-page-index",
+      "description": "basic with the ColumnIndex and OffsetIndex of every non-key column removed (allowed: COL-4).",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/no-value-page-index",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/empty-list",
+      "family": "open/empty-dataset",
+      "requirements": [
+        "LIST-4",
+        "MAN-3"
+      ],
+      "dataset": "datasets/empty",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    }
+  ]
+}

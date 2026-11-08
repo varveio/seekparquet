@@ -1,0 +1,162 @@
+{
+  "group": "requests",
+  "target": "reader",
+  "generated": false,
+  "description": "Malformed requests are invalid requests, not empty results (QUERY-1). raw_request is sent as is, plus id and dataset. Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "requests/basic/range-limit-0",
+      "description": "limit 0 is an invalid request, not an empty result (QUERY-1).",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "range",
+        "limit": 0
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/range-limit-negative",
+      "description": "A negative limit is an invalid request.",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "range",
+        "limit": -1
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/range-limit-fraction",
+      "description": "limit 1.5 is not an integer: invalid request (it must not be truncated to 1).",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "range",
+        "limit": 1.5
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/range-limit-string",
+      "description": "limit \"10\" is a string: invalid request.",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "range",
+        "limit": "10"
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/range-limit-boolean",
+      "description": "limit true is a boolean, not an integer: invalid request.",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "range",
+        "limit": true
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/range-start-malformed-base64",
+      "description": "start_base64 YQ lacks padding: invalid request.",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "range",
+        "start_base64": "YQ",
+        "limit": 10
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/range-end-noncanonical-base64",
+      "description": "end_base64 YR== decodes but has non-zero unused bits: not canonical, invalid request.",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "range",
+        "end_base64": "YR==",
+        "limit": 10
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/list-delimiter-two-bytes",
+      "description": "A two-byte delimiter is an invalid request (QUERY-1), not a substring search.",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "list",
+        "delimiter_base64": "Ly8=",
+        "limit": 10
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/list-delimiter-empty",
+      "description": "An empty delimiter is an invalid request.",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "list",
+        "delimiter_base64": "",
+        "limit": 10
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/empty/range-limit-0",
+      "description": "limit 0 is invalid even on the empty dataset, where any valid request returns nothing.",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/empty",
+      "raw_request": {
+        "op": "range",
+        "limit": 0
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    }
+  ]
+}

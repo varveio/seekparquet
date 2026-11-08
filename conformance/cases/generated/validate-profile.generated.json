@@ -1,0 +1,1134 @@
+{
+  "group": "validate-profile",
+  "target": "validator-profile",
+  "generated": true,
+  "generator": "generators/make_cases.py",
+  "description": "Validation at the profile level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code, and a dataset that cannot be opened shows structural failed.",
+  "families": {
+    "validate-profile/valid-dataset": "every valid dataset completes this level and its prerequisites",
+    "validate-profile/fault-at-lowest-level": "each fault at the lowest validation level that detects it (validation_level in generators/faults.json)",
+    "validate-profile/prerequisite": "a lower-level fault with validation requested at a higher level: the failing level is reported failed and every dependent level incomplete with a reason"
+  },
+  "cases": [
+    {
+      "id": "validate-profile/repeated-keys",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/one-large-group",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/named-key",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/named-key",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/empty",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/empty",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/basic",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/multipart",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/projection",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/delimiter",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/list-bounds",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/non-utf8-keys",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/non-utf8-keys",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/annotated",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/encodings",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/optional-codecs",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/optional-codecs",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/truncated-bounds",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/binary-bounds-truncated-16-byte",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/truncated-bounds-2",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/non-monotone-bounds",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/non-monotone-bounds",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/key-legacy-utf8",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/key-legacy-utf8",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/extensions-numbers",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/digest-mixed",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/digest-mixed",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/no-value-page-index",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/no-value-page-index",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/key-order-within-page",
+      "description": "Rows 2 and 3 (one page) are stored in descending order.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "key-order-within-page",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/key-order-within-page",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/key-order-across-pages",
+      "description": "Page 1 ends with k04 and page 2 starts with k03; each page is internally ascending.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "key-order-across-pages",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/key-order-across-pages",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/key-order-across-row-groups",
+      "description": "Row group 0 ends with k06 and row group 1 starts with k05.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "key-order-across-row-groups",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/key-order-across-row-groups",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/key-order-duplicate-across-row-groups",
+      "description": "The last key of row group 0 equals the first key of row group 1.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "key-order-duplicate-across-row-groups",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/key-order-duplicate-across-row-groups",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/invalid-key-empty",
+      "description": "The first key of the only part is empty (it still sorts first). Secondary fault: bounds_mismatch: A manifest cannot express an empty min key (base64 minLength 4), so it names the second key; a reader that compares first keys on open may report bounds_mismatch.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "invalid-key-empty",
+      "requirements": [
+        "KEY-2",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/invalid-key-empty",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "codes": [
+              "invalid_key",
+              "bounds_mismatch"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/key-order-across-parts",
+      "description": "Part 0 ends with k09, part 1 starts with k05. The manifest hides this by declaring part 0's max key as k04 (so the manifest bounds look disjoint). Secondary fault: bounds_mismatch: The fault is hidden by declaring part 0's max key below its actual last key, so the manifest bounds also differ from the decoded keys.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "key-order-across-parts",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "PART-3",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/key-order-across-parts",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "codes": [
+              "key_order",
+              "bounds_mismatch"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/bounds-last-key-differs",
+      "description": "The part's declared max key is above its actual last key.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "bounds-last-key-differs",
+      "requirements": [
+        "PART-3",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/bounds-last-key-differs",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "bounds_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/invalid-key-utf8",
+      "description": "non-utf8-keys with the key annotated STRING: two keys (each mid-page) are not valid UTF-8; every page bound is.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "invalid-key-utf8",
+      "requirements": [
+        "KEY-6",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/invalid-key-utf8",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_key"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/page-index-bound-not-utf8",
+      "description": "The STRING key's ColumnIndex max for the page ending at row-01 is row-\\xff: still an upper bound, but not valid UTF-8 (KEY-6).",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "page-index-bound-not-utf8",
+      "requirements": [
+        "KEY-6",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/page-index-bound-not-utf8",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/page-index-min-above-first-key",
+      "description": "The key ColumnIndex min of the page starting at b'c/' is above that first key.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "page-index-min-above-first-key",
+      "requirements": [
+        "RG-5",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/page-index-min-above-first-key",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/page-index-max-below-last-key",
+      "description": "The key ColumnIndex max of the page ending at b'delta' is shortened to below that key.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "page-index-max-below-last-key",
+      "requirements": [
+        "RG-5",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/page-index-max-below-last-key",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/page-index-shortened-ff-max",
+      "description": "The key ColumnIndex max of the page ending at 0xFF*80 0x02 is shortened to 0xFF*16, which is below the page's keys (the all-0xFF truncation fault RG-5 forbids).",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "page-index-shortened-ff-max",
+      "requirements": [
+        "RG-5",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/page-index-shortened-ff-max",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/digest-on-profile-invalid",
+      "description": "key-order-across-pages with a correct sha256 declared for its part: the key_order fault is a profile fault, and digest validation, which is independent, still completes with 1 checked.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "digest-on-profile-invalid",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/digest-on-profile-invalid",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/grouped-key-decreasing",
+      "description": "A repeated-key dataset decreases inside a page.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "grouped-key-decreasing",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/grouped-key-decreasing",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/prerequisite/manifest-unknown-member",
+      "description": "a structural fault (manifest-unknown-member) with validation requested at profile",
+      "family": "validate-profile/prerequisite",
+      "fault_id": "manifest-unknown-member",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/manifest-unknown-member",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          },
+          "profile": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/prerequisite/invalid-footer-magic",
+      "description": "a structural fault (invalid-footer-magic) with validation requested at profile",
+      "family": "validate-profile/prerequisite",
+      "fault_id": "invalid-footer-magic",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-magic",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          },
+          "profile": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/prerequisite/stamp-wrong-schema-id",
+      "description": "a structural fault (stamp-wrong-schema-id) with validation requested at profile",
+      "family": "validate-profile/prerequisite",
+      "fault_id": "stamp-wrong-schema-id",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/stamp-wrong-schema-id",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          },
+          "profile": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/prerequisite/inconsistent-column-type",
+      "description": "a structural fault (inconsistent-column-type) with validation requested at profile",
+      "family": "validate-profile/prerequisite",
+      "fault_id": "inconsistent-column-type",
+      "requirements": [
+        "COL-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/inconsistent-column-type",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "inconsistent_column"
+          },
+          "profile": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/prerequisite/missing-column-index",
+      "description": "a structural fault (missing-column-index) with validation requested at profile",
+      "family": "validate-profile/prerequisite",
+      "fault_id": "missing-column-index",
+      "requirements": [
+        "RG-2",
+        "RG-7",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/missing-column-index",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_page_index"
+          },
+          "profile": {
+            "result": "incomplete"
+          }
+        }
+      }
+    }
+  ]
+}

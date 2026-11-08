@@ -1,0 +1,103 @@
+# named-key
+
+valid: yes
+description: The manifest names object.id as the key column; dots are literal.
+provenance: native
+producer: pyarrow 26.0.1
+source rows: generators/rows/named-key.json
+
+manifest: format_version 0, 2 parts
+  part 0: 'data/part-00000.parquet', rows 15, bytes 2659, keys 'a' .. 'b'
+  part 1: 'data/part-00001.parquet', rows 9, bytes 1943, keys 'c/x' .. 'd'
+
+file data/part-00000.parquet: 2659 bytes, footer 1719 bytes
+  num_rows 15, row_groups 4, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'object.id', 'seekparquet.key_unique': 'false', 'seekparquet.schema_id': 'conformance/repeated/v1'}
+  other key-value keys ['ARROW:schema']
+  column object.id: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  row_group 0: rows 4, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [1, 1]
+      max lengths [1, 1]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [8, 8]
+      max lengths [8, 8]
+  row_group 1: rows 4, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [1, 1]
+      max lengths [1, 1]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [8, 8]
+      max lengths [8, 8]
+  row_group 2: rows 4, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [1, 1]
+      max lengths [1, 1]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [8, 8]
+      max lengths [8, 8]
+  row_group 3: rows 3, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(1)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [1, 1]
+      max lengths [1, 1]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(1)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [8, 8]
+      max lengths [8, 8]
+
+file data/part-00001.parquet: 1943 bytes, footer 1351 bytes
+  num_rows 9, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'object.id', 'seekparquet.key_unique': 'false', 'seekparquet.schema_id': 'conformance/repeated/v1'}
+  other key-value keys ['ARROW:schema']
+  column object.id: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  row_group 0: rows 4, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [3, 3]
+      max lengths [3, 3]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [8, 8]
+      max lengths [8, 8]
+  row_group 1: rows 5, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2) DATA_PAGE(1)
+    offset index: 3 pages, first_row_index [0, 2, 4]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [3, 1, 1]
+      max lengths [1, 1, 1]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2) DATA_PAGE(1)
+    offset index: 3 pages, first_row_index [0, 2, 4]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [8, 8, 8]
+      max lengths [8, 8, 8]

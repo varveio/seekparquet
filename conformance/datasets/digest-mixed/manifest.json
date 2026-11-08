@@ -1,0 +1,41 @@
+{
+  "format": "seekparquet",
+  "format_version": 0,
+  "draft_revision": 1,
+  "schema_id": "conformance/objects/v1",
+  "key": {
+    "column": "key",
+    "unique": true
+  },
+  "parts": [
+    {
+      "path": "shards/c.parquet",
+      "rows": 45,
+      "bytes": 7381,
+      "min_key_base64": "UkVBRE1F",
+      "max_key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+      "sha256": "6b6d850b8ab0e24755e7be43cd905b3101bf90fe1e89a176a8f10f1f46b4e9c8"
+    },
+    {
+      "path": "shards/a.parquet",
+      "rows": 45,
+      "bytes": 6522,
+      "min_key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+      "max_key_base64": "bG9ncy8yMDI2LzAzL2YwMDguZ3o="
+    },
+    {
+      "path": "shards/b.parquet",
+      "rows": 44,
+      "bytes": 7260,
+      "min_key_base64": "bG9ncy8yMDI2LzAzL2YwMDkuZ3o=",
+      "max_key_base64": "enotbGFzdA==",
+      "sha256": "c6bb040398c045858aa97187182a4d301d0391f5260a089f3525cf8cf6fda786"
+    }
+  ],
+  "extensions": {
+    "conformance": {
+      "synthetic": true,
+      "note": "ignored by readers"
+    }
+  }
+}

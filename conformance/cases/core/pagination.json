@@ -1,0 +1,260 @@
+{
+  "group": "pagination",
+  "target": "reader",
+  "generated": false,
+  "description": "Paginated listings and ranges (LIST-6, QUERY-3): each page is a case; make_cases.py asserts that the pages concatenate to the unpaginated result. Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-00",
+      "description": "Page 1 of 4 (limit 1): the first entry is the common prefix a/.",
+      "scenario_id": "list/list-bounds/root-2f-limit1",
+      "step": 0,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-01",
+      "description": "Page 2: the prefix cursor a/ skips every key under a/, so b/ is next and nothing under a/ is revisited.",
+      "scenario_id": "list/list-bounds/root-2f-limit1",
+      "step": 1,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after": {
+          "prefix_base64": "YS8="
+        },
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-02",
+      "description": "Page 3: the prefix cursor b/ returns the row c.",
+      "scenario_id": "list/list-bounds/root-2f-limit1",
+      "step": 2,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after": {
+          "prefix_base64": "Yi8="
+        },
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yw==",
+            "values": [],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-03",
+      "description": "Page 4: the row cursor (c, 0) returns nothing; the four pages concatenate to the unpaginated listing.",
+      "scenario_id": "list/list-bounds/root-2f-limit1",
+      "step": 3,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after": {
+          "key_base64": "Yw==",
+          "offset": 0
+        },
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-00",
+      "description": "Listing a/ two entries at a time, page 1: the row a/ and the common prefix a//.",
+      "scenario_id": "list/delimiter/a/-2f-limit2",
+      "step": 0,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-01",
+      "description": "Page 2: the prefix cursor a// skips everything under a// (a///, a//b) and returns a/b and a/b/.",
+      "scenario_id": "list/delimiter/a/-2f-limit2",
+      "step": 1,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after": {
+          "prefix_base64": "YS8v"
+        },
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-02",
+      "description": "Page 3: the prefix cursor a/b/ skips a/b/c... and returns a/bc and a/c.",
+      "scenario_id": "list/delimiter/a/-2f-limit2",
+      "step": 2,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after": {
+          "prefix_base64": "YS9iLw=="
+        },
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": [],
+            "offset": 0
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": [],
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-03",
+      "description": "Page 4: the row cursor (a/c, 0) returns nothing: no duplicates or gaps across the pages.",
+      "scenario_id": "list/delimiter/a/-2f-limit2",
+      "step": 3,
+      "requirements": [
+        "PAGE-1",
+        "PAGE-2",
+        "LIST-6",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after": {
+          "key_base64": "YS9j",
+          "offset": 0
+        },
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    }
+  ]
+}
