@@ -64,7 +64,9 @@ err := local.WriteDir(ctx, "/data/listing", schema, sortedRows, local.DatasetOpt
 keys never crosses parts, each synced into place, then the manifest, with every part's SHA-256. A
 producer with its own part rotation drives the pieces itself: `write.NewPart` streams one part and
 returns its `PartInfo` from `Seal`; `local.PublishPart` installs it; `local.Commit` publishes the
-manifest. The part writer enforces the profile (key column, key order, page indexes with exact bounds,
+manifest. `PartWriter.WriteRows` copies the rows it is given, so they may be reused at once;
+`PartWriter.WritePage` takes a page column by column from a fill function and copies nothing, for a
+producer that keeps its own rows until the page is written. The part writer enforces the profile (key column, key order, page indexes with exact bounds,
 `sorting_columns`, stamps, column orders) and cannot be configured out of it.
 `seekparquet.MarshalManifest` and `ParseManifest` write and read a manifest; `InspectFooter` and
 `InspectKeyPages` read a part's footer and key page index without reading its pages.
