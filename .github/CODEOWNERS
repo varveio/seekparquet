@@ -1,0 +1,6 @@
+# Code owners. The last matching pattern wins.
+*                  @sagiba
+/spec/             @sagiba
+/conformance/      @sagiba
+/go/               @sagiba
+/.github/          @sagiba

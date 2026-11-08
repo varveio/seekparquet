@@ -1,0 +1,107 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.diff.outputs.go }}
+      contract: ${{ steps.diff.outputs.contract }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: diff
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "go=true" >> "$GITHUB_OUTPUT"; echo "contract=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files="$(git diff --name-only "$base" HEAD)"
+          echo "$files"
+          if echo "$files" | grep -qE '^(go/|\.github/)'; then echo "go=true" >> "$GITHUB_OUTPUT"; else echo "go=false" >> "$GITHUB_OUTPUT"; fi
+          if echo "$files" | grep -qE '^(spec/|conformance/|\.github/)'; then echo "contract=true" >> "$GITHUB_OUTPUT"; else echo "contract=false" >> "$GITHUB_OUTPUT"; fi
+
+  go:
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.contract == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: gofmt
+        if: runner.os == 'Linux'
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - name: test
+        run: go test -race ./...
+        if: runner.os != 'Windows'
+      - name: test (no race detector)
+        run: go test ./...
+        if: runner.os == 'Windows'
+      - name: fuzz seeds
+        run: go test -run 'Fuzz' ./...
+      - name: go mod tidy
+        if: runner.os == 'Linux'
+        run: go mod tidy -diff
+
+  conformance:
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.contract == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: "3.13"
+      - name: schemas and fixture checksums
+        run: |
+          python -m pip install -r conformance/generators/requirements.txt
+          python conformance/harness/check_suite.py
+      - name: reference adapter (full-scan oracle)
+        run: python conformance/harness/run.py --adapter "python conformance/harness/reference_adapter.py"
+      - name: Go adapter
+        run: |
+          (cd go && go build -o "$RUNNER_TEMP/seekparquet-conformance" ./internal/cmd/conformance)
+          python conformance/harness/run.py --adapter "$RUNNER_TEMP/seekparquet-conformance"
+
+  ci-ok:
+    if: always()
+    needs: [changes, go, conformance]
+    runs-on: ubuntu-latest
+    steps:
+      - name: all required jobs passed or were not needed
+        run: |
+          for r in "${{ needs.changes.result }}" "${{ needs.go.result }}" "${{ needs.conformance.result }}"; do
+            case "$r" in success|skipped) ;; *) echo "a required job ended with: $r"; exit 1;; esac
+          done
+          [ "${{ needs.changes.result }}" = "success" ] || { echo "change detection did not succeed"; exit 1; }

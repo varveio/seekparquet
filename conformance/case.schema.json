@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/varveio/seekparquet/conformance/case.schema.json",
+  "title": "SeekParquet conformance case file",
+  "type": "object",
+  "required": ["group", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "group": {"type": "string", "minLength": 1},
+    "description": {"type": "string"},
+    "cases": {"type": "array", "items": {"$ref": "#/$defs/case"}}
+  },
+  "$defs": {
+    "bytes": {"type": ["string", "null"], "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"},
+    "case": {
+      "type": "object",
+      "required": ["id", "requirements", "dataset", "request", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9/_.-]*$"},
+        "description": {"type": "string"},
+        "requirements": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[A-Z]+-[0-9]+$"}},
+        "requires": {"type": "array", "items": {"type": "string"}},
+        "dataset": {"type": "string", "description": "Path of the dataset root, relative to the conformance directory."},
+        "detect": {"type": "string", "pattern": "^(open|read|validate:(structural|profile|full|digest))$"},
+        "request": {"$ref": "#/$defs/request"},
+        "expect": {"$ref": "#/$defs/expect"}
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": ["op"],
+      "additionalProperties": false,
+      "properties": {
+        "op": {"enum": ["open", "range", "list", "validate"]},
+        "start_base64": {"$ref": "#/$defs/bytes"},
+        "start_inclusive": {"type": "boolean"},
+        "end_base64": {"$ref": "#/$defs/bytes"},
+        "prefix_base64": {"$ref": "#/$defs/bytes"},
+        "delimiter_base64": {"$ref": "#/$defs/bytes"},
+        "after_base64": {"$ref": "#/$defs/bytes"},
+        "continuation": {"type": "boolean"},
+        "limit": {"type": "integer"},
+        "columns": {"type": "array", "items": {"type": "string"}},
+        "level": {"enum": ["structural", "profile", "full", "digest"]}
+      }
+    },
+    "expect": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {"enum": ["ok", "refused", "invalid_request", "unsupported"]},
+        "code": {"type": "string"},
+        "codes": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+        "levels_completed": {"type": "array", "items": {"enum": ["structural", "profile", "full", "digest"]}}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "required": ["kind", "key_base64"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"enum": ["row", "prefix"]},
+        "key_base64": {"type": "string"},
+        "values": {"type": "array", "items": {"$ref": "#/$defs/value"}}
+      }
+    },
+    "value": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "absent": {"const": true},
+        "null": {"const": true},
+        "bool": {"type": "boolean"},
+        "int": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)$"},
+        "float32": {"type": "string", "pattern": "^[0-9a-f]{8}$"},
+        "float64": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+        "bytes_base64": {"type": "string"}
+      }
+    }
+  }
+}

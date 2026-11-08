@@ -1,0 +1,9 @@
+{
+  "specification": "format-1.md",
+  "target_format_version": 1,
+  "status": "draft",
+  "draft_revision": 1,
+  "on_disk": {"format_version": 0, "draft_revision": 1},
+  "conformance_revision": null,
+  "freeze_gate": "Format 1 is frozen when two independently implemented readers, on different Parquet libraries, pass every mandatory case of one pinned conformance revision, including the indexed-access suite, and the validator accepts every valid fixture and rejects every invalid one. See GOVERNANCE.md."
+}
