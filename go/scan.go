@@ -20,7 +20,7 @@ type scan struct {
 	r     *reader
 	end   []byte // the exclusive upper bound, nil for none
 	log   pageLog
-	stats *stats
+	stats *ReadStats
 	kp    *keyPages // the walker on row group g, nil before the first seek
 	g     int
 	// key is the current row's key, nil once the scan is exhausted; row
@@ -33,7 +33,7 @@ type scan struct {
 	groupStart int64
 }
 
-func (r *reader) newScan(ctx context.Context, end []byte, st *stats) *scan {
+func (r *reader) newScan(ctx context.Context, end []byte, st *ReadStats) *scan {
 	return &scan{ctx: ctx, r: r, end: end, log: pageLog{unique: r.key.Unique}, stats: st}
 }
 
@@ -225,6 +225,6 @@ func (s *scan) shortcut(from, prefix []byte, delim byte) ([]byte, error) {
 	if !bytes.Equal(whole, commonPrefix(next, prefix, delim)) || s.end != nil && bytes.Compare(next, s.end) >= 0 {
 		return nil, nil
 	}
-	s.stats.shortcuts++
+	s.stats.GroupsSkipped++
 	return bytes.Clone(whole), nil
 }

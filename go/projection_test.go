@@ -161,12 +161,12 @@ func TestStatsCountDecoding(t *testing.T) {
 	}
 	d := open(t, write(t, parts(testutil.Part{PageBytes: 1 << 20}, keys)), Options{})
 	pages := func(columns ...string) int64 {
-		var st stats
+		var st ReadStats
 		rows, err := d.r.readRange(ctx, Range{Limit: 5, Columns: columns}, &st)
 		if err != nil || len(rows) != 5 {
 			t.Fatalf("read: %d rows, %v", len(rows), err)
 		}
-		return st.pages
+		return st.KeyPagesDecoded + st.ValuePagesDecoded
 	}
 	if a, b, c := pages(), pages("size"), pages("size", "name"); a != 1 || b != 2 || c != 3 {
 		t.Fatalf("pages decoded %d, %d, %d; want 1, 2, 3", a, b, c)

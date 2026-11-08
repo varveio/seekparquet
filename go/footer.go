@@ -32,9 +32,16 @@ func (e *storageError) Unwrap() error { return e.err }
 // storageReader marks the errors of a source's ReadAt. io.EOF is left
 // unmarked: every location the reader follows is first checked to lie
 // inside the file, so reading past its end means the data lied.
-type storageReader struct{ r io.ReaderAt }
+type storageReader struct {
+	r  io.ReaderAt
+	st *ReadStats // counts the reads of a request, nil for none
+}
 
 func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
+	if s.st != nil {
+		s.st.SourceReads++
+		s.st.SourceBytes += int64(len(p))
+	}
 	n, err := s.r.ReadAt(p, off)
 	if err != nil && !errors.Is(err, io.EOF) {
 		err = &storageError{err}
@@ -109,7 +116,7 @@ func decodeBounded(raw []byte, v any, budget int64) (int, error) {
 // A fault in the data is a *RefusalError; an encrypted part an
 // *UnsupportedError; a limit or storage failure an error.
 func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits) (_ *parquet.File, err error) {
-	at := storageReader{bind(ctx, file)}
+	at := storageReader{r: bind(ctx, file)}
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidFooter, name, -1, format, args...)
 	}

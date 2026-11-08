@@ -129,13 +129,14 @@ type chunk struct {
 	code     Code
 	dict     parquet.Dictionary
 	dictRead bool
-	stats    *stats
+	stats    *ReadStats
+	pages    *int64 // the counter of the data pages decoded: key or value pages
 }
 
 // openChunk checks a column chunk before any of its pages is read: a codec
 // this reader decodes (else unsupported_encoding) and a byte range inside
 // the file (else invalid_footer).
-func (p *part) openChunk(ctx context.Context, physical int, col leaf, st *stats) (*chunk, error) {
+func (p *part) openChunk(ctx context.Context, physical int, col leaf, st *ReadStats, pages *int64) (*chunk, error) {
 	meta := &p.footer.Metadata().RowGroups[physical].Columns[col.index].MetaData
 	if !supportedCodec(meta.Codec) {
 		return nil, &UnsupportedError{Code: UnsupportedEncoding, Detail: "codec " + meta.Codec.String() + " in part " + p.name}
@@ -148,7 +149,7 @@ func (p *part) openChunk(ctx context.Context, physical int, col leaf, st *stats)
 	if col.index == p.key.index {
 		code = CodeInvalidPageIndex
 	}
-	return &chunk{ctx: ctx, p: p, physical: physical, col: col, codec: meta.Codec, start: start, end: end, code: code, stats: st}, nil
+	return &chunk{ctx: ctx, p: p, physical: physical, col: col, codec: meta.Codec, start: start, end: end, code: code, stats: st, pages: pages}, nil
 }
 
 // corrupt reports a page that does not decode (CHECK-5); an error of the
@@ -161,7 +162,7 @@ func (c *chunk) corrupt(err error) error {
 // header, its length, and the bytes read from off, which may hold the page
 // that follows the header too.
 func (c *chunk) header(off int64) (*format.PageHeader, int64, []byte, error) {
-	return c.p.pageHeader(c.ctx, c.physical, c.col.index, off, c.end)
+	return c.p.pageHeader(c.ctx, c.physical, c.col.index, off, c.end, c.stats)
 }
 
 // payload returns the page data after a header of length n at off, from
@@ -173,7 +174,7 @@ func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte,
 		data = raw[n : n+size]
 	} else {
 		data = make([]byte, size)
-		if err := readFull(c.p.at(c.ctx), data, off+n); err != nil {
+		if err := readFull(c.p.at(c.ctx, c.stats), data, off+n); err != nil {
 			return nil, c.corrupt(err)
 		}
 	}
@@ -271,7 +272,7 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 			return nil, c.corrupt(err)
 		}
 	}
-	c.stats.pages++
+	*c.pages++
 	if !c.col.optional {
 		return c.values(enc, data, n)
 	}
@@ -560,7 +561,7 @@ func deltaStream(src []byte, n int) ([]byte, error) {
 // at most Limits.PageValues (else ErrLimitExceeded). A header that does not
 // decode is invalid_parquet. It returns the header, its length and the
 // bytes read from off.
-func (p *part) pageHeader(ctx context.Context, physical, column int, off, end int64) (*format.PageHeader, int64, []byte, error) {
+func (p *part) pageHeader(ctx context.Context, physical, column int, off, end int64, st *ReadStats) (*format.PageHeader, int64, []byte, error) {
 	lim := &p.r.limits
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidParquet, p.name, physical, "column chunk %d page at %d: "+format, append([]any{column, off}, args...)...)
@@ -578,7 +579,7 @@ func (p *part) pageHeader(ctx context.Context, physical, column int, off, end in
 	for want := int64(4 << 10); ; want *= 16 {
 		n := min(want, ceiling)
 		raw = make([]byte, n)
-		if err := readFull(p.at(ctx), raw, off); err != nil {
+		if err := readFull(p.at(ctx, st), raw, off); err != nil {
 			if isEnvironment(ctx, err) {
 				return nil, 0, nil, err
 			}
@@ -631,12 +632,12 @@ func (p *part) pageHeader(ctx context.Context, physical, column int, off, end in
 // loadOffsetIndex returns the OffsetIndex of a column chunk, nil when it
 // has none. Its encoded size is bounded by Limits.PageIndexBytes and its
 // decoding like a footer's.
-func (p *part) loadOffsetIndex(ctx context.Context, physical, column int) (*format.OffsetIndex, error) {
+func (p *part) loadOffsetIndex(ctx context.Context, physical, column int, st *ReadStats) (*format.OffsetIndex, error) {
 	meta := &p.footer.Metadata().RowGroups[physical].Columns[column]
 	if meta.OffsetIndexOffset == 0 {
 		return nil, nil
 	}
-	raw, err := p.readIndexBytes(ctx, physical, meta.OffsetIndexOffset, meta.OffsetIndexLength)
+	raw, err := p.readIndexBytes(ctx, physical, meta.OffsetIndexOffset, meta.OffsetIndexLength, st)
 	if err != nil {
 		return nil, err
 	}
@@ -649,7 +650,7 @@ func (p *part) loadOffsetIndex(ctx context.Context, physical, column int) (*form
 
 // readIndexBytes reads a page index of length bytes at off, after checking
 // that it lies in the file and within Limits.PageIndexBytes.
-func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, length int32) ([]byte, error) {
+func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, length int32, st *ReadStats) ([]byte, error) {
 	if off < 0 || length <= 0 || off > p.size-int64(length) {
 		return nil, refusePart(CodeInvalidPageIndex, p.name, physical, "a page index lies outside the file")
 	}
@@ -657,7 +658,7 @@ func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, leng
 		return nil, exceeded("part %s: a page index of %d bytes (Limits.PageIndexBytes %d)", p.name, length, p.r.limits.PageIndexBytes)
 	}
 	raw := make([]byte, length)
-	if err := readFull(p.at(ctx), raw, off); err != nil {
+	if err := readFull(p.at(ctx, st), raw, off); err != nil {
 		return nil, err
 	}
 	return raw, nil
@@ -684,13 +685,13 @@ func (p *part) dataError(ctx context.Context, physical int, err error) error {
 // one (COL-4) it walks headers, decoding only pages holding selected rows.
 // Each data page is decoded at most once, and only the current decoded page
 // and chunk dictionary are retained, regardless of gaps in the selection.
-func (p *part) readColumn(ctx context.Context, physical int, col leaf, selected []position, st *stats, emit func(int, parquet.Value)) error {
-	c, err := p.openChunk(ctx, physical, col, st)
+func (p *part) readColumn(ctx context.Context, physical int, col leaf, selected []position, st *ReadStats, emit func(int, parquet.Value)) error {
+	c, err := p.openChunk(ctx, physical, col, st, &st.ValuePagesDecoded)
 	if err != nil {
 		return err
 	}
 	rows := p.footer.Metadata().RowGroups[physical].NumRows
-	index, err := p.loadOffsetIndex(ctx, physical, col.index)
+	index, err := p.loadOffsetIndex(ctx, physical, col.index, st)
 	if err != nil {
 		return c.corrupt(fmt.Errorf("the OffsetIndex: %w", err))
 	}
