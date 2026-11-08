@@ -263,10 +263,12 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 		}
 		rep, def := int(d.RepetitionLevelsByteLength), int(d.DefinitionLevelsByteLength)
 		levels, data = payload[rep:rep+def], payload[rep+def:]
-		if !d.IsCompressed.Valid || d.IsCompressed.V {
-			if data, err = decompress(c.codec, data, int(h.UncompressedPageSize)-rep-def); err != nil {
-				return nil, c.corrupt(err)
-			}
+		codec := c.codec
+		if d.IsCompressed.Valid && !d.IsCompressed.V {
+			codec = format.Uncompressed
+		}
+		if data, err = decompress(codec, data, int(h.UncompressedPageSize)-rep-def); err != nil {
+			return nil, c.corrupt(err)
 		}
 	}
 	c.stats.pages++
@@ -466,8 +468,9 @@ func checkRuns(src []byte, n, width int) error {
 			return errors.New("a run header is malformed")
 		}
 		src = src[k:]
-		count, size := h>>1, uint64(width+7)/8 // a run of one repeated value
-		if h&1 == 1 { // bit-packed groups of eight values
+		// A run of one value repeated, or groups of eight bit-packed values.
+		count, size := h>>1, uint64(width+7)/8
+		if h&1 == 1 {
 			if count > limit/8 {
 				return fmt.Errorf("the runs hold more than the page's %d values", n)
 			}
@@ -496,13 +499,16 @@ func deltaStream(src []byte, n int) ([]byte, error) {
 		}
 		header[i], src = v, src[k:]
 	}
-	if _, k := binary.Varint(src); k <= 0 { // the first value
+	_, k := binary.Varint(src) // the first value
+	if k <= 0 {
 		return nil, errors.New("the delta header is malformed")
-	} else {
-		src = src[k:]
 	}
+	src = src[k:]
 	block, miniblocks, count := header[0], header[1], header[2]
-	if block == 0 || block%128 != 0 || miniblocks == 0 || block%miniblocks != 0 || (block/miniblocks)%32 != 0 {
+	// Writers use blocks of 128 values or a few times that; a block of more
+	// than 2^20 values is refused, so that a miniblock's size (and the
+	// decoder's buffer for it) stays small.
+	if block == 0 || block > 1<<20 || block%128 != 0 || miniblocks == 0 || block%miniblocks != 0 || (block/miniblocks)%32 != 0 {
 		return nil, errors.New("the delta block geometry is invalid")
 	}
 	if count > uint64(n) {

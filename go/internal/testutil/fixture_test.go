@@ -1,7 +1,7 @@
 // Copyright 2026 Varve Systems Ltd
 // SPDX-License-Identifier: Apache-2.0
 
-package seekparquettest_test
+package testutil
 
 import (
 	"bytes"
@@ -14,9 +14,6 @@ import (
 
 	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
-
-	"github.com/varveio/seekparquet/go/internal/testutil"
-	"github.com/varveio/seekparquet/go/seekparquettest"
 )
 
 // TestWriterMeetsTheProfile reads back what the writer wrote: the manifest,
@@ -30,7 +27,7 @@ func TestWriterMeetsTheProfile(t *testing.T) {
 		keys = append(keys, fmt.Sprintf("%s%04d", ff, i))
 	}
 	dir := t.TempDir()
-	if err := seekparquettest.Write(dir, seekparquettest.Dataset{Parts: []seekparquettest.Part{{Rows: seekparquettest.Rows(keys...), GroupRows: 120}}}); err != nil {
+	if err := Write(dir, Dataset{Parts: []Part{{Rows: Rows(keys...), GroupRows: 120}}}); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
@@ -42,17 +39,22 @@ func TestWriterMeetsTheProfile(t *testing.T) {
 		FormatVersion int    `json:"format_version"`
 		DraftRevision int    `json:"draft_revision"`
 		SchemaID      string `json:"schema_id"`
-		Parts         []struct {
+		Key           struct {
+			Column string `json:"column"`
+			Unique bool   `json:"unique"`
+		} `json:"key"`
+		Parts []struct {
 			Path  string `json:"path"`
 			Rows  int    `json:"rows"`
 			Bytes int64  `json:"bytes"`
 		} `json:"parts"`
 	}
-	if err := json.Unmarshal(raw, &m); err != nil || m.Format != "seekparquet" || m.FormatVersion != 0 || m.DraftRevision != 1 || m.SchemaID != seekparquettest.SchemaID || len(m.Parts) != 1 || m.Parts[0].Rows != 200 {
+	if err := json.Unmarshal(raw, &m); err != nil || m.Format != "seekparquet" || m.FormatVersion != 0 || m.DraftRevision != 1 ||
+		m.SchemaID != SchemaID || m.Key.Column != KeyColumn || !m.Key.Unique || len(m.Parts) != 1 || m.Parts[0].Rows != 200 {
 		t.Fatalf("manifest %s: %v", raw, err)
 	}
 	path := filepath.Join(dir, filepath.FromSlash(m.Parts[0].Path))
-	meta, err := testutil.ReadFooter(path)
+	meta, err := ReadFooter(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,8 +62,11 @@ func TestWriterMeetsTheProfile(t *testing.T) {
 	for _, kv := range meta.KeyValueMetadata {
 		stamps[kv.Key] = kv.Value
 	}
-	if stamps[seekparquettest.StampFormatVersion] != "0" || stamps[seekparquettest.StampDraftRevision] != "1" || stamps[seekparquettest.StampSchemaID] != seekparquettest.SchemaID {
-		t.Fatalf("stamps %v", stamps)
+	want := map[string]string{StampFormatVersion: "0", StampDraftRevision: "1", StampSchemaID: SchemaID, StampKeyColumn: KeyColumn, StampKeyUnique: "true"}
+	for k, v := range want {
+		if stamps[k] != v {
+			t.Fatalf("stamp %s = %q, want %q (%v)", k, stamps[k], v, stamps)
+		}
 	}
 	if len(meta.ColumnOrders) == 0 {
 		t.Fatal("no column_orders")

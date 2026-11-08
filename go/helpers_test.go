@@ -1,54 +1,130 @@
 // Copyright 2026 Varve Systems Ltd
 // SPDX-License-Identifier: Apache-2.0
 
-package seekparquet_test
+package seekparquet
 
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
-	seekparquet "github.com/varveio/seekparquet/go"
-	"github.com/varveio/seekparquet/go/seekparquettest"
-	"github.com/varveio/seekparquet/go/source/local"
+	"github.com/parquet-go/parquet-go/format"
+
+	"github.com/varveio/seekparquet/go/internal/testutil"
 )
 
-// write writes d into a new temporary directory and returns it.
-func write(t testing.TB, d seekparquettest.Dataset) string {
+var ctx = context.Background()
+
+func must(t testing.TB, err error) {
 	t.Helper()
-	dir := t.TempDir()
-	if err := seekparquettest.Write(dir, d); err != nil {
+	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
+
+// write writes d into a new temporary directory and returns it.
+func write(t testing.TB, d testutil.Dataset) string {
+	t.Helper()
+	dir := t.TempDir()
+	must(t, testutil.Write(dir, d))
 	return dir
 }
 
 // open opens the dataset at dir, closed when the test ends.
-func open(t testing.TB, dir string, opt seekparquet.Options) *seekparquet.Dataset {
+func open(t testing.TB, dir string, opt Options) *Dataset {
 	t.Helper()
-	d, err := local.OpenDataset(context.Background(), dir, opt)
-	if err != nil {
-		t.Fatal(err)
-	}
+	d, err := OpenDir(ctx, dir, opt)
+	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	return d
 }
 
+// dirOf returns the Source OpenDir opens dir through.
+func dirOf(t testing.TB, dir string) Source {
+	t.Helper()
+	root, err := os.OpenRoot(dir)
+	must(t, err)
+	t.Cleanup(func() { _ = root.Close() })
+	return dirSource{root}
+}
+
+// openErr opens the dataset at dir and returns the error, closing a dataset
+// that opened.
+func openErr(dir string, opt Options) error {
+	d, err := OpenDir(ctx, dir, opt)
+	if err == nil {
+		_ = d.Close()
+	}
+	return err
+}
+
+// openPartsOf opens the n parts of dir directly, without their manifest,
+// with their manifest bounds when bounded.
+func openPartsOf(t testing.TB, dir string, n int, key Key, bounded bool, opt Options) (*reader, error) {
+	t.Helper()
+	var bounds []PartInfo
+	if bounded {
+		d := open(t, dir, Options{})
+		bounds = d.Metadata().Parts
+	}
+	var inputs []partInput
+	for i := range n {
+		raw, err := os.ReadFile(partFile(dir, i))
+		must(t, err)
+		in := partInput{name: testutil.PartPath(i), file: bytes.NewReader(raw), size: int64(len(raw))}
+		if bounded {
+			in.minKey, in.maxKey = bounds[i].MinKey, bounds[i].MaxKey
+		}
+		inputs = append(inputs, in)
+	}
+	r, err := openParts(ctx, inputs, key, opt)
+	if err == nil {
+		t.Cleanup(func() { _ = r.close() })
+	}
+	return r, err
+}
+
+// unique is the default key: column "key", unique.
+var unique = Key{Column: testutil.KeyColumn, Unique: true}
+
+func partFile(dir string, i int) string {
+	return filepath.Join(dir, filepath.FromSlash(testutil.PartPath(i)))
+}
+
+// rewrite applies change to part i's footer and fixes the manifest size.
+func rewrite(t testing.TB, dir string, i int, change func(*format.FileMetaData)) {
+	t.Helper()
+	must(t, testutil.RewriteFooter(partFile(dir, i), func(m *format.FileMetaData) error { change(m); return nil }))
+	must(t, testutil.SyncSizes(dir))
+}
+
+func editManifest(t testing.TB, dir string, edit func(m map[string]any)) {
+	t.Helper()
+	must(t, testutil.EditManifest(dir, edit))
+}
+
 // parts returns one dataset part per key slice, with the given geometry.
-func parts(geometry seekparquettest.Part, keys ...[]string) seekparquettest.Dataset {
-	var d seekparquettest.Dataset
+func parts(geometry testutil.Part, keys ...[]string) testutil.Dataset {
+	var d testutil.Dataset
 	for _, k := range keys {
 		p := geometry
-		p.Rows = seekparquettest.Rows(k...)
+		p.Rows = testutil.Rows(k...)
 		d.Parts = append(d.Parts, p)
 	}
 	return d
 }
 
-func keysOf(rows []seekparquet.Row) []string {
+func keysOf(rows []Row) []string {
 	out := make([]string, len(rows))
 	for i, r := range rows {
 		out[i] = string(r.Key)
@@ -85,21 +161,36 @@ func split(keys []string, n int) [][]string {
 	return out
 }
 
-// rangeOracle answers a range request over sorted keys by the definition
-// (RANGE-1).
-func rangeOracle(keys []string, rng seekparquet.Range) []string {
+// afterCursor reports whether a row of key at offset comes after cur
+// (PAGE-1): a row cursor admits the rest of its group and later keys, a
+// prefix cursor the keys after every key that begins with it.
+func afterCursor(cur *Cursor, key []byte, offset int64) bool {
+	switch {
+	case cur == nil:
+		return true
+	case cur.Prefix != nil:
+		return bytes.Compare(key, cur.Prefix) > 0 && !bytes.HasPrefix(key, cur.Prefix)
+	}
+	cmp := bytes.Compare(key, cur.Key)
+	return cmp > 0 || cmp == 0 && offset > cur.Offset
+}
+
+// rangeOracle answers a range request over sorted distinct keys by the
+// definition (RANGE-1).
+func rangeOracle(keys []string, rng Range) []string {
 	var out []string
 	for _, k := range keys {
-		if !bytes.HasPrefix([]byte(k), rng.Prefix) {
+		key := []byte(k)
+		if !bytes.HasPrefix(key, rng.Prefix) || !afterCursor(rng.Cursor, key, 0) {
 			continue
 		}
 		if rng.Start != nil {
-			c := bytes.Compare([]byte(k), rng.Start)
+			c := bytes.Compare(key, rng.Start)
 			if c < 0 || c == 0 && rng.StartExclusive {
 				continue
 			}
 		}
-		if rng.End != nil && bytes.Compare([]byte(k), rng.End) >= 0 || len(out) == rng.Limit {
+		if rng.End != nil && bytes.Compare(key, rng.End) >= 0 || len(out) == rng.Limit {
 			break
 		}
 		out = append(out, k)
@@ -107,24 +198,19 @@ func rangeOracle(keys []string, rng seekparquet.Range) []string {
 	return out
 }
 
-// listOracle answers a list request over sorted keys by the definition of
-// §6.3: candidates, their entries, LIST-5, distinct, ascending, at most
-// limit. Rows are spelled "r:" and prefixes "p:".
-func listOracle(keys []string, req seekparquet.List) []string {
+// listOracle answers a list request over sorted distinct keys by the
+// definition of §6.3: candidates, their entries, distinct, ascending, at
+// most limit. Rows are spelled "r:" and prefixes "p:".
+func listOracle(keys []string, req List) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, k := range keys {
 		key := []byte(k)
-		if !bytes.HasPrefix(key, req.Prefix) || req.After != nil && bytes.Compare(key, req.After) <= 0 ||
-			req.End != nil && bytes.Compare(key, req.End) >= 0 {
+		if !bytes.HasPrefix(key, req.Prefix) || !afterCursor(req.Cursor, key, 0) || req.End != nil && bytes.Compare(key, req.End) >= 0 {
 			continue
 		}
 		entry := "r:" + k
-		if i := bytes.IndexByte(key[len(req.Prefix):], req.Delimiter); i >= 0 {
-			cp := key[:len(req.Prefix)+i+1]
-			if req.Continuation && req.After != nil && bytes.Compare(cp, req.After) <= 0 {
-				continue
-			}
+		if cp := commonPrefix(key, req.Prefix, req.Delimiter); cp != nil {
 			entry = "p:" + string(cp)
 		}
 		if !seen[entry] {
@@ -139,7 +225,7 @@ func listOracle(keys []string, req seekparquet.List) []string {
 	return out
 }
 
-func entriesOf(entries []seekparquet.Entry) []string {
+func entriesOf(entries []Entry) []string {
 	out := make([]string, len(entries))
 	for i, e := range entries {
 		if e.IsPrefix() {
@@ -174,21 +260,36 @@ func probes(keys []string, every int) [][]byte {
 	return out
 }
 
+// short quotes b, eliding the middle of a long one.
 func short(b []byte) string {
+	if b == nil {
+		return "nil"
+	}
 	if len(b) > 24 {
 		return fmt.Sprintf("%q…(%d)", b[:24], len(b))
 	}
 	return fmt.Sprintf("%q", b)
 }
 
-var ctx = context.Background()
-
-// openErr opens the dataset at dir and returns the error, closing a dataset
-// that opened.
-func openErr(dir string, opt seekparquet.Options) (*seekparquet.Dataset, error) {
-	d, err := local.OpenDataset(context.Background(), dir, opt)
-	if err == nil {
-		_ = d.Close()
+func cursorString(c *Cursor) string {
+	switch {
+	case c == nil:
+		return "nil"
+	case c.Prefix != nil:
+		return "prefix " + short(c.Prefix)
 	}
-	return d, err
+	return fmt.Sprintf("row %s/%d", short(c.Key), c.Offset)
+}
+
+// describe names a request in failure messages.
+func describe(req any) string {
+	switch r := req.(type) {
+	case Range:
+		return fmt.Sprintf("Range{prefix %s start %s exclusive %v end %s cursor %s limit %d columns %q}",
+			short(r.Prefix), short(r.Start), r.StartExclusive, short(r.End), cursorString(r.Cursor), r.Limit, r.Columns)
+	case List:
+		return fmt.Sprintf("List{prefix %s delimiter %q end %s cursor %s limit %d columns %q}",
+			short(r.Prefix), r.Delimiter, short(r.End), cursorString(r.Cursor), r.Limit, r.Columns)
+	}
+	return fmt.Sprint(req)
 }

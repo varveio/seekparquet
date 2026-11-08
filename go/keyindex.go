@@ -33,15 +33,16 @@ type groupIndex struct {
 }
 
 // pageFor returns a page at or after start, and no later than the first
-// page whose keys reach from: decoding forward from it finds the first key
-// at or after from. Every page that holds a key at or after from has a
-// maximum at or after it, and those pages are a suffix of the group, so
-// the binary search never passes the first of them. A page before them
-// whose maximum was shortened above its keys may stop the search early,
-// which costs only a page read.
-func (index *groupIndex) pageFor(start int, from []byte) int {
+// page holding a key at or after from (after it unless inclusive):
+// decoding forward from it finds the first such key. Every page that holds
+// one has a maximum at or after from (after it unless inclusive), and
+// those pages are a suffix of the group, so the binary search never passes
+// the first of them. A page before them whose maximum was written above
+// its keys may stop the search early, which costs only a page read.
+func (index *groupIndex) pageFor(start int, from []byte, inclusive bool) int {
 	return start + sort.Search(len(index.pages)-start, func(i int) bool {
-		return from == nil || bytes.Compare(index.pages[start+i].hi, from) >= 0
+		cmp := bytes.Compare(index.pages[start+i].hi, from)
+		return from == nil || cmp > 0 || cmp == 0 && inclusive
 	})
 }
 

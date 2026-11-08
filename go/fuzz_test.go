@@ -1,7 +1,7 @@
 // Copyright 2026 Varve Systems Ltd
 // SPDX-License-Identifier: Apache-2.0
 
-package seekparquet_test
+package seekparquet
 
 import (
 	"bytes"
@@ -9,14 +9,15 @@ import (
 	"os"
 	"testing"
 
-	"github.com/varveio/seekparquet/go"
+	"github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go/format"
+
 	"github.com/varveio/seekparquet/go/internal/testutil"
-	"github.com/varveio/seekparquet/go/seekparquettest"
 )
 
 // fuzzLimits are tight enough that a hostile file cannot make a fuzz run
 // allocate much, so over-allocation shows as a failure of the run.
-var fuzzLimits = seekparquet.Limits{
+var fuzzLimits = Limits{
 	FooterBytes:    1 << 20,
 	PageIndexBytes: 1 << 20,
 	MetadataMemory: 16 << 20,
@@ -28,13 +29,13 @@ var fuzzLimits = seekparquet.Limits{
 // seedParts writes small parts of different shapes and returns their bytes.
 func seedParts(f *testing.F) [][]byte {
 	var out [][]byte
-	for _, d := range []seekparquettest.Dataset{
-		parts(seekparquettest.Part{GroupRows: 3, PageBytes: 64}, []string{"a", "a/b", "b", "c/d", "e", "f"}),
-		parts(seekparquettest.Part{DataPageVersion: 1, IndexSizeLimit: 4}, []string{"\xff\xff\xff\xff\xff1", "\xff\xff\xff\xff\xff2"}),
+	for _, d := range []testutil.Dataset{
+		parts(testutil.Part{GroupRows: 3, PageBytes: 64}, []string{"a", "a/b", "b", "c/d", "e", "f"}),
+		parts(testutil.Part{DataPageVersion: 1, IndexSizeLimit: 4}, []string{"\xff\xff\xff\xff\xff1", "\xff\xff\xff\xff\xff2"}),
 		typedDataset(),
 	} {
 		dir := f.TempDir()
-		if err := seekparquettest.Write(dir, d); err != nil {
+		if err := testutil.Write(dir, d); err != nil {
 			f.Fatal(err)
 		}
 		for i := range d.Parts {
@@ -49,19 +50,23 @@ func seedParts(f *testing.F) [][]byte {
 }
 
 // exercise opens a part from its bytes, verifying it on open, and reads
-// all of it through a range and a listing. Any error is acceptable; a
-// panic or an allocation beyond the limits is not.
+// all of it through a range, a resumed range and a listing, projecting
+// every column. Any error is acceptable; a panic or an allocation beyond
+// the limits is not.
 func exercise(raw []byte) {
-	r, err := seekparquet.OpenParts(ctx, []seekparquet.PartSource{{Name: "fuzz", File: bytes.NewReader(raw), Size: int64(len(raw))}},
-		seekparquet.PartsOptions{Options: seekparquet.Options{Limits: fuzzLimits, VerifyOnOpen: true}})
+	r, err := openParts(ctx, []partInput{{name: "fuzz", file: bytes.NewReader(raw), size: int64(len(raw))}}, unique,
+		Options{Limits: fuzzLimits, VerifyOnOpen: true})
 	if err != nil {
 		return
 	}
-	defer r.Close()
-	columns := append(r.Columns(), seekparquet.KeyColumn)
-	_, _ = r.Range(ctx, seekparquet.Range{Limit: 1000, Columns: columns}, nil)
-	_, _ = r.Range(ctx, seekparquet.Range{Start: []byte("b"), Limit: 3, Columns: columns}, nil)
-	_, _ = r.List(ctx, seekparquet.List{Delimiter: '/', Limit: 1000, Columns: columns}, nil)
+	defer r.close()
+	var columns []string
+	for name := range r.parts[0].leaves {
+		columns = append(columns, name)
+	}
+	_, _ = r.readRange(ctx, Range{Limit: 1000, Columns: columns}, nil)
+	_, _ = r.readRange(ctx, Range{Cursor: &Cursor{Key: []byte("b"), Offset: 1}, Limit: 3, Columns: columns}, nil)
+	_, _ = r.readList(ctx, List{Delimiter: '/', Limit: 1000, Columns: columns}, nil)
 }
 
 // FuzzPart mutates whole part files.
@@ -85,11 +90,11 @@ func FuzzFooter(f *testing.F) {
 	})
 }
 
-// FuzzKeyPage overwrites the first key page of a valid part, header
-// included, keeping its length and so every offset.
+// FuzzKeyPage overwrites the key column chunk of a valid part, page
+// headers included, keeping its length and so every offset.
 func FuzzKeyPage(f *testing.F) {
 	dir := f.TempDir()
-	if err := seekparquettest.Write(dir, parts(seekparquettest.Part{PageBytes: 64}, []string{"a", "b", "c", "d", "e", "f", "g", "h"})); err != nil {
+	if err := testutil.Write(dir, parts(testutil.Part{PageBytes: 64}, []string{"a", "b", "c", "d", "e", "f", "g", "h"})); err != nil {
 		f.Fatal(err)
 	}
 	base, err := os.ReadFile(partFile(dir, 0))
@@ -111,5 +116,20 @@ func FuzzKeyPage(f *testing.F) {
 		raw := bytes.Clone(base)
 		copy(raw[start:int(start)+size], page)
 		exercise(raw)
+	})
+}
+
+// FuzzPagePayload decodes fuzzed payloads as pages of each encoding and
+// physical type: any error is acceptable, a panic or an allocation beyond
+// the limits is not.
+func FuzzPagePayload(f *testing.F) {
+	f.Add(uint8(0), uint8(0), []byte{1, 0, 0, 0, 0, 0, 0, 0}, uint16(1))
+	f.Add(uint8(2), uint8(1), []byte{0x80, 0x01, 0x04, 0x02, 0x00, 0x00, 0x00}, uint16(2))
+	encodings := []format.Encoding{format.Plain, format.RLE, format.DeltaBinaryPacked, format.DeltaLengthByteArray, format.DeltaByteArray, format.ByteStreamSplit}
+	types := []parquet.Type{parquet.BooleanType, parquet.Int32Type, parquet.Int64Type, parquet.DoubleType, parquet.ByteArrayType, parquet.FixedLenByteArrayType(4)}
+	f.Fuzz(func(t *testing.T, enc, kind uint8, data []byte, n uint16) {
+		c := testChunk(types[int(kind)%len(types)])
+		c.p.r.limits = fuzzLimits.withDefaults()
+		_, _ = c.values(encodings[int(enc)%len(encodings)], data, int(n))
 	})
 }

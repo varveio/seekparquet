@@ -22,7 +22,7 @@ import (
 	"github.com/parquet-go/parquet-go"
 
 	"github.com/varveio/seekparquet/go"
-	"github.com/varveio/seekparquet/go/source/local"
+	"github.com/varveio/seekparquet/go/internal/manifest"
 )
 
 // version is the implementation version the adapter reports.
@@ -142,7 +142,7 @@ func (a *adapter) dataset(ctx context.Context, path string) (*seekparquet.Datase
 	if d := a.open[path]; d != nil {
 		return d, nil
 	}
-	d, err := local.OpenDataset(ctx, path, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(ctx, path, seekparquet.Options{})
 	if err != nil {
 		return nil, err
 	}
@@ -156,9 +156,6 @@ func (a *adapter) rangeOp(ctx context.Context, req map[string]json.RawMessage) r
 		return invalid(err)
 	}
 	var rng seekparquet.Range
-	if rng.Cursor, err = cursorField(req); err != nil {
-		return invalid(err)
-	}
 	if rng.Prefix, err = bytesField(req, "prefix_base64"); err != nil {
 		return invalid(err)
 	}
@@ -171,6 +168,9 @@ func (a *adapter) rangeOp(ctx context.Context, req map[string]json.RawMessage) r
 	if err := optionalField(req, "start_exclusive", &rng.StartExclusive); err != nil {
 		return invalid(err)
 	}
+	if rng.Cursor, err = cursorField(req); err != nil {
+		return invalid(err)
+	}
 	if rng.Limit, err = limitField(req); err != nil {
 		return invalid(err)
 	}
@@ -181,7 +181,7 @@ func (a *adapter) rangeOp(ctx context.Context, req map[string]json.RawMessage) r
 	if err != nil {
 		return failure(err)
 	}
-	rows, err := d.Range(ctx, rng, nil)
+	rows, err := d.Range(ctx, rng)
 	if err != nil {
 		return failure(err)
 	}
@@ -202,9 +202,6 @@ func (a *adapter) listOp(ctx context.Context, req map[string]json.RawMessage) re
 		return invalid(err)
 	}
 	var list seekparquet.List
-	if list.Cursor, err = cursorField(req); err != nil {
-		return invalid(err)
-	}
 	if list.Prefix, err = bytesField(req, "prefix_base64"); err != nil {
 		return invalid(err)
 	}
@@ -216,13 +213,10 @@ func (a *adapter) listOp(ctx context.Context, req map[string]json.RawMessage) re
 		return invalid(errors.New("the delimiter is not exactly one byte"))
 	}
 	list.Delimiter = delim[0]
-	if list.After, err = bytesField(req, "after_base64"); err != nil {
-		return invalid(err)
-	}
 	if list.End, err = bytesField(req, "end_base64"); err != nil {
 		return invalid(err)
 	}
-	if err := optionalField(req, "continuation", &list.Continuation); err != nil {
+	if list.Cursor, err = cursorField(req); err != nil {
 		return invalid(err)
 	}
 	if list.Limit, err = limitField(req); err != nil {
@@ -235,7 +229,7 @@ func (a *adapter) listOp(ctx context.Context, req map[string]json.RawMessage) re
 	if err != nil {
 		return failure(err)
 	}
-	got, err := d.List(ctx, list, nil)
+	got, err := d.List(ctx, list)
 	if err != nil {
 		return failure(err)
 	}
@@ -268,46 +262,37 @@ func rowEntry(row *seekparquet.Row) (map[string]any, error) {
 	return map[string]any{"kind": "row", "key_base64": base64.StdEncoding.EncodeToString(row.Key), "offset": row.Offset, "values": values}, nil
 }
 
+// cursorField decodes the optional tagged cursor "after": exactly
+// {"key_base64", "offset"} after a row, or {"prefix_base64"} after a
+// common prefix. Whether the operation accepts its kind is the library's
+// check.
 func cursorField(req map[string]json.RawMessage) (*seekparquet.Cursor, error) {
-	raw, ok := req["after"]
-	if !ok {
-		return nil, nil
+	var tag map[string]json.RawMessage
+	if err := optionalField(req, "after", &tag); err != nil || tag == nil {
+		return nil, err
 	}
-	if _, conflict := req["after_base64"]; conflict {
-		return nil, errors.New("conflicting cursors")
+	_, hasKey := tag["key_base64"]
+	_, hasOffset := tag["offset"]
+	_, hasPrefix := tag["prefix_base64"]
+	switch {
+	case hasKey && hasOffset && len(tag) == 2:
+		key, err := bytesField(tag, "key_base64")
+		if err != nil || key == nil {
+			return nil, errors.New("after: key_base64 is missing or not canonical base64")
+		}
+		offset, err := manifest.Integer(tag["offset"])
+		if err != nil {
+			return nil, fmt.Errorf("after: offset: %w", err)
+		}
+		return &seekparquet.Cursor{Key: key, Offset: offset}, nil
+	case hasPrefix && len(tag) == 1:
+		prefix, err := bytesField(tag, "prefix_base64")
+		if err != nil || prefix == nil {
+			return nil, errors.New("after: prefix_base64 is missing or not canonical base64")
+		}
+		return &seekparquet.Cursor{Prefix: prefix}, nil
 	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
-		return nil, errors.New("cursor must be an object")
-	}
-	if _, ok := fields["prefix_base64"]; ok && len(fields) == 1 {
-		p, err := bytesField(fields, "prefix_base64")
-		if err != nil || p == nil {
-			return nil, errors.New("invalid prefix cursor")
-		}
-		return &seekparquet.Cursor{Prefix: p}, nil
-	}
-	if _, ok := fields["key_base64"]; ok && len(fields) == 2 {
-		k, err := bytesField(fields, "key_base64")
-		if err != nil || k == nil {
-			return nil, errors.New("invalid row cursor")
-		}
-		var n int64
-		raw := string(fields["offset"])
-		if raw == "" {
-			return nil, errors.New("missing offset")
-		}
-		for _, c := range raw {
-			if c < '0' || c > '9' {
-				return nil, errors.New("invalid offset")
-			}
-		}
-		if err := json.Unmarshal(fields["offset"], &n); err != nil || n < 0 {
-			return nil, errors.New("invalid offset")
-		}
-		return &seekparquet.Cursor{Key: k, Offset: n}, nil
-	}
-	return nil, errors.New("invalid cursor tag")
+	return nil, errors.New("after is not a row or prefix cursor")
 }
 
 // errInt96 reports a value the protocol has no encoding for.

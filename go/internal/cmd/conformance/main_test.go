@@ -6,14 +6,16 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/varveio/seekparquet/go"
-	"github.com/varveio/seekparquet/go/seekparquettest"
+	"github.com/varveio/seekparquet/go/internal/testutil"
 )
 
 func run(t *testing.T, lines ...string) []map[string]any {
@@ -40,8 +42,8 @@ func run(t *testing.T, lines ...string) []map[string]any {
 
 func TestAdapter(t *testing.T) {
 	dir := t.TempDir()
-	if err := seekparquettest.Write(dir, seekparquettest.Dataset{Parts: []seekparquettest.Part{
-		{Rows: seekparquettest.Rows("a", "a/b", "a/c/d")},
+	if err := testutil.Write(dir, testutil.Dataset{Parts: []testutil.Part{
+		{Rows: testutil.Rows("a", "a/b", "a/c/d")},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +101,59 @@ func TestAdapter(t *testing.T) {
 	}
 	if resps[11]["status"] != "ok" || jsonString(resps[11]["entries"]) != "[]" {
 		t.Fatalf("empty end: %v", resps[11])
+	}
+}
+
+// TestCursorField: the tagged cursor is parsed strictly; whether an
+// operation accepts its kind is the library's check.
+func TestCursorField(t *testing.T) {
+	dir := t.TempDir()
+	if err := testutil.Write(dir, testutil.Dataset{RepeatedKeys: true, Parts: []testutil.Part{
+		{Rows: testutil.Rows("a", "b", "b", "b", "c/d")},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	ds := `"dataset":` + quote(dir)
+	cases := []struct {
+		after, op, want string // want: the status, or the keys and offsets returned
+	}{
+		{`{"key_base64":"Yg==","offset":0}`, "range", "b1 b2 c/d0"},
+		{`{"key_base64":"Yg==","offset":1}`, "list", "b2 c/"},
+		{`{"key_base64":"Yg==","offset":9}`, "range", "c/d0"},
+		{`{"prefix_base64":"Yy8="}`, "list", ""},
+		{`null`, "range", "a0 b0 b1 b2 c/d0"},
+		{`{"prefix_base64":"Yy8="}`, "range", "invalid_request"},
+		{`{"key_base64":"Yg==","offset":-0}`, "range", "invalid_request"},
+		{`{"key_base64":"Yg==","offset":1.0}`, "range", "invalid_request"},
+		{`{"key_base64":"Yg==","offset":1e0}`, "range", "invalid_request"},
+		{`{"key_base64":"Yg==","offset":"1"}`, "range", "invalid_request"},
+		{`{"key_base64":"Yg==","offset":9223372036854775808}`, "range", "invalid_request"},
+		{`{"key_base64":"Yg=="}`, "range", "invalid_request"},
+		{`{"key_base64":"Yg==","offset":0,"prefix_base64":"Yg=="}`, "list", "invalid_request"},
+		{`{"key_base64":"Yg","offset":0}`, "range", "invalid_request"},
+		{`[]`, "range", "invalid_request"},
+	}
+	for _, c := range cases {
+		t.Run(c.op+" after "+c.after, func(t *testing.T) {
+			resp := run(t, `{"id":"1","op":"`+c.op+`",`+ds+`,"delimiter_base64":"Lw==","limit":10,"after":`+c.after+`}`)[0]
+			got, _ := resp["status"].(string)
+			if got == "ok" {
+				var keys []string
+				for _, e := range resp["entries"].([]any) {
+					e := e.(map[string]any)
+					key, _ := base64.StdEncoding.DecodeString(e["key_base64"].(string))
+					if off, ok := e["offset"]; ok {
+						keys = append(keys, fmt.Sprint(string(key), off))
+					} else {
+						keys = append(keys, string(key))
+					}
+				}
+				got = strings.Join(keys, " ")
+			}
+			if got != c.want {
+				t.Fatalf("got %q, want %q (%v)", got, c.want, resp)
+			}
+		})
 	}
 }
 

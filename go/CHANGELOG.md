@@ -7,30 +7,30 @@ versioning; while it is v0, minor versions may change the API.
 
 First public version.
 
-- Required manifest `key` declaration and matching `StampKeyColumn`/`StampKeyUnique` footer stamps.
-  `Metadata.Key` exposes `Key`; `PartsOptions.Key` configures directly opened parts.
-- Non-decreasing repeated-key groups in producer file order, with earliest-candidate routing and
-  whole-group bounds. Unique-key routing retains its existing fast path.
-- `KeyRange` looks up a whole group. `Row.Offset`, `Cursor`, `Range.Cursor`, `List.Cursor`,
-  `Row.Cursor()` and `Entry.Cursor()` support pages ending inside a group.
-- `seekparquettest.Dataset.KeyColumn` and `.RepeatedKeys`, sequential oracle properties, tagged
-  pagination tests and repeated-key fuzz seeds.
-
 - Reads SeekParquet format 1, draft revision 1 (`format_version` 0, `draft_revision` 1).
-- `OpenDataset` over a `Source`, with `source/local` for directories (`os.Root` confinement, a bounded
-  descriptor cache, non-blocking opens that refuse anything but regular files); `OpenParts` for parts given
-  directly.
-- `Range` (optional prefix, inclusive or exclusive start, exclusive end), `List` (single-byte delimiter,
-  `After` with `Continuation`, end), `Scan` with an error-returning `ColumnSink`.
-- Projection of top-level non-repeated columns with absent distinct from null; nested and repeated columns
-  rejected as unsupported.
-- Refusal codes from `spec/refusal-codes.json` with structured locations; invalid requests, unsupported
-  features and caller expectations reported as distinct error types.
-- Opening checks CHECK-1 only, reading the manifest and the footers; reads are routed by the manifest's part
-  bounds and lazily decoded row-group first keys. `Options.VerifyOnOpen` checks every row group's first key
-  page and each part's last on open.
-- `Limits` bounds every size a file declares (manifest, footer, page index, page header, page, value count,
-  retained index memory) before allocation; Thrift metadata is walked with a bounded decoder before
-  parquet-go decodes it; exceeding a limit is `ErrLimitExceeded`.
-- `seekparquettest`, a test writer of conforming and deliberately invalid datasets.
+- One public package. `OpenDataset` opens a dataset through a `Source`; `OpenDir` opens a local
+  directory through an `os.Root`, refusing anything but regular files without blocking on them.
+  `Dataset` serves `Range`, `List`, `Metadata` and `Close`.
+- The manifest's `key` declaration names the key column and whether keys are unique; the footer stamps
+  must match it, and `Metadata.Key` exposes it. Equal keys form groups in producer file order that never
+  cross parts, on every open path. `KeyRange` looks up a whole group.
+- One pagination contract: `Range.Cursor` and `List.Cursor`, built by `Row.Cursor()` and
+  `Entry.Cursor()`. A row cursor is a key and its `Row.Offset` in its group; a listing may also continue
+  after a common prefix. Resuming inside a large group seeks through the OffsetIndex row positions, so a
+  page costs a few page reads however deep its cursor lies.
+- `Range` (optional prefix, inclusive or exclusive start, exclusive end) and `List` (single-byte
+  delimiter, end) share one traversal, which counts offsets once.
+- Projection of top-level non-repeated columns with absent distinct from null; nested and repeated
+  columns rejected as unsupported.
+- Refusal codes from `spec/refusal-codes.json` with structured locations; invalid requests and
+  unsupported features reported as distinct error types.
+- Opening checks CHECK-1 only, reading the manifest and the footers; reads are routed by the manifest's
+  part bounds and lazily decoded row-group first keys. `Options.VerifyOnOpen` checks every row group's
+  first key page and each part's last on open.
+- `Limits` bounds every size a file declares (manifest, footer, page index, page header, page, value
+  count, retained index memory) before allocation. Thrift metadata is walked with a bounded decoder,
+  nesting depth included, before it is decoded. Pages are located and decoded by the reader itself: a
+  page must decompress to exactly its declared size (decompression stops beyond it), the counts its
+  encodings declare are checked against its header, and its decoded size against `Limits.PageBytes`.
+  Exceeding a limit is `ErrLimitExceeded`.
 - A conformance adapter (`internal/cmd/conformance`) for the reader target.

@@ -1,24 +1,11 @@
 // Copyright 2026 Varve Systems Ltd
 // SPDX-License-Identifier: Apache-2.0
 
-// Package seekparquettest writes small SeekParquet datasets for tests: a
-// manifest and parts carrying the seekparquet.* stamps, sorting_columns,
-// page indexes and small pages, from rows the test gives, with knobs that
-// produce invalid variants. The parts are written by parquet-go, with one
-// correction: parquet-go v0.32.0 shortens a page maximum whose retained
-// bytes are all 0xFF to a value below the real maximum, which is not a
-// bound (RG-5), so this writer keeps such a page's full maximum (and, for a
-// STRING column, a full bound wherever a shortened one would not be valid
-// UTF-8) unless Part.KeepShortenedMax asks for the broken one.
-//
-// It is a test helper, not a production writer: rows are written in the
-// order given, unsorted rows included.
-package seekparquettest
+package testutil
 
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -30,12 +17,25 @@ import (
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/format"
-
-	"github.com/varveio/seekparquet/go/internal/testutil"
 )
 
+// This file writes small SeekParquet datasets for tests: a manifest and
+// parts carrying the seekparquet.* stamps, sorting_columns, page indexes
+// and small pages, from rows the test gives, with knobs that produce
+// invalid variants. The parts are written by parquet-go, with one
+// correction: parquet-go v0.32.0 shortens a page maximum whose retained
+// bytes are all 0xFF to a value below the real maximum, which is not a
+// bound (RG-5), so this writer keeps such a page's full maximum (and, for a
+// STRING column, a full bound wherever a shortened one would not be valid
+// UTF-8) unless Part.KeepShortenedMax asks for the broken one. It is not a
+// production writer: rows are written in the order given, unsorted rows
+// included.
+
 // SchemaID is the default schema id of a written dataset.
-const SchemaID = "seekparquettest/v1"
+const SchemaID = "testutil/v1"
+
+// KeyColumn is the default key column name.
+const KeyColumn = "key"
 
 // Stamp keys, spelled out here so that tests do not take them from the
 // code under test.
@@ -43,6 +43,8 @@ const (
 	StampFormatVersion = "seekparquet.format_version"
 	StampDraftRevision = "seekparquet.draft_revision"
 	StampSchemaID      = "seekparquet.schema_id"
+	StampKeyColumn     = "seekparquet.key_column"
+	StampKeyUnique     = "seekparquet.key_unique"
 )
 
 // Row is the default row: an unannotated BYTE_ARRAY key and two optional
@@ -71,8 +73,8 @@ func Rows(keys ...string) []Row {
 // Part describes one part file.
 type Part struct {
 	// Rows is a slice of structs whose parquet tags give the schema, with
-	// the configured top-level key column; nil is []Row{}. Rows are written in
-	// the order given.
+	// the dataset's top-level key column; nil is []Row{}. Rows are written
+	// in the order given.
 	Rows any
 	// PageBytes is the page buffer size (pages are cut by bytes); 0 is 512.
 	PageBytes int
@@ -98,12 +100,16 @@ type Part struct {
 	Stamps map[string]string
 	// DataPageVersion is 1 or 2; 0 is parquet-go's default.
 	DataPageVersion int
+	// Compression is the codec; nil is parquet-go's default.
+	Compression parquet.WriterOption
 }
 
 // Dataset describes a dataset.
 type Dataset struct {
-	// KeyColumn defaults to "key"; RepeatedKeys permits equal consecutive keys.
-	KeyColumn    string
+	// KeyColumn is the key column's name; "" is KeyColumn.
+	KeyColumn string
+	// RepeatedKeys declares keys not unique, permitting equal consecutive
+	// keys.
 	RepeatedKeys bool
 	// SchemaID is the manifest's and the stamps' schema id; "" is
 	// SchemaID.
@@ -120,15 +126,10 @@ func PartPath(i int) string { return fmt.Sprintf("data/part-%05d.parquet", i) }
 // Write writes d into dir (created if needed): its parts, then its
 // manifest, whose bounds are each part's first and last keys as written.
 func Write(dir string, d Dataset) error {
-	keyColumn := d.KeyColumn
-	if keyColumn == "" {
-		keyColumn = "key"
-	}
-	schemaID := d.SchemaID
-	if schemaID == "" {
-		schemaID = SchemaID
-	}
-	m := map[string]any{"format": "seekparquet", "format_version": 0, "draft_revision": 1, "schema_id": schemaID, "key": map[string]any{"column": keyColumn, "unique": !d.RepeatedKeys}}
+	keyColumn := cmpOr(d.KeyColumn, KeyColumn)
+	schemaID := cmpOr(d.SchemaID, SchemaID)
+	m := map[string]any{"format": "seekparquet", "format_version": 0, "draft_revision": 1, "schema_id": schemaID,
+		"key": map[string]any{"column": keyColumn, "unique": !d.RepeatedKeys}}
 	if d.Extensions != nil {
 		m["extensions"] = d.Extensions
 	}
@@ -137,7 +138,13 @@ func Write(dir string, d Dataset) error {
 		return err
 	}
 	for i, part := range d.Parts {
-		stamps := map[string]string{StampFormatVersion: "0", StampDraftRevision: "1", StampSchemaID: schemaID, "seekparquet.key_column": keyColumn, "seekparquet.key_unique": strconv.FormatBool(!d.RepeatedKeys)}
+		stamps := map[string]string{
+			StampFormatVersion: "0",
+			StampDraftRevision: "1",
+			StampSchemaID:      schemaID,
+			StampKeyColumn:     keyColumn,
+			StampKeyUnique:     strconv.FormatBool(!d.RepeatedKeys),
+		}
 		for k, v := range part.Stamps {
 			if v == "" {
 				delete(stamps, k)
@@ -166,12 +173,11 @@ func Write(dir string, d Dataset) error {
 	return writeManifest(dir, m)
 }
 
-func writeManifest(dir string, m map[string]any) error {
-	raw, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return err
+func cmpOr(s, fallback string) string {
+	if s == "" {
+		return fallback
 	}
-	return os.WriteFile(filepath.Join(dir, "manifest.json"), raw, 0o644)
+	return s
 }
 
 // writePart writes part to path with the footer key-value metadata stamps
@@ -190,7 +196,7 @@ func writePart(path string, part Part, stamps map[string]string, keyColumn strin
 	if !ok {
 		return nil, nil, 0, errors.New("the rows have no key column")
 	}
-	schema := parquet.NewSchema("seekparquettest", boundsNode{Node: base, keep: part.KeepShortenedMax, keyColumn: keyColumn})
+	schema := parquet.NewSchema("testutil", boundsNode{Node: base, keep: part.KeepShortenedMax, keyColumn: keyColumn})
 	pageBytes := part.PageBytes
 	if pageBytes <= 0 {
 		pageBytes = 512
@@ -208,17 +214,19 @@ func writePart(path string, part Part, stamps map[string]string, keyColumn strin
 	if part.DataPageVersion > 0 {
 		options = append(options, parquet.DataPageVersion(part.DataPageVersion))
 	}
+	if part.Compression != nil {
+		options = append(options, part.Compression)
+	}
 	if !part.Unsorted {
 		options = append(options, parquet.SortingWriterConfig(parquet.SortingColumns(parquet.Ascending(keyColumn))))
 	}
-	keys := slices.Sorted(func(yield func(string) bool) {
+	for _, k := range slices.Sorted(func(yield func(string) bool) {
 		for k := range stamps {
 			if !yield(k) {
 				return
 			}
 		}
-	})
-	for _, k := range keys {
+	}) {
 		options = append(options, parquet.KeyValueMetadata(k, stamps[k]))
 	}
 	f, err := os.Create(path)
@@ -297,7 +305,7 @@ func writePart(path string, part Part, stamps map[string]string, keyColumn strin
 // (its column chunks empty, without page indexes) at each zero: parquet-go
 // skips empty groups when it writes, but other writers leave them.
 func insertEmptyGroups(path string, groups []int) error {
-	return testutil.RewriteFooter(path, func(meta *format.FileMetaData) error {
+	return RewriteFooter(path, func(meta *format.FileMetaData) error {
 		if len(meta.RowGroups) == 0 {
 			return errors.New("a part of empty groups only is not supported")
 		}
@@ -329,7 +337,7 @@ func insertEmptyGroups(path string, groups []int) error {
 // dropPageIndex rewrites the footer of the part at path so that leaf
 // column's chunks reference no ColumnIndex and no OffsetIndex.
 func dropPageIndex(path string, column int) error {
-	return testutil.RewriteFooter(path, func(meta *format.FileMetaData) error {
+	return RewriteFooter(path, func(meta *format.FileMetaData) error {
 		for g := range meta.RowGroups {
 			chunk := &meta.RowGroups[g].Columns[column]
 			chunk.ColumnIndexOffset, chunk.ColumnIndexLength = 0, 0
@@ -342,9 +350,9 @@ func dropPageIndex(path string, column int) error {
 // boundsNode wraps a schema so that its top-level byte-array leaves are
 // indexed by boundsIndexer.
 type boundsNode struct {
-	keyColumn string
 	parquet.Node
-	keep bool
+	keyColumn string
+	keep      bool
 }
 
 func (n boundsNode) Fields() []parquet.Field {

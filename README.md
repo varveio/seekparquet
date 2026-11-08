@@ -5,9 +5,9 @@
 > **Status: draft.** The specification is at draft revision 1 and the Go implementation is pre-release. Files
 > written to the draft are stamped so they can never be mistaken for the final format. Expect changes.
 
-A SeekParquet dataset is a set of ordinary Parquet files sorted by one byte-string `key` column, split into
-key-disjoint parts, and committed by a `manifest.json` that lists the parts in key order with their exact key
-bounds. Every part also carries a Parquet page index on its key column.
+A SeekParquet dataset is a set of ordinary Parquet files sorted by one byte-string key column that the
+manifest names, split into key-disjoint parts, and committed by a `manifest.json` that lists the parts in key
+order with their exact key bounds. Every part also carries a Parquet page index on its key column.
 
 Any Parquet reader (DuckDB, Spark, pyarrow, Trino) reads the files as an ordinary table. A reader that knows
 the profile can also:
@@ -23,7 +23,7 @@ by reading the manifest, part footers, a page index and a few pages, with no que
 
 | Parquet offers | SeekParquet requires |
 |---|---|
-| `sorting_columns`, which a file may declare without being sorted | one `key` column, unique and strictly ascending in unsigned byte order, across the whole dataset |
+| `sorting_columns`, which a file may declare without being sorted | one key column, in unsigned byte order across the whole dataset: strictly ascending when the manifest declares keys unique, otherwise in groups of equal keys that never cross parts |
 | an optional page index | a ColumnIndex and OffsetIndex on the key column of every row group |
 | nothing across files | key-disjoint parts, in order, committed by a manifest with exact bounds, row counts and sizes |
 | no query semantics | range, prefix and delimited-listing semantics, pagination, and named refusal codes when a dataset does not meet the profile |

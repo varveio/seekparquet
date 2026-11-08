@@ -68,7 +68,7 @@ func (k *keyPages) seek(from []byte, inclusive bool) (key []byte, row int64, ok 
 		}
 		target := k.at + 1
 		if from != nil {
-			if page := k.index.pageFor(target, from); page > target {
+			if page := k.index.pageFor(target, from, inclusive); page > target {
 				if k.at >= 0 {
 					k.chunk.stats.reseeks++
 				}

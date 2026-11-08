@@ -1,8 +1,9 @@
 // Copyright 2026 Varve Systems Ltd
 // SPDX-License-Identifier: Apache-2.0
 
-// Package testutil edits written datasets for this module's tests: their
-// manifests and their parts' footers, to produce faults no writer makes.
+// Package testutil writes small SeekParquet datasets for this module's
+// tests (Write), and edits them, their manifests and their parts' footers,
+// to produce faults no writer makes.
 package testutil
 
 import (
@@ -65,6 +66,17 @@ func SyncSizes(dir string) error {
 	return errors.Join(editErr, err)
 }
 
+// splitFooter returns the body of a Parquet file and its decoded footer.
+func splitFooter(raw []byte) ([]byte, *format.FileMetaData, error) {
+	n := len(raw)
+	footerLen := int(binary.LittleEndian.Uint32(raw[n-8 : n-4]))
+	var meta format.FileMetaData
+	if err := thrift.Unmarshal(new(thrift.CompactProtocol), raw[n-8-footerLen:n-8], &meta); err != nil {
+		return nil, nil, fmt.Errorf("read footer: %w", err)
+	}
+	return raw[: n-8-footerLen : n-8-footerLen], &meta, nil
+}
+
 // RewriteFooter applies change to the footer of the Parquet file at path
 // and writes the file back with the new footer: for tests of footers no
 // writer produces. The manifest's bytes then need SyncSizes.
@@ -73,21 +85,18 @@ func RewriteFooter(path string, change func(*format.FileMetaData) error) error {
 	if err != nil {
 		return err
 	}
-	n := len(raw)
-	footerLen := int(binary.LittleEndian.Uint32(raw[n-8 : n-4]))
-	var protocol thrift.CompactProtocol
-	var meta format.FileMetaData
-	if err := thrift.Unmarshal(&protocol, raw[n-8-footerLen:n-8], &meta); err != nil {
-		return fmt.Errorf("read footer: %w", err)
-	}
-	if err := change(&meta); err != nil {
-		return err
-	}
-	footer, err := thrift.Marshal(&protocol, &meta)
+	body, meta, err := splitFooter(raw)
 	if err != nil {
 		return err
 	}
-	body := append(raw[:n-8-footerLen:n-8-footerLen], footer...)
+	if err := change(meta); err != nil {
+		return err
+	}
+	footer, err := thrift.Marshal(new(thrift.CompactProtocol), meta)
+	if err != nil {
+		return err
+	}
+	body = append(body, footer...)
 	body = binary.LittleEndian.AppendUint32(body, uint32(len(footer)))
 	body = append(body, "PAR1"...)
 	return os.WriteFile(path, body, 0o644)
@@ -95,22 +104,10 @@ func RewriteFooter(path string, change func(*format.FileMetaData) error) error {
 
 // ReadFooter returns the footer of the Parquet file at path.
 func ReadFooter(path string) (*format.FileMetaData, error) {
-	var meta *format.FileMetaData
-	err := rewriteNothing(path, func(m *format.FileMetaData) { meta = m })
-	return meta, err
-}
-
-func rewriteNothing(path string, see func(*format.FileMetaData)) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	n := len(raw)
-	footerLen := int(binary.LittleEndian.Uint32(raw[n-8 : n-4]))
-	var meta format.FileMetaData
-	if err := thrift.Unmarshal(new(thrift.CompactProtocol), raw[n-8-footerLen:n-8], &meta); err != nil {
-		return err
-	}
-	see(&meta)
-	return nil
+	_, meta, err := splitFooter(raw)
+	return meta, err
 }

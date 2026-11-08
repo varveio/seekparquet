@@ -67,7 +67,7 @@ func (s *scan) start(from []byte, exclusive bool, cur *Cursor) error {
 // forward from the current row when no earlier row can qualify, and
 // otherwise routes through groupFor.
 func (s *scan) seek(from []byte, inclusive bool) error {
-	g, err := s.r.groupFor(s.ctx, from, &s.log, s.stats)
+	g, err := s.r.groupFor(s.ctx, from, inclusive, &s.log, s.stats)
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (s *scan) open(g int) (bool, error) {
 // group's first key is known (decoded by an earlier read, a routing probe,
 // or VerifyOnOpen).
 func (s *scan) shortcut(from, prefix []byte, delim byte) ([]byte, error) {
-	g, err := s.r.groupFor(s.ctx, from, &s.log, s.stats)
+	g, err := s.r.groupFor(s.ctx, from, true, &s.log, s.stats)
 	if err != nil || g+1 >= len(s.r.groups) {
 		return nil, err
 	}

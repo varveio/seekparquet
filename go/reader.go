@@ -311,31 +311,36 @@ func (r *reader) noteFirst(g int, key []byte) error {
 	return nil
 }
 
-// groupFor returns the row group in which a read from from begins: the
-// predecessor of the first group whose first key reaches from (passes it,
-// when keys are unique), clamped to the first group of the part that can
-// hold from; len(groups) when no group can. Parts are chosen by their
-// bounds when every part has them; row groups by binary search over their
-// first keys, decoding a group's first key page the first time a search
-// needs it.
-func (r *reader) groupFor(ctx context.Context, from []byte, log *pageLog, st *stats) (int, error) {
+// groupFor returns the row group in which a read of the keys at or after
+// from (after it unless inclusive) begins: the predecessor of the first
+// group whose first key is above from, or at it when the read includes
+// from and keys repeat, clamped to the first group of the part that can
+// hold such a key; len(groups) when no group can. Parts are chosen by
+// their bounds when every part has them; row groups by binary search over
+// their first keys, decoding a group's first key page the first time a
+// search needs it.
+func (r *reader) groupFor(ctx context.Context, from []byte, inclusive bool, log *pageLog, st *stats) (int, error) {
 	if from == nil || len(r.groups) == 0 {
 		return 0, nil
 	}
 	lo, hi := 0, len(r.groups)
 	if r.bounded {
-		i := sort.Search(len(r.parts), func(i int) bool { return bytes.Compare(r.parts[i].maxKey, from) >= 0 })
+		i := sort.Search(len(r.parts), func(i int) bool {
+			cmp := bytes.Compare(r.parts[i].maxKey, from)
+			return cmp > 0 || cmp == 0 && inclusive
+		})
 		if i == len(r.parts) {
 			return len(r.groups), nil
 		}
 		lo, hi = r.parts[i].firstGroup, r.parts[i].endGroup
-		if bytes.Compare(from, r.parts[i].minKey) <= 0 {
+		if cmp := bytes.Compare(from, r.parts[i].minKey); cmp < 0 || cmp == 0 && inclusive {
 			return lo, nil
 		}
 	}
-	// Search for the first first key at or above from when keys repeat: its
-	// predecessor can hold earlier rows of the same key (ROUTE-1). With
-	// unique keys, a group whose first key is from begins the read.
+	// When keys repeat and the read includes from, search for the first
+	// first key at or above from: its predecessor can hold earlier rows of
+	// the same key (ROUTE-1). Otherwise a group whose first key is from
+	// holds the first row the read can return, or precedes it.
 	a, b := lo+1, hi
 	for a < b {
 		mid := int(uint(a+b) >> 1)
@@ -343,7 +348,7 @@ func (r *reader) groupFor(ctx context.Context, from []byte, log *pageLog, st *st
 		if err != nil {
 			return 0, err
 		}
-		if cmp := bytes.Compare(key, from); cmp > 0 || cmp == 0 && !r.key.Unique {
+		if cmp := bytes.Compare(key, from); cmp > 0 || cmp == 0 && inclusive && !r.key.Unique {
 			b = mid
 		} else {
 			a = mid + 1

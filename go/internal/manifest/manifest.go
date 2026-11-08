@@ -222,13 +222,13 @@ func parseVersion(top map[string]json.RawMessage) (Version, error) {
 	if !ok {
 		return Version{}, invalid("format_version is missing")
 	}
-	formatVersion, err := integer(rawVersion)
+	formatVersion, err := Integer(rawVersion)
 	if err != nil || formatVersion < 0 {
 		return Version{}, invalid("format_version is not a non-negative integer")
 	}
 	v := Version{FormatVersion: formatVersion}
 	if rawDraft, ok := top["draft_revision"]; ok {
-		draft, err := integer(rawDraft)
+		draft, err := Integer(rawDraft)
 		if err != nil || draft < 1 {
 			return Version{}, invalid("draft_revision is not an integer of at least 1")
 		}
@@ -275,7 +275,7 @@ func parsePart(raw json.RawMessage) (Part, error) {
 		if !ok {
 			return Part{}, invalid("%s is missing", f.name)
 		}
-		n, err := integer(rawN)
+		n, err := Integer(rawN)
 		if err != nil || n < 1 {
 			return Part{}, invalid("%s is not an integer of at least 1", f.name)
 		}
@@ -324,9 +324,10 @@ func member(fields map[string]json.RawMessage, name string, s *string, required 
 	return nil
 }
 
-// integer decodes an integer member exactly (MAN-6): a JSON number with no
-// sign, fraction, exponent or leading zero, from 0 to 2^63-1.
-func integer(raw json.RawMessage) (int64, error) {
+// Integer decodes an integer member exactly (MAN-6): a JSON number with no
+// sign, fraction, exponent or leading zero, from 0 to 2^63-1. The
+// conformance protocol spells cursor offsets the same way.
+func Integer(raw json.RawMessage) (int64, error) {
 	text := string(raw)
 	if text == "" || len(text) > 1 && text[0] == '0' {
 		return 0, errors.New("not an integer")

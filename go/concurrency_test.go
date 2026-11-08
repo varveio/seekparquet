@@ -1,7 +1,7 @@
 // Copyright 2026 Varve Systems Ltd
 // SPDX-License-Identifier: Apache-2.0
 
-package seekparquet_test
+package seekparquet
 
 import (
 	"context"
@@ -13,79 +13,93 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/parquet-go/parquet-go"
-	"github.com/parquet-go/parquet-go/format"
-
-	seekparquet "github.com/varveio/seekparquet/go"
-	"github.com/varveio/seekparquet/go/seekparquettest"
-	"github.com/varveio/seekparquet/go/source/local"
+	"github.com/varveio/seekparquet/go/internal/testutil"
 )
 
 // TestConcurrentColdIndexes starts range reads and listings with differing
-// projections on the same row groups of a dataset none has read yet (a
-// default open loads no page index and decodes no key; TestOpenReads checks
-// that), so their first reads load each group's page index and first key
-// concurrently, and compares every result with the same call on a dataset
-// read sequentially.
+// projections and cursors on the same row groups of a dataset none has
+// read yet (a default open loads no page index and decodes no key;
+// TestOpenReads checks that), so their first reads load each group's page
+// index and first key concurrently, and compares every result with the
+// same call on a dataset read sequentially. It runs with unique and with
+// repeated keys.
 func TestConcurrentColdIndexes(t *testing.T) {
-	keys := fixtureKeys(3000)
-	ds := parts(seekparquettest.Part{GroupRows: 500, PageBytes: 1024}, split(keys, 2)...)
-	dir := write(t, ds)
-	cold, warm := open(t, dir, seekparquet.Options{}), open(t, dir, seekparquet.Options{})
-	var calls []func(d *seekparquet.Dataset) string
-	for i, start := range []string{"", "b/", "d03/", "d07/s02/", "long/", "root"} {
-		columns := []string{"size"}
-		if i%2 == 0 {
-			columns = []string{"name", "size"}
-		}
-		calls = append(calls,
-			func(d *seekparquet.Dataset) string {
-				rows, err := d.Range(ctx, seekparquet.Range{Start: []byte(start), Limit: 40, Columns: columns}, nil)
-				if err != nil {
-					return err.Error()
+	for _, repeated := range []bool{false, true} {
+		t.Run(fmt.Sprint("repeated keys ", repeated), func(t *testing.T) {
+			keys := fixtureKeys(3000)
+			if repeated {
+				for i := range keys {
+					keys[i] = keys[i-i%3] // groups of three equal keys
 				}
-				return fmt.Sprint(rows)
-			},
-			func(d *seekparquet.Dataset) string {
-				entries, err := d.List(ctx, seekparquet.List{Prefix: []byte(start), Delimiter: '/', Limit: 30, Columns: columns}, nil)
-				if err != nil {
-					return err.Error()
+			}
+			// Two parts split at a group boundary: a group never crosses parts.
+			doc := parts(testutil.Part{GroupRows: 500, PageBytes: 1024}, keys[:1500], keys[1500:])
+			doc.RepeatedKeys = repeated
+			dir := write(t, doc)
+			cold, warm := open(t, dir, Options{}), open(t, dir, Options{})
+			var calls []func(d *Dataset) string
+			for i, start := range []string{"", "b/", "d03/", "d07/s02/", "long/", "root"} {
+				columns := []string{"size"}
+				if i%2 == 0 {
+					columns = []string{"name", "size"}
 				}
-				var out []string
-				for _, e := range entries {
-					if e.IsPrefix() {
-						out = append(out, "p:"+string(e.CommonPrefix))
-					} else {
-						out = append(out, fmt.Sprint(*e.Row))
-					}
+				calls = append(calls,
+					func(d *Dataset) string {
+						rows, err := d.Range(ctx, Range{Start: []byte(start), Limit: 40, Columns: columns})
+						if err != nil {
+							return err.Error()
+						}
+						return fmt.Sprint(rows)
+					},
+					func(d *Dataset) string {
+						rows, err := d.Range(ctx, Range{Cursor: &Cursor{Key: []byte(start), Offset: 1}, Limit: 40, Columns: columns})
+						if err != nil {
+							return err.Error()
+						}
+						return fmt.Sprint(rows)
+					},
+					func(d *Dataset) string {
+						entries, err := d.List(ctx, List{Prefix: []byte(start), Delimiter: '/', Limit: 30, Columns: columns})
+						if err != nil {
+							return err.Error()
+						}
+						var out []string
+						for _, e := range entries {
+							if e.IsPrefix() {
+								out = append(out, "p:"+string(e.CommonPrefix))
+							} else {
+								out = append(out, fmt.Sprint(*e.Row))
+							}
+						}
+						return fmt.Sprint(out)
+					})
+			}
+			want := make([]string, len(calls))
+			for i, c := range calls {
+				want[i] = c(warm)
+			}
+			got := make([]string, len(calls)*4)
+			var wg sync.WaitGroup
+			for i := range got {
+				wg.Go(func() { got[i] = calls[i%len(calls)](cold) })
+			}
+			wg.Wait()
+			for i := range got {
+				if got[i] != want[i%len(calls)] {
+					t.Fatalf("call %d: %s\nwant %s", i%len(calls), got[i], want[i%len(calls)])
 				}
-				return fmt.Sprint(out)
-			})
-	}
-	want := make([]string, len(calls))
-	for i, c := range calls {
-		want[i] = c(warm)
-	}
-	got := make([]string, len(calls)*4)
-	var wg sync.WaitGroup
-	for i := range got {
-		wg.Go(func() { got[i] = calls[i%len(calls)](cold) })
-	}
-	wg.Wait()
-	for i := range got {
-		if got[i] != want[i%len(calls)] {
-			t.Fatalf("call %d: %s\nwant %s", i%len(calls), got[i], want[i%len(calls)])
-		}
+			}
+		})
 	}
 }
 
 // TestCloseWhileReading closes a dataset while eight readers page it:
-// every read ends with rows or ErrClosed, and no descriptor stays open.
+// every read ends with rows or ErrClosed, and every file it opened is
+// closed.
 func TestCloseWhileReading(t *testing.T) {
 	keys := fixtureKeys(600)
-	dir := write(t, parts(seekparquettest.Part{GroupRows: 50, PageBytes: 256}, split(keys, 3)...))
-	src := local.NewDir(dir, local.NewFileCache(2))
-	d, err := seekparquet.OpenDataset(ctx, src, seekparquet.Options{})
+	src := &countingSource{Source: dirOf(t, write(t, parts(testutil.Part{GroupRows: 50, PageBytes: 256}, split(keys, 3)...)))}
+	d, err := OpenDataset(ctx, src, Options{})
 	must(t, err)
 	var wg sync.WaitGroup
 	var reads atomic.Int64
@@ -96,11 +110,11 @@ func TestCloseWhileReading(t *testing.T) {
 			for i := 0; ; i++ {
 				var err error
 				if g%2 == 0 {
-					_, err = d.Range(ctx, seekparquet.Range{Start: []byte(keys[(g*7+i)%len(keys)]), Limit: 7, Columns: []string{"size"}}, nil)
+					_, err = d.Range(ctx, Range{Start: []byte(keys[(g*7+i)%len(keys)]), Limit: 7, Columns: []string{"size"}})
 				} else {
-					_, err = d.List(ctx, seekparquet.List{Delimiter: '/', Limit: 7}, nil)
+					_, err = d.List(ctx, List{Delimiter: '/', Limit: 7})
 				}
-				if errors.Is(err, seekparquet.ErrClosed) {
+				if errors.Is(err, ErrClosed) {
 					return
 				}
 				if err != nil {
@@ -113,27 +127,27 @@ func TestCloseWhileReading(t *testing.T) {
 	}
 	close(start)
 	for reads.Load() < 20 {
-		_, _ = d.Range(ctx, seekparquet.Range{Limit: 1}, nil)
+		_, _ = d.Range(ctx, Range{Limit: 1})
 	}
 	must(t, d.Close())
 	wg.Wait()
-	if open := src.Cache().Stats().Open; open != 0 {
-		t.Fatalf("%d descriptors open after Close", open)
+	if opened, closed := src.opened.Load(), src.closed.Load(); opened != closed {
+		t.Fatalf("%d files opened, %d closed after Close", opened, closed)
 	}
 }
 
 // TestCancelledRead returns the context's error.
 func TestCancelledRead(t *testing.T) {
-	d := open(t, write(t, parts(seekparquettest.Part{}, []string{"a", "b"})), seekparquet.Options{})
+	d := open(t, write(t, parts(testutil.Part{}, []string{"a", "b"})), Options{})
 	c, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := d.Range(c, seekparquet.Range{Limit: 1}, nil); !errors.Is(err, context.Canceled) {
+	if _, err := d.Range(c, Range{Limit: 1}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("range: %v", err)
 	}
-	if _, err := d.List(c, seekparquet.List{Delimiter: '/', Limit: 1}, nil); !errors.Is(err, context.Canceled) {
+	if _, err := d.List(c, List{Delimiter: '/', Limit: 1}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("list: %v", err)
 	}
-	if _, err := local.OpenDataset(c, write(t, parts(seekparquettest.Part{}, []string{"a"})), seekparquet.Options{}); !errors.Is(err, context.Canceled) {
+	if _, err := OpenDir(c, write(t, parts(testutil.Part{}, []string{"a"})), Options{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("open: %v", err)
 	}
 }
@@ -179,7 +193,7 @@ type boundSource struct {
 	closed               atomic.Bool
 }
 
-func (s *boundSource) Open(_ context.Context, path string) (seekparquet.SourceFile, error) {
+func (s *boundSource) Open(_ context.Context, path string) (SourceFile, error) {
 	f, err := os.Open(s.dir + "/" + path)
 	if err != nil {
 		return nil, err
@@ -192,11 +206,11 @@ func (s *boundSource) Open(_ context.Context, path string) (seekparquet.SourceFi
 // manifest included, goes through the reader bound to the operation's
 // context.
 func TestContextBinding(t *testing.T) {
-	src := &boundSource{dir: write(t, parts(seekparquettest.Part{GroupRows: 3}, []string{"a", "b", "c", "d"}, []string{"e", "f"}))}
+	src := &boundSource{dir: write(t, parts(testutil.Part{GroupRows: 3}, []string{"a", "b", "c", "d"}, []string{"e", "f"}))}
 	c := context.WithValue(ctx, ctxKey{}, true)
-	d, err := seekparquet.OpenDataset(c, src, seekparquet.Options{})
+	d, err := OpenDataset(c, src, Options{})
 	must(t, err)
-	if _, err := d.Range(c, seekparquet.Range{Limit: 10, Columns: []string{"size"}}, nil); err != nil {
+	if _, err := d.Range(c, Range{Limit: 10, Columns: []string{"size"}}); err != nil {
 		t.Fatal(err)
 	}
 	must(t, d.Close())
@@ -205,64 +219,40 @@ func TestContextBinding(t *testing.T) {
 	}
 }
 
-// TestOpenParts opens parts directly, without a manifest, with a footer
-// and a row-group hook, and takes ownership of the files on failure.
-func TestOpenParts(t *testing.T) {
-	dir := write(t, parts(seekparquettest.Part{GroupRows: 2}, []string{"a", "b", "c"}, []string{"x", "y"}))
-	sources := func(closed *atomic.Int64) []seekparquet.PartSource {
-		var out []seekparquet.PartSource
+// TestOpenPartsOwnership opens parts directly, without a manifest, and
+// takes ownership of their files: they are closed by close, and by a
+// failed open; bounds given for a part are checked.
+func TestOpenPartsOwnership(t *testing.T) {
+	dir := write(t, parts(testutil.Part{GroupRows: 2}, []string{"a", "b", "c"}, []string{"x", "y"}))
+	inputs := func(closed *atomic.Int64) []partInput {
+		var out []partInput
 		for i := range 2 {
 			f, err := os.Open(partFile(dir, i))
 			must(t, err)
 			info, _ := f.Stat()
-			out = append(out, seekparquet.PartSource{Name: fmt.Sprint(i), File: closer{f, closed}, Size: info.Size()})
+			out = append(out, partInput{name: fmt.Sprint(i), file: closer{f, closed}, size: info.Size()})
 		}
 		return out
 	}
 	var closed atomic.Int64
-	var groups []string
-	r, err := seekparquet.OpenParts(ctx, sources(&closed), seekparquet.PartsOptions{
-		CheckFooter: func(part string, footer *parquet.File) error {
-			if _, ok := footer.Lookup(seekparquettest.StampSchemaID); !ok {
-				return errors.New("no schema id")
-			}
-			return nil
-		},
-		CheckGroup: func(part string, _ *parquet.File, physical int, _ *format.RowGroup) error {
-			groups = append(groups, fmt.Sprintf("%s/%d", part, physical))
-			return nil
-		},
-	})
+	r, err := openParts(ctx, inputs(&closed), unique, Options{})
 	must(t, err)
-	if fmt.Sprint(groups) != "[0/0 0/1 1/0]" || r.RowGroups() != 3 || r.Rows() != 5 {
-		t.Fatalf("groups %v", groups)
+	if len(r.groups) != 3 || r.rows != 5 || r.bounded {
+		t.Fatalf("%d groups, %d rows, bounded %v", len(r.groups), r.rows, r.bounded)
 	}
-	rows, err := r.Range(ctx, seekparquet.Range{Start: []byte("b"), Limit: 10}, nil)
+	rows, err := r.readRange(ctx, Range{Start: []byte("b"), Limit: 10}, nil)
 	if err != nil || fmt.Sprint(keysOf(rows)) != "[b c x y]" {
 		t.Fatalf("%q, %v", keysOf(rows), err)
 	}
-	must(t, r.Close())
+	must(t, r.close())
 	if closed.Load() != 2 {
-		t.Fatalf("Close closed %d files", closed.Load())
+		t.Fatalf("close closed %d files", closed.Load())
 	}
 	closed.Store(0)
-	hookErr := errors.New("refused by the caller")
-	_, err = seekparquet.OpenParts(ctx, sources(&closed), seekparquet.PartsOptions{
-		CheckGroup: func(part string, _ *parquet.File, physical int, _ *format.RowGroup) error {
-			if part == "1" {
-				return hookErr
-			}
-			return nil
-		},
-	})
-	if err != hookErr || closed.Load() != 2 {
-		t.Fatalf("failed open: %v, closed %d of 2", err, closed.Load())
-	}
-	// Bounds given for a part are checked.
-	srcs := sources(&closed)
-	srcs[0].MinKey, srcs[0].MaxKey = []byte("a"), []byte("d")
-	if _, err := seekparquet.OpenParts(ctx, srcs, seekparquet.PartsOptions{Options: seekparquet.Options{VerifyOnOpen: true}}); seekparquet.CodeOf(err) != seekparquet.CodeBoundsMismatch {
-		t.Fatalf("bounds: %v", err)
+	failing := inputs(&closed)
+	failing[0].minKey, failing[0].maxKey = []byte("a"), []byte("d")
+	if _, err := openParts(ctx, failing, unique, Options{VerifyOnOpen: true}); CodeOf(err) != CodeBoundsMismatch || closed.Load() != 2 {
+		t.Fatalf("bounds: %v, closed %d of 2", err, closed.Load())
 	}
 }
 
