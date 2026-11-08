@@ -5,7 +5,7 @@ description: non-utf8-keys with the key annotated STRING: two keys (each mid-pag
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/non-utf8-keys
-expected refusal: invalid_key, detected at the latest on read (KEY-6, CHECK-2)
+fault (generators/faults.json): invalid-key-utf8: invalid_key; reader detects on read; lowest validation level profile (KEY-6, CHECK-2); location: data/part-00000.parquet: footer
 changes:
   - data/part-00000.parquet: footer: schema element key: converted_type UTF8 and logicalType STRING added
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 1338 -> 1344

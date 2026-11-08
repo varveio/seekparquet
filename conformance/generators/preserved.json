@@ -1,0 +1,4 @@
+{
+  "description": "Preserved regression fixtures: checked-in datasets that no generator produces and that regenerate.py must never delete, overwrite or regenerate (for example a minimized reproducer of a real bug, or bytes from a writer version no longer pinned). Each entry records the dataset as admitted: its directory, validity, description, provenance, fault id when invalid (declared in faults.json), and every file with its SHA-256; regenerate.py verifies the bytes on disk against these records and copies the entry into fixtures.lock.json. Admission follows the fixture policy in conformance/README.md.",
+  "datasets": []
+}

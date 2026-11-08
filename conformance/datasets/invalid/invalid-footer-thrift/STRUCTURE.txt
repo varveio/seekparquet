@@ -5,7 +5,7 @@ description: The footer bytes are overwritten with 0xFF (same length).
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_footer, detected at the latest on open (CHECK-1)
+fault (generators/faults.json): invalid-footer-thrift: invalid_footer; reader detects on open; lowest validation level structural (CHECK-1); location: data/part-00000.parquet: FileMetaData bytes replaced by 0xFF; size unchanged; data pages untouched
 changes:
   - data/part-00000.parquet: FileMetaData bytes replaced by 0xFF; size unchanged; data pages untouched
 

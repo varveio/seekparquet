@@ -1,0 +1,1545 @@
+{
+  "description": "Authored declaration of every invalid fixture's fault: the fault id (the dataset name), when a reader must detect it (open, read, or only by validation), the lowest validation level that detects it, the refusal codes of the fault itself, the requirements it breaks, any unavoidable secondary fault with its justification (its code is also accepted), and where the fault is. Reviewed by hand; make_cases.py and regenerate.py read it and never infer levels from codes.",
+  "faults": [
+    {
+      "id": "key-order-within-page",
+      "dataset": "datasets/invalid/key-order-within-page",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "key_order"
+      ],
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "location": "key column data pages (rows written in this order by pyarrow)"
+    },
+    {
+      "id": "key-order-duplicate",
+      "dataset": "datasets/invalid/key-order-duplicate",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "key_order"
+      ],
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "location": "key column data pages (rows written in this order by pyarrow)"
+    },
+    {
+      "id": "key-order-across-pages",
+      "dataset": "datasets/invalid/key-order-across-pages",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "key_order"
+      ],
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "location": "key column data pages (rows written in this order by pyarrow)"
+    },
+    {
+      "id": "key-order-across-row-groups",
+      "dataset": "datasets/invalid/key-order-across-row-groups",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "key_order"
+      ],
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "location": "key column data pages (rows written in this order by pyarrow)"
+    },
+    {
+      "id": "key-order-duplicate-across-row-groups",
+      "dataset": "datasets/invalid/key-order-duplicate-across-row-groups",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "key_order"
+      ],
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "location": "key column data pages (rows written in this order by pyarrow)"
+    },
+    {
+      "id": "invalid-key-empty",
+      "dataset": "datasets/invalid/invalid-key-empty",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "invalid_key"
+      ],
+      "requirements": [
+        "KEY-2",
+        "CHECK-2"
+      ],
+      "secondary_faults": [
+        {
+          "code": "bounds_mismatch",
+          "justification": "A manifest cannot express an empty min key (base64 minLength 4), so it names the second key; a reader that compares first keys on open may report bounds_mismatch."
+        }
+      ],
+      "location": "key column data pages (rows written in this order by pyarrow)"
+    },
+    {
+      "id": "missing-column-index-native",
+      "dataset": "datasets/invalid/missing-column-index-native",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "missing_page_index"
+      ],
+      "requirements": [
+        "RG-2",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "row group 1 key column chunk: no ColumnIndex (pyarrow omits it for a 5002-byte value)"
+    },
+    {
+      "id": "inconsistent-column-type",
+      "dataset": "datasets/invalid/inconsistent-column-type",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "inconsistent_column"
+      ],
+      "requirements": [
+        "COL-5",
+        "CHECK-1"
+      ],
+      "read_columns": [
+        "size"
+      ],
+      "location": "footer schema of part 1 versus part 0",
+      "note": "COL-5 requires the check no later than the first request that projects the column, so the read case projects size; structural validation checks all columns."
+    },
+    {
+      "id": "inconsistent-column-width",
+      "dataset": "datasets/invalid/inconsistent-column-width",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "inconsistent_column"
+      ],
+      "requirements": [
+        "COL-5",
+        "CHECK-1"
+      ],
+      "read_columns": [
+        "h"
+      ],
+      "location": "footer schema of part 1 versus part 0"
+    },
+    {
+      "id": "inconsistent-column-repetition",
+      "dataset": "datasets/invalid/inconsistent-column-repetition",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "inconsistent_column"
+      ],
+      "requirements": [
+        "COL-5",
+        "CHECK-1"
+      ],
+      "read_columns": [
+        "size"
+      ],
+      "location": "footer schema of part 1 versus part 0"
+    },
+    {
+      "id": "key-order-across-parts",
+      "dataset": "datasets/invalid/key-order-across-parts",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "key_order"
+      ],
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "PART-3"
+      ],
+      "secondary_faults": [
+        {
+          "code": "bounds_mismatch",
+          "justification": "The fault is hidden by declaring part 0's max key below its actual last key, so the manifest bounds also differ from the decoded keys."
+        }
+      ],
+      "location": "key column data pages (rows written in this order by pyarrow)"
+    },
+    {
+      "id": "stamp-missing",
+      "dataset": "datasets/invalid/stamp-missing",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "location": "footer key-value metadata of the part"
+    },
+    {
+      "id": "stamp-wrong-schema-id",
+      "dataset": "datasets/invalid/stamp-wrong-schema-id",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "location": "footer key-value metadata of the part"
+    },
+    {
+      "id": "stamp-wrong-revision",
+      "dataset": "datasets/invalid/stamp-wrong-revision",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "location": "footer key-value metadata of the part"
+    },
+    {
+      "id": "stamp-noncanonical-revision",
+      "dataset": "datasets/invalid/stamp-noncanonical-revision",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "location": "footer key-value metadata of the part"
+    },
+    {
+      "id": "stamp-missing-revision",
+      "dataset": "datasets/invalid/stamp-missing-revision",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "location": "footer key-value metadata of the part"
+    },
+    {
+      "id": "key-nullable",
+      "dataset": "datasets/invalid/key-nullable",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_key_column"
+      ],
+      "requirements": [
+        "KEY-1",
+        "CHECK-1"
+      ],
+      "location": "footer schema: the key column"
+    },
+    {
+      "id": "key-int64",
+      "dataset": "datasets/invalid/key-int64",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_key_column"
+      ],
+      "requirements": [
+        "KEY-1",
+        "CHECK-1"
+      ],
+      "location": "footer schema: the key column"
+    },
+    {
+      "id": "key-missing",
+      "dataset": "datasets/invalid/key-missing",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_key_column"
+      ],
+      "requirements": [
+        "KEY-1",
+        "CHECK-1"
+      ],
+      "location": "footer schema: the key column"
+    },
+    {
+      "id": "key-nested",
+      "dataset": "datasets/invalid/key-nested",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_key_column"
+      ],
+      "requirements": [
+        "KEY-1",
+        "CHECK-1"
+      ],
+      "location": "footer schema: the key column"
+    },
+    {
+      "id": "sorting-columns-missing",
+      "dataset": "datasets/invalid/sorting-columns-missing",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "missing_sorting_columns"
+      ],
+      "requirements": [
+        "RG-1",
+        "CHECK-1"
+      ],
+      "location": "footer row_groups[*].sorting_columns"
+    },
+    {
+      "id": "sorting-columns-descending",
+      "dataset": "datasets/invalid/sorting-columns-descending",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "missing_sorting_columns"
+      ],
+      "requirements": [
+        "RG-1",
+        "CHECK-1"
+      ],
+      "location": "footer row_groups[*].sorting_columns"
+    },
+    {
+      "id": "sorting-columns-other-first",
+      "dataset": "datasets/invalid/sorting-columns-other-first",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "missing_sorting_columns"
+      ],
+      "requirements": [
+        "RG-1",
+        "CHECK-1"
+      ],
+      "location": "footer row_groups[*].sorting_columns"
+    },
+    {
+      "id": "unsupported-version-draft-2",
+      "dataset": "datasets/invalid/unsupported-version-draft-2",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_version"
+      ],
+      "requirements": [
+        "MAN-4",
+        "MAN-5",
+        "VER-1"
+      ],
+      "location": "manifest.json version members (footer stamps agree)"
+    },
+    {
+      "id": "unsupported-version-1",
+      "dataset": "datasets/invalid/unsupported-version-1",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_version"
+      ],
+      "requirements": [
+        "MAN-4",
+        "MAN-5",
+        "VER-1"
+      ],
+      "location": "manifest.json version members (footer stamps agree)"
+    },
+    {
+      "id": "no-manifest",
+      "dataset": "datasets/invalid/no-manifest",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "no_manifest"
+      ],
+      "requirements": [
+        "LAYOUT-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-not-json",
+      "dataset": "datasets/invalid/manifest-not-json",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-bom",
+      "dataset": "datasets/invalid/manifest-bom",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-not-object",
+      "dataset": "datasets/invalid/manifest-not-object",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-duplicate-member",
+      "dataset": "datasets/invalid/manifest-duplicate-member",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-duplicate-part-member",
+      "dataset": "datasets/invalid/manifest-duplicate-part-member",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-unknown-member",
+      "dataset": "datasets/invalid/manifest-unknown-member",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-unknown-part-member",
+      "dataset": "datasets/invalid/manifest-unknown-part-member",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-extension-not-object",
+      "dataset": "datasets/invalid/manifest-extension-not-object",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-missing-schema-id",
+      "dataset": "datasets/invalid/manifest-missing-schema-id",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-missing-parts",
+      "dataset": "datasets/invalid/manifest-missing-parts",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-rows-string",
+      "dataset": "datasets/invalid/manifest-rows-string",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-wrong-format",
+      "dataset": "datasets/invalid/manifest-wrong-format",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-4",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-draft-without-revision",
+      "dataset": "datasets/invalid/manifest-draft-without-revision",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-3",
+        "MAN-4",
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-bad-base64",
+      "dataset": "datasets/invalid/manifest-bad-base64",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-base64-unpadded",
+      "dataset": "datasets/invalid/manifest-base64-unpadded",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-base64-url-alphabet",
+      "dataset": "datasets/invalid/manifest-base64-url-alphabet",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-path-escape",
+      "dataset": "datasets/invalid/manifest-path-escape",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-path-absolute",
+      "dataset": "datasets/invalid/manifest-path-absolute",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-path-dot-segment",
+      "dataset": "datasets/invalid/manifest-path-dot-segment",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-path-empty-segment",
+      "dataset": "datasets/invalid/manifest-path-empty-segment",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-path-backslash",
+      "dataset": "datasets/invalid/manifest-path-backslash",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-path-duplicate",
+      "dataset": "datasets/invalid/manifest-path-duplicate",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-rows-zero",
+      "dataset": "datasets/invalid/manifest-rows-zero",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-2",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-rows-fraction",
+      "dataset": "datasets/invalid/manifest-rows-fraction",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-6",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-rows-exponent",
+      "dataset": "datasets/invalid/manifest-rows-exponent",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-6",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-bytes-too-large",
+      "dataset": "datasets/invalid/manifest-bytes-too-large",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-6",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-format-version-fraction",
+      "dataset": "datasets/invalid/manifest-format-version-fraction",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-base64-noncanonical",
+      "dataset": "datasets/invalid/manifest-base64-noncanonical",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-path-control-character",
+      "dataset": "datasets/invalid/manifest-path-control-character",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-extensions-duplicate-member",
+      "dataset": "datasets/invalid/manifest-extensions-duplicate-member",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-duplicate-member-escaped",
+      "dataset": "datasets/invalid/manifest-duplicate-member-escaped",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-unpaired-surrogate",
+      "dataset": "datasets/invalid/manifest-unpaired-surrogate",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-draft-revision-zero",
+      "dataset": "datasets/invalid/manifest-draft-revision-zero",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-format-1-with-draft-revision",
+      "dataset": "datasets/invalid/manifest-format-1-with-draft-revision",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-format-version-overflow",
+      "dataset": "datasets/invalid/manifest-format-version-overflow",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "manifest-format-version-negative",
+      "dataset": "datasets/invalid/manifest-format-version-negative",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "unsupported-version-2",
+      "dataset": "datasets/invalid/unsupported-version-2",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_version"
+      ],
+      "requirements": [
+        "MAN-4",
+        "MAN-7",
+        "VER-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "unsupported-version-2-unknown-member",
+      "dataset": "datasets/invalid/unsupported-version-2-unknown-member",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_version"
+      ],
+      "requirements": [
+        "MAN-7",
+        "VER-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "missing-part",
+      "dataset": "datasets/invalid/missing-part",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "missing_part"
+      ],
+      "requirements": [
+        "LAYOUT-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "part-size-larger",
+      "dataset": "datasets/invalid/part-size-larger",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "part_mismatch"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "part-size-smaller",
+      "dataset": "datasets/invalid/part-size-smaller",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "part_mismatch"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "part-rows-mismatch",
+      "dataset": "datasets/invalid/part-rows-mismatch",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "part_mismatch"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "bounds-min-above-max",
+      "dataset": "datasets/invalid/bounds-min-above-max",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-4",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "bounds-overlap",
+      "dataset": "datasets/invalid/bounds-overlap",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-4",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "bounds-parts-out-of-order",
+      "dataset": "datasets/invalid/bounds-parts-out-of-order",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-4",
+        "CHECK-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "bounds-first-key-differs",
+      "dataset": "datasets/invalid/bounds-first-key-differs",
+      "reader_detect": "validate",
+      "validation_level": "profile",
+      "codes": [
+        "bounds_mismatch"
+      ],
+      "requirements": [
+        "PART-3",
+        "VAL-1"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "bounds-last-key-differs",
+      "dataset": "datasets/invalid/bounds-last-key-differs",
+      "reader_detect": "validate",
+      "validation_level": "profile",
+      "codes": [
+        "bounds_mismatch"
+      ],
+      "requirements": [
+        "PART-3"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "digest-mismatch",
+      "dataset": "datasets/invalid/digest-mismatch",
+      "reader_detect": "validate",
+      "validation_level": "digest",
+      "codes": [
+        "digest_mismatch"
+      ],
+      "requirements": [
+        "PART-5"
+      ],
+      "location": "manifest.json"
+    },
+    {
+      "id": "invalid-footer-magic",
+      "dataset": "datasets/invalid/invalid-footer-magic",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: trailing magic PAR1 -> PAR0; size unchanged; data pages untouched"
+    },
+    {
+      "id": "invalid-footer-length",
+      "dataset": "datasets/invalid/invalid-footer-length",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: footer length field -> file size + 10; size unchanged; data pages untouched"
+    },
+    {
+      "id": "invalid-footer-thrift",
+      "dataset": "datasets/invalid/invalid-footer-thrift",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: FileMetaData bytes replaced by 0xFF; size unchanged; data pages untouched"
+    },
+    {
+      "id": "invalid-footer-row-count",
+      "dataset": "datasets/invalid/invalid-footer-row-count",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: footer"
+    },
+    {
+      "id": "invalid-footer-file-path",
+      "dataset": "datasets/invalid/invalid-footer-file-path",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "FILE-1",
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: footer"
+    },
+    {
+      "id": "stamp-duplicate",
+      "dataset": "datasets/invalid/stamp-duplicate",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-2",
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: footer"
+    },
+    {
+      "id": "key-annotation-json",
+      "dataset": "datasets/invalid/key-annotation-json",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_key_column"
+      ],
+      "requirements": [
+        "KEY-1",
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: footer"
+    },
+    {
+      "id": "column-orders-missing",
+      "dataset": "datasets/invalid/column-orders-missing",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_key_column"
+      ],
+      "requirements": [
+        "KEY-5",
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: footer"
+    },
+    {
+      "id": "column-orders-short",
+      "dataset": "datasets/invalid/column-orders-short",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_key_column"
+      ],
+      "requirements": [
+        "KEY-5",
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: footer"
+    },
+    {
+      "id": "column-orders-long",
+      "dataset": "datasets/invalid/column-orders-long",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_key_column"
+      ],
+      "requirements": [
+        "KEY-5",
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: footer"
+    },
+    {
+      "id": "invalid-parquet-dictionary",
+      "dataset": "datasets/invalid/invalid-parquet-dictionary",
+      "reader_detect": "read",
+      "validation_level": "full",
+      "codes": [
+        "invalid_parquet"
+      ],
+      "requirements": [
+        "CHECK-5",
+        "VAL-1"
+      ],
+      "read_columns": [
+        "s"
+      ],
+      "location": "data/part-00000.parquet: row group 0 column 3"
+    },
+    {
+      "id": "invalid-parquet-value-count",
+      "dataset": "datasets/invalid/invalid-parquet-value-count",
+      "reader_detect": "validate",
+      "validation_level": "full",
+      "codes": [
+        "invalid_parquet"
+      ],
+      "requirements": [
+        "CHECK-5",
+        "VAL-1"
+      ],
+      "read_columns": [
+        "size"
+      ],
+      "location": "data/part-00000.parquet: row group 0 column 1",
+      "note": "No read case: a reader may decode only the values it needs from a value page, and CHECK-2's exact row count applies to key pages; full validation must find it."
+    },
+    {
+      "id": "invalid-key-utf8",
+      "dataset": "datasets/invalid/invalid-key-utf8",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "invalid_key"
+      ],
+      "requirements": [
+        "KEY-6",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: footer"
+    },
+    {
+      "id": "invalid-parquet-page",
+      "dataset": "datasets/invalid/invalid-parquet-page",
+      "reader_detect": "read",
+      "validation_level": "full",
+      "codes": [
+        "invalid_parquet"
+      ],
+      "requirements": [
+        "CHECK-5",
+        "VAL-1"
+      ],
+      "read_columns": [
+        "size"
+      ],
+      "location": "shards/c.parquet: row group 1 column 1"
+    },
+    {
+      "id": "sorting-columns-missing-second-row-group",
+      "dataset": "datasets/invalid/sorting-columns-missing-second-row-group",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "missing_sorting_columns"
+      ],
+      "requirements": [
+        "RG-1",
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: footer"
+    },
+    {
+      "id": "missing-column-index",
+      "dataset": "datasets/invalid/missing-column-index",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "missing_page_index"
+      ],
+      "requirements": [
+        "RG-2",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 1 key chunk"
+    },
+    {
+      "id": "missing-offset-index",
+      "dataset": "datasets/invalid/missing-offset-index",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "missing_page_index"
+      ],
+      "requirements": [
+        "RG-2",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 1 key chunk"
+    },
+    {
+      "id": "page-index-null-page",
+      "dataset": "datasets/invalid/page-index-null-page",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-4",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 1 key ColumnIndex"
+    },
+    {
+      "id": "page-index-count-mismatch",
+      "dataset": "datasets/invalid/page-index-count-mismatch",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-4",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 0 key ColumnIndex"
+    },
+    {
+      "id": "page-index-first-row-nonzero",
+      "dataset": "datasets/invalid/page-index-first-row-nonzero",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 1 key OffsetIndex"
+    },
+    {
+      "id": "page-index-first-row-not-increasing",
+      "dataset": "datasets/invalid/page-index-first-row-not-increasing",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 0 key OffsetIndex"
+    },
+    {
+      "id": "page-index-first-row-out-of-range",
+      "dataset": "datasets/invalid/page-index-first-row-out-of-range",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 1 key OffsetIndex"
+    },
+    {
+      "id": "page-index-location-outside-file",
+      "dataset": "datasets/invalid/page-index-location-outside-file",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 1 key OffsetIndex"
+    },
+    {
+      "id": "page-index-rows-mismatch",
+      "dataset": "datasets/invalid/page-index-rows-mismatch",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 0 key OffsetIndex"
+    },
+    {
+      "id": "page-index-list-length-mismatch",
+      "dataset": "datasets/invalid/page-index-list-length-mismatch",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-4",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 1 key ColumnIndex"
+    },
+    {
+      "id": "page-index-location-mismatch",
+      "dataset": "datasets/invalid/page-index-location-mismatch",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 0 key OffsetIndex"
+    },
+    {
+      "id": "page-index-empty",
+      "dataset": "datasets/invalid/page-index-empty",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-3",
+        "RG-4",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 0 key ColumnIndex and OffsetIndex"
+    },
+    {
+      "id": "page-index-bound-not-utf8",
+      "dataset": "datasets/invalid/page-index-bound-not-utf8",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "KEY-6",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 0 key ColumnIndex"
+    },
+    {
+      "id": "page-index-min-above-first-key",
+      "dataset": "datasets/invalid/page-index-min-above-first-key",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-5",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 1 key ColumnIndex"
+    },
+    {
+      "id": "page-index-max-below-last-key",
+      "dataset": "datasets/invalid/page-index-max-below-last-key",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-5",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00000.parquet: row group 1 key ColumnIndex"
+    },
+    {
+      "id": "page-index-shortened-ff-max",
+      "dataset": "datasets/invalid/page-index-shortened-ff-max",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-5",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "location": "data/part-00001.parquet: row group 1 key ColumnIndex"
+    },
+    {
+      "id": "digest-on-profile-invalid",
+      "dataset": "datasets/invalid/digest-on-profile-invalid",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "key_order"
+      ],
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "location": "key column data pages; the manifest declares a correct sha256",
+      "note": "Used by the digest cases: digest validation is independent of the profile fault (VAL-2), so it completes."
+    }
+  ]
+}

@@ -5,7 +5,7 @@ description: A part declares rows 0.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (PART-2, CHECK-1)
+fault (generators/faults.json): manifest-rows-zero: invalid_manifest; reader detects on open; lowest validation level structural (PART-2, CHECK-1); location: manifest.json
 changes:
   - manifest: parts.0.rows 12 -> 0
 

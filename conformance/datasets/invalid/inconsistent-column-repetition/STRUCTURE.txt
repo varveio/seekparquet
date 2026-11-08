@@ -5,7 +5,7 @@ description: Column size is REQUIRED in part 0 and OPTIONAL in part 1.
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/inconsistent-column-repetition.json
-expected refusal: inconsistent_column, detected at the latest on read (COL-5, CHECK-1)
+fault (generators/faults.json): inconsistent-column-repetition: inconsistent_column; reader detects on read; lowest validation level structural (COL-5, CHECK-1); location: footer schema of part 1 versus part 0
 
 manifest: format_version 0, 2 parts
   part 0: 'data/part-00000.parquet', rows 4, bytes 1177, keys 'k00' .. 'k03'

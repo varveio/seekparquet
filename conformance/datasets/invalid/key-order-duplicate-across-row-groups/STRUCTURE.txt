@@ -5,7 +5,7 @@ description: The last key of row group 0 equals the first key of row group 1.
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/key-order-duplicate-across-row-groups.json
-expected refusal: key_order, detected at the latest on read (KEY-3, CHECK-2)
+fault (generators/faults.json): key-order-duplicate-across-row-groups: key_order; reader detects on read; lowest validation level profile (KEY-3, CHECK-2); location: key column data pages (rows written in this order by pyarrow)
 
 manifest: format_version 0, 1 parts
   part 0: 'data/part-00000.parquet', rows 12, bytes 1845, keys 'k00' .. 'k11'

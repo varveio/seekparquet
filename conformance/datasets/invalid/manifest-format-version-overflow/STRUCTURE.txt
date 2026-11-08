@@ -5,7 +5,7 @@ description: format_version is 2^63, beyond the integer range of MAN-6 (it must 
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-6, MAN-7, CHECK-1)
+fault (generators/faults.json): manifest-format-version-overflow: invalid_manifest; reader detects on open; lowest validation level structural (MAN-6, MAN-7, CHECK-1); location: manifest.json
 changes:
   - manifest: draft_revision removed
   - manifest: format_version 0 -> 9223372036854775808

@@ -5,7 +5,7 @@ description: Part 2's sha256 is wrong (all zeros).
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/multipart
-expected refusal: digest_mismatch, detected at the latest on validate:digest (PART-5)
+fault (generators/faults.json): digest-mismatch: digest_mismatch; reader detects on validate; lowest validation level digest (PART-5); location: manifest.json
 changes:
   - manifest: parts.2.sha256 "0d19daf03675f432b94f0a111bec6ae2bc6a9ba33a3a47b9e5c97dcd0f14bb4f" -> "0000000000000000000000000000000000000000000000000000000000000000"
 

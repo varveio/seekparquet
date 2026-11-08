@@ -1,10 +1,12 @@
 {
   "group": "requests",
   "target": "reader",
-  "description": "Malformed requests are invalid requests, not empty results (QUERY-1). raw_request is sent as is, plus id and dataset.",
+  "generated": false,
+  "description": "Malformed requests are invalid requests, not empty results (QUERY-1). raw_request is sent as is, plus id and dataset. Core examples: hand-reviewed; their expectations are authoritative.",
   "cases": [
     {
       "id": "requests/basic/range-limit-0",
+      "description": "limit 0 is an invalid request, not an empty result (QUERY-1).",
       "requirements": [
         "QUERY-1"
       ],
@@ -19,6 +21,7 @@
     },
     {
       "id": "requests/basic/range-limit-negative",
+      "description": "A negative limit is an invalid request.",
       "requirements": [
         "QUERY-1"
       ],
@@ -33,6 +36,7 @@
     },
     {
       "id": "requests/basic/range-limit-fraction",
+      "description": "limit 1.5 is not an integer: invalid request (it must not be truncated to 1).",
       "requirements": [
         "QUERY-1"
       ],
@@ -47,6 +51,7 @@
     },
     {
       "id": "requests/basic/range-limit-string",
+      "description": "limit \"10\" is a string: invalid request.",
       "requirements": [
         "QUERY-1"
       ],
@@ -60,20 +65,8 @@
       }
     },
     {
-      "id": "requests/basic/range-limit-missing",
-      "requirements": [
-        "QUERY-1"
-      ],
-      "dataset": "datasets/basic",
-      "raw_request": {
-        "op": "range"
-      },
-      "expect": {
-        "status": "invalid_request"
-      }
-    },
-    {
       "id": "requests/basic/range-limit-boolean",
+      "description": "limit true is a boolean, not an integer: invalid request.",
       "requirements": [
         "QUERY-1"
       ],
@@ -88,6 +81,7 @@
     },
     {
       "id": "requests/basic/range-start-malformed-base64",
+      "description": "start_base64 YQ lacks padding: invalid request.",
       "requirements": [
         "QUERY-1"
       ],
@@ -102,22 +96,8 @@
       }
     },
     {
-      "id": "requests/basic/range-start-bad-alphabet",
-      "requirements": [
-        "QUERY-1"
-      ],
-      "dataset": "datasets/basic",
-      "raw_request": {
-        "op": "range",
-        "start_base64": "Y!==",
-        "limit": 10
-      },
-      "expect": {
-        "status": "invalid_request"
-      }
-    },
-    {
       "id": "requests/basic/range-end-noncanonical-base64",
+      "description": "end_base64 YR== decodes but has non-zero unused bits: not canonical, invalid request.",
       "requirements": [
         "QUERY-1"
       ],
@@ -132,52 +112,8 @@
       }
     },
     {
-      "id": "requests/basic/range-prefix-malformed-base64",
-      "requirements": [
-        "QUERY-1"
-      ],
-      "dataset": "datasets/basic",
-      "raw_request": {
-        "op": "range",
-        "prefix_base64": "YS8",
-        "limit": 10
-      },
-      "expect": {
-        "status": "invalid_request"
-      }
-    },
-    {
-      "id": "requests/basic/list-limit-0",
-      "requirements": [
-        "QUERY-1"
-      ],
-      "dataset": "datasets/basic",
-      "raw_request": {
-        "op": "list",
-        "delimiter_base64": "Lw==",
-        "limit": 0
-      },
-      "expect": {
-        "status": "invalid_request"
-      }
-    },
-    {
-      "id": "requests/basic/list-limit-fraction",
-      "requirements": [
-        "QUERY-1"
-      ],
-      "dataset": "datasets/basic",
-      "raw_request": {
-        "op": "list",
-        "delimiter_base64": "Lw==",
-        "limit": 2.5
-      },
-      "expect": {
-        "status": "invalid_request"
-      }
-    },
-    {
       "id": "requests/basic/list-delimiter-two-bytes",
+      "description": "A two-byte delimiter is an invalid request (QUERY-1), not a substring search.",
       "requirements": [
         "QUERY-1"
       ],
@@ -193,6 +129,7 @@
     },
     {
       "id": "requests/basic/list-delimiter-empty",
+      "description": "An empty delimiter is an invalid request.",
       "requirements": [
         "QUERY-1"
       ],
@@ -207,54 +144,8 @@
       }
     },
     {
-      "id": "requests/basic/list-delimiter-missing",
-      "requirements": [
-        "QUERY-1"
-      ],
-      "dataset": "datasets/basic",
-      "raw_request": {
-        "op": "list",
-        "limit": 10
-      },
-      "expect": {
-        "status": "invalid_request"
-      }
-    },
-    {
-      "id": "requests/basic/list-prefix-malformed-base64",
-      "requirements": [
-        "QUERY-1"
-      ],
-      "dataset": "datasets/basic",
-      "raw_request": {
-        "op": "list",
-        "prefix_base64": "YS8",
-        "delimiter_base64": "Lw==",
-        "limit": 10
-      },
-      "expect": {
-        "status": "invalid_request"
-      }
-    },
-    {
-      "id": "requests/basic/list-after-malformed-base64",
-      "requirements": [
-        "QUERY-1"
-      ],
-      "dataset": "datasets/basic",
-      "raw_request": {
-        "op": "list",
-        "after_base64": "@@@@",
-        "delimiter_base64": "Lw==",
-        "limit": 10
-      },
-      "expect": {
-        "status": "invalid_request"
-      }
-    },
-    {
       "id": "requests/empty/range-limit-0",
-      "description": "invalid even when the dataset is empty",
+      "description": "limit 0 is invalid even on the empty dataset, where any valid request returns nothing.",
       "requirements": [
         "QUERY-1"
       ],

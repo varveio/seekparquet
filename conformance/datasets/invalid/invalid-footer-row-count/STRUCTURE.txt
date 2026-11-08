@@ -5,7 +5,7 @@ description: FileMetaData.num_rows is 13 while its row groups hold 12 rows; the 
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_footer, detected at the latest on open (CHECK-1)
+fault (generators/faults.json): invalid-footer-row-count: invalid_footer; reader detects on open; lowest validation level structural (CHECK-1); location: data/part-00000.parquet: footer
 changes:
   - data/part-00000.parquet: footer: FileMetaData.num_rows 12 -> 13 (row groups still sum to 12)
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2619

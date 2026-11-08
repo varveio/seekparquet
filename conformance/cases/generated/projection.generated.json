@@ -1,10 +1,24 @@
 {
   "group": "projection",
   "target": "reader",
+  "generated": true,
+  "generator": "generators/make_cases.py",
   "description": "Projection (RANGE-2, COL-2, COL-3, COL-6): physical values of every mandatory type, null versus absent, request order, nested columns.",
+  "families": {
+    "projection/column-type": "each scalar column of the projection dataset over every row",
+    "projection/column-combination": "several columns: request order, absent versus null, rows across parts",
+    "projection/absent-and-unknown": "columns that no part has (COL-7) and literal dotted names (COL-6)",
+    "projection/key-column": "projecting key returns its physical bytes",
+    "projection/annotated": "physical values of annotated columns (DATE, TIMESTAMP, DECIMAL, STRING)",
+    "projection/encodings": "values from PLAIN_DICTIONARY, DELTA_BINARY_PACKED and DELTA_LENGTH_BYTE_ARRAY pages",
+    "projection/optional-codec": "columns compressed with optional codecs: the values, or unsupported_encoding",
+    "projection/nested": "nested or repeated columns: unsupported_projection. COL-3 permits supporting them, but the runner protocol has no encoding for nested values, so the suite can only accept the rejection; it must never be answered as absent",
+    "projection/other-datasets": "projection on other datasets"
+  },
   "cases": [
     {
       "id": "projection/column/flag",
+      "family": "projection/column-type",
       "requirements": [
         "RANGE-2",
         "COL-3"
@@ -187,6 +201,7 @@
     },
     {
       "id": "projection/column/i32",
+      "family": "projection/column-type",
       "requirements": [
         "RANGE-2",
         "COL-3"
@@ -369,6 +384,7 @@
     },
     {
       "id": "projection/column/i64",
+      "family": "projection/column-type",
       "requirements": [
         "RANGE-2",
         "COL-3"
@@ -550,919 +566,8 @@
       }
     },
     {
-      "id": "projection/column/f32",
-      "requirements": [
-        "RANGE-2",
-        "COL-3"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "f32"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAw",
-            "values": [
-              {
-                "float32": "3fc00000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAx",
-            "values": [
-              {
-                "float32": "80000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAy",
-            "values": [
-              {
-                "float32": "7f800000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAz",
-            "values": [
-              {
-                "float32": "ff800000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA0",
-            "values": [
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA1",
-            "values": [
-              {
-                "float32": "7fc00001"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA2",
-            "values": [
-              {
-                "float32": "7f800001"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA3",
-            "values": [
-              {
-                "float32": "ffc00000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA4",
-            "values": [
-              {
-                "float32": "7f7fffff"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA5",
-            "values": [
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEw",
-            "values": [
-              {
-                "float32": "3fc00000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEx",
-            "values": [
-              {
-                "float32": "80000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEy",
-            "values": [
-              {
-                "float32": "7f800000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEz",
-            "values": [
-              {
-                "float32": "ff800000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE0",
-            "values": [
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE1",
-            "values": [
-              {
-                "float32": "7fc00001"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE2",
-            "values": [
-              {
-                "float32": "7f800001"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE3",
-            "values": [
-              {
-                "float32": "ffc00000"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": "projection/column/f64",
-      "requirements": [
-        "RANGE-2",
-        "COL-3",
-        "COL-2"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "f64"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAw",
-            "values": [
-              {
-                "float64": "3ff8000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAx",
-            "values": [
-              {
-                "float64": "8000000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAy",
-            "values": [
-              {
-                "float64": "7ff0000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAz",
-            "values": [
-              {
-                "float64": "7ff8000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA0",
-            "values": [
-              {
-                "float64": "7ff8000000000001"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA1",
-            "values": [
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA2",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA3",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA4",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA5",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEw",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEx",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEy",
-            "values": [
-              {
-                "float64": "7ff0000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEz",
-            "values": [
-              {
-                "float64": "7ff8000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE0",
-            "values": [
-              {
-                "float64": "7ff8000000000001"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE1",
-            "values": [
-              {
-                "float64": "7ff0000000000001"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE2",
-            "values": [
-              {
-                "float64": "fff8000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE3",
-            "values": [
-              {
-                "null": true
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": "projection/column/u32",
-      "requirements": [
-        "RANGE-2",
-        "COL-3"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "u32"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAw",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAx",
-            "values": [
-              {
-                "int": "1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAy",
-            "values": [
-              {
-                "int": "-2147483648"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAz",
-            "values": [
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA0",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA1",
-            "values": [
-              {
-                "int": "1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA2",
-            "values": [
-              {
-                "int": "-2147483648"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA3",
-            "values": [
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA4",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA5",
-            "values": [
-              {
-                "int": "1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEw",
-            "values": [
-              {
-                "int": "-2147483648"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEx",
-            "values": [
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEy",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEz",
-            "values": [
-              {
-                "int": "1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE0",
-            "values": [
-              {
-                "int": "-2147483648"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE1",
-            "values": [
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE2",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE3",
-            "values": [
-              {
-                "int": "1"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": "projection/column/u64",
-      "requirements": [
-        "RANGE-2",
-        "COL-3"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "u64"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAw",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAx",
-            "values": [
-              {
-                "int": "1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAy",
-            "values": [
-              {
-                "int": "-9223372036854775808"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAz",
-            "values": [
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA0",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA1",
-            "values": [
-              {
-                "int": "1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA2",
-            "values": [
-              {
-                "int": "-9223372036854775808"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA3",
-            "values": [
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA4",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA5",
-            "values": [
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEw",
-            "values": [
-              {
-                "int": "-9223372036854775808"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEx",
-            "values": [
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEy",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEz",
-            "values": [
-              {
-                "int": "1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE0",
-            "values": [
-              {
-                "int": "-9223372036854775808"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE1",
-            "values": [
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE2",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE3",
-            "values": [
-              {
-                "int": "1"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": "projection/column/a.b",
-      "requirements": [
-        "RANGE-2",
-        "COL-3",
-        "COL-6"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "a.b"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAw",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAx",
-            "values": [
-              {
-                "int": "3"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAy",
-            "values": [
-              {
-                "int": "6"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAz",
-            "values": [
-              {
-                "int": "9"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA0",
-            "values": [
-              {
-                "int": "12"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA1",
-            "values": [
-              {
-                "int": "15"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA2",
-            "values": [
-              {
-                "int": "18"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA3",
-            "values": [
-              {
-                "int": "21"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA4",
-            "values": [
-              {
-                "int": "24"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA5",
-            "values": [
-              {
-                "int": "27"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEw",
-            "values": [
-              {
-                "int": "30"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEx",
-            "values": [
-              {
-                "int": "33"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEy",
-            "values": [
-              {
-                "int": "36"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEz",
-            "values": [
-              {
-                "int": "39"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE0",
-            "values": [
-              {
-                "int": "42"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE1",
-            "values": [
-              {
-                "int": "45"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE2",
-            "values": [
-              {
-                "int": "48"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE3",
-            "values": [
-              {
-                "int": "51"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "projection/column/name",
+      "family": "projection/column-type",
       "requirements": [
         "RANGE-2",
         "COL-3"
@@ -1645,6 +750,7 @@
     },
     {
       "id": "projection/column/blob",
+      "family": "projection/column-type",
       "requirements": [
         "RANGE-2",
         "COL-3"
@@ -1826,189 +932,8 @@
       }
     },
     {
-      "id": "projection/column/fx",
-      "requirements": [
-        "RANGE-2",
-        "COL-3"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "fx"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAw",
-            "values": [
-              {
-                "bytes_base64": "AAD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAx",
-            "values": [
-              {
-                "bytes_base64": "AQD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAy",
-            "values": [
-              {
-                "bytes_base64": "AgD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAz",
-            "values": [
-              {
-                "bytes_base64": "AwD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA0",
-            "values": [
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA1",
-            "values": [
-              {
-                "bytes_base64": "BQD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA2",
-            "values": [
-              {
-                "bytes_base64": "BgD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA3",
-            "values": [
-              {
-                "bytes_base64": "BwD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA4",
-            "values": [
-              {
-                "bytes_base64": "CAD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA5",
-            "values": [
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEw",
-            "values": [
-              {
-                "bytes_base64": "CgD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEx",
-            "values": [
-              {
-                "bytes_base64": "CwD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEy",
-            "values": [
-              {
-                "bytes_base64": "DAD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEz",
-            "values": [
-              {
-                "bytes_base64": "DQD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE0",
-            "values": [
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE1",
-            "values": [
-              {
-                "bytes_base64": "DwD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE2",
-            "values": [
-              {
-                "bytes_base64": "EAD/fw=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE3",
-            "values": [
-              {
-                "bytes_base64": "EQD/fw=="
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "projection/column/req",
+      "family": "projection/column-type",
       "requirements": [
         "RANGE-2",
         "COL-3",
@@ -2192,6 +1117,7 @@
     },
     {
       "id": "projection/column/extra",
+      "family": "projection/column-type",
       "requirements": [
         "RANGE-2",
         "COL-3",
@@ -2375,6 +1301,7 @@
     },
     {
       "id": "projection/columns/all",
+      "family": "projection/column-combination",
       "requirements": [
         "RANGE-2",
         "COL-2",
@@ -3218,6 +2145,7 @@
     },
     {
       "id": "projection/columns/reversed",
+      "family": "projection/column-combination",
       "requirements": [
         "RANGE-2",
         "COL-2",
@@ -4060,300 +2988,8 @@
       }
     },
     {
-      "id": "projection/columns/absent-mix",
-      "requirements": [
-        "RANGE-2",
-        "COL-2",
-        "COL-3"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "extra",
-          "req",
-          "f64"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAw",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "int": "1000"
-              },
-              {
-                "float64": "3ff8000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAx",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "int": "999"
-              },
-              {
-                "float64": "8000000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAy",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "int": "998"
-              },
-              {
-                "float64": "7ff0000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAz",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "int": "997"
-              },
-              {
-                "float64": "7ff8000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA0",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "int": "996"
-              },
-              {
-                "float64": "7ff8000000000001"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA1",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "int": "995"
-              },
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA2",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA3",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA4",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA5",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEw",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEx",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEy",
-            "values": [
-              {
-                "int": "-12"
-              },
-              {
-                "int": "988"
-              },
-              {
-                "float64": "7ff0000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEz",
-            "values": [
-              {
-                "int": "-13"
-              },
-              {
-                "int": "987"
-              },
-              {
-                "float64": "7ff8000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE0",
-            "values": [
-              {
-                "int": "-14"
-              },
-              {
-                "int": "986"
-              },
-              {
-                "float64": "7ff8000000000001"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE1",
-            "values": [
-              {
-                "int": "-15"
-              },
-              {
-                "int": "985"
-              },
-              {
-                "float64": "7ff0000000000001"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE2",
-            "values": [
-              {
-                "int": "-16"
-              },
-              {
-                "int": "984"
-              },
-              {
-                "float64": "fff8000000000000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE3",
-            "values": [
-              {
-                "int": "-17"
-              },
-              {
-                "int": "983"
-              },
-              {
-                "null": true
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "projection/columns/repeat-key-order",
+      "family": "projection/column-combination",
       "requirements": [
         "RANGE-2",
         "COL-2",
@@ -4591,178 +3227,9 @@
       }
     },
     {
-      "id": "projection/columns/span-parts",
-      "description": "rows from all three parts: absent in some, null in others",
-      "requirements": [
-        "RANGE-2",
-        "COL-2"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "start_base64": "cm93LTA1",
-        "end_base64": "cm93LTEz",
-        "limit": 100000,
-        "columns": [
-          "f64",
-          "req",
-          "extra",
-          "i32"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA1",
-            "values": [
-              {
-                "null": true
-              },
-              {
-                "int": "995"
-              },
-              {
-                "absent": true
-              },
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA2",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA3",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "int": "2147483647"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA4",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "int": "-2147483648"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA5",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEw",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEx",
-            "values": [
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "absent": true
-              },
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEy",
-            "values": [
-              {
-                "float64": "7ff0000000000000"
-              },
-              {
-                "int": "988"
-              },
-              {
-                "int": "-12"
-              },
-              {
-                "int": "2147483647"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "projection/list/columns",
       "description": "the delimiter occurs only inside the prefix, so every candidate is a row",
+      "family": "projection/column-combination",
       "requirements": [
         "LIST-3",
         "RANGE-2",
@@ -4882,191 +3349,9 @@
       }
     },
     {
-      "id": "projection/col-7/unknown",
-      "description": "a column no part has is absent in every row, not an error",
-      "requirements": [
-        "COL-7",
-        "RANGE-2"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "no_such_column"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAw",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAx",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAy",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAz",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA0",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA1",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA2",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA3",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA4",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA5",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEw",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEx",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEy",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEz",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE0",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE1",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE2",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE3",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "projection/col-7/unknown-mixed",
       "description": "a column no part has is absent in every row, not an error",
+      "family": "projection/absent-and-unknown",
       "requirements": [
         "COL-7",
         "RANGE-2"
@@ -5359,6 +3644,7 @@
     },
     {
       "id": "projection/col-7/list",
+      "family": "projection/absent-and-unknown",
       "requirements": [
         "COL-7",
         "LIST-3"
@@ -5383,191 +3669,9 @@
       }
     },
     {
-      "id": "projection/col-6/no-path-lookup",
-      "description": "'a' is not a field; the column 'a.b' does not make it one",
-      "requirements": [
-        "COL-6",
-        "COL-7"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "a"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAw",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAx",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAy",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAz",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA0",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA1",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA2",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA3",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA4",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA5",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEw",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEx",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEy",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEz",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE0",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE1",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE2",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE3",
-            "values": [
-              {
-                "absent": true
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "projection/key/basic-00",
       "description": "unannotated key alone",
+      "family": "projection/key-column",
       "requirements": [
         "RANGE-2",
         "KEY-1"
@@ -5695,123 +3799,9 @@
       }
     },
     {
-      "id": "projection/key/basic-01",
-      "description": "key with other columns, requested twice",
-      "requirements": [
-        "RANGE-2",
-        "KEY-1"
-      ],
-      "dataset": "datasets/basic",
-      "request": {
-        "op": "range",
-        "start_base64": "Yg==",
-        "limit": 5,
-        "columns": [
-          "size",
-          "key",
-          "etag",
-          "key"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "Yg==",
-            "values": [
-              {
-                "int": "128"
-              },
-              {
-                "bytes_base64": "Yg=="
-              },
-              {
-                "bytes_base64": "ZXRhZy0wNA=="
-              },
-              {
-                "bytes_base64": "Yg=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YnJhdm8=",
-            "values": [
-              {
-                "int": "135"
-              },
-              {
-                "bytes_base64": "YnJhdm8="
-              },
-              {
-                "bytes_base64": "ZXRhZy0wNQ=="
-              },
-              {
-                "bytes_base64": "YnJhdm8="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "Yy8=",
-            "values": [
-              {
-                "int": "142"
-              },
-              {
-                "bytes_base64": "Yy8="
-              },
-              {
-                "bytes_base64": "ZXRhZy0wNg=="
-              },
-              {
-                "bytes_base64": "Yy8="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "Yy9k",
-            "values": [
-              {
-                "int": "149"
-              },
-              {
-                "bytes_base64": "Yy9k"
-              },
-              {
-                "null": true
-              },
-              {
-                "bytes_base64": "Yy9k"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "Y2hhcmxpZQ==",
-            "values": [
-              {
-                "int": "156"
-              },
-              {
-                "bytes_base64": "Y2hhcmxpZQ=="
-              },
-              {
-                "bytes_base64": "ZXRhZy0wOA=="
-              },
-              {
-                "bytes_base64": "Y2hhcmxpZQ=="
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "projection/key/basic-02",
       "description": "list rows with the key projected",
+      "family": "projection/key-column",
       "requirements": [
         "RANGE-2",
         "KEY-1",
@@ -5863,246 +3853,9 @@
       }
     },
     {
-      "id": "projection/key/projection-03",
-      "description": "key annotated STRING",
-      "requirements": [
-        "RANGE-2",
-        "KEY-1"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "key",
-          "i32"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAw",
-            "values": [
-              {
-                "bytes_base64": "cm93LTAw"
-              },
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAx",
-            "values": [
-              {
-                "bytes_base64": "cm93LTAx"
-              },
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAy",
-            "values": [
-              {
-                "bytes_base64": "cm93LTAy"
-              },
-              {
-                "int": "2147483647"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTAz",
-            "values": [
-              {
-                "bytes_base64": "cm93LTAz"
-              },
-              {
-                "int": "-2147483648"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA0",
-            "values": [
-              {
-                "bytes_base64": "cm93LTA0"
-              },
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA1",
-            "values": [
-              {
-                "bytes_base64": "cm93LTA1"
-              },
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA2",
-            "values": [
-              {
-                "bytes_base64": "cm93LTA2"
-              },
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA3",
-            "values": [
-              {
-                "bytes_base64": "cm93LTA3"
-              },
-              {
-                "int": "2147483647"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA4",
-            "values": [
-              {
-                "bytes_base64": "cm93LTA4"
-              },
-              {
-                "int": "-2147483648"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTA5",
-            "values": [
-              {
-                "bytes_base64": "cm93LTA5"
-              },
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEw",
-            "values": [
-              {
-                "bytes_base64": "cm93LTEw"
-              },
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEx",
-            "values": [
-              {
-                "bytes_base64": "cm93LTEx"
-              },
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEy",
-            "values": [
-              {
-                "bytes_base64": "cm93LTEy"
-              },
-              {
-                "int": "2147483647"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTEz",
-            "values": [
-              {
-                "bytes_base64": "cm93LTEz"
-              },
-              {
-                "int": "-2147483648"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE0",
-            "values": [
-              {
-                "bytes_base64": "cm93LTE0"
-              },
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE1",
-            "values": [
-              {
-                "bytes_base64": "cm93LTE1"
-              },
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE2",
-            "values": [
-              {
-                "bytes_base64": "cm93LTE2"
-              },
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "cm93LTE3",
-            "values": [
-              {
-                "bytes_base64": "cm93LTE3"
-              },
-              {
-                "int": "2147483647"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "projection/key/projection-04",
       "description": "list, key twice",
+      "family": "projection/key-column",
       "requirements": [
         "RANGE-2",
         "KEY-1",
@@ -6224,6 +3977,7 @@
     {
       "id": "projection/key/key-legacy-utf8-05",
       "description": "key annotated UTF8 only",
+      "family": "projection/key-column",
       "requirements": [
         "RANGE-2",
         "KEY-1"
@@ -6273,6 +4027,7 @@
     {
       "id": "projection/key/binary-keys-06",
       "description": "keys that are not UTF-8",
+      "family": "projection/key-column",
       "requirements": [
         "RANGE-2",
         "KEY-1"
@@ -6846,6 +4601,7 @@
     },
     {
       "id": "projection/key/non-utf8-keys-07",
+      "family": "projection/key-column",
       "requirements": [
         "RANGE-2",
         "KEY-1"
@@ -6948,6 +4704,7 @@
     {
       "id": "projection/key/multipart-08",
       "description": "rows from two parts",
+      "family": "projection/key-column",
       "requirements": [
         "RANGE-2",
         "KEY-1",
@@ -7026,6 +4783,7 @@
     {
       "id": "projection/annotated/d",
       "description": "the physical value, whatever the logical annotation",
+      "family": "projection/annotated",
       "requirements": [
         "RANGE-2",
         "COL-3"
@@ -7119,6 +4877,7 @@
     {
       "id": "projection/annotated/ts_ms",
       "description": "the physical value, whatever the logical annotation",
+      "family": "projection/annotated",
       "requirements": [
         "RANGE-2",
         "COL-3"
@@ -7210,101 +4969,9 @@
       }
     },
     {
-      "id": "projection/annotated/ts_utc",
-      "description": "the physical value, whatever the logical annotation",
-      "requirements": [
-        "RANGE-2",
-        "COL-3"
-      ],
-      "dataset": "datasets/annotated",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "ts_utc"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTA=",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTE=",
-            "values": [
-              {
-                "int": "1767225600123456"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTI=",
-            "values": [
-              {
-                "int": "-1"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTM=",
-            "values": [
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTQ=",
-            "values": [
-              {
-                "int": "9223372036854775807"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTU=",
-            "values": [
-              {
-                "int": "-9223372036854775808"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTY=",
-            "values": [
-              {
-                "int": "5"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTc=",
-            "values": [
-              {
-                "int": "6"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "projection/annotated/dec9",
       "description": "the physical value, whatever the logical annotation",
+      "family": "projection/annotated",
       "requirements": [
         "RANGE-2",
         "COL-3"
@@ -7398,6 +5065,7 @@
     {
       "id": "projection/annotated/dec18",
       "description": "the physical value, whatever the logical annotation",
+      "family": "projection/annotated",
       "requirements": [
         "RANGE-2",
         "COL-3"
@@ -7489,101 +5157,9 @@
       }
     },
     {
-      "id": "projection/annotated/dec30",
-      "description": "the physical value, whatever the logical annotation",
-      "requirements": [
-        "RANGE-2",
-        "COL-3"
-      ],
-      "dataset": "datasets/annotated",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "dec30"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTA=",
-            "values": [
-              {
-                "bytes_base64": "AAAAAAAAAAAAAAAAAA=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTE=",
-            "values": [
-              {
-                "bytes_base64": "DJ8snNBGdO3qP////w=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTI=",
-            "values": [
-              {
-                "bytes_base64": "82DTYy+5ixIVwAAAAQ=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTM=",
-            "values": [
-              {
-                "bytes_base64": "/////////////////w=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTQ=",
-            "values": [
-              {
-                "bytes_base64": "AAAAAAAAAAAAAAAAAQ=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTU=",
-            "values": [
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTY=",
-            "values": [
-              {
-                "bytes_base64": "AY7pD/bDc+DuTj8K0g=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTc=",
-            "values": [
-              {
-                "bytes_base64": "////////////////AA=="
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "projection/annotated/s",
       "description": "the physical value, whatever the logical annotation",
+      "family": "projection/annotated",
       "requirements": [
         "RANGE-2",
         "COL-3"
@@ -7675,99 +5251,8 @@
       }
     },
     {
-      "id": "projection/annotated/keys-only",
-      "description": "unrequested annotated columns must not affect a keys-only request",
-      "requirements": [
-        "RANGE-2"
-      ],
-      "dataset": "datasets/annotated",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "key"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTA=",
-            "values": [
-              {
-                "bytes_base64": "YW5uLTA="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTE=",
-            "values": [
-              {
-                "bytes_base64": "YW5uLTE="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTI=",
-            "values": [
-              {
-                "bytes_base64": "YW5uLTI="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTM=",
-            "values": [
-              {
-                "bytes_base64": "YW5uLTM="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTQ=",
-            "values": [
-              {
-                "bytes_base64": "YW5uLTQ="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTU=",
-            "values": [
-              {
-                "bytes_base64": "YW5uLTU="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTY=",
-            "values": [
-              {
-                "bytes_base64": "YW5uLTY="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "YW5uLTc=",
-            "values": [
-              {
-                "bytes_base64": "YW5uLTc="
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "projection/annotated/list-all",
+      "family": "projection/annotated",
       "requirements": [
         "RANGE-2",
         "LIST-3"
@@ -8013,6 +5498,7 @@
     {
       "id": "projection/encodings/i32",
       "description": "PLAIN_DICTIONARY pages in part 0; DELTA_BINARY_PACKED / DELTA_LENGTH_BYTE_ARRAY in part 1",
+      "family": "projection/encodings",
       "requirements": [
         "RANGE-2",
         "ENC-1"
@@ -8323,6 +5809,7 @@
     {
       "id": "projection/encodings/i64",
       "description": "PLAIN_DICTIONARY pages in part 0; DELTA_BINARY_PACKED / DELTA_LENGTH_BYTE_ARRAY in part 1",
+      "family": "projection/encodings",
       "requirements": [
         "RANGE-2",
         "ENC-1"
@@ -8633,6 +6120,7 @@
     {
       "id": "projection/encodings/s",
       "description": "PLAIN_DICTIONARY pages in part 0; DELTA_BINARY_PACKED / DELTA_LENGTH_BYTE_ARRAY in part 1",
+      "family": "projection/encodings",
       "requirements": [
         "RANGE-2",
         "ENC-1"
@@ -8943,6 +6431,7 @@
     {
       "id": "projection/optional-codecs/baseline-column",
       "description": "only baseline codecs are decoded, but a reader that checks codecs eagerly may answer unsupported",
+      "family": "projection/optional-codec",
       "requirements": [
         "RANGE-2",
         "ENC-1"
@@ -9019,86 +6508,9 @@
       }
     },
     {
-      "id": "projection/optional-codecs/lz4col",
-      "description": "a codec outside the baseline: the values, or unsupported (never wrong values or a refusal)",
-      "requirements": [
-        "RANGE-2",
-        "ENC-1"
-      ],
-      "dataset": "datasets/optional-codecs",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "lz4col"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "b3B0LTAw",
-            "values": [
-              {
-                "int": "0"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "b3B0LTAx",
-            "values": [
-              {
-                "int": "1000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "b3B0LTAy",
-            "values": [
-              {
-                "int": "2000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "b3B0LTAz",
-            "values": [
-              {
-                "int": "3000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "b3B0LTA0",
-            "values": [
-              {
-                "int": "4000"
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "b3B0LTA1",
-            "values": [
-              {
-                "int": "5000"
-              }
-            ]
-          }
-        ],
-        "accept_unsupported": [
-          "unsupported_encoding"
-        ]
-      }
-    },
-    {
       "id": "projection/optional-codecs/brcol",
       "description": "a codec outside the baseline: the values, or unsupported (never wrong values or a refusal)",
+      "family": "projection/optional-codec",
       "requirements": [
         "RANGE-2",
         "ENC-1"
@@ -9175,28 +6587,9 @@
       }
     },
     {
-      "id": "projection/nested/meta",
-      "description": "projecting a nested or repeated column is rejected, never answered as absent",
-      "requirements": [
-        "COL-3"
-      ],
-      "dataset": "datasets/projection",
-      "request": {
-        "op": "range",
-        "limit": 100000,
-        "columns": [
-          "i32",
-          "meta"
-        ]
-      },
-      "expect": {
-        "status": "unsupported",
-        "code": "unsupported_projection"
-      }
-    },
-    {
       "id": "projection/nested/tags",
-      "description": "projecting a nested or repeated column is rejected, never answered as absent",
+      "description": "projecting a nested or repeated column is rejected (the protocol cannot express its values), never answered as absent",
+      "family": "projection/nested",
       "requirements": [
         "COL-3"
       ],
@@ -9216,6 +6609,7 @@
     },
     {
       "id": "projection/nested/list-tags",
+      "family": "projection/nested",
       "requirements": [
         "COL-3"
       ],
@@ -9236,6 +6630,7 @@
     },
     {
       "id": "projection/key-legacy-utf8/all",
+      "family": "projection/other-datasets",
       "requirements": [
         "RANGE-2",
         "KEY-1"
@@ -10079,6 +7474,7 @@
     {
       "id": "projection/multipart/span",
       "description": "values across codecs, dictionary pages and data page v2, crossing a part boundary",
+      "family": "projection/other-datasets",
       "requirements": [
         "RANGE-2",
         "ENC-1"
@@ -10544,89 +7940,6 @@
               },
               {
                 "int": "822573084"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": "projection/basic/repeated-column",
-      "description": "a column requested twice is reported twice, in request order",
-      "requirements": [
-        "RANGE-2"
-      ],
-      "dataset": "datasets/basic",
-      "request": {
-        "op": "range",
-        "start_base64": "YnJhdm8=",
-        "limit": 4,
-        "columns": [
-          "etag",
-          "size",
-          "etag"
-        ]
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "YnJhdm8=",
-            "values": [
-              {
-                "bytes_base64": "ZXRhZy0wNQ=="
-              },
-              {
-                "int": "135"
-              },
-              {
-                "bytes_base64": "ZXRhZy0wNQ=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "Yy8=",
-            "values": [
-              {
-                "bytes_base64": "ZXRhZy0wNg=="
-              },
-              {
-                "int": "142"
-              },
-              {
-                "bytes_base64": "ZXRhZy0wNg=="
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "Yy9k",
-            "values": [
-              {
-                "null": true
-              },
-              {
-                "int": "149"
-              },
-              {
-                "null": true
-              }
-            ]
-          },
-          {
-            "kind": "row",
-            "key_base64": "Y2hhcmxpZQ==",
-            "values": [
-              {
-                "bytes_base64": "ZXRhZy0wOA=="
-              },
-              {
-                "int": "156"
-              },
-              {
-                "bytes_base64": "ZXRhZy0wOA=="
               }
             ]
           }

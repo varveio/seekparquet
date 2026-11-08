@@ -5,7 +5,7 @@ description: Row group 0's key OffsetIndex says first_row_index [0, 1, 4] for pa
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_page_index, detected at the latest on read (RG-3, RG-7, CHECK-2)
+fault (generators/faults.json): page-index-rows-mismatch: invalid_page_index; reader detects on read; lowest validation level structural (RG-3, RG-7, CHECK-2); location: data/part-00000.parquet: row group 0 key OffsetIndex
 changes:
   - data/part-00000.parquet: row group 0 key OffsetIndex: page_locations[1].first_row_index 2 -> 1
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2619

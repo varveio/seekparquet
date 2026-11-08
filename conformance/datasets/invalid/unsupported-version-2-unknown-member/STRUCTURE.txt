@@ -5,7 +5,7 @@ description: format_version 2 with a member draft 1 does not define: the version
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: unsupported_version, detected at the latest on open (MAN-7, VER-1)
+fault (generators/faults.json): unsupported-version-2-unknown-member: unsupported_version; reader detects on open; lowest validation level structural (MAN-7, VER-1); location: manifest.json
 changes:
   - manifest: draft_revision removed
   - manifest: format_version 0 -> 2

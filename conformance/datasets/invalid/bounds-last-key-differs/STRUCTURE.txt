@@ -5,7 +5,7 @@ description: The part's declared max key is above its actual last key.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: bounds_mismatch, detected at the latest on validate:profile (PART-3)
+fault (generators/faults.json): bounds-last-key-differs: bounds_mismatch; reader detects on validate; lowest validation level profile (PART-3); location: manifest.json
 changes:
   - manifest: parts.0.max_key_base64 "Zm94dHJvdA==" -> "Z29sZg=="
 

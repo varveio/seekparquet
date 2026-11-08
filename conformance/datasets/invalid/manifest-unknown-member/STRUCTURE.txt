@@ -5,7 +5,7 @@ description: Top-level member created_at is not defined.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-3, CHECK-1)
+fault (generators/faults.json): manifest-unknown-member: invalid_manifest; reader detects on open; lowest validation level structural (MAN-3, CHECK-1); location: manifest.json
 changes:
   - manifest: created_at "<absent>" -> "2026-01-01T00:00:00Z"
 

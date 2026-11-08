@@ -10,15 +10,17 @@ and a harness that drives any implementation through a small adapter.
 | [protocol.md](protocol.md) | The adapter protocol: JSON lines on stdin and stdout. |
 | [capabilities.json](capabilities.json) | Capability and conformance-target names. |
 | [case.schema.json](case.schema.json) | JSON Schema of the case files. |
-| [suite.json](suite.json) | Suite revision, spec revision, case files, mandatory target. |
-| [cases/](cases/) | The cases, one file per group and target. |
+| [suite.json](suite.json) | Suite revision and digest, spec revision, case files, subsets, mandatory target, retired case ids, renamed datasets. |
+| [cases/core/](cases/core/) | About 150 hand-reviewed cases, one file per group. Each says what distinguishes a correct answer. Authored, never regenerated: `make_cases.py` checks them against the oracle and stops on a disagreement. |
+| [cases/generated/](cases/generated/) | Generated families (`*.generated.json`): boundary sweeps, parameter variants, pagination expansions, one validation case per fault at its lowest level, selected prerequisite and digest cases. |
+| [subsets/smoke.json](subsets/smoke.json) | Thirty core cases for adapter bring-up. Never qualifies. |
 | [datasets/](datasets/) | Fixture datasets: `manifest.json`, Parquet parts and a textual `STRUCTURE.txt` each. Invalid fixtures are under `datasets/invalid/`. |
 | [fixtures.lock.json](fixtures.lock.json) | Every fixture file with SHA-256, size, producer, provenance and generator command, and each invalid fixture's fault. |
 | [oracle.py](oracle.py) | Sequential implementation of the query semantics (spec §6) over source rows; computes every expected entry. |
 | [generators/](generators/) | Source rows, pinned generators and the metadata mutator ([README](generators/README.md)). |
 | [harness/run.py](harness/run.py) | The harness (Python standard library only). |
 | [harness/check_suite.py](harness/check_suite.py) | Static checks of the suite (schema, operation-specific payloads, requirement ids, codes, names, lock, suite digest). |
-| [harness/test_run.py](harness/test_run.py) | Self-tests of the harness with deliberately deficient adapters. |
+| [harness/test_run.py](harness/test_run.py) | Self-tests of the harness with deliberately deficient adapters (transport faults, and oracle-backed adapters with one injected bug each: signed byte order, inclusive end, shortened bounds treated as exact, ignored continuation, absent reported as null, validation skipping prerequisites, incomplete without a reason). |
 | [COVERAGE.md](COVERAGE.md) | Generated: each spec requirement id and the cases that cite it, or why none do. |
 | [harness/reference_adapter.py](harness/reference_adapter.py) | A full-scan semantic reference adapter used to test the suite itself. It is **not** a SeekParquet reader. |
 
@@ -30,8 +32,15 @@ Write an adapter (see [protocol.md](protocol.md)) and run, from this directory:
 python3 harness/run.py --adapter "path/to/adapter --flags"
 python3 harness/run.py --adapter "go run ./internal/cmd/conformance" --filter '^range/'   # a subset
 python3 harness/run.py --adapter "..." --targets validator-profile                    # a validator only
+python3 harness/run.py --adapter "..." --subset smoke                                 # 30 cases, bring-up
+python3 harness/run.py --adapter "..." --subset core                                  # the reviewed examples
 python3 harness/run.py --adapter "..." --json > report.json
 ```
+
+Three selections: **smoke** (30 core ids) for bring-up, **core** (about 150) for learning and ordinary
+development, and **all** (core plus generated) for CI and qualification. Smoke and core runs, like filtered
+runs, are partial and never qualify a target. The report counts results by group, by family, by part
+(core/generated) and by target, and records the selection.
 
 The harness sends `hello`, checks the reported targets, capabilities and supported version, then runs
 every case of every claimed target, sending requests without their expected answers. Case files are
@@ -65,13 +74,22 @@ To check the suite itself:
 
 ```sh
 python3 harness/check_suite.py                                     # needs jsonschema
-python3 -m unittest discover -s harness -p 'test_*.py'             # harness self-tests, stdlib only
-python3 -m unittest discover -s generators -p 'test_*.py'          # parquet_meta malformed-input tests
+python3 -m unittest harness/test_run.py generators/test_parquet_meta.py \
+    generators/test_oracle.py generators/test_case_generation.py   # stdlib only
 python3 harness/run.py --adapter "python3 harness/reference_adapter.py"   # needs generators/requirements.txt
 python3 generators/check_reproducible.py                           # regenerate in a temp dir and compare
 ```
 
 ## Where expected results come from
+
+Invalid fixtures' faults are declared by hand in [generators/faults.json](generators/faults.json): the
+fault id (the dataset name), when a reader must detect it (`open`, `read`, or only by validation), its
+lowest validation level, its codes, the requirements it breaks, its location, and any unavoidable secondary
+fault with a justification. Refusal and validation cases are built from that file; nothing is inferred
+from codes. Validation is one case per fault at its lowest detecting level, plus 15 prerequisite cases
+(six structural faults with distinct entry paths requested at profile and full, and three profile faults
+requested at full) and six distinct digest behaviours.
+
 
 Every valid dataset is generated from a rows document in [generators/rows/](generators/rows/): keys in
 base64 and column values typed as in the protocol. [oracle.py](oracle.py) computes each expected entry
@@ -93,7 +111,15 @@ output. The reference adapter, which shares no query code with the oracle, must 
   `STRUCTURE.txt` diff. A generator or dependency upgrade that changes bytes is a fixture change.
   Checked-in bytes stay authoritative; a regression fixture is never silently replaced by regeneration.
 - **No Git LFS.** Fixtures are ordinary files, so the suite works offline and from a plain checkout.
-- **One fault per invalid fixture** where practical; otherwise the case lists every acceptable code.
+- **One fault per invalid fixture** where practical; otherwise faults.json names the secondary fault and
+  justifies it, and the case accepts its code too.
+- **Preserved regressions.** A fixture that must never be regenerated (a minimized reproducer, or bytes
+  from a writer no longer pinned) is listed in [generators/preserved.json](generators/preserved.json) with
+  its file hashes; `regenerate.py` verifies it and never deletes or rewrites it.
+- **Renames keep case ids.** `truncated-bounds` and `truncated-bounds-2` became
+  `binary-bounds-truncated-16-byte` and `binary-bounds-truncated-2-byte`; the mapping is in `suite.json`
+  (`renamed_datasets`), and case ids still say `truncated-bounds…`. Exact duplicate cases are retired
+  (`retired_case_ids`, with the id each duplicated); retired ids are never reused.
 
 ## Provenance categories
 

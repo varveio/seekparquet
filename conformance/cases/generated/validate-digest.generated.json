@@ -1,0 +1,64 @@
+{
+  "group": "validate-digest",
+  "target": "validator-digest",
+  "generated": true,
+  "generator": "generators/make_cases.py",
+  "description": "Validation at the digest level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code, and a dataset that cannot be opened shows structural failed.",
+  "families": {
+    "validate-digest/digest": "six distinct digest behaviours (VAL-2, PART-5)"
+  },
+  "cases": [
+    {
+      "id": "validate-digest/basic",
+      "description": "a non-empty dataset that declares no sha256: complete, 0 checked",
+      "family": "validate-digest/digest",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/multipart",
+      "description": "every part declares a matching sha256: 3 checked",
+      "family": "validate-digest/digest",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 3
+          }
+        }
+      }
+    }
+  ]
+}

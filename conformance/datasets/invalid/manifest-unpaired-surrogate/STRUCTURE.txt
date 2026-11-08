@@ -5,7 +5,7 @@ description: schema_id ends with the escaped lone surrogate \ud800.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-1, CHECK-1)
+fault (generators/faults.json): manifest-unpaired-surrogate: invalid_manifest; reader detects on open; lowest validation level structural (MAN-1, CHECK-1); location: manifest.json
 changes:
   - manifest text: '"schema_id": "conformance/objects/v1"' -> '"schema_id": "conformance/objects/v1\\ud800"'
 

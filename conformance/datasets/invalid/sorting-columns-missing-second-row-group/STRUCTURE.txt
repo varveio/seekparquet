@@ -5,7 +5,7 @@ description: Only row group 1 lacks sorting_columns.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: missing_sorting_columns, detected at the latest on open (RG-1, CHECK-1)
+fault (generators/faults.json): sorting-columns-missing-second-row-group: missing_sorting_columns; reader detects on open; lowest validation level structural (RG-1, CHECK-1); location: data/part-00000.parquet: footer
 changes:
   - data/part-00000.parquet: footer: row_groups[1].sorting_columns removed
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2612

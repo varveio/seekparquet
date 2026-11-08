@@ -5,7 +5,7 @@ description: The required member parts is absent.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-3, CHECK-1)
+fault (generators/faults.json): manifest-missing-parts: invalid_manifest; reader detects on open; lowest validation level structural (MAN-3, CHECK-1); location: manifest.json
 changes:
   - manifest: parts removed
 

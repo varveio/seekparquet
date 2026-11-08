@@ -5,7 +5,7 @@ description: The footer holds seekparquet.schema_id twice (same value).
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: stamp_mismatch, detected at the latest on open (STAMP-2, CHECK-1)
+fault (generators/faults.json): stamp-duplicate: stamp_mismatch; reader detects on open; lowest validation level structural (STAMP-2, CHECK-1); location: data/part-00000.parquet: footer
 changes:
   - data/part-00000.parquet: footer: key-value entry 'seekparquet.schema_id' appended a second time (same value)
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2667

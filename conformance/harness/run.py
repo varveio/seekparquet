@@ -268,6 +268,8 @@ class Runner:
             g = levels.get(lvl)
             if not isinstance(g, dict):
                 raise CaseFail(f"validate response has no result for level {lvl}")
+            if g.get("result") == "incomplete" and not (isinstance(g.get("reason"), str) and g["reason"].strip()):
+                raise CaseFail(f"level {lvl}: incomplete without a reason (VAL-1 requires one)")
             allowed = [w["result"]] + list(w.get("accept", []))
             if g.get("result") not in allowed:
                 raise CaseFail(f"level {lvl}: expected {' or '.join(allowed)}, got {g.get('result')!r}"
@@ -332,7 +334,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--adapter", required=True, help="adapter command line")
     ap.add_argument("--suite", default=str(DEFAULT_SUITE))
-    ap.add_argument("--filter", help="regular expression searched in case ids")
+    ap.add_argument("--filter", help="regular expression searched in case ids (a partial run)")
+    ap.add_argument("--subset", help="run only a selection: 'core' (every hand-reviewed case) or a subset name "
+                                     "from suite.json, such as 'smoke' (a partial run)")
     ap.add_argument("--targets", help="comma-separated targets to run (default: every target the adapter claims; "
                                       "the suite's mandatory targets must then be claimed)")
     ap.add_argument("--json", action="store_true", help="print a JSON report instead of text")
@@ -359,11 +363,19 @@ def main(argv=None):
         return out
     files = [(f, json.loads((sdir / f).read_text(encoding="utf-8"))) for f in suite["case_files"]]
     pattern = re.compile(args.filter) if args.filter else None
+    subset_ids = None
+    if args.subset == "core":
+        subset_ids = {c["id"] for _f, d in files if d.get("generated") is False for c in d["cases"]}
+    elif args.subset:
+        paths = [p for p in suite.get("subsets", []) if Path(p).stem == args.subset]
+        if not paths:
+            ap.error(f"unknown subset {args.subset!r}")
+        subset_ids = set(json.loads((sdir / paths[0]).read_text(encoding="utf-8"))["case_ids"])
 
     results, fatal, run_errors = [], None, []
     adapter = Adapter(shlex.split(args.adapter), args.timeout, args.shutdown_timeout)
     hello = {}
-    targets, selected, partial = [], set(), bool(pattern)
+    targets, selected, partial = [], set(), bool(pattern) or subset_ids is not None
     try:
         try:
             hello = adapter.call({"op": "hello"})
@@ -414,7 +426,11 @@ def main(argv=None):
             for case in doc["cases"]:
                 if pattern and not pattern.search(case["id"]):
                     continue
-                rec = {"id": case["id"], "file": fname, "group": doc["group"], "target": doc["target"]}
+                if subset_ids is not None and case["id"] not in subset_ids:
+                    continue
+                rec = {"id": case["id"], "file": fname, "group": doc["group"], "target": doc["target"],
+                       "family": case.get("family") or f"core/{doc['group']}",
+                       "generated": bool(doc.get("generated"))}
                 if fatal:
                     rec.update(result="fail", message=f"not run: {fatal}")
                 elif doc["target"] not in selected:
@@ -444,11 +460,12 @@ def main(argv=None):
         run_errors.append(fatal)
 
     counts = {"pass": 0, "fail": 0, "skip": 0}
-    by_group = {}
+    by_group, by_family, by_part = {}, {}, {}
     for r in results:
         counts[r["result"]] += 1
-        g = by_group.setdefault(r["group"], {"pass": 0, "fail": 0, "skip": 0})
-        g[r["result"]] += 1
+        for table, key in ((by_group, r["group"]), (by_family, r["family"]),
+                           (by_part, "generated" if r["generated"] else "core")):
+            table.setdefault(key, {"pass": 0, "fail": 0, "skip": 0})[r["result"]] += 1
     ok = counts["fail"] == 0 and not run_errors and counts["pass"] > 0
     # Qualification: complete runs only; a target needs every case of itself and its dependencies.
     tstats = {}
@@ -460,14 +477,15 @@ def main(argv=None):
         tstats[t]["qualified"] = (not partial and t in targets and t in selected and not run_errors and bool(rs)
                                   and all(r["result"] == "pass" for r in rs))
     qualified = [t for t, v in tstats.items() if v["qualified"]]
-    selection = {"filter": args.filter, "targets": args.targets, "partial": partial,
+    selection = {"filter": args.filter, "subset": args.subset, "targets": args.targets, "partial": partial,
                  "selected_targets": sorted(selected)}
     if args.json:
         print(json.dumps({"suite": suite.get("revision"), "suite_sha256": suite.get("content_sha256"),
                           "adapter": {k: hello.get(k) for k in
                                       ("implementation", "version", "targets", "capabilities", "supports")},
                           "selection": selection, "selected_cases_passed": ok, "qualified_targets": qualified,
-                          "targets": tstats, "counts": counts, "groups": by_group, "errors": run_errors,
+                          "targets": tstats, "counts": counts, "parts": by_part, "groups": by_group,
+                          "families": by_family, "errors": run_errors,
                           "results": results}, indent=2))
     else:
         print(f"suite {suite.get('revision')}  adapter {hello.get('implementation')} {hello.get('version')}  "
@@ -477,12 +495,22 @@ def main(argv=None):
                 print(f"{r['result'].upper():5} {r['id']}" + (f": {r['message']}" if r.get("message") else ""))
         for g, c in by_group.items():
             print(f"  {g:22} pass {c['pass']:4}  fail {c['fail']:4}  skip {c['skip']:4}")
+        for part, c in by_part.items():
+            print(f"  [{part}] pass {c['pass']}  fail {c['fail']}  skip {c['skip']}")
+        for t, v in tstats.items():
+            if v["claimed"] or v["selected"]:
+                print(f"  target {t:21} pass {v['pass']:4}  fail {v['fail']:4}  skip {v['skip']:4}"
+                      f"  {'qualified' if v['qualified'] else 'not qualified'}")
+        if args.verbose:
+            for fam, c in sorted(by_family.items()):
+                print(f"  family {fam:48} pass {c['pass']:4}  fail {c['fail']:4}  skip {c['skip']:4}")
         for e in run_errors:
             print(f"ERROR {e}")
         print(f"{'PASSED' if ok else 'FAILED'}: {counts['pass']} passed, {counts['fail']} failed, "
               f"{counts['skip']} skipped")
         if partial:
-            print(f"PARTIAL RUN (filter={args.filter!r}, targets={args.targets!r}): no target qualification")
+            print(f"PARTIAL RUN (filter={args.filter!r}, subset={args.subset!r}, targets={args.targets!r}): "
+                  "no target qualification")
         else:
             print(f"QUALIFIED TARGETS: {', '.join(qualified) if qualified else 'none'}")
     return 0 if ok else 1

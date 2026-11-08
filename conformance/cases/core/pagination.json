@@ -1,0 +1,239 @@
+{
+  "group": "pagination",
+  "target": "reader",
+  "generated": false,
+  "description": "Paginated listings and ranges (LIST-6, QUERY-3): each page is a case; make_cases.py asserts that the pages concatenate to the unpaginated result. Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-00",
+      "description": "Page 1 of 4 (limit 1): the first entry is the common prefix a/.",
+      "scenario_id": "list/list-bounds/root-2f-limit1",
+      "step": 0,
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-01",
+      "description": "Page 2: after a/ with continuation true. a/ itself is skipped and b/ is next; keys under a/ are not revisited.",
+      "scenario_id": "list/list-bounds/root-2f-limit1",
+      "step": 1,
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS8=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-02",
+      "description": "Page 3: after b/ with continuation true returns the row c.",
+      "scenario_id": "list/list-bounds/root-2f-limit1",
+      "step": 2,
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Yi8=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yw==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-03",
+      "description": "Page 4: after c returns nothing; the four pages concatenate to the unpaginated listing.",
+      "scenario_id": "list/list-bounds/root-2f-limit1",
+      "step": 3,
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Yw==",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-00",
+      "description": "Listing a/ two entries at a time, page 1: the row a/ and the common prefix a//.",
+      "scenario_id": "list/delimiter/a/-2f-limit2",
+      "step": 0,
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-01",
+      "description": "Page 2: after a// with continuation true resumes past everything under a// (a///, a//b) and returns a/b and a/b/.",
+      "scenario_id": "list/delimiter/a/-2f-limit2",
+      "step": 1,
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS8v",
+        "continuation": true,
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-02",
+      "description": "Page 3: after a/b/ with continuation true skips a/b/c... and returns a/bc and a/c.",
+      "scenario_id": "list/delimiter/a/-2f-limit2",
+      "step": 2,
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS9iLw==",
+        "continuation": true,
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-03",
+      "description": "Page 4: after a/c returns nothing: no duplicates or gaps across the pages.",
+      "scenario_id": "list/delimiter/a/-2f-limit2",
+      "step": 3,
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS9j",
+        "continuation": true,
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    }
+  ]
+}

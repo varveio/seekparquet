@@ -5,7 +5,7 @@ description: Row group 1's key chunk has no ColumnIndex.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: missing_page_index, detected at the latest on read (RG-2, RG-7, CHECK-2)
+fault (generators/faults.json): missing-column-index: missing_page_index; reader detects on read; lowest validation level structural (RG-2, RG-7, CHECK-2); location: data/part-00000.parquet: row group 1 key chunk
 changes:
   - data/part-00000.parquet: row group 1 key chunk: column index removed (column_index_offset/_length dropped)
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2563

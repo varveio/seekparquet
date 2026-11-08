@@ -5,7 +5,7 @@ description: Row group 0's key ColumnIndex has one entry fewer than its OffsetIn
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_page_index, detected at the latest on read (RG-4, RG-7, CHECK-2)
+fault (generators/faults.json): page-index-count-mismatch: invalid_page_index; reader detects on read; lowest validation level structural (RG-4, RG-7, CHECK-2); location: data/part-00000.parquet: row group 0 key ColumnIndex
 changes:
   - data/part-00000.parquet: row group 0 key ColumnIndex: last page entry removed (3 -> 2 pages; OffsetIndex still lists 3)
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2609

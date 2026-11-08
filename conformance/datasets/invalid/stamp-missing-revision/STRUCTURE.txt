@@ -5,7 +5,7 @@ description: Footer lacks seekparquet.draft_revision although format_version is 
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/basic.json
-expected refusal: stamp_mismatch, detected at the latest on open (STAMP-1, STAMP-2, CHECK-1)
+fault (generators/faults.json): stamp-missing-revision: stamp_mismatch; reader detects on open; lowest validation level structural (STAMP-1, STAMP-2, CHECK-1); location: footer key-value metadata of the part
 
 manifest: format_version 0, 1 parts
   part 0: 'data/part-00000.parquet', rows 12, bytes 2511, keys 'a/1.txt' .. 'foxtrot'

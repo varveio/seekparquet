@@ -63,9 +63,16 @@ of its dependencies as well, and it qualifies only if they qualify. Cases outsid
 their dependencies are skipped and reported as skipped. The run fails if a claimed target's capability is
 not reported, or if the adapter does not support the suite's format version and draft revision.
 
+**Case files.** Cases live in `cases/core/` (about 150 hand-reviewed examples, `generated: false`, each with
+a description of what distinguishes a correct answer) and `cases/generated/` (generated families,
+`generated: true`, with `family`, and where relevant `fault_id`, `scenario_id` and `step`). Both are mandatory
+for qualification; the split is about authorship, not optionality. Case ids are stable and never encode the
+split; retired ids are listed in `suite.json` and never reused.
+
 **Qualification.** A target is qualified only by a complete run: every case of the target and of its
 dependencies ran and passed, with no run error. A run narrowed by a case filter or by selecting fewer
-targets than the adapter claims is a partial run: it reports whether the selected cases passed, and never
+targets than the adapter claims, or limited to a selection (`--subset core`, or a named subset such as
+`subsets/smoke.json`), is a partial run: it reports whether the selected cases passed, and never
 reports a target as qualified. The harness records the selection in its report.
 
 ### `open`
@@ -111,7 +118,8 @@ Validation runs the requested level and its prerequisites (spec §8) and reports
   "profile": {"result": "failed", "code": "key_order"}}}
 ```
 
-`result` is `complete`, `failed` (with `code`) or `incomplete` (with `reason`). A `validate` request never
+`result` is `complete`, `failed` (with `code`) or `incomplete` (with `reason`, a non-empty string; the
+harness rejects an `incomplete` level without one, but never compares its wording). A `validate` request never
 answers `refused`: a dataset that cannot be opened reports `structural` as `failed` with the refusal code.
 Validator targets therefore include the open-stage faults. The `digest` level adds
 `checked`, the number of digests it compared. `status` is `ok` whenever validation ran, whatever it found.
@@ -163,7 +171,12 @@ A case on a dataset that uses a feature outside the mandatory baseline (for exam
 codec, ENC-1) may list `accept_unsupported` codes in its expectation: the expected `ok` result passes, and so
 does `unsupported` with one of those codes. A refusal never passes. In a validation expectation a level may
 list further acceptable results in `accept`, for example a `full` level that is `complete` or, for a
-validator without the codec, `incomplete` (never `failed`).
+validator without the codec, `incomplete` (never `failed`). Full validation of datasets with nested or
+repeated columns accepts `incomplete` for the same reason (VAL-1); baseline-only datasets never do.
+
+Nested and repeated columns: COL-3 allows a reader to support projecting them, but this protocol has no
+value encoding for nested data, so the suite can only expect `unsupported_projection`. That reflects the
+protocol's representational limit, not a requirement of the specification to reject such projections.
 
 ## Suites
 

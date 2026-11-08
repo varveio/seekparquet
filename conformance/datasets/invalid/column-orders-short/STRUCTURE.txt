@@ -5,7 +5,7 @@ description: column_orders holds only the key's TYPE_ORDER entry; the schema has
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_key_column, detected at the latest on open (KEY-5, CHECK-1)
+fault (generators/faults.json): column-orders-short: invalid_key_column; reader detects on open; lowest validation level structural (KEY-5, CHECK-1); location: data/part-00000.parquet: footer
 changes:
   - data/part-00000.parquet: footer: column_orders has 1 entries for 3 leaf columns (the key's entry is still TYPE_ORDER)
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2613

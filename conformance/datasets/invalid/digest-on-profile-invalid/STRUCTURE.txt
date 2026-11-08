@@ -1,0 +1,35 @@
+# digest-on-profile-invalid
+
+valid: no
+description: key-order-across-pages with a correct sha256 declared for its part: the key_order fault is a profile fault, and digest validation, which is independent, still completes with 1 checked.
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/invalid/key-order-across-pages
+fault (generators/faults.json): digest-on-profile-invalid: key_order; reader detects on read; lowest validation level profile (KEY-3, CHECK-2); location: key column data pages; the manifest declares a correct sha256
+note: Used by the digest cases: digest validation is independent of the profile fault (VAL-2), so it completes.
+changes:
+  - manifest: parts[0].sha256 added (matches the file)
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 1845, keys 'k00' .. 'k11'
+
+file data/part-00000.parquet: 1845 bytes, footer 1109 bytes
+  num_rows 12, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  row_group 0: rows 6, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 3 pages, first_row_index [0, 2, 4]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [3, 3, 3]
+      max lengths [3, 3, 3]
+  row_group 1: rows 6, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 3 pages, first_row_index [0, 2, 4]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [3, 3, 3]
+      max lengths [3, 3, 3]

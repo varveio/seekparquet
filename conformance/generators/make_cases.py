@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
-"""Generate conformance/cases/*.json and suite.json, deterministically.
+"""Generate conformance/cases/generated/*.generated.json, suite.json and COVERAGE.md, deterministically.
 
-Expected entries come only from ``oracle.py`` applied to the source rows in
-``generators/rows/``. Expected refusals come from the fault recorded for each
-fixture in ``fixtures.lock.json``. No reader output is ever used.
+Cases are of two kinds:
+
+* ``cases/core/*.json``: about 150 hand-reviewed examples, each with a description of the observation that
+  distinguishes a correct implementation. They are authored, never written by this script. This script
+  checks every core case against the generator's own candidate (or the oracle) and stops on a mismatch.
+* ``cases/generated/*.generated.json``: the generated families (boundary sweeps, parameter variants,
+  pagination expansions, one validation case per fault at its lowest detecting level, a few prerequisite
+  and digest cases), excluding every case owned by core and every retired id.
+
+Expected entries come only from ``oracle.py`` applied to the source rows in ``generators/rows/``. Expected
+refusals and validation levels come from ``generators/faults.json``. No reader output is ever used.
 """
 
 from __future__ import annotations
@@ -20,7 +28,16 @@ sys.path.insert(0, str(HERE))
 import oracle  # noqa: E402
 from common import b64e, dumps, load_rows, write_text  # noqa: E402
 
-SUITE_REVISION = "0.1.0-draft.2"
+SUITE_REVISION = "0.1.0-draft.3"
+GENERATOR = "generators/make_cases.py"
+# Datasets renamed for clarity: old label (kept in case ids, which are stable) -> dataset directory.
+RENAMED = {"truncated-bounds": "binary-bounds-truncated-16-byte",
+           "truncated-bounds-2": "binary-bounds-truncated-2-byte"}
+# Valid datasets with nested or repeated columns (projection fixtures): a validator that does not support
+# such columns reports the full level incomplete (VAL-1), so full validation accepts complete or incomplete.
+NESTED_COLUMNS = {"projection": "meta (struct) and tags (list)", "key-legacy-utf8": "meta (struct) and tags (list)"}
+GROUP_ORDER = ["open", "range", "prefix", "list", "pagination", "projection", "requests", "refusals-open",
+               "refusals-read", "validate-structural", "validate-profile", "validate-full", "validate-digest"]
 # Datasets that use optional features (outside ENC-1): a reader may support them or answer unsupported.
 OPTIONAL = {"optional-codecs": ["unsupported_encoding"]}
 BIG = 100000  # a limit at least the number of rows of every fixture (QUERY-3)
@@ -31,18 +48,32 @@ class Group:
         self.name, self.target, self.description = name, target, description
         self.cases = []
         self.ids = set()
+        self.families = {}
+        self.family = None
 
-    def add(self, cid, reqs, dataset, expect, request=None, raw_request=None, desc=None, requires=None, detect=None):
+    def fam(self, name, description):
+        """Set the family of the cases added next."""
+        self.family = f"{self.name}/{name}"
+        self.families[self.family] = description
+
+    def add(self, cid, reqs, dataset, expect, request=None, raw_request=None, desc=None, requires=None, detect=None,
+            meta=None):
         cid = f"{self.name}/{cid}"
         assert cid not in self.ids, cid
+        assert self.family, f"{cid}: no family"
         self.ids.add(cid)
         c = {"id": cid}
         if desc:
             c["description"] = desc
+        c["family"] = self.family
+        for k, v in (meta or {}).items():
+            c[k] = v
         c["requirements"] = sorted(set(reqs), key=reqs.index)
         if requires:
             c["requires"] = requires
-        c["dataset"] = f"datasets/{dataset}" if not dataset.startswith("datasets/") else dataset
+        if not dataset.startswith("datasets/"):
+            dataset = f"datasets/{RENAMED.get(dataset, dataset)}"
+        c["dataset"] = dataset
         if detect:
             c["detect"] = detect
         if request is not None:
@@ -52,8 +83,10 @@ class Group:
         c["expect"] = expect
         self.cases.append(c)
 
-    def doc(self):
-        return {"group": self.name, "target": self.target, "description": self.description, "cases": self.cases}
+    def doc(self, cases):
+        fams = {f: d for f, d in self.families.items() if any(c["family"] == f for c in cases)}
+        return {"group": self.name, "target": self.target, "generated": True, "generator": GENERATOR,
+                "description": self.description, "families": fams, "cases": cases}
 
 
 def B(b):
@@ -144,9 +177,10 @@ def show(b):
 def open_group(lock):
     g = Group("open", "reader", "Opening every valid dataset succeeds (CHECK-1), including datasets with "
                                 "unusual but valid layouts.")
+    g.fam("valid-dataset", "open each valid dataset; it must succeed")
     for d in lock["datasets"]:
         if d["valid"]:
-            reqs = ["CHECK-1", "LAYOUT-1"]
+            reqs = ["CHECK-1", "LAYOUT-1", "MAN-1", "MAN-3"]
             if d["name"] == "multipart":
                 reqs += ["LAYOUT-3", "EXT-1", "ENC-1", "PART-5"]
             if d["name"] == "empty":
@@ -161,7 +195,9 @@ def open_group(lock):
             if d["name"] in OPTIONAL:
                 reqs += ["ENC-1"]
                 exp["accept_unsupported"] = OPTIONAL[d["name"]]
-            g.add(d["name"], reqs, d["dir"], exp, request={"op": "open"}, desc=d["description"])
+            label = {v: k for k, v in RENAMED.items()}.get(d["name"], d["name"])
+            g.add(label, reqs, d["dir"], exp, request={"op": "open"}, desc=d["description"])
+    g.fam("empty-dataset", "queries on the dataset with no parts")
     e = oracle.Dataset.load("empty")
     g.add("empty-range", ["RANGE-1", "MAN-3"], "empty", run(e, rq_range()), request=rq_range())
     g.add("empty-list", ["LIST-4", "MAN-3"], "empty", run(e, rq_list()), request=rq_list())
@@ -177,7 +213,14 @@ def range_group():
         g.add(cid, reqs, dsname, run(ds, req), request=req, desc=desc)
 
     R = ["RANGE-1"]
-    # basic: bounds
+
+    def miss(rows_name, *keys):
+        ks = set(oracle.Dataset.load(rows_name).keys())
+        for k in keys:
+            assert k not in ks, f"a case labelled as a miss uses an existing key {k!r}"
+
+    g.fam("bounds", "start, end, exclusivity, empty and null bounds, and limits on basic")
+    miss("basic", b"alp", b"bb", b"c", b"A", b"zulu")
     add("basic/all", R, "basic", "basic", rq_range())
     add("basic/all-columns", R + ["RANGE-2", "COL-3"], "basic", "basic", rq_range(columns=["size", "etag"]))
     add("basic/start-inclusive-hit", R, "basic", "basic", rq_range(start=b"alpha"))
@@ -205,6 +248,11 @@ def range_group():
     add("basic/limit-exceeds", R, "basic", "basic", rq_range(start=b"echo", limit=50))
 
     # boundaries of pages, row groups and parts, from the layout of the source rows
+    for kind_name, kind_desc in (("page", "page"), ("row-group", "row group"), ("part", "part")):
+        g.families[f"range/boundary-{kind_name}"] = (
+            f"five probes around each {kind_desc} boundary of the written layout (start at the first key after it, "
+            "exclusive and inclusive start at the last key before it, start just above that key, end at the first "
+            "key after it); at most four page boundaries per dataset")
     for name in ("basic", "multipart", "delimiter", "binary-keys", "projection"):
         doc = load_rows(name)
         pg = pages(doc)
@@ -217,6 +265,7 @@ def range_group():
                     continue
             reqs = R + (["KEY-3"] if kind != "page" else []) + (["LAYOUT-1"] if kind == "part" else [])
             tag = f"{name}/{kind}-{p1}.{r1}.{g1}"
+            g.family = f"range/boundary-{kind}"
             add(f"{tag}/start-at-first", reqs, name, name, rq_range(start=k1[0], limit=2),
                 f"start at the first key of the {kind} beginning at {show(k1[0])}")
             add(f"{tag}/exclusive-at-last", reqs, name, name, rq_range(start=k0[-1], start_exclusive=True, limit=2),
@@ -227,6 +276,7 @@ def range_group():
             add(f"{tag}/end-at-first", reqs, name, name, rq_range(start=k0[-1], end=k1[0]),
                 "end at the first key after the boundary")
     # multipart: the whole dataset (empty row groups, stray file, three codecs)
+    g.fam("whole-dataset", "every row of a dataset, with columns")
     add("multipart/all", R + ["RANGE-2", "LAYOUT-1", "LAYOUT-3", "ENC-1"], "multipart", "multipart",
         rq_range(columns=["size", "storage_class", "mtime"]),
         "every row; the stray file under the root and empty row groups contribute nothing")
@@ -235,17 +285,29 @@ def range_group():
         "the unlisted file shards/stray.parquet holds keys in this range; they must not appear")
 
     # binary keys and conservative bounds
+    g.families["range/seek-key"] = ("start exactly at every key of binary-keys, on the exact-bounds layout and on "
+                                    "both shortened-bounds layouts; limit 1")
+    g.families["range/start-just-above-key"] = (
+        "start at key + 0x00 for every key, limit 1: the first key at or after it, which may be an existing key "
+        "(the case ids say seek-miss for historical reasons; the probe is not necessarily a miss)")
+    g.families["range/end-at-key"] = "end exactly at every key on the 2-byte shortened bounds, start at its first byte"
     for name in ("binary-keys", "truncated-bounds", "truncated-bounds-2"):
         ds = oracle.Dataset.load("binary-keys")
+        keys = set(ds.keys())
         reqs = R + ["KEY-3", "KEY-4"] + (["RG-5", "RG-6"] if name != "binary-keys" else [])
+        g.family = "range/whole-dataset"
         add(f"{name}/all", reqs, name, "binary-keys", rq_range(columns=["v"]))
         for i, k in enumerate(ds.keys()):
+            g.family = "range/seek-key"
             add(f"{name}/seek-{i:02d}", reqs, name, "binary-keys", rq_range(start=k, limit=1),
-                f"exact hit at {show(k)}")
+                f"start exactly at {show(k)}")
             if name != "truncated-bounds":
-                add(f"{name}/seek-miss-{i:02d}", reqs, name, "binary-keys", rq_range(start=k + b"\x00", limit=1),
-                    f"exact miss just above {show(k)}")
+                g.family = "range/start-just-above-key"
+                above = k + b"\x00"
+                add(f"{name}/seek-miss-{i:02d}", reqs, name, "binary-keys", rq_range(start=above, limit=1),
+                    f"start at {show(k)} + 0x00, " + ("which is itself a key" if above in keys else "between keys"))
             if name == "truncated-bounds-2":
+                g.family = "range/end-at-key"
                 add(f"{name}/end-{i:02d}", reqs, name, "binary-keys", rq_range(start=k[:1], end=k, limit=3),
                     f"end exactly at {show(k)}")
     for name, src, cols, extra in (
@@ -257,7 +319,10 @@ def range_group():
             ("annotated", "annotated", ["d", "ts_ms", "ts_utc", "dec9", "dec18", "dec30", "s"], ["RANGE-2", "COL-3"])):
         ds = oracle.Dataset.load(src)
         reqs = R + extra
+        g.family = "range/whole-dataset"
         add(f"{name}/all", reqs, name, src, rq_range(columns=cols))
+        g.fam("seek-with-columns", "start at every key with limit 2 and all scalar columns, on layouts with unusual "
+                                   "indexes, encodings or annotations")
         for i, k in enumerate(ds.keys()):
             add(f"{name}/seek-{i:02d}", reqs, name, src, rq_range(start=k, limit=2, columns=cols))
     return g
@@ -274,6 +339,7 @@ def prefix_group():
         ("truncated-bounds-2", [b"\xff", b"\xff\xff", b"\xff" * 80, b"L" * 30, b"M" * 70 + b"\xff" * 10, b"a"]),
         ("delimiter", [b"a/b/", b"a/", b"caf\xc3\xa9", b"x\xff", b"\xff", b"\xff\xff", b"\xff\xff\xff"]),
     ]
+    g.fam("prefix-only", "a range with only prefix_base64; asserted equal to the range from p to successor(p)")
     for name, prefixes in cases:
         src = "binary-keys" if name.startswith("truncated") else name
         ds = oracle.Dataset.load(src)
@@ -304,6 +370,7 @@ def prefix_group():
         ("binary-keys", b"a", dict(start=b"", end=b"")),
         ("binary-keys", b"", dict(start=b"\x7f", limit=4)),
     ]
+    g.fam("prefix-with-bounds", "prefix intersected with start and end")
     for i, c in enumerate(combos):
         name, p, kw = c[0], c[1], dict(c[2])
         src = "binary-keys" if name.startswith("truncated") else name
@@ -324,6 +391,7 @@ def list_group():
 
     L = ["LIST-2", "LIST-3", "LIST-4"]
     D = "delimiter"
+    g.fam("delimiter-semantics", "rollups, rows, delimiters and prefixes on the folder-like delimiter dataset")
     add("delimiter/root", L, D, rq_list(), "empty prefix; keys beginning with the delimiter roll up to '/'")
     add("delimiter/a", L, D, rq_list(prefix=b"a"), "prefix without a trailing delimiter; key a is a row")
     add("delimiter/a-slash", L, D, rq_list(prefix=b"a/"), "key equal to the prefix is a row; a// and a/b/ roll up")
@@ -349,6 +417,7 @@ def list_group():
     add("delimiter/columns", L + ["RANGE-2"], D, rq_list(prefix=b"a/", columns=["size"]))
     add("delimiter/columns-root", L + ["RANGE-2"], D, rq_list(columns=["size"]))
     E = L + ["LIST-7"]
+    g.fam("bounds-and-after", "end, after and continuation applied to candidate keys")
     add("delimiter/end-inside-prefix", E, D, rq_list(end=b"a/b"), "end inside the range of a/")
     add("delimiter/end-at-prefix", E, D, rq_list(prefix=b"a/", end=b"a/b/"),
         "end equal to a common prefix: the key a/b/ is not a candidate")
@@ -376,6 +445,7 @@ def list_group():
     add("list-bounds/after-a-a-continuation", E + ["LIST-5"], LB, rq_list(after=b"a/a", continuation=True))
     add("list-bounds/end-c", E, LB, rq_list(end=b"c"))
     M = "multipart"
+    g.fam("other-datasets", "listings over the multipart, binary-keys, shortened-bounds and empty datasets")
     add("multipart/root", L, M, rq_list())
     add("multipart/logs", L, M, rq_list(prefix=b"logs/"))
     add("multipart/logs-2026", L, M, rq_list(prefix=b"logs/2026/"), "logs/2026/02/ spans parts 0 and 1")
@@ -404,23 +474,27 @@ def pagination_group():
     configs = [("delimiter", b"", b"/", 1), ("delimiter", b"", b"/", 3), ("delimiter", b"a/", b"/", 2),
                ("delimiter", b"", b"\xff", 4), ("multipart", b"", b"/", 2), ("multipart", b"logs/2026/02/", b"/", 7),
                ("multipart", b"logs/", b"/", 1), ("binary-keys", b"", b"\xff", 5), ("list-bounds", b"", b"/", 1)]
+    g.fam("list-scenario", "a listing read page by page: after = the previous page's last entry, continuation "
+                           "true; the pages concatenate to the unpaginated listing")
     for name, prefix, delim, n in configs:
         ds = oracle.Dataset.load(name)
         full = ds.list(prefix=prefix, delimiter=delim, limit=BIG)
+        scenario = f"list/{name}/{show(prefix) or 'root'}-{delim.hex()}-limit{n}"
         got, after, i = [], None, 0
         while True:
             req = rq_list(prefix=prefix, delimiter=delim, after=after, continuation=True if after is not None else None,
                           limit=n)
             exp = run(ds, req)
             reqs = ["LIST-6", "QUERY-3", "LIST-5"]
-            g.add(f"list/{name}/{show(prefix) or 'root'}-{delim.hex()}-limit{n}/page-{i:02d}", reqs, name, exp,
-                  request=req)
+            g.add(f"{scenario}/page-{i:02d}", reqs, name, exp, request=req,
+                  meta={"scenario_id": scenario, "step": i})
             got += exp["entries"]
             if len(exp["entries"]) < n:
                 break
             after = dec(exp["entries"][-1]["key_base64"])
             i += 1
         assert got == full, f"pagination of {name} does not concatenate to the full listing"
+    g.fam("range-scenario", "a range read page by page with an exclusive start at the previous page's last key")
     for name, n in (("multipart", 25), ("binary-keys", 7), ("truncated-bounds-2", 4)):
         src = "binary-keys" if name.startswith("truncated") else name
         ds = oracle.Dataset.load(src)
@@ -429,7 +503,8 @@ def pagination_group():
         while True:
             req = rq_range(start=start, start_exclusive=True if start is not None else None, limit=n)
             exp = run(ds, req)
-            g.add(f"range/{name}-limit{n}/page-{i:02d}", ["RANGE-1", "QUERY-3"], name, exp, request=req)
+            g.add(f"range/{name}-limit{n}/page-{i:02d}", ["RANGE-1", "QUERY-3"], name, exp, request=req,
+                  meta={"scenario_id": f"range/{name}-limit{n}", "step": i})
             got += exp["entries"]
             if len(exp["entries"]) < n:
                 break
@@ -445,11 +520,13 @@ def projection_group():
     P = "projection"
     ds = oracle.Dataset.load(P)
     scalar = ["flag", "i32", "i64", "f32", "f64", "u32", "u64", "a.b", "name", "blob", "fx", "req", "extra"]
+    g.fam("column-type", "each scalar column of the projection dataset over every row")
     for c in scalar:
         req = rq_range(columns=[c])
         reqs = ["RANGE-2", "COL-3"] + (["COL-2"] if c in ("f64", "req", "extra") else []) + \
                (["COL-6"] if c == "a.b" else [])
         g.add(f"column/{c}", reqs, P, run(ds, req), request=req)
+    g.fam("column-combination", "several columns: request order, absent versus null, rows across parts")
     for cid, cols in (("all", scalar), ("reversed", list(reversed(scalar))), ("absent-mix", ["extra", "req", "f64"]),
                       ("repeat-key-order", ["fx", "flag"])):
         req = rq_range(columns=cols)
@@ -460,6 +537,7 @@ def projection_group():
     req = rq_list(prefix=b"row-1", delimiter=b"-", columns=["i64", "f64"])
     g.add("list/columns", ["LIST-3", "RANGE-2", "COL-2"], P, run(ds, req), request=req,
           desc="the delimiter occurs only inside the prefix, so every candidate is a row")
+    g.fam("absent-and-unknown", "columns that no part has (COL-7) and literal dotted names (COL-6)")
     for cid, cols in (("unknown", ["no_such_column"]), ("unknown-mixed", ["i32", "no_such_column", "req"])):
         req = rq_range(columns=cols)
         g.add(f"col-7/{cid}", ["COL-7", "RANGE-2"], P, run(ds, req), request=req,
@@ -482,11 +560,13 @@ def projection_group():
         ("non-utf8-keys", "non-utf8-keys", rq_range(columns=["key"]), None),
         ("multipart", "multipart", rq_list(prefix=b"logs/2026/02/", columns=["key"], limit=6), "rows from two parts"),
     ]
+    g.fam("key-column", "projecting key returns its physical bytes")
     for i, (name, src, req, desc) in enumerate(key_cases):
         g.add(f"key/{name}-{i:02d}", ["RANGE-2", "KEY-1"] + (["LIST-3"] if req["op"] == "list" else []), name,
               run(oracle.Dataset.load(src), req), request=req, desc=desc)
     an = oracle.Dataset.load("annotated")
     acols = ["d", "ts_ms", "ts_utc", "dec9", "dec18", "dec30", "s"]
+    g.fam("annotated", "physical values of annotated columns (DATE, TIMESTAMP, DECIMAL, STRING)")
     for c in acols:
         req = rq_range(columns=[c])
         g.add(f"annotated/{c}", ["RANGE-2", "COL-3"], "annotated", run(an, req), request=req,
@@ -497,11 +577,13 @@ def projection_group():
     req = rq_list(prefix=b"ann-", delimiter=b"/", columns=list(reversed(acols)))
     g.add("annotated/list-all", ["RANGE-2", "LIST-3"], "annotated", run(an, req), request=req)
     en = oracle.Dataset.load("encodings")
+    g.fam("encodings", "values from PLAIN_DICTIONARY, DELTA_BINARY_PACKED and DELTA_LENGTH_BYTE_ARRAY pages")
     for c in ("i32", "i64", "s"):
         req = rq_range(columns=[c, "key"])
         g.add(f"encodings/{c}", ["RANGE-2", "ENC-1"], "encodings", run(en, req), request=req,
               desc="PLAIN_DICTIONARY pages in part 0; DELTA_BINARY_PACKED / DELTA_LENGTH_BYTE_ARRAY in part 1")
     oc = oracle.Dataset.load("optional-codecs")
+    g.fam("optional-codec", "columns compressed with optional codecs: the values, or unsupported_encoding")
     req = rq_range(columns=["size"])
     g.add("optional-codecs/baseline-column", ["RANGE-2", "ENC-1"], "optional-codecs",
           dict(run(oc, req), accept_unsupported=["unsupported_encoding"]), request=req,
@@ -511,13 +593,18 @@ def projection_group():
         g.add(f"optional-codecs/{c}", ["RANGE-2", "ENC-1"], "optional-codecs",
               dict(run(oc, req), accept_unsupported=["unsupported_encoding"]), request=req,
               desc="a codec outside the baseline: the values, or unsupported (never wrong values or a refusal)")
+    g.fam("nested", "nested or repeated columns: unsupported_projection. COL-3 permits supporting them, but the "
+                    "runner protocol has no encoding for nested values, so the suite can only accept the rejection; "
+                    "it must never be answered as absent")
     for c in ("meta", "tags"):
         req = rq_range(columns=["i32", c])
         g.add(f"nested/{c}", ["COL-3"], P, run(ds, req), request=req,
-              desc="projecting a nested or repeated column is rejected, never answered as absent")
+              desc="projecting a nested or repeated column is rejected (the protocol cannot express its values), "
+                   "never answered as absent")
     req = rq_list(prefix=b"row-0", delimiter=b"/", columns=["tags"])
     g.add("nested/list-tags", ["COL-3"], P, run(ds, req), request=req)
     lu = oracle.Dataset.load(P)
+    g.fam("other-datasets", "projection on other datasets")
     req = rq_range(columns=scalar)
     g.add("key-legacy-utf8/all", ["RANGE-2", "KEY-1"], "key-legacy-utf8", run(lu, req), request=req)
     m = oracle.Dataset.load("multipart")
@@ -553,6 +640,7 @@ def requests_group():
         ("list-prefix-malformed-base64", {"op": "list", "prefix_base64": "YS8", "delimiter_base64": "Lw==", "limit": 10}),
         ("list-after-malformed-base64", {"op": "list", "after_base64": "@@@@", "delimiter_base64": "Lw==", "limit": 10}),
     ]
+    g.fam("malformed", "a malformed request is invalid_request")
     for cid, raw in bad:
         g.add(f"basic/{cid}", ["QUERY-1"], "basic", {"status": "invalid_request"}, raw_request=raw)
     g.add("empty/range-limit-0", ["QUERY-1"], "empty", {"status": "invalid_request"},
@@ -560,113 +648,210 @@ def requests_group():
     return g
 
 
-# Refusals ------------------------------------------------------------------
+# Refusals and validation ----------------------------------------------------
 
-STRUCTURAL_READ = {"missing_page_index"}  # plus invalid_page_index faults citing RG-3/RG-4 only
+LEVELS = ["structural", "profile", "full"]
+# Prerequisite matrix (VAL-1): six structural faults with distinct entry paths requested at profile and full,
+# and three profile faults requested at full. Every other fault is tested only at its lowest level.
+STRUCTURAL_SENTINELS = ["manifest-unknown-member", "missing-part", "invalid-footer-magic", "stamp-wrong-schema-id",
+                        "inconsistent-column-type", "missing-column-index"]
+PROFILE_SENTINELS = ["key-order-across-pages", "bounds-last-key-differs", "page-index-min-above-first-key"]
+# Six distinct digest behaviours (VAL-2): (dataset, expected digest level, description).
+DIGEST_CASES = [
+    ("empty", {"result": "complete", "checked": 0}, "the empty dataset: nothing to check, complete"),
+    ("basic", {"result": "complete", "checked": 0}, "a non-empty dataset that declares no sha256: complete, 0 checked"),
+    ("multipart", {"result": "complete", "checked": 3}, "every part declares a matching sha256: 3 checked"),
+    ("digest-mixed", {"result": "complete", "checked": 2}, "two of three parts declare sha256: exactly 2 checked"),
+    ("invalid/digest-mismatch", {"result": "failed", "code": "digest_mismatch"},
+     "a declared sha256 does not match the part's bytes"),
+    ("invalid/digest-on-profile-invalid", {"result": "complete", "checked": 1},
+     "the dataset has a profile fault (key_order) but its declared digest matches: digest validation is "
+     "independent of the other levels and completes"),
+]
 
 
-def fault_level(f):
-    """The validation level that must find a fault (spec section 8)."""
-    codes, det = set(f["codes"]), f["detect"]
-    if det.startswith("validate:"):
-        return det.split(":")[1]
-    if det == "open":
-        return "structural"
-    if "inconsistent_column" in codes:
-        return "structural"  # COL-5: structural validation checks all columns
-    if codes <= STRUCTURAL_READ or ("invalid_page_index" in codes and set(f["requirements"]) & {"RG-3", "RG-4"}
-                                    and not set(f["requirements"]) & {"RG-5", "KEY-6"}):
-        return "structural"
-    if "invalid_parquet" in codes:
-        return "full"
-    return "profile"
+def load_faults():
+    doc = json.loads((HERE / "faults.json").read_text(encoding="utf-8"))
+    return {f["id"]: f for f in doc["faults"]}
+
+
+def accepted(f):
+    return f["codes"] + [x["code"] for x in f.get("secondary_faults", [])]
 
 
 def expect_refusal(codes):
     return {"status": "refused", "code": codes[0]} if len(codes) == 1 else {"status": "refused", "codes": codes}
 
 
-def read_request(f):
-    req = rq_range(limit=BIG)
-    r = f.get("request", "")
-    if r.startswith("range-columns:"):
-        req["columns"] = r.split(":", 1)[1].split(",")
-    return req
+def failed_level(codes):
+    return {"result": "failed", **({"code": codes[0]} if len(codes) == 1 else {"codes": codes})}
 
 
 def refusal_groups(lock):
+    faults = load_faults()
     g_open = Group("refusals-open", "reader", "Faults a reader must detect when opening the dataset "
-                                              "(detect: open).")
+                                              "(reader_detect open in generators/faults.json).")
     g_read = Group("refusals-read", "reader", "Faults a reader must detect no later than decoding the faulty "
-                                              "data (detect: read). Each request is an unbounded range whose limit "
-                                              "covers every row, so it decodes the faulty page under any correct "
-                                              "access path.")
-    gv = {lvl: Group(f"validate-{lvl}", f"validator-{lvl}", f"Validation at the {lvl} level (section 8). Valid "
-                                                            "datasets complete. For an invalid dataset, validate still answers status ok and reports "
-                                                            "the level failed with the refusal code (it never answers refused); a dataset that "
-                                                            "cannot be opened reports structural failed.")
+                                              "data. Each request is an unbounded range whose limit covers every "
+                                              "row (projecting the faulty column where the fault is in values), so "
+                                              "it decodes the faulty page under any correct access path.")
+    g_open.fam("fault", "one case per fault that a reader must refuse on open")
+    g_read.fam("fault", "one case per fault that a reader must refuse no later than the read that decodes it")
+    gv = {lvl: Group(f"validate-{lvl}", f"validator-{lvl}",
+                     f"Validation at the {lvl} level (section 8). validate always answers status ok with levels; "
+                     "an invalid dataset shows the level failed with the refusal code, and a dataset that cannot "
+                     "be opened shows structural failed.")
           for lvl in ("structural", "profile", "full", "digest")}
-    order = ["structural", "profile", "full"]
+    for lvl in LEVELS:
+        gv[lvl].fam("valid-dataset", "every valid dataset completes this level and its prerequisites")
     for d in lock["datasets"]:
-        if d["valid"]:
-            n_sha = 0
-            m = json.loads((CONF / d["dir"] / "manifest.json").read_text())
-            n_sha = sum(1 for p in m["parts"] if "sha256" in p)
-            for lvl in order:
-                levels = {x: {"result": "complete"} for x in order[: order.index(lvl) + 1]}
-                reqs = ["VAL-1"]
-                if d["name"] in OPTIONAL and lvl == "full":
-                    # an unsupported optional codec makes full incomplete, never failed; lower levels complete
-                    levels["full"] = {"result": "complete", "accept": ["incomplete"]}
-                    reqs += ["ENC-1"]
-                gv[lvl].add(d["name"], reqs, d["dir"], {"status": "ok", "levels": levels},
-                            request={"op": "validate", "level": lvl}, requires=[f"validate:{lvl}"])
-            gv["digest"].add(d["name"], ["VAL-2", "PART-5"], d["dir"],
-                             {"status": "ok", "levels": {"digest": {"result": "complete", "checked": n_sha}}},
-                             request={"op": "validate", "level": "digest"}, requires=["validate:digest"])
+        if not d["valid"]:
             continue
-        f = d["fault"]
-        codes = f["codes"]
+        label = {v: k for k, v in RENAMED.items()}.get(d["name"], d["name"])
+        for lvl in LEVELS:
+            levels = {x: {"result": "complete"} for x in LEVELS[: LEVELS.index(lvl) + 1]}
+            reqs, desc = ["VAL-1"], None
+            if lvl == "full" and d["name"] in OPTIONAL:
+                levels["full"] = {"result": "complete", "accept": ["incomplete"]}
+                reqs.append("ENC-1")
+                desc = ("value columns use LZ4_RAW and BROTLI (outside ENC-1): full is complete, or incomplete with a "
+                        "reason for a validator without those codecs; structural and profile must complete")
+            if lvl == "full" and d["name"] in NESTED_COLUMNS:
+                levels["full"] = {"result": "complete", "accept": ["incomplete"]}
+                desc = (f"the dataset has nested/repeated columns ({NESTED_COLUMNS[d['name']]}); a validator that "
+                        "does not decode them reports full incomplete with a reason (VAL-1); lower levels complete")
+            gv[lvl].add(label, reqs, d["dir"], {"status": "ok", "levels": levels},
+                        request={"op": "validate", "level": lvl}, requires=[f"validate:{lvl}"], desc=desc)
+    for lvl in LEVELS:
+        gv[lvl].fam("fault-at-lowest-level", "each fault at the lowest validation level that detects it "
+                                             "(validation_level in generators/faults.json)")
+    for fid, f in faults.items():
+        codes = accepted(f)
+        ddir = f["dataset"]
+        desc = next(d["description"] for d in lock["datasets"] if d["dir"] == ddir)
+        if f.get("secondary_faults"):
+            desc += " Secondary fault: " + "; ".join(f"{x['code']}: {x['justification']}" for x in f["secondary_faults"])
         exp = expect_refusal(codes)
-        desc = d["description"] + (f" Note: {f['note']}" if f.get("note") else "")
-        if f["detect"] == "open":
-            g_open.add(d["name"], f["requirements"], d["dir"], exp, request={"op": "open"}, detect="open", desc=desc)
-        elif f["detect"] == "read" or ("invalid_parquet" in codes and "No read case" not in f.get("note", "")):
-            g_read.add(d["name"], f["requirements"], d["dir"], exp, request=read_request(f), detect="read", desc=desc)
-        lvl = fault_level(f)
-        reqs = f["requirements"] + (["VAL-2"] if lvl == "digest" else ["VAL-1"])
-        failed = {"result": "failed", **({"code": codes[0]} if len(codes) == 1 else {"codes": codes})}
+        meta = {"fault_id": fid}
+        if f["reader_detect"] == "open":
+            g_open.add(fid, f["requirements"], ddir, exp, request={"op": "open"}, detect="open", desc=desc, meta=meta)
+        elif f["reader_detect"] == "read":
+            req = rq_range(limit=BIG, columns=f.get("read_columns"))
+            g_read.add(fid, f["requirements"], ddir, exp, request=req, detect="read", desc=desc, meta=meta)
+        lvl = f["validation_level"]
         if lvl == "digest":
-            levels = {"digest": failed}
-        else:
-            levels = {x: {"result": "complete"} for x in order[: order.index(lvl)]}
-            levels[lvl] = failed
-        # validate never answers refused: the report shows the level failed (an unopenable dataset fails
-        # structural with the refusal code).
-        gv[lvl].add(d["name"], reqs, d["dir"], {"status": "ok", "levels": levels},
-                    request={"op": "validate", "level": lvl}, requires=[f"validate:{lvl}"], desc=desc)
-        # A higher-level request on a lower-level fault: the failed level is reported and every dependent
-        # level is incomplete (VAL-1: a level is complete only if its prerequisite is complete).
-        if lvl in order:
-            for higher in order[order.index(lvl) + 1:]:
-                lv = dict(levels)
-                for x in order[order.index(lvl) + 1: order.index(higher) + 1]:
-                    lv[x] = {"result": "incomplete"}
-                gv[higher].add(f"prerequisite/{d['name']}", reqs, d["dir"], {"status": "ok", "levels": lv},
-                               request={"op": "validate", "level": higher}, requires=[f"validate:{higher}"],
-                               desc=f"fault at the {lvl} level, validation requested at {higher}. " + desc)
+            continue  # covered by the digest behaviours below
+        levels = {x: {"result": "complete"} for x in LEVELS[: LEVELS.index(lvl)]}
+        levels[lvl] = failed_level(codes)
+        gv[lvl].add(fid, f["requirements"] + ["VAL-1"], ddir, {"status": "ok", "levels": levels},
+                    request={"op": "validate", "level": lvl}, requires=[f"validate:{lvl}"], desc=desc, meta=meta)
+    for lvl in ("profile", "full"):
+        gv[lvl].fam("prerequisite", "a lower-level fault with validation requested at a higher level: the failing "
+                                    "level is reported failed and every dependent level incomplete with a reason")
+    for fid in STRUCTURAL_SENTINELS + PROFILE_SENTINELS:
+        f = faults[fid]
+        low = f["validation_level"]
+        for higher in LEVELS[LEVELS.index(low) + 1:]:
+            if fid in PROFILE_SENTINELS and higher != "full":
+                continue
+            levels = {x: {"result": "complete"} for x in LEVELS[: LEVELS.index(low)]}
+            levels[low] = failed_level(accepted(f))
+            for x in LEVELS[LEVELS.index(low) + 1: LEVELS.index(higher) + 1]:
+                levels[x] = {"result": "incomplete"}
+            gv[higher].add(f"prerequisite/{fid}", f["requirements"] + ["VAL-1"], f["dataset"],
+                           {"status": "ok", "levels": levels}, request={"op": "validate", "level": higher},
+                           requires=[f"validate:{higher}"], meta={"fault_id": fid},
+                           desc=f"a {low} fault ({fid}) with validation requested at {higher}")
+    gv["digest"].fam("digest", "six distinct digest behaviours (VAL-2, PART-5)")
+    for name, level, desc in DIGEST_CASES:
+        meta = {"fault_id": name.split("/", 1)[1]} if name.startswith("invalid/") else None
+        gv["digest"].add(name.split("/")[-1], ["VAL-2", "PART-5"], f"datasets/{name}",
+                         {"status": "ok", "levels": {"digest": level}}, request={"op": "validate", "level": "digest"},
+                         requires=["validate:digest"], desc=desc, meta=meta)
     return [g_open, g_read] + [gv[x] for x in ("structural", "profile", "full", "digest")]
+
+
+# Assembly --------------------------------------------------------------------
+
+def behaviour(c):
+    """What a case asserts, independent of its id and documentation."""
+    return json.dumps([c["dataset"], c.get("request"), c.get("raw_request"), c["expect"], c.get("detect")],
+                      sort_keys=True)
+
+
+def load_core():
+    core = {}
+    files = []
+    for path in sorted((CONF / "cases" / "core").glob("*.json")):
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        assert doc.get("generated") is False, f"{path}: core files must say generated: false"
+        files.append((path.relative_to(CONF).as_posix(), doc))
+        for c in doc["cases"]:
+            assert c["id"] not in core, f"duplicate core id {c['id']}"
+            core[c["id"]] = (doc, c)
+    return core, files
+
+
+def check_core_case(c, candidate):
+    """Core expectations are authoritative: check them, never rewrite them."""
+    if candidate is not None:
+        if behaviour(c) != behaviour(candidate):
+            raise SystemExit(f"core case {c['id']} disagrees with the generator/oracle; review the core case "
+                             f"(it is not rewritten)")
+        return
+    req = c.get("request") or {}
+    rows = c["dataset"].split("/", 1)[1]
+    if req.get("op") in ("range", "list") and (HERE / "rows" / f"{rows}.json").exists():
+        if run(oracle.Dataset.load(rows), req) != {k: v for k, v in c["expect"].items() if k != "accept_unsupported"}:
+            raise SystemExit(f"core case {c['id']} disagrees with the oracle")
+        return
+    raise SystemExit(f"core case {c['id']} has no generated counterpart and cannot be checked by the oracle")
+
+
+def build_all(lock):
+    groups = [open_group(lock), range_group(), prefix_group(), list_group(), pagination_group(),
+              projection_group(), requests_group()] + refusal_groups(lock)
+    core, core_files = load_core()
+    cand = {c["id"]: c for g in groups for c in g.cases}
+    for cid, (_doc, c) in core.items():
+        check_core_case(c, cand.get(cid))
+    # Exact duplicates (same dataset, request and expectation): keep the first (core first), retire the rest.
+    seen, retired = {}, []
+    for cid, (_doc, c) in core.items():
+        seen.setdefault(behaviour(c), cid)
+    # The "start just above a key" probes are retired in favour of an identical exact-hit or boundary probe.
+    ordered = [c for g in groups for c in sorted(g.cases, key=lambda c: c["family"] == "range/start-just-above-key")]
+    for c in ordered:
+        if True:
+            if c["id"] in core:
+                continue
+            first = seen.setdefault(behaviour(c), c["id"])
+            if first != c["id"]:
+                retired.append({"id": c["id"], "duplicate_of": first})
+    retired_ids = {r["id"] for r in retired}
+    generated = {g.name: [c for c in g.cases if c["id"] not in core and c["id"] not in retired_ids] for g in groups}
+    return groups, core, core_files, generated, retired
 
 
 def main():
     lock = json.loads((CONF / "fixtures.lock.json").read_text(encoding="utf-8"))
-    groups = [open_group(lock), range_group(), prefix_group(), list_group(), pagination_group(),
-              projection_group(), requests_group()] + refusal_groups(lock)
-    files = []
+    groups, core, core_files, generated, retired = build_all(lock)
+    for old in (CONF / "cases").glob("*.json"):
+        old.unlink()  # superseded flat layout
+    gen_files = []
     for g in groups:
-        path = f"cases/{g.name}.json"
-        write_text(CONF / path, dumps(g.doc()))
-        files.append(path)
+        path = f"cases/generated/{g.name}.generated.json"
+        if generated[g.name]:
+            write_text(CONF / path, dumps(g.doc(generated[g.name])))
+            gen_files.append(path)
+        elif (CONF / path).exists():
+            (CONF / path).unlink()
+    case_files = [p for p, _d in core_files] + gen_files
+    counts = {}
+    for p, d in core_files:
+        counts[p] = len(d["cases"])
+    for p in gen_files:
+        counts[p] = len(generated[p.split("/")[-1].split(".")[0]])
     suite = {
         "suite": "seekparquet-conformance-semantic",
         "revision": SUITE_REVISION,
@@ -676,26 +861,32 @@ def main():
         "draft_revision": 1,
         "mandatory_targets": ["reader"],
         "mandatory_capabilities": ["open", "range", "list", "projection"],
-        "case_files": files,
-        "case_counts": {g.name: len(g.cases) for g in groups},
+        "case_files": case_files,
+        "subsets": ["subsets/smoke.json"],
+        "case_counts": counts,
+        "totals": {"core": sum(len(d["cases"]) for _p, d in core_files),
+                   "generated": sum(len(v) for v in generated.values())},
+        "renamed_datasets": {f"datasets/{k}": f"datasets/{v}" for k, v in RENAMED.items()},
+        "retired_case_ids": retired,
     }
-    suite["content_sha256"] = suite_digest(files)
+    suite["content_sha256"] = suite_digest(case_files + suite["subsets"])
     write_text(CONF / "suite.json", dumps(suite))
-    write_coverage(groups)
-    print(f"{sum(len(g.cases) for g in groups)} cases in {len(groups)} files")
+    write_coverage(core, generated, groups)
+    print(f"{suite['totals']['core']} core + {suite['totals']['generated']} generated cases; "
+          f"{len(retired)} retired duplicates")
 
 
-DIGEST_FILES = ["protocol.md", "case.schema.json", "capabilities.json", "fixtures.lock.json"]
+DIGEST_FILES = ["protocol.md", "case.schema.json", "capabilities.json", "fixtures.lock.json", "generators/faults.json"]
 
 
-def suite_digest(case_files):
-    """SHA-256 over the suite's contract files and case files (path, NUL, bytes, NUL; sorted by path).
+def suite_digest(files):
+    """SHA-256 over the suite's contract files, case files and subsets (path, NUL, bytes, NUL; sorted by path).
 
     harness/check_suite.py recomputes it, so spec/status.json can pin a suite revision by revision and digest.
     """
     import hashlib
     h = hashlib.sha256()
-    for path in sorted(DIGEST_FILES + list(case_files)):
+    for path in sorted(DIGEST_FILES + list(files)):
         h.update(path.encode() + b"\0" + (CONF / path).read_bytes() + b"\0")
     return h.hexdigest()
 
@@ -707,40 +898,77 @@ UNTESTABLE = {
     "VER-2": "process rule for the specification itself: not testable",
     "VAL-3": "statement of what validation cannot show: not testable",
     "EXT-2": "API recommendation (expose extensions unchanged): outside the runner protocol",
-    "GEO-1": "writer recommendation affecting speed, not validity; readers must accept any page size, which "
-             "every fixture with a different page size exercises",
+    "GEO-1": "writer recommendation affecting speed, not validity; reader acceptance of any page size is "
+             "exercised by every fixture with a different page size",
     "GEO-2": "writer's choice: not a reader obligation",
-    "MAN-5": "reader configuration (accepting a draft only when configured): adapters declare supported "
-             "versions in hello; covered indirectly by the unsupported-version cases",
+    "MAN-5": "reader configuration (accepting a draft only when configured): adapters declare supported versions "
+             "in hello; the unsupported-version cases cover refusal",
     "LAYOUT-2": "paths are relative to the root: exercised implicitly by every dataset",
-    "FILE-2": "not yet covered: needs an encrypted fixture (pyarrow can write one; deferred)",
     "COL-1": "producer freedom: no reader obligation",
+}
+GAPS = {
+    "FILE-2": "gap: no encrypted fixture yet",
+    "CHECK-3": "gap: permission for earlier checks; the harness accepts early refusals but no case targets it",
+    "CHECK-4": "gap: needs the planned indexed-access suite (a reader must not certify rows it skipped)",
+    "RG-3": "partial: no fixture whose OffsetIndex omits a data page while every listed entry is consistent",
+    "KEY-5": "partial: a column_orders entry that is present but not TYPE_ORDER is not tested",
+    "STAMP-2": "partial: a draft_revision stamp on a format_version 1 file needs a reader that supports version 1",
+    "COL-3": "partial: nested projection can only be tested as rejected (no protocol encoding)",
 }
 
 
-def write_coverage(groups):
-    spec = (CONF.parent / "spec" / "format-1.md").read_text(encoding="utf-8")
+def write_coverage(core, generated, groups):
     import re
+    spec = (CONF.parent / "spec" / "format-1.md").read_text(encoding="utf-8")
     ids = list(dict.fromkeys(re.findall(r"\[([A-Z]+-[0-9]+)\]", spec)))
-    cites = {}
-    for g in groups:
-        for c in g.cases:
-            for r in c["requirements"]:
-                cites.setdefault(r, {}).setdefault(g.name, 0)
-                cites[r][g.name] += 1
-    lines = ["# Requirement coverage", "",
-             "Generated by `generators/make_cases.py` from the case files: for each requirement identifier in",
-             "`spec/format-1.md`, the case groups that cite it (with counts), or why no case does.", "",
-             "| Requirement | Cases | Coverage |", "|---|---|---|"]
+    by_req = {r: {"core": [], "families": {}, "pos": 0, "neg": 0} for r in ids}
+
+    def negative(c):
+        e = c["expect"]
+        return e["status"] != "ok" or any(v.get("result") == "failed" for v in e.get("levels", {}).values())
+
+    allcases = [c for _d, c in core.values()] + [c for v in generated.values() for c in v]
+    for c in allcases:
+        for r in c["requirements"]:
+            if r not in by_req:
+                continue
+            b = by_req[r]
+            if c["id"] in core:
+                b["core"].append(c["id"])
+            else:
+                b["families"][c["family"]] = b["families"].get(c["family"], 0) + 1
+            b["neg" if negative(c) else "pos"] += 1
+    L = ["# Requirement coverage", "",
+         "Generated by `generators/make_cases.py`. For each requirement in `spec/format-1.md`: representative",
+         "core cases (hand-reviewed, `cases/core/`), the generated families that exercise it (with case counts),",
+         "the number of positive cases (valid data, results expected) and negative cases (refusals, invalid",
+         "requests, unsupported features or failed validation levels), and known gaps. A citation count is not",
+         "an argument for completeness: the core descriptions and family descriptions say what each case observes.",
+         ""]
     for r in ids:
-        if r in cites:
-            total = sum(cites[r].values())
-            detail = ", ".join(f"{g} ({n})" for g, n in sorted(cites[r].items()))
-            note = UNTESTABLE.get(r, "")
-            lines.append(f"| {r} | {total} | {detail}{'; ' + note if note else ''} |")
-        else:
-            lines.append(f"| {r} | 0 | {UNTESTABLE.get(r, 'not yet covered')} |")
-    write_text(CONF / "COVERAGE.md", "\n".join(lines) + "\n")
+        b = by_req[r]
+        L.append(f"## {r}")
+        L.append("")
+        if not b["core"] and not b["families"]:
+            L.append(f"No case. {UNTESTABLE.get(r) or GAPS.get(r) or 'gap: not yet covered'}.")
+            L.append("")
+            continue
+        L.append(f"- Evidence: {b['pos']} positive, {b['neg']} negative.")
+        if b["core"]:
+            shown = b["core"][:5]
+            L.append("- Core: " + ", ".join(f"`{x}`" for x in shown) + (f" and {len(b['core']) - 5} more"
+                                                                          if len(b["core"]) > 5 else ""))
+        if b["families"]:
+            L.append("- Generated: " + ", ".join(f"`{f}` ({n})" for f, n in sorted(b["families"].items())))
+        note = UNTESTABLE.get(r) or GAPS.get(r)
+        if note:
+            L.append(f"- Note: {note}.")
+        L.append("")
+    L += ["## Known gaps", ""] + [f"- {r}: {g}" for r, g in GAPS.items()] + [
+        "- Adaptive pagination driven by an adapter's own responses (pagination cases use fixed requests).",
+        "- Validators that let the indexes under test decide what to visit (needs dedicated fixtures).",
+        "- A second independent writer's fixtures.", ""]
+    write_text(CONF / "COVERAGE.md", "\n".join(L).rstrip("\n") + "\n")
 
 
 if __name__ == "__main__":

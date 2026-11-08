@@ -4,14 +4,24 @@
   "title": "SeekParquet conformance case file",
   "description": "Structure only. check_suite.py also checks requirement IDs against the specification, codes against refusal-codes.json and capability names against capabilities.json.",
   "type": "object",
-  "required": ["group", "target", "cases"],
+  "required": ["group", "target", "generated", "cases"],
   "additionalProperties": false,
   "properties": {
     "group": {"type": "string", "minLength": 1},
     "target": {"type": "string", "description": "The conformance target these cases belong to (capabilities.json)."},
+    "generated": {"type": "boolean", "description": "false for hand-reviewed core files (cases/core/), true for generator output (cases/generated/)."},
+    "generator": {"type": "string", "description": "The script that writes this file (generated files only)."},
+    "families": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Generated families in this file and what each varies."},
     "description": {"type": "string"},
     "cases": {"type": "array", "items": {"$ref": "#/$defs/case"}}
   },
+  "allOf": [
+    {"if": {"properties": {"generated": {"const": false}}},
+     "then": {"not": {"anyOf": [{"required": ["generator"]}, {"required": ["families"]}]},
+              "properties": {"cases": {"items": {"required": ["description"], "properties": {"description": {"minLength": 20}}}}}}},
+    {"if": {"properties": {"generated": {"const": true}}},
+     "then": {"required": ["generator", "families"], "properties": {"cases": {"items": {"required": ["family"]}}}}}
+  ],
   "$defs": {
     "b64": {"type": "string", "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$", "not": {"pattern": "[^A-Za-z0-9+/=]"}},
     "optb64": {"oneOf": [{"$ref": "#/$defs/b64"}, {"type": "null"}]},
@@ -23,6 +33,10 @@
       "properties": {
         "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9/_.-]*$", "not": {"pattern": "[\\u0000-\\u001f]"}},
         "description": {"type": "string"},
+        "family": {"type": "string", "description": "The generated family (a key of the file's families)."},
+        "fault_id": {"type": "string", "description": "The fault in generators/faults.json that the case exercises."},
+        "scenario_id": {"type": "string", "description": "A multi-request scenario (for example one paginated listing)."},
+        "step": {"type": "integer", "minimum": 0, "description": "The case's position in its scenario."},
         "requirements": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[A-Z]+-[0-9]+$"}},
         "requires": {"type": "array", "items": {"type": "string"}},
         "dataset": {"type": "string", "description": "Path of the dataset root, relative to the conformance directory."},

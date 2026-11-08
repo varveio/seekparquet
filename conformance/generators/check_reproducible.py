@@ -5,12 +5,15 @@
 
 Copies the generator sources, contract files and spec/ into a temporary tree, deletes nothing in the real
 tree, runs generators/regenerate.py there, and compares every generated file (generators/rows/, datasets/,
-cases/, fixtures.lock.json, suite.json, COVERAGE.md) byte for byte. Exits non-zero on any difference.
+cases/generated/, fixtures.lock.json, suite.json, COVERAGE.md) byte for byte. The hand-reviewed core cases
+(cases/core/), the subsets and generators/faults.json are inputs: they are copied, never regenerated.
+Preserved regression fixtures (generators/preserved.json) are copied too. Exits non-zero on any difference.
 """
 
 from __future__ import annotations
 
 import filecmp
+import json
 import shutil
 import subprocess
 import sys
@@ -19,8 +22,8 @@ from pathlib import Path
 
 CONF = Path(__file__).resolve().parents[1]
 REPO = CONF.parent
-SOURCES = ["generators", "oracle.py", "protocol.md", "case.schema.json", "capabilities.json"]
-GENERATED_DIRS = ["generators/rows", "datasets", "cases"]
+SOURCES = ["generators", "oracle.py", "protocol.md", "case.schema.json", "capabilities.json", "cases/core", "subsets"]
+GENERATED_DIRS = ["generators/rows", "datasets", "cases/generated"]
 GENERATED_FILES = ["fixtures.lock.json", "suite.json", "COVERAGE.md"]
 
 
@@ -47,6 +50,8 @@ def main():
                 shutil.copytree(src, tconf / s, ignore=shutil.ignore_patterns("__pycache__", "rows"))
             else:
                 shutil.copy2(src, tconf / s)
+        for p in json.loads((CONF / "generators" / "preserved.json").read_text())["datasets"]:
+            shutil.copytree(CONF / p["dir"], tconf / p["dir"])
         subprocess.run([sys.executable, str(tconf / "generators" / "regenerate.py")], check=True, cwd=tconf,
                        stdout=subprocess.DEVNULL)
         mine = files_under(CONF, GENERATED_DIRS, GENERATED_FILES)

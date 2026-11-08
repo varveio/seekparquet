@@ -1,0 +1,137 @@
+{
+  "group": "validate-full",
+  "target": "validator-full",
+  "generated": false,
+  "description": "Validation at the full level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code, and a dataset that cannot be opened shows structural failed. Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "validate-full/projection",
+      "description": "Valid, but has nested and repeated columns: structural and profile must complete; full completes, or is incomplete (with a reason) for a validator that cannot decode those columns.",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete",
+            "accept": [
+              "incomplete"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/invalid-parquet-value-count",
+      "description": "A value page claims 3 values but holds 2: only full validation (every column decoded, row counts checked) finds it; structural and profile complete.",
+      "fault_id": "invalid-parquet-value-count",
+      "requirements": [
+        "CHECK-5",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/invalid-parquet-value-count",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "failed",
+            "code": "invalid_parquet"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/prerequisite/invalid-footer-magic",
+      "description": "Full requested on an unreadable footer: structural failed with invalid_footer; profile and full incomplete with reasons.",
+      "fault_id": "invalid-footer-magic",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-magic",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          },
+          "profile": {
+            "result": "incomplete"
+          },
+          "full": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/prerequisite/key-order-across-pages",
+      "description": "Full requested on a profile fault: structural complete, profile failed with key_order, full incomplete with a reason.",
+      "fault_id": "key-order-across-pages",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/key-order-across-pages",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          },
+          "full": {
+            "result": "incomplete"
+          }
+        }
+      }
+    }
+  ]
+}

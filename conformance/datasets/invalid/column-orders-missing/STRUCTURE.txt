@@ -5,7 +5,7 @@ description: The footer has no column_orders.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_key_column, detected at the latest on open (KEY-5, CHECK-1)
+fault (generators/faults.json): column-orders-missing: invalid_key_column; reader detects on open; lowest validation level structural (KEY-5, CHECK-1); location: data/part-00000.parquet: footer
 changes:
   - data/part-00000.parquet: footer: FileMetaData.column_orders removed
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2608

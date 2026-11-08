@@ -5,7 +5,7 @@ description: draft_revision is 0.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-7, CHECK-1)
+fault (generators/faults.json): manifest-draft-revision-zero: invalid_manifest; reader detects on open; lowest validation level structural (MAN-7, CHECK-1); location: manifest.json
 changes:
   - manifest: draft_revision 1 -> 0
 

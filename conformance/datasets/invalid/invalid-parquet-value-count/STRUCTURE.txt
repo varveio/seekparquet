@@ -5,7 +5,7 @@ description: The first data page of column size claims 3 values but holds 2.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_parquet, detected at the latest on validate:full (CHECK-5, VAL-1)
+fault (generators/faults.json): invalid-parquet-value-count: invalid_parquet; reader detects on validate; lowest validation level full (CHECK-5, VAL-1); location: data/part-00000.parquet: row group 0 column 1
 note: No read case: a reader may decode only the values it needs from a value page, and CHECK-2's exact row count applies to key pages; full validation must find it.
 changes:
   - data/part-00000.parquet: row group 0 column 1: data page 0 header num_values 2 -> 3 (the page holds 2 values); header length unchanged

@@ -5,7 +5,7 @@ description: Page 1 ends with k04 and page 2 starts with k03; each page is inter
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/key-order-across-pages.json
-expected refusal: key_order, detected at the latest on read (KEY-3, CHECK-2)
+fault (generators/faults.json): key-order-across-pages: key_order; reader detects on read; lowest validation level profile (KEY-3, CHECK-2); location: key column data pages (rows written in this order by pyarrow)
 
 manifest: format_version 0, 1 parts
   part 0: 'data/part-00000.parquet', rows 12, bytes 1845, keys 'k00' .. 'k11'

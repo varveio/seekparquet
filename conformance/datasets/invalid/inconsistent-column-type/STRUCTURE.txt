@@ -5,7 +5,7 @@ description: Column size is INT64 in part 0 and INT32 in part 1.
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/inconsistent-column-type.json
-expected refusal: inconsistent_column, detected at the latest on read (COL-5, CHECK-1)
+fault (generators/faults.json): inconsistent-column-type: inconsistent_column; reader detects on read; lowest validation level structural (COL-5, CHECK-1); location: footer schema of part 1 versus part 0
 note: COL-5 requires the check no later than the first request that projects the column, so the read case projects size; structural validation checks all columns.
 
 manifest: format_version 0, 2 parts

@@ -5,7 +5,7 @@ description: schema_id appears twice, once spelled with an escape (schema\u005fi
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-2, CHECK-1)
+fault (generators/faults.json): manifest-duplicate-member-escaped: invalid_manifest; reader detects on open; lowest validation level structural (MAN-2, CHECK-1); location: manifest.json
 changes:
   - manifest text: '"schema_id": "conformance/objects/v1",' -> '"schema_id": "conformance/objects/v1",\n  "schema\\u005fid": "conformance/objects/v1",'
 

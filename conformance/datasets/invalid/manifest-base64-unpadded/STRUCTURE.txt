@@ -5,7 +5,7 @@ description: min_key_base64 omits its padding.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (PART-3, CHECK-1)
+fault (generators/faults.json): manifest-base64-unpadded: invalid_manifest; reader detects on open; lowest validation level structural (PART-3, CHECK-1); location: manifest.json
 changes:
   - manifest: parts.0.min_key_base64 "YS8xLnR4dA==" -> "YS8xLnR4dA"
 

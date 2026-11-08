@@ -5,7 +5,7 @@ description: The first part's declared max key is raised to the second part's mi
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/multipart
-expected refusal: invalid_manifest, detected at the latest on open (PART-4, CHECK-1)
+fault (generators/faults.json): bounds-overlap: invalid_manifest; reader detects on open; lowest validation level structural (PART-4, CHECK-1); location: manifest.json
 changes:
   - manifest: parts.0.max_key_base64 "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=" -> "bG9ncy8yMDI2LzAyL2YwMDQuZ3o="
 

@@ -5,7 +5,7 @@ description: Part 1's declared min key is below its actual first key (still abov
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/multipart
-expected refusal: bounds_mismatch, detected at the latest on validate:profile (PART-3, VAL-1)
+fault (generators/faults.json): bounds-first-key-differs: bounds_mismatch; reader detects on validate; lowest validation level profile (PART-3, VAL-1); location: manifest.json
 changes:
   - manifest: parts.1.min_key_base64 "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=" -> "bG9ncy8yMDI2LzAyL2YwMDQ="
 

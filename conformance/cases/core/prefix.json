@@ -1,0 +1,1111 @@
+{
+  "group": "prefix",
+  "target": "reader",
+  "generated": false,
+  "description": "Prefix reads: range requests with prefix_base64 (RANGE-1), alone and intersected with start and end. A prefix read of p equals the range from p to successor(p), or unbounded above when p has no successor (section 6.2). Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "prefix/multipart/00",
+      "description": "prefix logs/2026/02/: 40 keys that start in part 0 and continue in part 1; the read must cross the part boundary.",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/multipart/07",
+      "description": "An empty prefix matches every key (QUERY-2).",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3",
+        "QUERY-2"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "UkVBRE1F",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDM=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDQ=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDU=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDY=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDc=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDg=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDk=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "dG1wLw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "dG1wL3g=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "enotbGFzdA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/binary-keys/04",
+      "description": "prefix 7f ff ends in 0xFF: its successor is 0x80 (drop trailing 0xFF, increment), so 7f ff is included and 80 is not.",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "f/8=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "f/8=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/binary-keys/09",
+      "description": "prefix ff has no successor: the read is unbounded above and includes the 80-byte and 81-byte all-0xFF keys.",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "/w==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/wA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//4=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/binary-keys/12",
+      "description": "prefix of 81 0xFF bytes (no successor): only the key equal to it matches; ff*80 01 and ff*80 02 differ from the prefix at byte 80.",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/delimiter/03",
+      "description": "prefix x ff: successor is y; x ff y, x ff y ff z, x ff ff and x ff z match.",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "range",
+        "prefix_base64": "eP8=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "eP95",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95/3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP96",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP//",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/multipart/with-bounds-03",
+      "description": "start app/ is below the prefix logs/2026/02/: the prefix still limits the result, and end f002 cuts it to two rows.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "start_base64": "YXBwLw==",
+        "end_base64": "bG9ncy8yMDI2LzAyL2YwMDI=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/multipart/with-bounds-05",
+      "description": "end equal to the prefix: every key with the prefix is >= the prefix, so nothing is returned.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "end_base64": "bG9ncy8yMDI2LzAyLw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    }
+  ]
+}

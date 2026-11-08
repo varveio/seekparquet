@@ -5,7 +5,7 @@ description: The dictionary page of column s in part 0, row group 0 is malformed
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/encodings
-expected refusal: invalid_parquet, detected at the latest on validate:full (CHECK-5, VAL-1)
+fault (generators/faults.json): invalid-parquet-dictionary: invalid_parquet; reader detects on read; lowest validation level full (CHECK-5, VAL-1); location: data/part-00000.parquet: row group 0 column 3
 changes:
   - data/part-00000.parquet: row group 0 column 3: dictionary page at 323: first value's length prefix 5 -> 2147483647
 

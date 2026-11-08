@@ -7,7 +7,7 @@
     "requirements": "generators/requirements.txt"
   },
   "reproducibility": "Byte-reproducible with the pinned pyarrow on Python 3.13: generators/check_reproducible.py regenerates everything in a temporary directory and compares it with the checked-in files (pyarrow 26.0.1 footers carry no timestamps). If a future writer is not byte-reproducible, the checked-in bytes stay authoritative and STRUCTURE.txt must remain identical.",
-  "total_bytes": 555948,
+  "total_bytes": 579694,
   "largest_file_bytes": 9076,
   "datasets": [
     {
@@ -379,16 +379,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/key-order-within-page.json",
-      "fault": {
-        "codes": [
-          "key_order"
-        ],
-        "detect": "read",
-        "requirements": [
-          "KEY-3",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "key-order-within-page",
       "files": [
         {
           "path": "datasets/invalid/key-order-within-page/data/part-00000.parquet",
@@ -416,16 +407,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/key-order-duplicate.json",
-      "fault": {
-        "codes": [
-          "key_order"
-        ],
-        "detect": "read",
-        "requirements": [
-          "KEY-3",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "key-order-duplicate",
       "files": [
         {
           "path": "datasets/invalid/key-order-duplicate/data/part-00000.parquet",
@@ -453,16 +435,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/key-order-across-pages.json",
-      "fault": {
-        "codes": [
-          "key_order"
-        ],
-        "detect": "read",
-        "requirements": [
-          "KEY-3",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "key-order-across-pages",
       "files": [
         {
           "path": "datasets/invalid/key-order-across-pages/data/part-00000.parquet",
@@ -490,16 +463,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/key-order-across-row-groups.json",
-      "fault": {
-        "codes": [
-          "key_order"
-        ],
-        "detect": "read",
-        "requirements": [
-          "KEY-3",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "key-order-across-row-groups",
       "files": [
         {
           "path": "datasets/invalid/key-order-across-row-groups/data/part-00000.parquet",
@@ -527,16 +491,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/key-order-duplicate-across-row-groups.json",
-      "fault": {
-        "codes": [
-          "key_order"
-        ],
-        "detect": "read",
-        "requirements": [
-          "KEY-3",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "key-order-duplicate-across-row-groups",
       "files": [
         {
           "path": "datasets/invalid/key-order-duplicate-across-row-groups/data/part-00000.parquet",
@@ -564,18 +519,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/invalid-key-empty.json",
-      "fault": {
-        "codes": [
-          "invalid_key",
-          "bounds_mismatch"
-        ],
-        "detect": "read",
-        "requirements": [
-          "KEY-2",
-          "CHECK-2"
-        ],
-        "note": "The manifest cannot express an empty min key, so it names the second key; a reader that compares first keys on open may report bounds_mismatch."
-      },
+      "fault_id": "invalid-key-empty",
       "files": [
         {
           "path": "datasets/invalid/invalid-key-empty/data/part-00000.parquet",
@@ -603,17 +547,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/missing-column-index-native.json",
-      "fault": {
-        "codes": [
-          "missing_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-2",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "missing-column-index-native",
       "files": [
         {
           "path": "datasets/invalid/missing-column-index-native/data/part-00000.parquet",
@@ -641,18 +575,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/inconsistent-column-type.json",
-      "fault": {
-        "codes": [
-          "inconsistent_column"
-        ],
-        "detect": "read",
-        "requirements": [
-          "COL-5",
-          "CHECK-1"
-        ],
-        "request": "range-columns:size",
-        "note": "COL-5 requires the check no later than the first request that projects the column, so the read case projects size; structural validation checks all columns."
-      },
+      "fault_id": "inconsistent-column-type",
       "files": [
         {
           "path": "datasets/invalid/inconsistent-column-type/data/part-00000.parquet",
@@ -688,17 +611,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/inconsistent-column-width.json",
-      "fault": {
-        "codes": [
-          "inconsistent_column"
-        ],
-        "detect": "read",
-        "requirements": [
-          "COL-5",
-          "CHECK-1"
-        ],
-        "request": "range-columns:h"
-      },
+      "fault_id": "inconsistent-column-width",
       "files": [
         {
           "path": "datasets/invalid/inconsistent-column-width/data/part-00000.parquet",
@@ -734,17 +647,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/inconsistent-column-repetition.json",
-      "fault": {
-        "codes": [
-          "inconsistent_column"
-        ],
-        "detect": "read",
-        "requirements": [
-          "COL-5",
-          "CHECK-1"
-        ],
-        "request": "range-columns:size"
-      },
+      "fault_id": "inconsistent-column-repetition",
       "files": [
         {
           "path": "datasets/invalid/inconsistent-column-repetition/data/part-00000.parquet",
@@ -780,19 +683,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/key-order-across-parts.json",
-      "fault": {
-        "codes": [
-          "key_order",
-          "bounds_mismatch"
-        ],
-        "detect": "read",
-        "requirements": [
-          "KEY-3",
-          "CHECK-2",
-          "PART-3"
-        ],
-        "note": "The manifest's max key for part 0 is not the actual last key, so bounds_mismatch is also a correct report."
-      },
+      "fault_id": "key-order-across-parts",
       "files": [
         {
           "path": "datasets/invalid/key-order-across-parts/data/part-00000.parquet",
@@ -828,17 +719,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "stamp_mismatch"
-        ],
-        "detect": "open",
-        "requirements": [
-          "STAMP-1",
-          "STAMP-2",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "stamp-missing",
       "files": [
         {
           "path": "datasets/invalid/stamp-missing/data/part-00000.parquet",
@@ -866,17 +747,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "stamp_mismatch"
-        ],
-        "detect": "open",
-        "requirements": [
-          "STAMP-1",
-          "STAMP-2",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "stamp-wrong-schema-id",
       "files": [
         {
           "path": "datasets/invalid/stamp-wrong-schema-id/data/part-00000.parquet",
@@ -904,17 +775,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "stamp_mismatch"
-        ],
-        "detect": "open",
-        "requirements": [
-          "STAMP-1",
-          "STAMP-2",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "stamp-wrong-revision",
       "files": [
         {
           "path": "datasets/invalid/stamp-wrong-revision/data/part-00000.parquet",
@@ -942,17 +803,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "stamp_mismatch"
-        ],
-        "detect": "open",
-        "requirements": [
-          "STAMP-1",
-          "STAMP-2",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "stamp-noncanonical-revision",
       "files": [
         {
           "path": "datasets/invalid/stamp-noncanonical-revision/data/part-00000.parquet",
@@ -980,17 +831,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "stamp_mismatch"
-        ],
-        "detect": "open",
-        "requirements": [
-          "STAMP-1",
-          "STAMP-2",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "stamp-missing-revision",
       "files": [
         {
           "path": "datasets/invalid/stamp-missing-revision/data/part-00000.parquet",
@@ -1018,16 +859,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "invalid_key_column"
-        ],
-        "detect": "open",
-        "requirements": [
-          "KEY-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "key-nullable",
       "files": [
         {
           "path": "datasets/invalid/key-nullable/data/part-00000.parquet",
@@ -1055,16 +887,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "invalid_key_column"
-        ],
-        "detect": "open",
-        "requirements": [
-          "KEY-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "key-int64",
       "files": [
         {
           "path": "datasets/invalid/key-int64/data/part-00000.parquet",
@@ -1092,16 +915,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "invalid_key_column"
-        ],
-        "detect": "open",
-        "requirements": [
-          "KEY-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "key-missing",
       "files": [
         {
           "path": "datasets/invalid/key-missing/data/part-00000.parquet",
@@ -1129,16 +943,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "invalid_key_column"
-        ],
-        "detect": "open",
-        "requirements": [
-          "KEY-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "key-nested",
       "files": [
         {
           "path": "datasets/invalid/key-nested/data/part-00000.parquet",
@@ -1166,16 +971,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "missing_sorting_columns"
-        ],
-        "detect": "open",
-        "requirements": [
-          "RG-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "sorting-columns-missing",
       "files": [
         {
           "path": "datasets/invalid/sorting-columns-missing/data/part-00000.parquet",
@@ -1203,16 +999,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "missing_sorting_columns"
-        ],
-        "detect": "open",
-        "requirements": [
-          "RG-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "sorting-columns-descending",
       "files": [
         {
           "path": "datasets/invalid/sorting-columns-descending/data/part-00000.parquet",
@@ -1240,16 +1027,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "missing_sorting_columns"
-        ],
-        "detect": "open",
-        "requirements": [
-          "RG-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "sorting-columns-other-first",
       "files": [
         {
           "path": "datasets/invalid/sorting-columns-other-first/data/part-00000.parquet",
@@ -1277,17 +1055,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "unsupported_version"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-4",
-          "MAN-5",
-          "VER-1"
-        ]
-      },
+      "fault_id": "unsupported-version-draft-2",
       "files": [
         {
           "path": "datasets/invalid/unsupported-version-draft-2/data/part-00000.parquet",
@@ -1315,17 +1083,7 @@
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/basic.json",
-      "fault": {
-        "codes": [
-          "unsupported_version"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-4",
-          "MAN-5",
-          "VER-1"
-        ]
-      },
+      "fault_id": "unsupported-version-1",
       "files": [
         {
           "path": "datasets/invalid/unsupported-version-1/data/part-00000.parquet",
@@ -1346,8 +1104,8 @@
       ]
     },
     {
-      "name": "truncated-bounds",
-      "dir": "datasets/truncated-bounds",
+      "name": "binary-bounds-truncated-16-byte",
+      "dir": "datasets/binary-bounds-truncated-16-byte",
       "valid": true,
       "description": "binary-keys with every key-page bound longer than 16 bytes shortened conservatively (lower bounds to a 16-byte prefix, upper bounds to an incremented prefix, except that an upper bound whose first 16 bytes are all 0xFF is kept full). Adjacent page bounds overlap. Row group 1 of part 0 is marked UNORDERED.",
       "provenance": "mutated",
@@ -1374,7 +1132,7 @@
       ],
       "files": [
         {
-          "path": "datasets/truncated-bounds/data/part-00000.parquet",
+          "path": "datasets/binary-bounds-truncated-16-byte/data/part-00000.parquet",
           "bytes": 2574,
           "sha256": "e74142c2b35540ad14b9a5a48fdd568afcfd590398269cd09b38291cf865af70",
           "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
@@ -1382,7 +1140,7 @@
           "command": "python generators/regenerate.py"
         },
         {
-          "path": "datasets/truncated-bounds/data/part-00001.parquet",
+          "path": "datasets/binary-bounds-truncated-16-byte/data/part-00001.parquet",
           "bytes": 2438,
           "sha256": "4a6339683174c295e44eca5e35d2c7bfbb2f41ae15da57b77b231adeb7a1c48c",
           "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
@@ -1390,7 +1148,7 @@
           "command": "python generators/regenerate.py"
         },
         {
-          "path": "datasets/truncated-bounds/manifest.json",
+          "path": "datasets/binary-bounds-truncated-16-byte/manifest.json",
           "bytes": 549,
           "sha256": "0fa177b977d2ccc3e592498ea3178a2ab477e9a88463ea4e498f70d3e9f088fd",
           "producer": "generators/mutate_metadata.py",
@@ -1400,8 +1158,8 @@
       ]
     },
     {
-      "name": "truncated-bounds-2",
-      "dir": "datasets/truncated-bounds-2",
+      "name": "binary-bounds-truncated-2-byte",
+      "dir": "datasets/binary-bounds-truncated-2-byte",
       "valid": true,
       "description": "binary-keys with every key-page bound longer than 2 bytes shortened to 2 bytes the same way: e.g. a page ending at ff ff ff keeps its full maximum while its siblings are shortened, and many adjacent bounds overlap.",
       "provenance": "mutated",
@@ -1433,7 +1191,7 @@
       ],
       "files": [
         {
-          "path": "datasets/truncated-bounds-2/data/part-00000.parquet",
+          "path": "datasets/binary-bounds-truncated-2-byte/data/part-00000.parquet",
           "bytes": 2486,
           "sha256": "4e57f09002364f08094d5c7f4b1165f048c897d48a69d8de6e514b033b1c9677",
           "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
@@ -1441,7 +1199,7 @@
           "command": "python generators/regenerate.py"
         },
         {
-          "path": "datasets/truncated-bounds-2/data/part-00001.parquet",
+          "path": "datasets/binary-bounds-truncated-2-byte/data/part-00001.parquet",
           "bytes": 2418,
           "sha256": "f716c3d4cbd8b5b3f38c735757705e4b7e184592d97cc462223f6552d73ace65",
           "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
@@ -1449,7 +1207,7 @@
           "command": "python generators/regenerate.py"
         },
         {
-          "path": "datasets/truncated-bounds-2/manifest.json",
+          "path": "datasets/binary-bounds-truncated-2-byte/manifest.json",
           "bytes": 549,
           "sha256": "05186d2ee0a19adafb04c1fcf75a2de3b7301a4b8ef847aa1c8f53c48e257071",
           "producer": "generators/mutate_metadata.py",
@@ -1575,6 +1333,83 @@
       ]
     },
     {
+      "name": "digest-mixed",
+      "dir": "datasets/digest-mixed",
+      "valid": true,
+      "description": "multipart with sha256 declared for parts 0 and 2 only: digest validation checks exactly 2.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/multipart",
+      "changes": [
+        "manifest: parts.1.sha256 removed"
+      ],
+      "files": [
+        {
+          "path": "datasets/digest-mixed/manifest.json",
+          "bytes": 967,
+          "sha256": "5081eb8aba0c4fd66925e215bd6419bc564e80b3e58f967c4f83a3d266a092ac",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/digest-mixed/shards/a.parquet",
+          "bytes": 6321,
+          "sha256": "9aba9ab78698e75c0b7723f10764e03ea5a6520f839d03a6d336fa38ad3dea9f",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/multipart)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/digest-mixed/shards/b.parquet",
+          "bytes": 7059,
+          "sha256": "0d19daf03675f432b94f0a111bec6ae2bc6a9ba33a3a47b9e5c97dcd0f14bb4f",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/multipart)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/digest-mixed/shards/c.parquet",
+          "bytes": 7180,
+          "sha256": "096c98159d01833a96d6aefa43ff85b752053c130f0748556967de7c7fd78d71",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/multipart)",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "digest-on-profile-invalid",
+      "dir": "datasets/invalid/digest-on-profile-invalid",
+      "valid": false,
+      "description": "key-order-across-pages with a correct sha256 declared for its part: the key_order fault is a profile fault, and digest validation, which is independent, still completes with 1 checked.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/invalid/key-order-across-pages",
+      "changes": [
+        "manifest: parts[0].sha256 added (matches the file)"
+      ],
+      "fault_id": "digest-on-profile-invalid",
+      "files": [
+        {
+          "path": "datasets/invalid/digest-on-profile-invalid/data/part-00000.parquet",
+          "bytes": 1845,
+          "sha256": "b6e6d3bb8f212aa853b14646eb3a7daa776c65c75e6fddd737bd60a29d06acc4",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/invalid/key-order-across-pages)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/digest-on-profile-invalid/manifest.json",
+          "bytes": 374,
+          "sha256": "4c7ac6da89f0028b7cf6aad396efdcda3deecad265f26f9fe9dddce5fbdc384c",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
       "name": "no-value-page-index",
       "dir": "datasets/no-value-page-index",
       "valid": true,
@@ -1620,16 +1455,7 @@
       "changes": [
         "manifest.json removed"
       ],
-      "fault": {
-        "codes": [
-          "no_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "LAYOUT-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "no-manifest",
       "files": [
         {
           "path": "datasets/invalid/no-manifest/data/part-00000.parquet",
@@ -1652,16 +1478,7 @@
       "changes": [
         "manifest text truncated to half its length"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-not-json",
       "files": [
         {
           "path": "datasets/invalid/manifest-not-json/data/part-00000.parquet",
@@ -1692,16 +1509,7 @@
       "changes": [
         "manifest text: UTF-8 BOM prepended"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-bom",
       "files": [
         {
           "path": "datasets/invalid/manifest-bom/data/part-00000.parquet",
@@ -1732,16 +1540,7 @@
       "changes": [
         "manifest wrapped in [ ]"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-not-object",
       "files": [
         {
           "path": "datasets/invalid/manifest-not-object/data/part-00000.parquet",
@@ -1772,16 +1571,7 @@
       "changes": [
         "manifest text: '\"schema_id\": \"conformance/objects/v1\",' -> '\"schema_id\": \"conformance/objects/v1\",\\n  \"schema_id\": \"conformance/objects/v1\",'"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-2",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-duplicate-member",
       "files": [
         {
           "path": "datasets/invalid/manifest-duplicate-member/data/part-00000.parquet",
@@ -1812,16 +1602,7 @@
       "changes": [
         "manifest text: '\"rows\": 12,' -> '\"rows\": 12,\\n      \"rows\": 12,'"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-2",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-duplicate-part-member",
       "files": [
         {
           "path": "datasets/invalid/manifest-duplicate-part-member/data/part-00000.parquet",
@@ -1852,16 +1633,7 @@
       "changes": [
         "manifest: created_at \"<absent>\" -> \"2026-01-01T00:00:00Z\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-3",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-unknown-member",
       "files": [
         {
           "path": "datasets/invalid/manifest-unknown-member/data/part-00000.parquet",
@@ -1892,16 +1664,7 @@
       "changes": [
         "manifest: parts.0.checksum \"<absent>\" -> \"abc\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-3",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-unknown-part-member",
       "files": [
         {
           "path": "datasets/invalid/manifest-unknown-part-member/data/part-00000.parquet",
@@ -1932,16 +1695,7 @@
       "changes": [
         "manifest: extensions \"<absent>\" -> \"producer-metadata\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-3",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-extension-not-object",
       "files": [
         {
           "path": "datasets/invalid/manifest-extension-not-object/data/part-00000.parquet",
@@ -1972,16 +1726,7 @@
       "changes": [
         "manifest: schema_id removed"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-3",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-missing-schema-id",
       "files": [
         {
           "path": "datasets/invalid/manifest-missing-schema-id/data/part-00000.parquet",
@@ -2012,16 +1757,7 @@
       "changes": [
         "manifest: parts removed"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-3",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-missing-parts",
       "files": [
         {
           "path": "datasets/invalid/manifest-missing-parts/data/part-00000.parquet",
@@ -2052,16 +1788,7 @@
       "changes": [
         "manifest: parts.0.rows 12 -> \"12\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-3",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-rows-string",
       "files": [
         {
           "path": "datasets/invalid/manifest-rows-string/data/part-00000.parquet",
@@ -2092,16 +1819,7 @@
       "changes": [
         "manifest: format \"seekparquet\" -> \"parquet\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-4",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-wrong-format",
       "files": [
         {
           "path": "datasets/invalid/manifest-wrong-format/data/part-00000.parquet",
@@ -2132,18 +1850,7 @@
       "changes": [
         "manifest: draft_revision removed"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-3",
-          "MAN-4",
-          "MAN-7",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-draft-without-revision",
       "files": [
         {
           "path": "datasets/invalid/manifest-draft-without-revision/data/part-00000.parquet",
@@ -2174,16 +1881,7 @@
       "changes": [
         "manifest: parts.0.min_key_base64 \"YS8xLnR4dA==\" -> \"YS8x!nR4dA==\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-3",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-bad-base64",
       "files": [
         {
           "path": "datasets/invalid/manifest-bad-base64/data/part-00000.parquet",
@@ -2214,16 +1912,7 @@
       "changes": [
         "manifest: parts.0.min_key_base64 \"YS8xLnR4dA==\" -> \"YS8xLnR4dA\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-3",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-base64-unpadded",
       "files": [
         {
           "path": "datasets/invalid/manifest-base64-unpadded/data/part-00000.parquet",
@@ -2254,16 +1943,7 @@
       "changes": [
         "manifest: parts.1.max_key_base64 \"////////////////////////////////////////////////////////////////////////////////////////////////////////////\" -> \"____________________________________________________________________________________________________________\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-3",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-base64-url-alphabet",
       "files": [
         {
           "path": "datasets/invalid/manifest-base64-url-alphabet/data/part-00000.parquet",
@@ -2302,16 +1982,7 @@
       "changes": [
         "manifest: parts.0.path \"data/part-00000.parquet\" -> \"../../basic/data/part-00000.parquet\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-path-escape",
       "files": [
         {
           "path": "datasets/invalid/manifest-path-escape/data/part-00000.parquet",
@@ -2342,16 +2013,7 @@
       "changes": [
         "manifest: parts.0.path \"data/part-00000.parquet\" -> \"/data/part-00000.parquet\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-path-absolute",
       "files": [
         {
           "path": "datasets/invalid/manifest-path-absolute/data/part-00000.parquet",
@@ -2382,16 +2044,7 @@
       "changes": [
         "manifest: parts.0.path \"data/part-00000.parquet\" -> \"data/./part-00000.parquet\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-path-dot-segment",
       "files": [
         {
           "path": "datasets/invalid/manifest-path-dot-segment/data/part-00000.parquet",
@@ -2422,16 +2075,7 @@
       "changes": [
         "manifest: parts.0.path \"data/part-00000.parquet\" -> \"data//part-00000.parquet\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-path-empty-segment",
       "files": [
         {
           "path": "datasets/invalid/manifest-path-empty-segment/data/part-00000.parquet",
@@ -2462,16 +2106,7 @@
       "changes": [
         "manifest: parts.0.path \"data/part-00000.parquet\" -> \"data\\\\part-00000.parquet\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-path-backslash",
       "files": [
         {
           "path": "datasets/invalid/manifest-path-backslash/data/part-00000.parquet",
@@ -2502,16 +2137,7 @@
       "changes": [
         "manifest: appended parts[1] path 'data/part-00000.parquet' with bounds 'zz0'..'zz9'"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-path-duplicate",
       "files": [
         {
           "path": "datasets/invalid/manifest-path-duplicate/data/part-00000.parquet",
@@ -2542,16 +2168,7 @@
       "changes": [
         "manifest: parts.0.rows 12 -> 0"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-2",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-rows-zero",
       "files": [
         {
           "path": "datasets/invalid/manifest-rows-zero/data/part-00000.parquet",
@@ -2582,16 +2199,7 @@
       "changes": [
         "manifest text: '\"rows\": 12,' -> '\"rows\": 12.0,'"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-6",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-rows-fraction",
       "files": [
         {
           "path": "datasets/invalid/manifest-rows-fraction/data/part-00000.parquet",
@@ -2622,16 +2230,7 @@
       "changes": [
         "manifest text: '\"rows\": 12,' -> '\"rows\": 1.2e1,'"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-6",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-rows-exponent",
       "files": [
         {
           "path": "datasets/invalid/manifest-rows-exponent/data/part-00000.parquet",
@@ -2662,16 +2261,7 @@
       "changes": [
         "manifest: parts.0.bytes 2619 -> 9223372036854775808"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-6",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-bytes-too-large",
       "files": [
         {
           "path": "datasets/invalid/manifest-bytes-too-large/data/part-00000.parquet",
@@ -2702,17 +2292,7 @@
       "changes": [
         "manifest text: '\"format_version\": 0,' -> '\"format_version\": 0.0,'"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-6",
-          "MAN-7",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-format-version-fraction",
       "files": [
         {
           "path": "datasets/invalid/manifest-format-version-fraction/data/part-00000.parquet",
@@ -2743,16 +2323,7 @@
       "changes": [
         "manifest: parts.0.min_key_base64 \"YS8xLnR4dA==\" -> \"YS8xLnR4dB==\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-3",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-base64-noncanonical",
       "files": [
         {
           "path": "datasets/invalid/manifest-base64-noncanonical/data/part-00000.parquet",
@@ -2783,16 +2354,7 @@
       "changes": [
         "manifest: parts.0.path \"data/part-00000.parquet\" -> \"data/part\\u0001-00000.parquet\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-path-control-character",
       "files": [
         {
           "path": "datasets/invalid/manifest-path-control-character/data/part-00000.parquet",
@@ -2823,16 +2385,7 @@
       "changes": [
         "manifest text: '  \"parts\": [' -> '  \"extensions\": {\"conformance\": {\"a\": 1, \"a\": 2}},\\n  \"parts\": ['"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-2",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-extensions-duplicate-member",
       "files": [
         {
           "path": "datasets/invalid/manifest-extensions-duplicate-member/data/part-00000.parquet",
@@ -2863,16 +2416,7 @@
       "changes": [
         "manifest text: '\"schema_id\": \"conformance/objects/v1\",' -> '\"schema_id\": \"conformance/objects/v1\",\\n  \"schema\\\\u005fid\": \"conformance/objects/v1\",'"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-2",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-duplicate-member-escaped",
       "files": [
         {
           "path": "datasets/invalid/manifest-duplicate-member-escaped/data/part-00000.parquet",
@@ -2903,16 +2447,7 @@
       "changes": [
         "manifest text: '\"schema_id\": \"conformance/objects/v1\"' -> '\"schema_id\": \"conformance/objects/v1\\\\ud800\"'"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-unpaired-surrogate",
       "files": [
         {
           "path": "datasets/invalid/manifest-unpaired-surrogate/data/part-00000.parquet",
@@ -2943,16 +2478,7 @@
       "changes": [
         "manifest: draft_revision 1 -> 0"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-7",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-draft-revision-zero",
       "files": [
         {
           "path": "datasets/invalid/manifest-draft-revision-zero/data/part-00000.parquet",
@@ -2983,16 +2509,7 @@
       "changes": [
         "manifest: format_version 0 -> 1"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-7",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-format-1-with-draft-revision",
       "files": [
         {
           "path": "datasets/invalid/manifest-format-1-with-draft-revision/data/part-00000.parquet",
@@ -3024,17 +2541,7 @@
         "manifest: draft_revision removed",
         "manifest: format_version 0 -> 9223372036854775808"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-6",
-          "MAN-7",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-format-version-overflow",
       "files": [
         {
           "path": "datasets/invalid/manifest-format-version-overflow/data/part-00000.parquet",
@@ -3066,17 +2573,7 @@
         "manifest: draft_revision removed",
         "manifest: format_version 0 -> -1"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-6",
-          "MAN-7",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "manifest-format-version-negative",
       "files": [
         {
           "path": "datasets/invalid/manifest-format-version-negative/data/part-00000.parquet",
@@ -3108,17 +2605,7 @@
         "manifest: draft_revision removed",
         "manifest: format_version 0 -> 2"
       ],
-      "fault": {
-        "codes": [
-          "unsupported_version"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-4",
-          "MAN-7",
-          "VER-1"
-        ]
-      },
+      "fault_id": "unsupported-version-2",
       "files": [
         {
           "path": "datasets/invalid/unsupported-version-2/data/part-00000.parquet",
@@ -3151,16 +2638,7 @@
         "manifest: format_version 0 -> 2",
         "manifest: created_at \"<absent>\" -> \"2026-01-01T00:00:00Z\""
       ],
-      "fault": {
-        "codes": [
-          "unsupported_version"
-        ],
-        "detect": "open",
-        "requirements": [
-          "MAN-7",
-          "VER-1"
-        ]
-      },
+      "fault_id": "unsupported-version-2-unknown-member",
       "files": [
         {
           "path": "datasets/invalid/unsupported-version-2-unknown-member/data/part-00000.parquet",
@@ -3191,16 +2669,7 @@
       "changes": [
         "manifest: appended parts[1] path 'data/part-00001.parquet' with bounds 'zz0'..'zz9'"
       ],
-      "fault": {
-        "codes": [
-          "missing_part"
-        ],
-        "detect": "open",
-        "requirements": [
-          "LAYOUT-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "missing-part",
       "files": [
         {
           "path": "datasets/invalid/missing-part/data/part-00000.parquet",
@@ -3231,15 +2700,7 @@
       "changes": [
         "manifest: parts.0.bytes 2619 -> 2620"
       ],
-      "fault": {
-        "codes": [
-          "part_mismatch"
-        ],
-        "detect": "open",
-        "requirements": [
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "part-size-larger",
       "files": [
         {
           "path": "datasets/invalid/part-size-larger/data/part-00000.parquet",
@@ -3270,15 +2731,7 @@
       "changes": [
         "manifest: parts.0.bytes 2619 -> 2618"
       ],
-      "fault": {
-        "codes": [
-          "part_mismatch"
-        ],
-        "detect": "open",
-        "requirements": [
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "part-size-smaller",
       "files": [
         {
           "path": "datasets/invalid/part-size-smaller/data/part-00000.parquet",
@@ -3309,15 +2762,7 @@
       "changes": [
         "manifest: parts.0.rows 12 -> 13"
       ],
-      "fault": {
-        "codes": [
-          "part_mismatch"
-        ],
-        "detect": "open",
-        "requirements": [
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "part-rows-mismatch",
       "files": [
         {
           "path": "datasets/invalid/part-rows-mismatch/data/part-00000.parquet",
@@ -3348,16 +2793,7 @@
       "changes": [
         "manifest: parts.0.min_key_base64 \"YS8xLnR4dA==\" -> \"enVsdQ==\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-4",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "bounds-min-above-max",
       "files": [
         {
           "path": "datasets/invalid/bounds-min-above-max/data/part-00000.parquet",
@@ -3388,16 +2824,7 @@
       "changes": [
         "manifest: parts.0.max_key_base64 \"bG9ncy8yMDI2LzAyL2YwMDMuZ3o=\" -> \"bG9ncy8yMDI2LzAyL2YwMDQuZ3o=\""
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-4",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "bounds-overlap",
       "files": [
         {
           "path": "datasets/invalid/bounds-overlap/manifest.json",
@@ -3444,16 +2871,7 @@
       "changes": [
         "manifest: parts[2] moved to parts[0]"
       ],
-      "fault": {
-        "codes": [
-          "invalid_manifest"
-        ],
-        "detect": "open",
-        "requirements": [
-          "PART-4",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "bounds-parts-out-of-order",
       "files": [
         {
           "path": "datasets/invalid/bounds-parts-out-of-order/manifest.json",
@@ -3500,17 +2918,7 @@
       "changes": [
         "manifest: parts.1.min_key_base64 \"bG9ncy8yMDI2LzAyL2YwMDQuZ3o=\" -> \"bG9ncy8yMDI2LzAyL2YwMDQ=\""
       ],
-      "fault": {
-        "codes": [
-          "bounds_mismatch"
-        ],
-        "detect": "validate:profile",
-        "requirements": [
-          "PART-3",
-          "VAL-1"
-        ],
-        "request": "validate:profile"
-      },
+      "fault_id": "bounds-first-key-differs",
       "files": [
         {
           "path": "datasets/invalid/bounds-first-key-differs/manifest.json",
@@ -3557,16 +2965,7 @@
       "changes": [
         "manifest: parts.0.max_key_base64 \"Zm94dHJvdA==\" -> \"Z29sZg==\""
       ],
-      "fault": {
-        "codes": [
-          "bounds_mismatch"
-        ],
-        "detect": "validate:profile",
-        "requirements": [
-          "PART-3"
-        ],
-        "request": "validate:profile"
-      },
+      "fault_id": "bounds-last-key-differs",
       "files": [
         {
           "path": "datasets/invalid/bounds-last-key-differs/data/part-00000.parquet",
@@ -3597,16 +2996,7 @@
       "changes": [
         "manifest: parts.2.sha256 \"0d19daf03675f432b94f0a111bec6ae2bc6a9ba33a3a47b9e5c97dcd0f14bb4f\" -> \"0000000000000000000000000000000000000000000000000000000000000000\""
       ],
-      "fault": {
-        "codes": [
-          "digest_mismatch"
-        ],
-        "detect": "validate:digest",
-        "requirements": [
-          "PART-5"
-        ],
-        "request": "validate:digest"
-      },
+      "fault_id": "digest-mismatch",
       "files": [
         {
           "path": "datasets/invalid/digest-mismatch/manifest.json",
@@ -3653,15 +3043,7 @@
       "changes": [
         "data/part-00000.parquet: trailing magic PAR1 -> PAR0; size unchanged; data pages untouched"
       ],
-      "fault": {
-        "codes": [
-          "invalid_footer"
-        ],
-        "detect": "open",
-        "requirements": [
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "invalid-footer-magic",
       "files": [
         {
           "path": "datasets/invalid/invalid-footer-magic/data/part-00000.parquet",
@@ -3692,15 +3074,7 @@
       "changes": [
         "data/part-00000.parquet: footer length field -> file size + 10; size unchanged; data pages untouched"
       ],
-      "fault": {
-        "codes": [
-          "invalid_footer"
-        ],
-        "detect": "open",
-        "requirements": [
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "invalid-footer-length",
       "files": [
         {
           "path": "datasets/invalid/invalid-footer-length/data/part-00000.parquet",
@@ -3731,15 +3105,7 @@
       "changes": [
         "data/part-00000.parquet: FileMetaData bytes replaced by 0xFF; size unchanged; data pages untouched"
       ],
-      "fault": {
-        "codes": [
-          "invalid_footer"
-        ],
-        "detect": "open",
-        "requirements": [
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "invalid-footer-thrift",
       "files": [
         {
           "path": "datasets/invalid/invalid-footer-thrift/data/part-00000.parquet",
@@ -3772,15 +3138,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2619",
         "manifest: parts.0.rows 12 -> 13"
       ],
-      "fault": {
-        "codes": [
-          "invalid_footer"
-        ],
-        "detect": "open",
-        "requirements": [
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "invalid-footer-row-count",
       "files": [
         {
           "path": "datasets/invalid/invalid-footer-row-count/data/part-00000.parquet",
@@ -3813,16 +3171,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2634",
         "manifest: parts[0].bytes 2619 -> 2634"
       ],
-      "fault": {
-        "codes": [
-          "invalid_footer"
-        ],
-        "detect": "open",
-        "requirements": [
-          "FILE-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "invalid-footer-file-path",
       "files": [
         {
           "path": "datasets/invalid/invalid-footer-file-path/data/part-00000.parquet",
@@ -3855,16 +3204,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2667",
         "manifest: parts[0].bytes 2619 -> 2667"
       ],
-      "fault": {
-        "codes": [
-          "stamp_mismatch"
-        ],
-        "detect": "open",
-        "requirements": [
-          "STAMP-2",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "stamp-duplicate",
       "files": [
         {
           "path": "datasets/invalid/stamp-duplicate/data/part-00000.parquet",
@@ -3897,16 +3237,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2625",
         "manifest: parts[0].bytes 2619 -> 2625"
       ],
-      "fault": {
-        "codes": [
-          "invalid_key_column"
-        ],
-        "detect": "open",
-        "requirements": [
-          "KEY-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "key-annotation-json",
       "files": [
         {
           "path": "datasets/invalid/key-annotation-json/data/part-00000.parquet",
@@ -3939,16 +3270,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2608",
         "manifest: parts[0].bytes 2619 -> 2608"
       ],
-      "fault": {
-        "codes": [
-          "invalid_key_column"
-        ],
-        "detect": "open",
-        "requirements": [
-          "KEY-5",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "column-orders-missing",
       "files": [
         {
           "path": "datasets/invalid/column-orders-missing/data/part-00000.parquet",
@@ -3981,16 +3303,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2613",
         "manifest: parts[0].bytes 2619 -> 2613"
       ],
-      "fault": {
-        "codes": [
-          "invalid_key_column"
-        ],
-        "detect": "open",
-        "requirements": [
-          "KEY-5",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "column-orders-short",
       "files": [
         {
           "path": "datasets/invalid/column-orders-short/data/part-00000.parquet",
@@ -4023,16 +3336,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2622",
         "manifest: parts[0].bytes 2619 -> 2622"
       ],
-      "fault": {
-        "codes": [
-          "invalid_key_column"
-        ],
-        "detect": "open",
-        "requirements": [
-          "KEY-5",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "column-orders-long",
       "files": [
         {
           "path": "datasets/invalid/column-orders-long/data/part-00000.parquet",
@@ -4063,17 +3367,7 @@
       "changes": [
         "data/part-00000.parquet: row group 0 column 3: dictionary page at 323: first value's length prefix 5 -> 2147483647"
       ],
-      "fault": {
-        "codes": [
-          "invalid_parquet"
-        ],
-        "detect": "validate:full",
-        "requirements": [
-          "CHECK-5",
-          "VAL-1"
-        ],
-        "request": "range-columns:s"
-      },
+      "fault_id": "invalid-parquet-dictionary",
       "files": [
         {
           "path": "datasets/invalid/invalid-parquet-dictionary/data/part-00000.parquet",
@@ -4112,18 +3406,7 @@
       "changes": [
         "data/part-00000.parquet: row group 0 column 1: data page 0 header num_values 2 -> 3 (the page holds 2 values); header length unchanged"
       ],
-      "fault": {
-        "codes": [
-          "invalid_parquet"
-        ],
-        "detect": "validate:full",
-        "requirements": [
-          "CHECK-5",
-          "VAL-1"
-        ],
-        "request": "range-columns:size",
-        "note": "No read case: a reader may decode only the values it needs from a value page, and CHECK-2's exact row count applies to key pages; full validation must find it."
-      },
+      "fault_id": "invalid-parquet-value-count",
       "files": [
         {
           "path": "datasets/invalid/invalid-parquet-value-count/data/part-00000.parquet",
@@ -4156,16 +3439,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 1338 -> 1344",
         "manifest: parts[0].bytes 1338 -> 1344"
       ],
-      "fault": {
-        "codes": [
-          "invalid_key"
-        ],
-        "detect": "read",
-        "requirements": [
-          "KEY-6",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "invalid-key-utf8",
       "files": [
         {
           "path": "datasets/invalid/invalid-key-utf8/data/part-00000.parquet",
@@ -4196,17 +3470,7 @@
       "changes": [
         "shards/c.parquet: row group 1 column 1: body of data page 0 (6 bytes at offset 450) overwritten with 0xFF; its header and every other byte unchanged"
       ],
-      "fault": {
-        "codes": [
-          "invalid_parquet"
-        ],
-        "detect": "validate:full",
-        "requirements": [
-          "CHECK-5",
-          "VAL-1"
-        ],
-        "request": "range-columns:size"
-      },
+      "fault_id": "invalid-parquet-page",
       "files": [
         {
           "path": "datasets/invalid/invalid-parquet-page/manifest.json",
@@ -4255,16 +3519,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2612",
         "manifest: parts[0].bytes 2619 -> 2612"
       ],
-      "fault": {
-        "codes": [
-          "missing_sorting_columns"
-        ],
-        "detect": "open",
-        "requirements": [
-          "RG-1",
-          "CHECK-1"
-        ]
-      },
+      "fault_id": "sorting-columns-missing-second-row-group",
       "files": [
         {
           "path": "datasets/invalid/sorting-columns-missing-second-row-group/data/part-00000.parquet",
@@ -4297,17 +3552,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2563",
         "manifest: parts[0].bytes 2619 -> 2563"
       ],
-      "fault": {
-        "codes": [
-          "missing_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-2",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "missing-column-index",
       "files": [
         {
           "path": "datasets/invalid/missing-column-index/data/part-00000.parquet",
@@ -4340,17 +3585,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2582",
         "manifest: parts[0].bytes 2619 -> 2582"
       ],
-      "fault": {
-        "codes": [
-          "missing_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-2",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "missing-offset-index",
       "files": [
         {
           "path": "datasets/invalid/missing-offset-index/data/part-00000.parquet",
@@ -4383,17 +3618,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2607",
         "manifest: parts[0].bytes 2619 -> 2607"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-4",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-null-page",
       "files": [
         {
           "path": "datasets/invalid/page-index-null-page/data/part-00000.parquet",
@@ -4426,17 +3651,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2609",
         "manifest: parts[0].bytes 2619 -> 2609"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-4",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-count-mismatch",
       "files": [
         {
           "path": "datasets/invalid/page-index-count-mismatch/data/part-00000.parquet",
@@ -4468,17 +3683,7 @@
         "data/part-00000.parquet: row group 1 key OffsetIndex: page_locations[0].first_row_index 0 -> 1",
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2619"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-3",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-first-row-nonzero",
       "files": [
         {
           "path": "datasets/invalid/page-index-first-row-nonzero/data/part-00000.parquet",
@@ -4510,17 +3715,7 @@
         "data/part-00000.parquet: row group 0 key OffsetIndex: page_locations[2].first_row_index 4 -> 2",
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2619"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-3",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-first-row-not-increasing",
       "files": [
         {
           "path": "datasets/invalid/page-index-first-row-not-increasing/data/part-00000.parquet",
@@ -4552,17 +3747,7 @@
         "data/part-00000.parquet: row group 1 key OffsetIndex: page_locations[2].first_row_index 4 -> 6",
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2619"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-3",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-first-row-out-of-range",
       "files": [
         {
           "path": "datasets/invalid/page-index-first-row-out-of-range/data/part-00000.parquet",
@@ -4594,17 +3779,7 @@
         "data/part-00000.parquet: row group 1 key OffsetIndex: page_locations[2].offset 403 -> 2719",
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2619"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-3",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-location-outside-file",
       "files": [
         {
           "path": "datasets/invalid/page-index-location-outside-file/data/part-00000.parquet",
@@ -4636,17 +3811,7 @@
         "data/part-00000.parquet: row group 0 key OffsetIndex: page_locations[1].first_row_index 2 -> 1",
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2619"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-3",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-rows-mismatch",
       "files": [
         {
           "path": "datasets/invalid/page-index-rows-mismatch/data/part-00000.parquet",
@@ -4679,17 +3844,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2611",
         "manifest: parts[0].bytes 2619 -> 2611"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-4",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-list-length-mismatch",
       "files": [
         {
           "path": "datasets/invalid/page-index-list-length-mismatch/data/part-00000.parquet",
@@ -4721,17 +3876,7 @@
         "data/part-00000.parquet: row group 0 key OffsetIndex: page_locations[1].offset 43 -> 44",
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2619"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-3",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-location-mismatch",
       "files": [
         {
           "path": "datasets/invalid/page-index-location-mismatch/data/part-00000.parquet",
@@ -4764,18 +3909,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2546",
         "manifest: parts[0].bytes 2619 -> 2546"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-3",
-          "RG-4",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-empty",
       "files": [
         {
           "path": "datasets/invalid/page-index-empty/data/part-00000.parquet",
@@ -4808,17 +3942,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 9076 -> 9075",
         "manifest: parts[0].bytes 9076 -> 9075"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "KEY-6",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-bound-not-utf8",
       "files": [
         {
           "path": "datasets/invalid/page-index-bound-not-utf8/data/part-00000.parquet",
@@ -4867,17 +3991,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2620",
         "manifest: parts[0].bytes 2619 -> 2620"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-5",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-min-above-first-key",
       "files": [
         {
           "path": "datasets/invalid/page-index-min-above-first-key/data/part-00000.parquet",
@@ -4910,17 +4024,7 @@
         "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2618",
         "manifest: parts[0].bytes 2619 -> 2618"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-5",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-max-below-last-key",
       "files": [
         {
           "path": "datasets/invalid/page-index-max-below-last-key/data/part-00000.parquet",
@@ -4953,17 +4057,7 @@
         "data/part-00001.parquet: data pages preserved; page indexes and footer re-serialized, file size 2503 -> 2438",
         "manifest: parts[1].bytes 2503 -> 2438"
       ],
-      "fault": {
-        "codes": [
-          "invalid_page_index"
-        ],
-        "detect": "read",
-        "requirements": [
-          "RG-5",
-          "RG-7",
-          "CHECK-2"
-        ]
-      },
+      "fault_id": "page-index-shortened-ff-max",
       "files": [
         {
           "path": "datasets/invalid/page-index-shortened-ff-max/data/part-00000.parquet",

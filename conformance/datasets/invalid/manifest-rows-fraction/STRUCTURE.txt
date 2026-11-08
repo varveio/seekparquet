@@ -5,7 +5,7 @@ description: A part's rows is written 12.0.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-6, CHECK-1)
+fault (generators/faults.json): manifest-rows-fraction: invalid_manifest; reader detects on open; lowest validation level structural (MAN-6, CHECK-1); location: manifest.json
 changes:
   - manifest text: '"rows": 12,' -> '"rows": 12.0,'
 

@@ -1,10 +1,19 @@
 {
   "group": "pagination",
   "target": "reader",
+  "generated": true,
+  "generator": "generators/make_cases.py",
   "description": "Paginated listings and ranges (LIST-6, QUERY-3): each page is a case; make_cases.py asserts that the pages concatenate to the unpaginated result.",
+  "families": {
+    "pagination/list-scenario": "a listing read page by page: after = the previous page's last entry, continuation true; the pages concatenate to the unpaginated listing",
+    "pagination/range-scenario": "a range read page by page with an exclusive start at the previous page's last key"
+  },
   "cases": [
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-00",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 0,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -28,6 +37,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-01",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 1,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -54,6 +66,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-02",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 2,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -79,6 +94,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-03",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 3,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -105,6 +123,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-04",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 4,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -131,6 +152,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-05",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 5,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -157,6 +181,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-06",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 6,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -182,6 +209,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-07",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 7,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -208,6 +238,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-08",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 8,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -233,6 +266,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-09",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 9,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -259,6 +295,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-10",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 10,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -285,6 +324,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-11",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 11,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -311,6 +353,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-12",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 12,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -337,6 +382,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-13",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 13,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -363,6 +411,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-14",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 14,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -389,6 +440,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-15",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 15,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -415,6 +469,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-16",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 16,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -440,6 +497,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-17",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 17,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -466,6 +526,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-18",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 18,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -491,6 +554,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-19",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 19,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -516,6 +582,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit1/page-20",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit1",
+      "step": 20,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -536,6 +605,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit3/page-00",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit3",
+      "step": 0,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -568,6 +640,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit3/page-01",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit3",
+      "step": 1,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -604,6 +679,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit3/page-02",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit3",
+      "step": 2,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -638,6 +716,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit3/page-03",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit3",
+      "step": 3,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -674,6 +755,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit3/page-04",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit3",
+      "step": 4,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -710,6 +794,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit3/page-05",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit3",
+      "step": 5,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -745,6 +832,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-2f-limit3/page-06",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-2f-limit3",
+      "step": 6,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -773,120 +863,10 @@
       }
     },
     {
-      "id": "pagination/list/delimiter/a/-2f-limit2/page-00",
-      "requirements": [
-        "LIST-6",
-        "QUERY-3",
-        "LIST-5"
-      ],
-      "dataset": "datasets/delimiter",
-      "request": {
-        "op": "list",
-        "prefix_base64": "YS8=",
-        "delimiter_base64": "Lw==",
-        "limit": 2
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "YS8=",
-            "values": []
-          },
-          {
-            "kind": "prefix",
-            "key_base64": "YS8v"
-          }
-        ]
-      }
-    },
-    {
-      "id": "pagination/list/delimiter/a/-2f-limit2/page-01",
-      "requirements": [
-        "LIST-6",
-        "QUERY-3",
-        "LIST-5"
-      ],
-      "dataset": "datasets/delimiter",
-      "request": {
-        "op": "list",
-        "prefix_base64": "YS8=",
-        "delimiter_base64": "Lw==",
-        "after_base64": "YS8v",
-        "continuation": true,
-        "limit": 2
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "YS9i",
-            "values": []
-          },
-          {
-            "kind": "prefix",
-            "key_base64": "YS9iLw=="
-          }
-        ]
-      }
-    },
-    {
-      "id": "pagination/list/delimiter/a/-2f-limit2/page-02",
-      "requirements": [
-        "LIST-6",
-        "QUERY-3",
-        "LIST-5"
-      ],
-      "dataset": "datasets/delimiter",
-      "request": {
-        "op": "list",
-        "prefix_base64": "YS8=",
-        "delimiter_base64": "Lw==",
-        "after_base64": "YS9iLw==",
-        "continuation": true,
-        "limit": 2
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "YS9iYw==",
-            "values": []
-          },
-          {
-            "kind": "row",
-            "key_base64": "YS9j",
-            "values": []
-          }
-        ]
-      }
-    },
-    {
-      "id": "pagination/list/delimiter/a/-2f-limit2/page-03",
-      "requirements": [
-        "LIST-6",
-        "QUERY-3",
-        "LIST-5"
-      ],
-      "dataset": "datasets/delimiter",
-      "request": {
-        "op": "list",
-        "prefix_base64": "YS8=",
-        "delimiter_base64": "Lw==",
-        "after_base64": "YS9j",
-        "continuation": true,
-        "limit": 2
-      },
-      "expect": {
-        "status": "ok",
-        "entries": []
-      }
-    },
-    {
       "id": "pagination/list/delimiter/root-ff-limit4/page-00",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-ff-limit4",
+      "step": 0,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -926,6 +906,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-ff-limit4/page-01",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-ff-limit4",
+      "step": 1,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -967,6 +950,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-ff-limit4/page-02",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-ff-limit4",
+      "step": 2,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1008,6 +994,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-ff-limit4/page-03",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-ff-limit4",
+      "step": 3,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1049,6 +1038,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-ff-limit4/page-04",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-ff-limit4",
+      "step": 4,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1090,6 +1082,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-ff-limit4/page-05",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-ff-limit4",
+      "step": 5,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1131,6 +1126,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-ff-limit4/page-06",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-ff-limit4",
+      "step": 6,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1171,6 +1169,9 @@
     },
     {
       "id": "pagination/list/delimiter/root-ff-limit4/page-07",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/delimiter/root-ff-limit4",
+      "step": 7,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1196,6 +1197,9 @@
     },
     {
       "id": "pagination/list/multipart/root-2f-limit2/page-00",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/root-2f-limit2",
+      "step": 0,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1224,6 +1228,9 @@
     },
     {
       "id": "pagination/list/multipart/root-2f-limit2/page-01",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/root-2f-limit2",
+      "step": 1,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1253,6 +1260,9 @@
     },
     {
       "id": "pagination/list/multipart/root-2f-limit2/page-02",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/root-2f-limit2",
+      "step": 2,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1279,6 +1289,9 @@
     },
     {
       "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-00",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
+      "step": 0,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1334,6 +1347,9 @@
     },
     {
       "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-01",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
+      "step": 1,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1391,6 +1407,9 @@
     },
     {
       "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-02",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
+      "step": 2,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1448,6 +1467,9 @@
     },
     {
       "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-03",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
+      "step": 3,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1505,6 +1527,9 @@
     },
     {
       "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-04",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
+      "step": 4,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1562,6 +1587,9 @@
     },
     {
       "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-05",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
+      "step": 5,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1609,6 +1637,9 @@
     },
     {
       "id": "pagination/list/multipart/logs/-2f-limit1/page-00",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/logs/-2f-limit1",
+      "step": 0,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1633,6 +1664,9 @@
     },
     {
       "id": "pagination/list/multipart/logs/-2f-limit1/page-01",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/logs/-2f-limit1",
+      "step": 1,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1659,6 +1693,9 @@
     },
     {
       "id": "pagination/list/multipart/logs/-2f-limit1/page-02",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/multipart/logs/-2f-limit1",
+      "step": 2,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1680,6 +1717,9 @@
     },
     {
       "id": "pagination/list/binary-keys/root-ff-limit5/page-00",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/binary-keys/root-ff-limit5",
+      "step": 0,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1724,6 +1764,9 @@
     },
     {
       "id": "pagination/list/binary-keys/root-ff-limit5/page-01",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/binary-keys/root-ff-limit5",
+      "step": 1,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1770,6 +1813,9 @@
     },
     {
       "id": "pagination/list/binary-keys/root-ff-limit5/page-02",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/binary-keys/root-ff-limit5",
+      "step": 2,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1815,6 +1861,9 @@
     },
     {
       "id": "pagination/list/binary-keys/root-ff-limit5/page-03",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/binary-keys/root-ff-limit5",
+      "step": 3,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1861,6 +1910,9 @@
     },
     {
       "id": "pagination/list/binary-keys/root-ff-limit5/page-04",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/binary-keys/root-ff-limit5",
+      "step": 4,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1907,6 +1959,9 @@
     },
     {
       "id": "pagination/list/binary-keys/root-ff-limit5/page-05",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/binary-keys/root-ff-limit5",
+      "step": 5,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1952,6 +2007,9 @@
     },
     {
       "id": "pagination/list/binary-keys/root-ff-limit5/page-06",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/binary-keys/root-ff-limit5",
+      "step": 6,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -1998,6 +2056,9 @@
     },
     {
       "id": "pagination/list/binary-keys/root-ff-limit5/page-07",
+      "family": "pagination/list-scenario",
+      "scenario_id": "list/binary-keys/root-ff-limit5",
+      "step": 7,
       "requirements": [
         "LIST-6",
         "QUERY-3",
@@ -2032,101 +2093,10 @@
       }
     },
     {
-      "id": "pagination/list/list-bounds/root-2f-limit1/page-00",
-      "requirements": [
-        "LIST-6",
-        "QUERY-3",
-        "LIST-5"
-      ],
-      "dataset": "datasets/list-bounds",
-      "request": {
-        "op": "list",
-        "delimiter_base64": "Lw==",
-        "limit": 1
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "prefix",
-            "key_base64": "YS8="
-          }
-        ]
-      }
-    },
-    {
-      "id": "pagination/list/list-bounds/root-2f-limit1/page-01",
-      "requirements": [
-        "LIST-6",
-        "QUERY-3",
-        "LIST-5"
-      ],
-      "dataset": "datasets/list-bounds",
-      "request": {
-        "op": "list",
-        "delimiter_base64": "Lw==",
-        "after_base64": "YS8=",
-        "continuation": true,
-        "limit": 1
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "prefix",
-            "key_base64": "Yi8="
-          }
-        ]
-      }
-    },
-    {
-      "id": "pagination/list/list-bounds/root-2f-limit1/page-02",
-      "requirements": [
-        "LIST-6",
-        "QUERY-3",
-        "LIST-5"
-      ],
-      "dataset": "datasets/list-bounds",
-      "request": {
-        "op": "list",
-        "delimiter_base64": "Lw==",
-        "after_base64": "Yi8=",
-        "continuation": true,
-        "limit": 1
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "Yw==",
-            "values": []
-          }
-        ]
-      }
-    },
-    {
-      "id": "pagination/list/list-bounds/root-2f-limit1/page-03",
-      "requirements": [
-        "LIST-6",
-        "QUERY-3",
-        "LIST-5"
-      ],
-      "dataset": "datasets/list-bounds",
-      "request": {
-        "op": "list",
-        "delimiter_base64": "Lw==",
-        "after_base64": "Yw==",
-        "continuation": true,
-        "limit": 1
-      },
-      "expect": {
-        "status": "ok",
-        "entries": []
-      }
-    },
-    {
       "id": "pagination/range/multipart-limit25/page-00",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/multipart-limit25",
+      "step": 0,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -2269,6 +2239,9 @@
     },
     {
       "id": "pagination/range/multipart-limit25/page-01",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/multipart-limit25",
+      "step": 1,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -2413,6 +2386,9 @@
     },
     {
       "id": "pagination/range/multipart-limit25/page-02",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/multipart-limit25",
+      "step": 2,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -2557,6 +2533,9 @@
     },
     {
       "id": "pagination/range/multipart-limit25/page-03",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/multipart-limit25",
+      "step": 3,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -2701,6 +2680,9 @@
     },
     {
       "id": "pagination/range/multipart-limit25/page-04",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/multipart-limit25",
+      "step": 4,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -2845,6 +2827,9 @@
     },
     {
       "id": "pagination/range/multipart-limit25/page-05",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/multipart-limit25",
+      "step": 5,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -2909,6 +2894,9 @@
     },
     {
       "id": "pagination/range/binary-keys-limit7/page-00",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/binary-keys-limit7",
+      "step": 0,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -2961,6 +2949,9 @@
     },
     {
       "id": "pagination/range/binary-keys-limit7/page-01",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/binary-keys-limit7",
+      "step": 1,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -3015,6 +3006,9 @@
     },
     {
       "id": "pagination/range/binary-keys-limit7/page-02",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/binary-keys-limit7",
+      "step": 2,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -3069,6 +3063,9 @@
     },
     {
       "id": "pagination/range/binary-keys-limit7/page-03",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/binary-keys-limit7",
+      "step": 3,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -3123,6 +3120,9 @@
     },
     {
       "id": "pagination/range/binary-keys-limit7/page-04",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/binary-keys-limit7",
+      "step": 4,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -3177,6 +3177,9 @@
     },
     {
       "id": "pagination/range/binary-keys-limit7/page-05",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/binary-keys-limit7",
+      "step": 5,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -3231,6 +3234,9 @@
     },
     {
       "id": "pagination/range/binary-keys-limit7/page-06",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/binary-keys-limit7",
+      "step": 6,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
@@ -3270,11 +3276,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-00",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 0,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "limit": 4
@@ -3307,11 +3316,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-01",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 1,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "start_base64": "AQ==",
@@ -3346,11 +3358,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-02",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 2,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "start_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDA=",
@@ -3385,11 +3400,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-03",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 3,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "start_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDQ=",
@@ -3424,11 +3442,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-04",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 4,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "start_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8C",
@@ -3463,11 +3484,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-05",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 5,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "start_base64": "YQE=",
@@ -3502,11 +3526,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-06",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 6,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "start_base64": "cA==",
@@ -3541,11 +3568,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-07",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 7,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "start_base64": "fg==",
@@ -3580,11 +3610,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-08",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 8,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "start_base64": "gAA=",
@@ -3619,11 +3652,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-09",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 9,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "start_base64": "772e",
@@ -3658,11 +3694,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-10",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 10,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "start_base64": "/wA=",
@@ -3697,11 +3736,14 @@
     },
     {
       "id": "pagination/range/truncated-bounds-2-limit4/page-11",
+      "family": "pagination/range-scenario",
+      "scenario_id": "range/truncated-bounds-2-limit4",
+      "step": 11,
       "requirements": [
         "RANGE-1",
         "QUERY-3"
       ],
-      "dataset": "datasets/truncated-bounds-2",
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
         "op": "range",
         "start_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",

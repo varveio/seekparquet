@@ -5,7 +5,7 @@ description: The manifest lists a second part that does not exist.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: missing_part, detected at the latest on open (LAYOUT-1, CHECK-1)
+fault (generators/faults.json): missing-part: missing_part; reader detects on open; lowest validation level structural (LAYOUT-1, CHECK-1); location: manifest.json
 changes:
   - manifest: appended parts[1] path 'data/part-00001.parquet' with bounds 'zz0'..'zz9'
 

@@ -5,7 +5,7 @@ description: Manifest and stamps say format_version 1 (reserved until format 1 i
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/basic.json
-expected refusal: unsupported_version, detected at the latest on open (MAN-4, MAN-5, VER-1)
+fault (generators/faults.json): unsupported-version-1: unsupported_version; reader detects on open; lowest validation level structural (MAN-4, MAN-5, VER-1); location: manifest.json version members (footer stamps agree)
 
 manifest: format_version 1, 1 parts
   part 0: 'data/part-00000.parquet', rows 12, bytes 2511, keys 'a/1.txt' .. 'foxtrot'

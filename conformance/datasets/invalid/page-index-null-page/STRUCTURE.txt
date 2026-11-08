@@ -5,7 +5,7 @@ description: Row group 1's key ColumnIndex marks page 1 as a null page.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_page_index, detected at the latest on read (RG-4, RG-7, CHECK-2)
+fault (generators/faults.json): page-index-null-page: invalid_page_index; reader detects on read; lowest validation level structural (RG-4, RG-7, CHECK-2); location: data/part-00000.parquet: row group 1 key ColumnIndex
 changes:
   - data/part-00000.parquet: row group 1 key ColumnIndex: null_pages[1] false -> true, min 'charlie' -> '', max 'delta' -> ''
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2607

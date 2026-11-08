@@ -5,7 +5,7 @@ description: A part's bytes is 2^63, beyond the allowed range.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-6, CHECK-1)
+fault (generators/faults.json): manifest-bytes-too-large: invalid_manifest; reader detects on open; lowest validation level structural (MAN-6, CHECK-1); location: manifest.json
 changes:
   - manifest: parts.0.bytes 2619 -> 9223372036854775808
 

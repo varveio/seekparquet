@@ -5,7 +5,7 @@ description: Two parts name the same path (their declared bounds are disjoint an
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (PART-1, CHECK-1)
+fault (generators/faults.json): manifest-path-duplicate: invalid_manifest; reader detects on open; lowest validation level structural (PART-1, CHECK-1); location: manifest.json
 changes:
   - manifest: appended parts[1] path 'data/part-00000.parquet' with bounds 'zz0'..'zz9'
 

@@ -5,7 +5,7 @@ description: The key ColumnIndex max of the page ending at 0xFF*80 0x02 is short
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/binary-keys
-expected refusal: invalid_page_index, detected at the latest on read (RG-5, RG-7, CHECK-2)
+fault (generators/faults.json): page-index-shortened-ff-max: invalid_page_index; reader detects on read; lowest validation level profile (RG-5, RG-7, CHECK-2); location: data/part-00001.parquet: row group 1 key ColumnIndex
 changes:
   - data/part-00001.parquet: row group 1 key ColumnIndex: max_values[3] ffffffffffffffffffffffff..(81 bytes) -> ffffffffffffffffffffffffffffffff (16 bytes of 0xFF: below the page's last key)
   - data/part-00001.parquet: data pages preserved; page indexes and footer re-serialized, file size 2503 -> 2438

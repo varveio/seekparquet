@@ -35,6 +35,21 @@ import pyarrow_fixtures  # noqa: E402
 from common import CONF, DATASETS, b64d, dumps, sha256, write_text  # noqa: E402
 
 LOCK = CONF / "fixtures.lock.json"
+FAULTS = CONF / "generators" / "faults.json"
+PRESERVED = CONF / "generators" / "preserved.json"
+
+
+def load_faults():
+    doc = json.loads(FAULTS.read_text(encoding="utf-8"))
+    out = {}
+    for f in doc["faults"]:
+        assert f["id"] not in out, f"duplicate fault id {f['id']}"
+        out[f["id"]] = f
+    return out
+
+
+def accepted_codes(f):
+    return f["codes"] + [s["code"] for s in f.get("secondary_faults", [])]
 
 
 def fmt_key(s):
@@ -54,8 +69,11 @@ def structure(rec):
         L.append(f"derived from: {rec['derived_from']}")
     if rec.get("fault"):
         f = rec["fault"]
-        L.append(f"expected refusal: {' or '.join(f['codes'])}, detected at the latest on {f['detect']} "
-                 f"({', '.join(f['requirements'])})")
+        L.append(f"fault (generators/faults.json): {f['id']}: {' or '.join(accepted_codes(f))}; reader detects on "
+                 f"{f['reader_detect']}; lowest validation level {f['validation_level']} "
+                 f"({', '.join(f['requirements'])}); location: {f['location']}")
+        for sec in f.get("secondary_faults", []):
+            L.append(f"secondary fault: {sec['code']}: {sec['justification']}")
         if f.get("note"):
             L.append(f"note: {f['note']}")
     if rec.get("changes"):
@@ -118,10 +136,25 @@ def file_entries(rec):
 
 def main():
     (DATASETS / "invalid").mkdir(parents=True, exist_ok=True)
+    preserved = json.loads(PRESERVED.read_text(encoding="utf-8"))["datasets"]
+    protected = {CONF / p["dir"] for p in preserved}
     records = pyarrow_fixtures.build() + mutate_metadata.build()
     names = [r["name"] for r in records]
     assert len(names) == len(set(names)), "duplicate dataset names"
     dirs = {CONF / r["dir"] for r in records}
+    assert not dirs & protected, "a generator wrote into a preserved regression fixture"
+    faults = load_faults()
+    for r in records:
+        if not r["valid"]:
+            assert r["name"] in faults, f"invalid dataset {r['name']} has no entry in generators/faults.json"
+            r["fault"] = faults[r["name"]]
+            assert faults[r["name"]]["dataset"] == r["dir"], f"faults.json dataset path for {r['name']}"
+    for p in preserved:
+        if not p["valid"]:
+            assert p["fault_id"] in faults, f"preserved dataset {p['name']} has no fault declaration"
+    declared = {r["name"] for r in records if not r["valid"]} | {p.get("fault_id") for p in preserved}
+    assert set(faults) <= declared, f"faults.json declares faults with no fixture: {sorted(set(faults) - declared)}"
+    dirs |= protected
     for d in sorted(list(DATASETS.iterdir()) + list((DATASETS / "invalid").iterdir())):
         if d.is_dir() and d != DATASETS / "invalid" and d not in dirs:
             shutil.rmtree(d)  # stale generator output
@@ -132,9 +165,17 @@ def main():
         files = file_entries(r)
         total += sum(f["bytes"] for f in files)
         entry = {k: r[k] for k in ("name", "dir", "valid", "description", "provenance", "producer", "rows",
-                                   "derived_from", "changes", "fault") if r.get(k) is not None}
+                                   "derived_from", "changes") if r.get(k) is not None}
+        if r.get("fault"):
+            entry["fault_id"] = r["fault"]["id"]
         entry["files"] = files
         datasets.append(entry)
+    for p in preserved:  # verified, never regenerated
+        for fe in p["files"]:
+            data = (CONF / fe["path"]).read_bytes()
+            assert sha256(data) == fe["sha256"] and len(data) == fe["bytes"], f"preserved file changed: {fe['path']}"
+            total += fe["bytes"]
+        datasets.append(dict(p, preserved=True))
     biggest = max((f["bytes"] for d in datasets for f in d["files"]), default=0)
     assert total <= 10 * 1024 * 1024, f"fixture corpus {total} bytes exceeds 10 MiB"
     assert biggest <= 1024 * 1024, "a fixture file exceeds 1 MiB"

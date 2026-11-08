@@ -13,7 +13,11 @@ python generators/regenerate.py      # from conformance/, with generators/requir
 | `pyarrow_fixtures.py` | Writes `rows/*.json` from its definitions, then writes each dataset from those documents with pyarrow, and asserts the resulting physical structure. |
 | `parquet_meta.py` | Pure-stdlib Thrift compact-protocol reader/writer for FileMetaData, ColumnIndex, OffsetIndex and PageHeader; prints structural summaries (`python generators/parquet_meta.py FILE...`). Decode-then-encode is asserted to reproduce pyarrow's bytes exactly. |
 | `mutate_metadata.py` | Derives fixtures by editing manifests, footers and page indexes, preserving data pages, recomputing index offsets, file sizes and manifest sizes, and recording every change. |
-| `make_cases.py` | Writes the case files and `suite.json` from the rows (through `../oracle.py`) and the faults in the lock. |
+| `faults.json` | The authored declaration of every invalid fixture's fault (reader detection, lowest validation level, codes, requirements, location, justified secondary faults). |
+| `preserved.json` | Preserved regression fixtures that regeneration must never touch (empty so far). |
+| `make_cases.py` | Writes `cases/generated/`, `suite.json` and `COVERAGE.md` from the rows (through `../oracle.py`) and `faults.json`. It checks `cases/core/` against its own candidates and the oracle, never rewrites it, and retires exact duplicates. |
+| `test_oracle.py` | Oracle property tests and hand-specified examples. |
+| `test_case_generation.py` | Generator tests: determinism, unique ids, no exact duplicates, boundary families present, one validation case per fault, the prerequisite and digest selections, honest "miss" labels. |
 | `check_reproducible.py` | Regenerates everything in a temporary directory and compares with the checked-in files. |
 | `test_parquet_meta.py` | Bounded malformed-input regression tests for `parquet_meta.py`. |
 | `regenerate.py` | Runs the above, writes `STRUCTURE.txt` per dataset and `fixtures.lock.json`, and removes stale dataset directories. |

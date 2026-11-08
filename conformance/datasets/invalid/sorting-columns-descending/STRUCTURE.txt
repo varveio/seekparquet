@@ -5,7 +5,7 @@ description: sorting_columns declares key descending.
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/basic.json
-expected refusal: missing_sorting_columns, detected at the latest on open (RG-1, CHECK-1)
+fault (generators/faults.json): sorting-columns-descending: missing_sorting_columns; reader detects on open; lowest validation level structural (RG-1, CHECK-1); location: footer row_groups[*].sorting_columns
 
 manifest: format_version 0, 1 parts
   part 0: 'data/part-00000.parquet', rows 12, bytes 2619, keys 'a/1.txt' .. 'foxtrot'

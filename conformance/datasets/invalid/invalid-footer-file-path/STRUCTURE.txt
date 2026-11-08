@@ -5,7 +5,7 @@ description: Row group 0's key column chunk sets file_path (a reference to anoth
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_footer, detected at the latest on open (FILE-1, CHECK-1)
+fault (generators/faults.json): invalid-footer-file-path: invalid_footer; reader detects on open; lowest validation level structural (FILE-1, CHECK-1); location: data/part-00000.parquet: footer
 changes:
   - data/part-00000.parquet: footer: row_groups[0].columns[0].file_path set to 'other.parquet'
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2634

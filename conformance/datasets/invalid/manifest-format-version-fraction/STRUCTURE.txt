@@ -5,7 +5,7 @@ description: format_version is written 0.0.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-6, MAN-7, CHECK-1)
+fault (generators/faults.json): manifest-format-version-fraction: invalid_manifest; reader detects on open; lowest validation level structural (MAN-6, MAN-7, CHECK-1); location: manifest.json
 changes:
   - manifest text: '"format_version": 0,' -> '"format_version": 0.0,'
 

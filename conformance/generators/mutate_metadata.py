@@ -10,7 +10,8 @@ offsets and lengths, and the manifest's ``bytes`` (and ``sha256`` when
 present) are updated to the new file. Each change is recorded in
 ``fixtures.lock.json`` and ``STRUCTURE.txt``.
 
-Most derived fixtures are invalid (one fault each, with its expected refusal).
+Most derived fixtures are invalid (one fault each). Their faults and expected refusals are declared in
+generators/faults.json, not here.
 A few are valid ("mutated positive" fixtures), for example conservatively
 shortened page bounds, which pyarrow never writes.
 
@@ -62,7 +63,7 @@ def read_manifest(src):
     return json.loads((src / "manifest.json").read_text(encoding="utf-8"))
 
 
-def derive(name, src_name, desc, fault, *, parts=None, manifest=None, raw_manifest=None, valid=False,
+def derive(name, src_name, desc, _unused=None, *, parts=None, manifest=None, raw_manifest=None, valid=False,
            drop_manifest=False, out=None, raw=None):
     """Copy dataset ``src_name`` to ``out`` applying part and manifest edits.
 
@@ -119,18 +120,7 @@ def derive(name, src_name, desc, fault, *, parts=None, manifest=None, raw_manife
     r = {"name": name, "dir": str(out.relative_to(CONF)), "valid": valid, "description": desc,
          "rows": None, "producer": PRODUCER, "provenance": "mutated", "command": COMMAND,
          "derived_from": f"datasets/{src_name}", "changes": changes}
-    if fault:
-        r["fault"] = fault
     return r
-
-
-def F(code, detect, reqs, request=None, codes=None, note=None):
-    f = {"codes": codes or [code], "detect": detect, "requirements": reqs}
-    if request:
-        f["request"] = request
-    if note:
-        f["note"] = note
-    return f
 
 
 # --------------------------------------------------------------------------
@@ -480,19 +470,19 @@ def build():
     open_ = "open"
 
     # ---- valid, mutated -------------------------------------------------------
-    R.append(derive("truncated-bounds", "binary-keys",
+    R.append(derive("binary-bounds-truncated-16-byte", "binary-keys",
                     "binary-keys with every key-page bound longer than 16 bytes shortened conservatively "
                     "(lower bounds to a 16-byte prefix, upper bounds to an incremented prefix, except that an "
                     "upper bound whose first 16 bytes are all 0xFF is kept full). Adjacent page bounds overlap. "
                     "Row group 1 of part 0 is marked UNORDERED.",
-                    None, valid=True, out=DATASETS / "truncated-bounds",
+                    None, valid=True, out=DATASETS / "binary-bounds-truncated-16-byte",
                     parts={"data/part-00000.parquet": shorten_all(force_unordered_rg=1),
                            "data/part-00001.parquet": shorten_all()}))
-    R.append(derive("truncated-bounds-2", "binary-keys",
+    R.append(derive("binary-bounds-truncated-2-byte", "binary-keys",
                     "binary-keys with every key-page bound longer than 2 bytes shortened to 2 bytes the same way: "
                     "e.g. a page ending at ff ff ff keeps its full maximum while its siblings are shortened, and "
                     "many adjacent bounds overlap.",
-                    None, valid=True, out=DATASETS / "truncated-bounds-2",
+                    None, valid=True, out=DATASETS / "binary-bounds-truncated-2-byte",
                     parts={"data/part-00000.parquet": shorten_all(trunc=2),
                            "data/part-00001.parquet": shorten_all(trunc=2)}))
     R.append(derive("non-monotone-bounds", "basic",
@@ -515,148 +505,156 @@ def build():
                     None, valid=True, out=DATASETS / "extensions-numbers",
                     raw_manifest=lambda t: (t.replace(',\n  "parts": [', ext_text, 1),
                                             ["manifest text: extensions member added with ordinary JSON values"])))
+    R.append(derive("digest-mixed", "multipart",
+                    "multipart with sha256 declared for parts 0 and 2 only: digest validation checks exactly 2.",
+                    None, valid=True, out=DATASETS / "digest-mixed",
+                    manifest=del_member(["parts", 1, "sha256"])))
+    R.append(derive("digest-on-profile-invalid", "invalid/key-order-across-pages",
+                    "key-order-across-pages with a correct sha256 declared for its part: the key_order fault is a "
+                    "profile fault, and digest validation, which is independent, still completes with 1 checked.",
+                    None, manifest=lambda m, ch: (m["parts"][0].__setitem__("sha256", sha256(
+                        (DATASETS / "invalid" / "key-order-across-pages" / m["parts"][0]["path"]).read_bytes())),
+                        ch.append("manifest: parts[0].sha256 added (matches the file)"))))
     R.append(derive("no-value-page-index", "basic",
                     "basic with the ColumnIndex and OffsetIndex of every non-key column removed (allowed: COL-4).",
                     None, valid=True, out=DATASETS / "no-value-page-index", parts={B: remove_value_indexes}))
 
     # ---- manifest -------------------------------------------------------------
     R.append(derive("no-manifest", "basic", "The part file is present but manifest.json is not.",
-                    F("no_manifest", open_, ["LAYOUT-1", "CHECK-1"]), drop_manifest=True))
-    mi = lambda reqs, **kw: F("invalid_manifest", open_, reqs + ["CHECK-1"], **kw)  # noqa: E731
-    R.append(derive("manifest-not-json", "basic", "manifest.json is truncated mid-object.", mi(["MAN-1"]),
+                    None, drop_manifest=True))
+    R.append(derive("manifest-not-json", "basic", "manifest.json is truncated mid-object.", None,
                     raw_manifest=lambda t: (t[: len(t) // 2], ["manifest text truncated to half its length"])))
-    R.append(derive("manifest-bom", "basic", "manifest.json begins with a UTF-8 byte order mark.", mi(["MAN-1"]),
+    R.append(derive("manifest-bom", "basic", "manifest.json begins with a UTF-8 byte order mark.", None,
                     raw_manifest=lambda t: ("﻿" + t, ["manifest text: UTF-8 BOM prepended"])))
     R.append(derive("manifest-not-object", "basic", "manifest.json is a JSON array holding the manifest object.",
-                    mi(["MAN-1"]), raw_manifest=lambda t: ("[" + t.rstrip("\n") + "]\n", ["manifest wrapped in [ ]"])))
+                    None, raw_manifest=lambda t: ("[" + t.rstrip("\n") + "]\n", ["manifest wrapped in [ ]"])))
     R.append(derive("manifest-duplicate-member", "basic", "The top-level member schema_id appears twice.",
-                    mi(["MAN-2"]), raw_manifest=text_replace('"schema_id": "conformance/objects/v1",',
+                    None, raw_manifest=text_replace('"schema_id": "conformance/objects/v1",',
                                                              '"schema_id": "conformance/objects/v1",\n'
                                                              '  "schema_id": "conformance/objects/v1",')))
     R.append(derive("manifest-duplicate-part-member", "basic", "A part object has the member rows twice.",
-                    mi(["MAN-2"]), raw_manifest=text_replace('"rows": 12,', '"rows": 12,\n      "rows": 12,')))
+                    None, raw_manifest=text_replace('"rows": 12,', '"rows": 12,\n      "rows": 12,')))
     R.append(derive("manifest-unknown-member", "basic", "Top-level member created_at is not defined.",
-                    mi(["MAN-3"]), manifest=set_member(["created_at"], "2026-01-01T00:00:00Z")))
+                    None, manifest=set_member(["created_at"], "2026-01-01T00:00:00Z")))
     R.append(derive("manifest-unknown-part-member", "basic", "Part member checksum is not defined.",
-                    mi(["MAN-3"]), manifest=set_member(["parts", 0, "checksum"], "abc")))
+                    None, manifest=set_member(["parts", 0, "checksum"], "abc")))
     R.append(derive("manifest-extension-not-object", "basic", "extensions is a string, not an object.",
-                    mi(["MAN-3"]), manifest=set_member(["extensions"], "producer-metadata")))
+                    None, manifest=set_member(["extensions"], "producer-metadata")))
     R.append(derive("manifest-missing-schema-id", "basic", "The required member schema_id is absent.",
-                    mi(["MAN-3"]), manifest=del_member(["schema_id"])))
+                    None, manifest=del_member(["schema_id"])))
     R.append(derive("manifest-missing-parts", "basic", "The required member parts is absent.",
-                    mi(["MAN-3"]), manifest=del_member(["parts"])))
+                    None, manifest=del_member(["parts"])))
     R.append(derive("manifest-rows-string", "basic", "A part's rows is the string \"12\".",
-                    mi(["MAN-3"]), manifest=set_member(["parts", 0, "rows"], "12")))
+                    None, manifest=set_member(["parts", 0, "rows"], "12")))
     R.append(derive("manifest-wrong-format", "basic", "format is \"parquet\".",
-                    mi(["MAN-4"]), manifest=set_member(["format"], "parquet")))
+                    None, manifest=set_member(["format"], "parquet")))
     R.append(derive("manifest-draft-without-revision", "basic", "format_version is 0 but draft_revision is absent.",
-                    mi(["MAN-3", "MAN-4", "MAN-7"]),
+                    None,
                     manifest=del_member(["draft_revision"])))
     R.append(derive("manifest-bad-base64", "basic", "min_key_base64 contains characters outside the base64 alphabet.",
-                    mi(["PART-3"]), manifest=set_member(["parts", 0, "min_key_base64"], "YS8x!nR4dA==")))
+                    None, manifest=set_member(["parts", 0, "min_key_base64"], "YS8x!nR4dA==")))
     R.append(derive("manifest-base64-unpadded", "basic", "min_key_base64 omits its padding.",
-                    mi(["PART-3"]), manifest=set_member(["parts", 0, "min_key_base64"], "YS8xLnR4dA")))
+                    None, manifest=set_member(["parts", 0, "min_key_base64"], "YS8xLnR4dA")))
     R.append(derive("manifest-base64-url-alphabet", "binary-keys",
                     "Part 1's max_key_base64 (0xFF*81) is written in the URL-safe alphabet ('_' for '/').",
-                    mi(["PART-3"]),
+                    None,
                     manifest=lambda m, ch: set_member(["parts", 1, "max_key_base64"],
                                                       m["parts"][1]["max_key_base64"].replace("/", "_"))(m, ch)))
     R.append(derive("manifest-path-escape", "basic",
                     "The part path climbs out of the dataset root to a real, valid part of another dataset.",
-                    mi(["PART-1"]), manifest=set_member(["parts", 0, "path"], "../../basic/data/part-00000.parquet")))
+                    None, manifest=set_member(["parts", 0, "path"], "../../basic/data/part-00000.parquet")))
     R.append(derive("manifest-path-absolute", "basic", "The part path begins with '/'.",
-                    mi(["PART-1"]), manifest=set_member(["parts", 0, "path"], "/data/part-00000.parquet")))
+                    None, manifest=set_member(["parts", 0, "path"], "/data/part-00000.parquet")))
     R.append(derive("manifest-path-dot-segment", "basic",
                     "The part path has a '.' segment (it would resolve to the real part).",
-                    mi(["PART-1"]), manifest=set_member(["parts", 0, "path"], "data/./part-00000.parquet")))
+                    None, manifest=set_member(["parts", 0, "path"], "data/./part-00000.parquet")))
     R.append(derive("manifest-path-empty-segment", "basic", "The part path has an empty segment.",
-                    mi(["PART-1"]), manifest=set_member(["parts", 0, "path"], "data//part-00000.parquet")))
+                    None, manifest=set_member(["parts", 0, "path"], "data//part-00000.parquet")))
     R.append(derive("manifest-path-backslash", "basic", "The part path contains a backslash.",
-                    mi(["PART-1"]), manifest=set_member(["parts", 0, "path"], "data\\part-00000.parquet")))
+                    None, manifest=set_member(["parts", 0, "path"], "data\\part-00000.parquet")))
     R.append(derive("manifest-path-duplicate", "basic",
                     "Two parts name the same path (their declared bounds are disjoint and ascending).",
-                    mi(["PART-1"]), manifest=add_part_copy(B, b"zz0", b"zz9")))
-    R.append(derive("manifest-rows-zero", "basic", "A part declares rows 0.", mi(["PART-2"]),
+                    None, manifest=add_part_copy(B, b"zz0", b"zz9")))
+    R.append(derive("manifest-rows-zero", "basic", "A part declares rows 0.", None,
                     manifest=set_member(["parts", 0, "rows"], 0)))
-    R.append(derive("manifest-rows-fraction", "basic", "A part's rows is written 12.0.", mi(["MAN-6"]),
+    R.append(derive("manifest-rows-fraction", "basic", "A part's rows is written 12.0.", None,
                     raw_manifest=text_replace('"rows": 12,', '"rows": 12.0,')))
-    R.append(derive("manifest-rows-exponent", "basic", "A part's rows is written 1.2e1.", mi(["MAN-6"]),
+    R.append(derive("manifest-rows-exponent", "basic", "A part's rows is written 1.2e1.", None,
                     raw_manifest=text_replace('"rows": 12,', '"rows": 1.2e1,')))
     R.append(derive("manifest-bytes-too-large", "basic", "A part's bytes is 2^63, beyond the allowed range.",
-                    mi(["MAN-6"]), manifest=set_member(["parts", 0, "bytes"], 1 << 63)))
+                    None, manifest=set_member(["parts", 0, "bytes"], 1 << 63)))
     R.append(derive("manifest-format-version-fraction", "basic", "format_version is written 0.0.",
-                    mi(["MAN-6", "MAN-7"]), raw_manifest=text_replace('"format_version": 0,', '"format_version": 0.0,')))
+                    None, raw_manifest=text_replace('"format_version": 0,', '"format_version": 0.0,')))
     R.append(derive("manifest-base64-noncanonical", "basic",
                     "min_key_base64 is YS8xLnR4dB==: it decodes to the right key but its unused bits are not zero.",
-                    mi(["PART-3"]), manifest=set_member(["parts", 0, "min_key_base64"], "YS8xLnR4dB==")))
+                    None, manifest=set_member(["parts", 0, "min_key_base64"], "YS8xLnR4dB==")))
     R.append(derive("manifest-path-control-character", "basic", "The part path contains U+0001.",
-                    mi(["PART-1"]), manifest=set_member(["parts", 0, "path"], "data/part\u0001-00000.parquet")))
+                    None, manifest=set_member(["parts", 0, "path"], "data/part\u0001-00000.parquet")))
     R.append(derive("manifest-extensions-duplicate-member", "basic",
-                    "An object inside extensions has the member a twice.", mi(["MAN-2"]),
+                    "An object inside extensions has the member a twice.", None,
                     raw_manifest=text_replace('  "parts": [', '  "extensions": {"conformance": {"a": 1, "a": 2}},\n  "parts": [')))
     R.append(derive("manifest-duplicate-member-escaped", "basic",
-                    "schema_id appears twice, once spelled with an escape (schema\\u005fid).", mi(["MAN-2"]),
+                    "schema_id appears twice, once spelled with an escape (schema\\u005fid).", None,
                     raw_manifest=text_replace('"schema_id": "conformance/objects/v1",',
                                               '"schema_id": "conformance/objects/v1",\n'
                                               '  "schema\\u005fid": "conformance/objects/v1",')))
     R.append(derive("manifest-unpaired-surrogate", "basic", "schema_id ends with the escaped lone surrogate \\ud800.",
-                    mi(["MAN-1"]), raw_manifest=text_replace('"schema_id": "conformance/objects/v1"',
+                    None, raw_manifest=text_replace('"schema_id": "conformance/objects/v1"',
                                                             '"schema_id": "conformance/objects/v1\\ud800"')))
-    R.append(derive("manifest-draft-revision-zero", "basic", "draft_revision is 0.", mi(["MAN-7"]),
+    R.append(derive("manifest-draft-revision-zero", "basic", "draft_revision is 0.", None,
                     manifest=set_member(["draft_revision"], 0)))
     R.append(derive("manifest-format-1-with-draft-revision", "basic",
-                    "format_version 1 with a draft_revision (only format_version 0 may carry one).", mi(["MAN-7"]),
+                    "format_version 1 with a draft_revision (only format_version 0 may carry one).", None,
                     manifest=set_member(["format_version"], 1)))
     R.append(derive("manifest-format-version-overflow", "basic",
                     "format_version is 2^63, beyond the integer range of MAN-6 (it must not wrap or be read as "
-                    "unsupported).", mi(["MAN-6", "MAN-7"]),
+                    "unsupported).", None,
                     manifest=lambda m, ch: (del_member(["draft_revision"])(m, ch),
                                             set_member(["format_version"], 1 << 63)(m, ch))))
-    R.append(derive("manifest-format-version-negative", "basic", "format_version is -1.", mi(["MAN-6", "MAN-7"]),
+    R.append(derive("manifest-format-version-negative", "basic", "format_version is -1.", None,
                     manifest=lambda m, ch: (del_member(["draft_revision"])(m, ch),
                                             set_member(["format_version"], -1)(m, ch))))
-    uv = lambda reqs: F("unsupported_version", open_, reqs)  # noqa: E731
     R.append(derive("unsupported-version-2", "basic", "format_version is 2 (well formed, not defined by this draft).",
-                    uv(["MAN-4", "MAN-7", "VER-1"]),
+                    None,
                     manifest=lambda m, ch: (del_member(["draft_revision"])(m, ch), set_member(["format_version"], 2)(m, ch))))
     R.append(derive("unsupported-version-2-unknown-member", "basic",
                     "format_version 2 with a member draft 1 does not define: the version is decided first (MAN-7).",
-                    uv(["MAN-7", "VER-1"]),
+                    None,
                     manifest=lambda m, ch: (del_member(["draft_revision"])(m, ch), set_member(["format_version"], 2)(m, ch),
                                             set_member(["created_at"], "2026-01-01T00:00:00Z")(m, ch))))
     R.append(derive("missing-part", "basic", "The manifest lists a second part that does not exist.",
-                    F("missing_part", open_, ["LAYOUT-1", "CHECK-1"]),
+                    None,
                     manifest=add_part_copy("data/part-00001.parquet", b"zz0", b"zz9")))
     R.append(derive("part-size-larger", "basic", "The manifest's bytes is one more than the file's size.",
-                    F("part_mismatch", open_, ["CHECK-1"]),
+                    None,
                     manifest=lambda m, ch: set_member(["parts", 0, "bytes"], m["parts"][0]["bytes"] + 1)(m, ch)))
     R.append(derive("part-size-smaller", "basic", "The manifest's bytes is one less than the file's size.",
-                    F("part_mismatch", open_, ["CHECK-1"]),
+                    None,
                     manifest=lambda m, ch: set_member(["parts", 0, "bytes"], m["parts"][0]["bytes"] - 1)(m, ch)))
     R.append(derive("part-rows-mismatch", "basic", "The manifest's rows is 13; the part holds 12.",
-                    F("part_mismatch", open_, ["CHECK-1"]),
+                    None,
                     manifest=set_member(["parts", 0, "rows"], 13)))
     R.append(derive("bounds-min-above-max", "basic", "The part's declared min key is greater than its max key.",
-                    F("invalid_manifest", open_, ["PART-4", "CHECK-1"]),
+                    None,
                     manifest=set_member(["parts", 0, "min_key_base64"], b64e(b"zulu"))))
     R.append(derive("bounds-overlap", "multipart",
                     "The first part's declared max key is raised to the second part's min key (manifest bounds overlap).",
-                    F("invalid_manifest", open_, ["PART-4", "CHECK-1"]),
+                    None,
                     manifest=lambda m, ch: set_member(["parts", 0, "max_key_base64"], m["parts"][1]["min_key_base64"])(m, ch)))
     R.append(derive("bounds-parts-out-of-order", "multipart",
                     "The manifest lists the parts with the last part first (bounds not ascending).",
-                    F("invalid_manifest", open_, ["PART-4", "CHECK-1"]),
+                    None,
                     manifest=lambda m, ch: (m["parts"].insert(0, m["parts"].pop()),
                                             ch.append("manifest: parts[2] moved to parts[0]"))))
     R.append(derive("bounds-first-key-differs", "multipart",
                     "Part 1's declared min key is below its actual first key (still above part 0's max).",
-                    F("bounds_mismatch", "validate:profile", ["PART-3", "VAL-1"], request="validate:profile"),
+                    None,
                     manifest=set_member(["parts", 1, "min_key_base64"], b64e(b"logs/2026/02/f004"))))
     R.append(derive("bounds-last-key-differs", "basic", "The part's declared max key is above its actual last key.",
-                    F("bounds_mismatch", "validate:profile", ["PART-3"], request="validate:profile"),
+                    None,
                     manifest=set_member(["parts", 0, "max_key_base64"], b64e(b"golf"))))
     R.append(derive("digest-mismatch", "multipart", "Part 2's sha256 is wrong (all zeros).",
-                    F("digest_mismatch", "validate:digest", ["PART-5"], request="validate:digest"),
+                    None,
                     manifest=set_member(["parts", 2, "sha256"], "0" * 64)))
 
     # ---- footer ---------------------------------------------------------------
@@ -670,102 +668,99 @@ def build():
     R.append(derive("invalid-footer-row-count", "basic",
                     "FileMetaData.num_rows is 13 while its row groups hold 12 rows; the manifest says 13, matching "
                     "the footer's num_rows.",
-                    F("invalid_footer", open_, ["CHECK-1"]), parts={B: set_num_rows(1)},
+                    None, parts={B: set_num_rows(1)},
                     manifest=set_member(["parts", 0, "rows"], 13)))
     R.append(derive("invalid-footer-file-path", "basic",
                     "Row group 0's key column chunk sets file_path (a reference to another file).",
-                    F("invalid_footer", open_, ["FILE-1", "CHECK-1"]), parts={B: set_file_path(0, 0, b"other.parquet")}))
+                    None, parts={B: set_file_path(0, 0, b"other.parquet")}))
     R.append(derive("stamp-duplicate", "basic", "The footer holds seekparquet.schema_id twice (same value).",
-                    F("stamp_mismatch", open_, ["STAMP-2", "CHECK-1"]),
+                    None,
                     parts={B: duplicate_stamp(b"seekparquet.schema_id")}))
     R.append(derive("key-annotation-json", "basic", "The key column is annotated JSON.",
-                    F("invalid_key_column", open_, ["KEY-1", "CHECK-1"]), parts={B: set_key_annotation("json")}))
+                    None, parts={B: set_key_annotation("json")}))
     R.append(derive("column-orders-missing", "basic", "The footer has no column_orders.",
-                    F("invalid_key_column", open_, ["KEY-5", "CHECK-1"]), parts={B: remove_column_orders}))
+                    None, parts={B: remove_column_orders}))
     R.append(derive("column-orders-short", "basic",
                     "column_orders holds only the key's TYPE_ORDER entry; the schema has three leaf columns.",
-                    F("invalid_key_column", open_, ["KEY-5", "CHECK-1"]), parts={B: column_orders_len(-2)}))
+                    None, parts={B: column_orders_len(-2)}))
     R.append(derive("column-orders-long", "basic", "column_orders has one entry more than there are leaf columns.",
-                    F("invalid_key_column", open_, ["KEY-5", "CHECK-1"]), parts={B: column_orders_len(1)}))
+                    None, parts={B: column_orders_len(1)}))
     R.append(derive("invalid-parquet-dictionary", "encodings",
                     "The dictionary page of column s in part 0, row group 0 is malformed: its first value claims a "
                     "length of 2^31-1 bytes.",
-                    F("invalid_parquet", "validate:full", ["CHECK-5", "VAL-1"], request="range-columns:s"),
+                    None,
                     raw={B: corrupt_dictionary(0, 3)}))
     R.append(derive("invalid-parquet-value-count", "basic",
                     "The first data page of column size claims 3 values but holds 2.",
-                    F("invalid_parquet", "validate:full", ["CHECK-5", "VAL-1"], request="range-columns:size",
-                      note="No read case: a reader may decode only the values it needs from a value page, and "
-                           "CHECK-2's exact row count applies to key pages; full validation must find it."),
+                    None,
                     raw={B: bump_num_values(0, 1, 0)}))
     R.append(derive("invalid-key-utf8", "non-utf8-keys",
                     "non-utf8-keys with the key annotated STRING: two keys (each mid-page) are not valid UTF-8; "
                     "every page bound is.",
-                    F("invalid_key", "read", ["KEY-6", "CHECK-2"]), parts={B: set_key_annotation("string")}))
+                    None, parts={B: set_key_annotation("string")}))
     MP = "shards/c.parquet"
     R.append(derive("invalid-parquet-page", "multipart",
                     "The first data page of column size in row group 1 of shards/c.parquet does not decompress.",
-                    F("invalid_parquet", "validate:full", ["CHECK-5", "VAL-1"], request="range-columns:size"),
+                    None,
                     raw={MP: corrupt_page(1, 1, 0)}))
     R.append(derive("sorting-columns-missing-second-row-group", "basic",
                     "Only row group 1 lacks sorting_columns.",
-                    F("missing_sorting_columns", open_, ["RG-1", "CHECK-1"]), parts={B: remove_sorting(1)}))
+                    None, parts={B: remove_sorting(1)}))
 
     # ---- page index -----------------------------------------------------------
-    pi = lambda reqs, **kw: F("invalid_page_index", "read", reqs + ["RG-7", "CHECK-2"], **kw)  # noqa: E731
     R.append(derive("missing-column-index", "basic", "Row group 1's key chunk has no ColumnIndex.",
-                    F("missing_page_index", "read", ["RG-2", "RG-7", "CHECK-2"]), parts={B: remove_index(1, "column")}))
+                    None, parts={B: remove_index(1, "column")}))
     R.append(derive("missing-offset-index", "basic", "Row group 1's key chunk has no OffsetIndex.",
-                    F("missing_page_index", "read", ["RG-2", "RG-7", "CHECK-2"]), parts={B: remove_index(1, "offset")}))
+                    None, parts={B: remove_index(1, "offset")}))
     R.append(derive("page-index-null-page", "basic", "Row group 1's key ColumnIndex marks page 1 as a null page.",
-                    pi(["RG-4"]), parts={B: null_page(1, 1)}))
+                    None, parts={B: null_page(1, 1)}))
     R.append(derive("page-index-count-mismatch", "basic",
                     "Row group 0's key ColumnIndex has one entry fewer than its OffsetIndex.",
-                    pi(["RG-4"]), parts={B: drop_last_ci_entry(0)}))
+                    None, parts={B: drop_last_ci_entry(0)}))
     R.append(derive("page-index-first-row-nonzero", "basic",
-                    "Row group 1's key OffsetIndex starts at first_row_index 1.", pi(["RG-3"]),
+                    "Row group 1's key OffsetIndex starts at first_row_index 1.", None,
                     parts={B: set_first_row(1, 0, 1)}))
     R.append(derive("page-index-first-row-not-increasing", "basic",
-                    "Row group 0's key OffsetIndex repeats first_row_index 2 for pages 1 and 2.", pi(["RG-3"]),
+                    "Row group 0's key OffsetIndex repeats first_row_index 2 for pages 1 and 2.", None,
                     parts={B: set_first_row(0, 2, 2)}))
     R.append(derive("page-index-first-row-out-of-range", "basic",
                     "Row group 1's last key page claims first_row_index 6, equal to the row group's row count.",
-                    pi(["RG-3"]), parts={B: set_first_row(1, 2, 6)}))
+                    None, parts={B: set_first_row(1, 2, 6)}))
     R.append(derive("page-index-location-outside-file", "basic",
-                    "Row group 1's last key page location points past the end of the file.", pi(["RG-3"]),
+                    "Row group 1's last key page location points past the end of the file.", None,
                     parts={B: set_location_offset(1, 2, lambda part: len(part.pf.data) + 100)}))
     R.append(derive("page-index-rows-mismatch", "basic",
                     "Row group 0's key OffsetIndex says first_row_index [0, 1, 4] for pages of 2 rows each: page 0 "
-                    "holds 2 rows but its indexed interval is 1 row.", pi(["RG-3"]),
+                    "holds 2 rows but its indexed interval is 1 row.", None,
                     parts={B: set_first_row(0, 1, 1)}))
     R.append(derive("page-index-list-length-mismatch", "basic",
                     "Row group 1's key ColumnIndex max_values has one entry fewer than null_pages and min_values.",
-                    pi(["RG-4"]), parts={B: shorten_list(1, pm.CI_MAX, "max_values")}))
+                    None, parts={B: shorten_list(1, pm.CI_MAX, "max_values")}))
     R.append(derive("page-index-location-mismatch", "basic",
-                    "Row group 0's key OffsetIndex locates page 1 one byte after its real header.", pi(["RG-3"]),
+                    "Row group 0's key OffsetIndex locates page 1 one byte after its real header.", None,
                     parts={B: set_location_offset(0, 1, lambda part: part.key_oi(0).get(pm.OI_PAGE_LOCATIONS)
                                                   .items[1].get(pm.PL_OFFSET) + 1)}))
     R.append(derive("page-index-empty", "basic", "Row group 0's key ColumnIndex and OffsetIndex have empty lists.",
-                    pi(["RG-3", "RG-4"]), parts={B: empty_indexes(0)}))
+                    None, parts={B: empty_indexes(0)}))
     rg, pg, pk = find_page("projection", B, lambda k: k[-1] == b"row-01")
     R.append(derive("page-index-bound-not-utf8", "projection",
                     "The STRING key's ColumnIndex max for the page ending at row-01 is row-\\xff: still an upper "
-                    "bound, but not valid UTF-8 (KEY-6).", pi(["KEY-6"]),
+                    "bound, but not valid UTF-8 (KEY-6).", None,
                     parts={B: set_bound(rg, pg, "max", lambda b: b"row-\xff", "not valid UTF-8")}))
     rg, pg, pk = find_page("basic", B, lambda k: k[0] == b"c/")
     R.append(derive("page-index-min-above-first-key", "basic",
                     f"The key ColumnIndex min of the page starting at {pk[0]!r} is above that first key.",
-                    pi(["RG-5"]), parts={B: set_bound(rg, pg, "min", lambda b: b + b"\x00", "now above the first key")}))
+                    None, parts={B: set_bound(rg, pg, "min", lambda b: b + b"\x00", "now above the first key")}))
     rg, pg, pk = find_page("basic", B, lambda k: k[-1] == b"delta")
     R.append(derive("page-index-max-below-last-key", "basic",
                     f"The key ColumnIndex max of the page ending at {pk[-1]!r} is shortened to below that key.",
-                    pi(["RG-5"]), parts={B: set_bound(rg, pg, "max", lambda b: b[:-1], "truncated without increment")}))
+                    None, parts={B: set_bound(rg, pg, "max", lambda b: b[:-1], "truncated without increment")}))
     P1 = "data/part-00001.parquet"
     rg, pg, pk = find_page("binary-keys", P1, lambda k: k[-1] == b"\xff" * 80 + b"\x02")
     R.append(derive("page-index-shortened-ff-max", "binary-keys",
                     "The key ColumnIndex max of the page ending at 0xFF*80 0x02 is shortened to 0xFF*16, which is "
                     "below the page's keys (the all-0xFF truncation fault RG-5 forbids).",
-                    pi(["RG-5"]), parts={P1: set_bound(rg, pg, "max", lambda b: b"\xff" * TRUNC,
+                    None, parts={P1: set_bound(rg, pg, "max", lambda b: b"\xff" * TRUNC,
                                                          "16 bytes of 0xFF: below the page's last key")}))
     return R
 
@@ -793,8 +788,7 @@ def derive_raw_part(name, desc, fn, what):
     write_text(out / "manifest.json", dumps(m))
     return {"name": name, "dir": str(out.relative_to(CONF)), "valid": False, "description": desc, "rows": None,
             "producer": PRODUCER, "provenance": "mutated", "command": COMMAND, "derived_from": "datasets/basic",
-            "changes": [f"{p['path']}: {what}; size unchanged; data pages untouched"],
-            "fault": F("invalid_footer", "open", ["CHECK-1"])}
+            "changes": [f"{p['path']}: {what}; size unchanged; data pages untouched"]}
 
 
 if __name__ == "__main__":

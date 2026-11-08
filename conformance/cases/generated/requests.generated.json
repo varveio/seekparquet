@@ -1,0 +1,139 @@
+{
+  "group": "requests",
+  "target": "reader",
+  "generated": true,
+  "generator": "generators/make_cases.py",
+  "description": "Malformed requests are invalid requests, not empty results (QUERY-1). raw_request is sent as is, plus id and dataset.",
+  "families": {
+    "requests/malformed": "a malformed request is invalid_request"
+  },
+  "cases": [
+    {
+      "id": "requests/basic/range-limit-missing",
+      "family": "requests/malformed",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "range"
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/range-start-bad-alphabet",
+      "family": "requests/malformed",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "range",
+        "start_base64": "Y!==",
+        "limit": 10
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/range-prefix-malformed-base64",
+      "family": "requests/malformed",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "range",
+        "prefix_base64": "YS8",
+        "limit": 10
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/list-limit-0",
+      "family": "requests/malformed",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 0
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/list-limit-fraction",
+      "family": "requests/malformed",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 2.5
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/list-delimiter-missing",
+      "family": "requests/malformed",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "list",
+        "limit": 10
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/list-prefix-malformed-base64",
+      "family": "requests/malformed",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "list",
+        "prefix_base64": "YS8",
+        "delimiter_base64": "Lw==",
+        "limit": 10
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "requests/basic/list-after-malformed-base64",
+      "family": "requests/malformed",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "list",
+        "after_base64": "@@@@",
+        "delimiter_base64": "Lw==",
+        "limit": 10
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    }
+  ]
+}

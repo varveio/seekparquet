@@ -5,7 +5,7 @@ description: Row group 1 holds a 5002-byte key; pyarrow omits the whole ColumnIn
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/missing-column-index-native.json
-expected refusal: missing_page_index, detected at the latest on read (RG-2, RG-7, CHECK-2)
+fault (generators/faults.json): missing-column-index-native: missing_page_index; reader detects on read; lowest validation level structural (RG-2, RG-7, CHECK-2); location: row group 1 key column chunk: no ColumnIndex (pyarrow omits it for a 5002-byte value)
 
 manifest: format_version 0, 1 parts
   part 0: 'data/part-00000.parquet', rows 10, bytes 6767, keys 'k00' .. 6d2f7878787878787878787878787878..(5002 bytes)

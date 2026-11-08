@@ -5,7 +5,7 @@ description: The manifest's rows is 13; the part holds 12.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: part_mismatch, detected at the latest on open (CHECK-1)
+fault (generators/faults.json): part-rows-mismatch: part_mismatch; reader detects on open; lowest validation level structural (CHECK-1); location: manifest.json
 changes:
   - manifest: parts.0.rows 12 -> 13
 

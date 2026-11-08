@@ -1,6 +1,6 @@
 {
   "suite": "seekparquet-conformance-semantic",
-  "revision": "0.1.0-draft.2",
+  "revision": "0.1.0-draft.3",
   "status": "draft",
   "specification": "spec/format-1.md",
   "format_version": 0,
@@ -15,34 +15,161 @@
     "projection"
   ],
   "case_files": [
-    "cases/open.json",
-    "cases/range.json",
-    "cases/prefix.json",
-    "cases/list.json",
-    "cases/pagination.json",
-    "cases/projection.json",
-    "cases/requests.json",
-    "cases/refusals-open.json",
-    "cases/refusals-read.json",
-    "cases/validate-structural.json",
-    "cases/validate-profile.json",
-    "cases/validate-full.json",
-    "cases/validate-digest.json"
+    "cases/core/list.json",
+    "cases/core/open.json",
+    "cases/core/pagination.json",
+    "cases/core/prefix.json",
+    "cases/core/projection.json",
+    "cases/core/range.json",
+    "cases/core/refusals-open.json",
+    "cases/core/refusals-read.json",
+    "cases/core/requests.json",
+    "cases/core/validate-digest.json",
+    "cases/core/validate-full.json",
+    "cases/core/validate-profile.json",
+    "cases/core/validate-structural.json",
+    "cases/generated/open.generated.json",
+    "cases/generated/range.generated.json",
+    "cases/generated/prefix.generated.json",
+    "cases/generated/list.generated.json",
+    "cases/generated/pagination.generated.json",
+    "cases/generated/projection.generated.json",
+    "cases/generated/requests.generated.json",
+    "cases/generated/refusals-open.generated.json",
+    "cases/generated/refusals-read.generated.json",
+    "cases/generated/validate-structural.generated.json",
+    "cases/generated/validate-profile.generated.json",
+    "cases/generated/validate-full.generated.json",
+    "cases/generated/validate-digest.generated.json"
+  ],
+  "subsets": [
+    "subsets/smoke.json"
   ],
   "case_counts": {
-    "open": 19,
-    "range": 579,
-    "prefix": 51,
-    "list": 54,
-    "pagination": 89,
-    "projection": 53,
-    "requests": 18,
-    "refusals-open": 71,
-    "refusals-read": 30,
-    "validate-structural": 104,
-    "validate-profile": 118,
-    "validate-full": 121,
-    "validate-digest": 18
+    "cases/core/list.json": 14,
+    "cases/core/open.json": 6,
+    "cases/core/pagination.json": 8,
+    "cases/core/prefix.json": 8,
+    "cases/core/projection.json": 18,
+    "cases/core/range.json": 20,
+    "cases/core/refusals-open.json": 32,
+    "cases/core/refusals-read.json": 12,
+    "cases/core/requests.json": 10,
+    "cases/core/validate-digest.json": 4,
+    "cases/core/validate-full.json": 4,
+    "cases/core/validate-profile.json": 4,
+    "cases/core/validate-structural.json": 10,
+    "cases/generated/open.generated.json": 14,
+    "cases/generated/range.generated.json": 538,
+    "cases/generated/prefix.generated.json": 43,
+    "cases/generated/list.generated.json": 39,
+    "cases/generated/pagination.generated.json": 81,
+    "cases/generated/projection.generated.json": 35,
+    "cases/generated/requests.generated.json": 8,
+    "cases/generated/refusals-open.generated.json": 39,
+    "cases/generated/refusals-read.generated.json": 19,
+    "cases/generated/validate-structural.generated.json": 95,
+    "cases/generated/validate-profile.generated.json": 35,
+    "cases/generated/validate-full.generated.json": 26,
+    "cases/generated/validate-digest.generated.json": 2
   },
-  "content_sha256": "83a40ead00e450c3b30e0b4cbdfe6c89deabd19478c7b7306458fe1b2813a695"
+  "totals": {
+    "core": 150,
+    "generated": 974
+  },
+  "renamed_datasets": {
+    "datasets/truncated-bounds": "datasets/binary-bounds-truncated-16-byte",
+    "datasets/truncated-bounds-2": "datasets/binary-bounds-truncated-2-byte"
+  },
+  "retired_case_ids": [
+    {
+      "id": "range/projection/row-group-0.1.0/inclusive-at-last",
+      "duplicate_of": "range/projection/page-0.0.1/start-at-first"
+    },
+    {
+      "id": "range/projection/part-1.0.0/inclusive-at-last",
+      "duplicate_of": "range/projection/page-0.1.1/start-at-first"
+    },
+    {
+      "id": "range/projection/row-group-1.1.0/inclusive-at-last",
+      "duplicate_of": "range/projection/page-1.0.1/start-at-first"
+    },
+    {
+      "id": "range/projection/part-2.0.0/inclusive-at-last",
+      "duplicate_of": "range/projection/page-1.1.1/start-at-first"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-00",
+      "duplicate_of": "range/binary-keys/seek-01"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-02",
+      "duplicate_of": "range/binary-keys/page-0.0.1/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-05",
+      "duplicate_of": "range/binary-keys/page-0.0.2/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-08",
+      "duplicate_of": "range/binary-keys/page-0.0.3/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-11",
+      "duplicate_of": "range/binary-keys/row-group-0.1.0/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-14",
+      "duplicate_of": "range/binary-keys/page-0.1.1/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-16",
+      "duplicate_of": "range/binary-keys/seek-17"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-17",
+      "duplicate_of": "range/binary-keys/seek-18"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-23",
+      "duplicate_of": "range/binary-keys/part-1.0.0/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-30",
+      "duplicate_of": "range/binary-keys/seek-31"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-32",
+      "duplicate_of": "range/binary-keys/row-group-1.1.0/between"
+    },
+    {
+      "id": "range/binary-keys/seek-miss-38",
+      "duplicate_of": "range/binary-keys/seek-39"
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-miss-00",
+      "duplicate_of": "range/truncated-bounds-2/seek-01"
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-miss-16",
+      "duplicate_of": "range/truncated-bounds-2/seek-17"
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-miss-17",
+      "duplicate_of": "range/truncated-bounds-2/seek-18"
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-miss-30",
+      "duplicate_of": "range/truncated-bounds-2/seek-31"
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-miss-38",
+      "duplicate_of": "range/truncated-bounds-2/seek-39"
+    },
+    {
+      "id": "list/empty/root",
+      "duplicate_of": "open/empty-list"
+    }
+  ],
+  "content_sha256": "c5818ad8c3227ca306fe36c94d2b79a8bc2f0a6c893cdcea3dc357163a7804cc"
 }

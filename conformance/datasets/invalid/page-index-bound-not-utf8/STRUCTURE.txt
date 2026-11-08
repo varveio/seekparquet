@@ -5,7 +5,7 @@ description: The STRING key's ColumnIndex max for the page ending at row-01 is r
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/projection
-expected refusal: invalid_page_index, detected at the latest on read (KEY-6, RG-7, CHECK-2)
+fault (generators/faults.json): page-index-bound-not-utf8: invalid_page_index; reader detects on read; lowest validation level profile (KEY-6, RG-7, CHECK-2); location: data/part-00000.parquet: row group 0 key ColumnIndex
 changes:
   - data/part-00000.parquet: row group 0 key ColumnIndex: max_values[0] 'row-01' -> 726f772dff (not valid UTF-8)
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 9076 -> 9075

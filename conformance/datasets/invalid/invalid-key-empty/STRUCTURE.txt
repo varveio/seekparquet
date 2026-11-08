@@ -5,8 +5,8 @@ description: The first key of the only part is empty (it still sorts first).
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/invalid-key-empty.json
-expected refusal: invalid_key or bounds_mismatch, detected at the latest on read (KEY-2, CHECK-2)
-note: The manifest cannot express an empty min key, so it names the second key; a reader that compares first keys on open may report bounds_mismatch.
+fault (generators/faults.json): invalid-key-empty: invalid_key or bounds_mismatch; reader detects on read; lowest validation level profile (KEY-2, CHECK-2); location: key column data pages (rows written in this order by pyarrow)
+secondary fault: bounds_mismatch: A manifest cannot express an empty min key (base64 minLength 4), so it names the second key; a reader that compares first keys on open may report bounds_mismatch.
 
 manifest: format_version 0, 1 parts
   part 0: 'data/part-00000.parquet', rows 12, bytes 1835, keys 'k01' .. 'k11'

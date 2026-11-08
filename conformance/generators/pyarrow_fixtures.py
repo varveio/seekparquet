@@ -889,53 +889,23 @@ def build():
         write_dataset(doc, out, extra_files=extra)
         records.append(rec(name, out, name, True, doc["description"]))
 
-    # 3. native invalid datasets with their own rows
-    native_faults = {
-        "key-order-within-page": ({"codes": ["key_order"], "detect": "read", "requirements": ["KEY-3", "CHECK-2"]}, {}),
-        "key-order-duplicate": ({"codes": ["key_order"], "detect": "read", "requirements": ["KEY-3", "CHECK-2"]}, {}),
-        "key-order-across-pages": ({"codes": ["key_order"], "detect": "read", "requirements": ["KEY-3", "CHECK-2"]}, {}),
-        "key-order-across-row-groups": ({"codes": ["key_order"], "detect": "read", "requirements": ["KEY-3", "CHECK-2"]}, {}),
-        "key-order-duplicate-across-row-groups": ({"codes": ["key_order"], "detect": "read", "requirements": ["KEY-3", "CHECK-2"]}, {}),
-        "invalid-key-empty": ({"codes": ["invalid_key", "bounds_mismatch"], "detect": "read",
-                               "requirements": ["KEY-2", "CHECK-2"],
-                               "note": "The manifest cannot express an empty min key, so it names the second key; "
-                                       "a reader that compares first keys on open may report bounds_mismatch."}, {}),
-        "missing-column-index-native": ({"codes": ["missing_page_index"], "detect": "read",
-                                         "requirements": ["RG-2", "RG-7", "CHECK-2"]},
-                                        {"expect_no_column_index_rg": 1}),
-        "inconsistent-column-type": ({"codes": ["inconsistent_column"], "detect": "read", "requirements": ["COL-5", "CHECK-1"],
-                                      "request": "range-columns:size",
-                                      "note": "COL-5 requires the check no later than the first request that projects "
-                                              "the column, so the read case projects size; structural validation checks all columns."}, {}),
-        "inconsistent-column-width": ({"codes": ["inconsistent_column"], "detect": "read", "requirements": ["COL-5", "CHECK-1"],
-                                       "request": "range-columns:h"}, {}),
-        "inconsistent-column-repetition": ({"codes": ["inconsistent_column"], "detect": "read", "requirements": ["COL-5", "CHECK-1"],
-                                            "request": "range-columns:size"}, {}),
-        "key-order-across-parts": ({"codes": ["key_order", "bounds_mismatch"], "detect": "read",
-                                    "requirements": ["KEY-3", "CHECK-2", "PART-3"],
-                                    "note": "The manifest's max key for part 0 is not the actual last key, so "
-                                            "bounds_mismatch is also a correct report."}, {}),
-    }
-    for name, (fault, wf) in native_faults.items():
+    # 3. native invalid datasets with their own rows (faults are declared in generators/faults.json)
+    native_writer_options = {"missing-column-index-native": {"expect_no_column_index_rg": 1}}
+    for name in ("key-order-within-page", "key-order-duplicate", "key-order-across-pages",
+                 "key-order-across-row-groups", "key-order-duplicate-across-row-groups", "invalid-key-empty",
+                 "missing-column-index-native", "inconsistent-column-type", "inconsistent-column-width",
+                 "inconsistent-column-repetition", "key-order-across-parts"):
         doc = restore_rows_doc(load_rows(name))
         out = DATASETS / "invalid" / name
-        write_dataset(doc, out, fault=wf, check=True)
-        records.append(rec(name, out, name, False, doc["description"], fault=fault))
+        write_dataset(doc, out, fault=native_writer_options.get(name, {}), check=True)
+        records.append(rec(name, out, name, False, doc["description"]))
 
     # 4. native variants of basic (same rows, different writer options or stamps)
     basic = restore_rows_doc(load_rows("basic"))
     for name, desc, opts in BASIC_VARIANTS:
         out = DATASETS / "invalid" / name
         write_dataset(basic, out, fault=opts, check=True)
-        if name.startswith("stamp-"):
-            fault = {"codes": ["stamp_mismatch"], "detect": "open", "requirements": ["STAMP-1", "STAMP-2", "CHECK-1"]}
-        elif name.startswith("key-"):
-            fault = {"codes": ["invalid_key_column"], "detect": "open", "requirements": ["KEY-1", "CHECK-1"]}
-        elif name.startswith("sorting-"):
-            fault = {"codes": ["missing_sorting_columns"], "detect": "open", "requirements": ["RG-1", "CHECK-1"]}
-        else:
-            fault = {"codes": ["unsupported_version"], "detect": "open", "requirements": ["MAN-4", "MAN-5", "VER-1"]}
-        records.append(rec(name, out, "basic", False, desc, fault=fault))
+        records.append(rec(name, out, "basic", False, desc))
     return records
 
 

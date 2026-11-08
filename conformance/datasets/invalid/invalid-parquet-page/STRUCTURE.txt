@@ -5,7 +5,7 @@ description: The first data page of column size in row group 1 of shards/c.parqu
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/multipart
-expected refusal: invalid_parquet, detected at the latest on validate:full (CHECK-5, VAL-1)
+fault (generators/faults.json): invalid-parquet-page: invalid_parquet; reader detects on read; lowest validation level full (CHECK-5, VAL-1); location: shards/c.parquet: row group 1 column 1
 changes:
   - shards/c.parquet: row group 1 column 1: body of data page 0 (6 bytes at offset 450) overwritten with 0xFF; its header and every other byte unchanged
 

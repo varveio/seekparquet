@@ -5,7 +5,7 @@ description: extensions is a string, not an object.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-3, CHECK-1)
+fault (generators/faults.json): manifest-extension-not-object: invalid_manifest; reader detects on open; lowest validation level structural (MAN-3, CHECK-1); location: manifest.json
 changes:
   - manifest: extensions "<absent>" -> "producer-metadata"
 

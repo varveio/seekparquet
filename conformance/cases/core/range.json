@@ -1,0 +1,772 @@
+{
+  "group": "range",
+  "target": "reader",
+  "generated": false,
+  "description": "Range reads (RANGE-1, RANGE-2, QUERY-2): bounds, limits and boundaries of pages, row groups and parts. Expected rows come from oracle.py. Core examples: hand-reviewed; their expectations are authoritative.",
+  "cases": [
+    {
+      "id": "range/basic/all",
+      "description": "No bounds: every row in ascending byte order (note a/b/3.txt sorts before alpha because '/' < 'l').",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/basic/start-inclusive-hit",
+      "description": "start_exclusive omitted: the start key alpha itself is the first row.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YWxwaGE=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/basic/start-exclusive-hit",
+      "description": "start_exclusive true at an existing key: alpha is excluded and b is first.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YWxwaGE=",
+        "start_exclusive": true,
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/basic/start-miss",
+      "description": "start alp is not a key: the first row is the next key, alpha.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YWxw",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/basic/start-after-all",
+      "description": "start above every key: no rows (not an error).",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "enVsdQ==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "range/basic/end-hit",
+      "description": "end is exclusive: end charlie stops after c/d and does not include charlie.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "end_base64": "Y2hhcmxpZQ==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/basic/end-first",
+      "description": "end equal to the first key: no row is strictly below it.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "end_base64": "YS8xLnR4dA==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "range/basic/start-equals-end",
+      "description": "start b inclusive, end b exclusive: the interval is empty.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yg==",
+        "end_base64": "Yg==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "range/basic/start-after-end",
+      "description": "start above end: an empty result, not an invalid request.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "ZGVsdGE=",
+        "end_base64": "Yg==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "range/basic/empty-start",
+      "description": "QUERY-2: an empty start is a real bound that includes every key (every key is greater than the empty string).",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-2"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/basic/empty-end",
+      "description": "QUERY-2: an empty end includes no key; it is not the same as an absent end.",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-2"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "end_base64": "",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "range/basic/null-bounds",
+      "description": "start_base64 and end_base64 given as null mean unbounded, like absent members.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": null,
+        "end_base64": null,
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/basic/limit-1",
+      "description": "limit 1 at start b returns exactly b.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "Yg==",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/basic/limit-1-miss",
+      "description": "start bb is not a key; with limit 1 the answer is the next key, bravo.",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YmI=",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/multipart/stray-not-read",
+      "description": "shards/stray.parquet under the root holds keys logs/2026/02/stray-*; it is not in the manifest, so those keys must not appear (LAYOUT-1).",
+      "requirements": [
+        "RANGE-1",
+        "LAYOUT-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "start_base64": "bG9ncy8yMDI2LzAyL3M=",
+        "end_base64": "bG9ncy8yMDI2LzAzLw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "range/multipart/part-1.0.0/start-at-first",
+      "description": "Start at the first key of part 1 (logs/2026/02/f004) with limit 2: both rows come from part 1, so a reader must not stop at the end of part 0 or skip into part 2.",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3",
+        "LAYOUT-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "start_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/basic/row-group-0.1.0/between",
+      "description": "start just above bravo, the last key of row group 0: the answer is the first key of row group 1 (c/).",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "range",
+        "start_base64": "YnJhdm8A",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/binary-keys/seek-30",
+      "description": "start at 0x80: keys compare as unsigned bytes, so 0x80 sorts after 0x7f and 0x7f ff; an implementation using signed bytes would place it first.",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3",
+        "KEY-4"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "start_base64": "gA==",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "gA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-08",
+      "description": "Seek to a 122-byte key whose page bounds are shortened to 2 bytes (LL..LM) and overlap the neighbouring pages: a reader that treats shortened bounds as exact keys, or relies on disjoint bounds, picks the wrong page.",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3",
+        "KEY-4",
+        "RG-5",
+        "RG-6"
+      ],
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
+      "request": {
+        "op": "range",
+        "start_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDE=",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDE=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/truncated-bounds-2/seek-44",
+      "description": "start exactly at ff*80 02, the last key of a page whose maximum could not be shortened to 2 bytes (they are 0xFF) and is stored in full: a reader that treats a shortened maximum as exact, or that shortens it to ff ff, would skip this page and return ff*81 instead.",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3",
+        "KEY-4",
+        "RG-5",
+        "RG-6"
+      ],
+      "dataset": "datasets/binary-bounds-truncated-2-byte",
+      "request": {
+        "op": "range",
+        "start_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+            "values": []
+          }
+        ]
+      }
+    }
+  ]
+}

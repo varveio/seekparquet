@@ -50,6 +50,7 @@ def main(argv=None):
     refusal_codes = {c["code"] for c in codes_doc["codes"]}
     unsupported_codes = {c["code"] for n in codes_doc["non_refusals"] for c in n.get("codes", [])}
     validator = jsonschema.Draft202012Validator(schema)
+    faults = {x["id"]: x for x in json.loads((conf / "generators" / "faults.json").read_text(encoding="utf-8"))["faults"]}
     mvalidator = jsonschema.Draft202012Validator(mschema)
 
     for t, tcaps in caps["targets"].items():
@@ -69,9 +70,15 @@ def main(argv=None):
             bad(f"suite.json: unknown mandatory capability {c}")
 
     listed = set(suite["case_files"])
-    on_disk = {p.relative_to(conf).as_posix() for p in (conf / "cases").glob("*.json")}
+    on_disk = {p.relative_to(conf).as_posix() for p in (conf / "cases").rglob("*.json")}
     for f in sorted(on_disk - listed):
         bad(f"{f} is not listed in suite.json")
+    for f in suite["case_files"]:
+        core_path, gen_path = f.startswith("cases/core/"), f.startswith("cases/generated/") and f.endswith(".generated.json")
+        if not (core_path or gen_path):
+            bad(f"{f}: case files live in cases/core/*.json or cases/generated/*.generated.json")
+    core_ids = set()
+    retired = {r["id"] for r in suite.get("retired_case_ids", [])}
     ids = set()
     n_cases = 0
     for f in suite["case_files"]:
@@ -85,6 +92,9 @@ def main(argv=None):
         target = doc.get("target")
         if target not in caps["targets"]:
             bad(f"{f}: unknown target {target!r}")
+        if doc.get("generated") is not f.startswith("cases/generated/"):
+            bad(f"{f}: generated must be {f.startswith('cases/generated/')} for this location")
+        fams = doc.get("families", {})
         for c in doc.get("cases", []):
             n_cases += 1
             cid = c.get("id")
@@ -92,6 +102,14 @@ def main(argv=None):
             if cid in ids:
                 bad(f"{where}: duplicate case id")
             ids.add(cid)
+            if cid in retired:
+                bad(f"{where}: uses a retired case id")
+            if not doc.get("generated"):
+                core_ids.add(cid)
+            elif c.get("family") not in fams:
+                bad(f"{where}: family {c.get('family')!r} is not described in the file's families")
+            if c.get("fault_id") and c["fault_id"] not in faults:
+                bad(f"{where}: unknown fault_id {c['fault_id']!r}")
             for r in c.get("requirements", []):
                 if r not in spec_ids:
                     bad(f"{where}: requirement {r} is not defined in spec/format-1.md")
@@ -124,6 +142,24 @@ def main(argv=None):
             if op == "validate" and c["request"].get("level") not in exp.get("levels", {}):
                 bad(f"{where}: the expected levels do not include the requested level")
 
+    # Subsets: core ids only; never qualify.
+    for sp in suite.get("subsets", []):
+        sub = json.loads((conf / sp).read_text(encoding="utf-8"))
+        if sub.get("qualifies") is not False:
+            bad(f"{sp}: a subset must say qualifies: false")
+        for cid in sub.get("case_ids", []):
+            if cid not in core_ids:
+                bad(f"{sp}: {cid} is not a core case")
+    # Behaviour duplicates: no two active cases assert the same thing.
+    seen = {}
+    for f in suite["case_files"]:
+        for c in json.loads((conf / f).read_text(encoding="utf-8")).get("cases", []):
+            key = json.dumps([c.get("dataset"), c.get("request"), c.get("raw_request"), c.get("expect"),
+                              c.get("detect")], sort_keys=True)
+            if key in seen:
+                bad(f"{c['id']}: exact duplicate of {seen[key]}")
+            seen.setdefault(key, c["id"])
+
     lock = json.loads((conf / "fixtures.lock.json").read_text(encoding="utf-8"))
     locked = {}
     total = 0
@@ -140,8 +176,12 @@ def main(argv=None):
                     bad(f"{d['dir']}/manifest.json: {e.message[:200]}")
             except (OSError, ValueError) as e:
                 bad(f"{d['dir']}/manifest.json: {e}")
-        if not d["valid"] and "fault" not in d:
-            bad(f"fixtures.lock.json: invalid dataset {d['name']} has no fault")
+        if not d["valid"]:
+            fid = d.get("fault_id")
+            if fid not in faults:
+                bad(f"fixtures.lock.json: invalid dataset {d['name']} has no fault in generators/faults.json")
+            elif faults[fid]["dataset"] != d["dir"]:
+                bad(f"generators/faults.json: {fid} names dataset {faults[fid]['dataset']}, the lock says {d['dir']}")
         if not (ddir / "STRUCTURE.txt").exists():
             bad(f"{d['dir']}: STRUCTURE.txt missing")
         for fe in d["files"]:
@@ -162,13 +202,16 @@ def main(argv=None):
     for p in sorted((conf / "datasets").rglob("*")):
         if p.is_file() and p.name != "STRUCTURE.txt" and p.relative_to(conf).as_posix() not in locked:
             bad(f"{p.relative_to(conf)} is not listed in fixtures.lock.json")
+    locked_faults = {d.get("fault_id") for d in lock["datasets"]}
+    for fid in sorted(set(faults) - locked_faults):
+        bad(f"generators/faults.json: fault {fid} has no fixture in fixtures.lock.json")
     if total > 10 * 1024 * 1024:
         bad(f"fixture corpus is {total} bytes, over 10 MiB")
 
     sys.path.insert(0, str(conf / "generators"))
     try:
         import make_cases
-        if suite.get("content_sha256") != make_cases.suite_digest(suite["case_files"]):
+        if suite.get("content_sha256") != make_cases.suite_digest(suite["case_files"] + suite.get("subsets", [])):
             bad("suite.json content_sha256 does not match the contract and case files")
     except ImportError as e:
         bad(f"cannot import generators/make_cases.py to check the suite digest: {e}")

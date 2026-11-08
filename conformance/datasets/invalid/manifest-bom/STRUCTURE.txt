@@ -5,7 +5,7 @@ description: manifest.json begins with a UTF-8 byte order mark.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-1, CHECK-1)
+fault (generators/faults.json): manifest-bom: invalid_manifest; reader detects on open; lowest validation level structural (MAN-1, CHECK-1); location: manifest.json
 changes:
   - manifest text: UTF-8 BOM prepended
 

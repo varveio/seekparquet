@@ -5,7 +5,7 @@ description: format_version 1 with a draft_revision (only format_version 0 may c
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest, detected at the latest on open (MAN-7, CHECK-1)
+fault (generators/faults.json): manifest-format-1-with-draft-revision: invalid_manifest; reader detects on open; lowest validation level structural (MAN-7, CHECK-1); location: manifest.json
 changes:
   - manifest: format_version 0 -> 1
 

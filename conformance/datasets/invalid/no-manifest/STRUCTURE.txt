@@ -5,7 +5,7 @@ description: The part file is present but manifest.json is not.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: no_manifest, detected at the latest on open (LAYOUT-1, CHECK-1)
+fault (generators/faults.json): no-manifest: no_manifest; reader detects on open; lowest validation level structural (LAYOUT-1, CHECK-1); location: manifest.json
 changes:
   - manifest.json removed
 
