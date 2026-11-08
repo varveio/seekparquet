@@ -34,7 +34,10 @@ type Limits struct {
 	// Default 16,777,216.
 	PageValues int64
 	// IndexMemory bounds the memory one Dataset retains for key page
-	// indexes, which it keeps once loaded. Default 1 GiB.
+	// indexes and decoded row-group first-key bytes, which it keeps once
+	// loaded. This accounts for page entries and their bound bytes, plus
+	// first-key bytes; not allocator overhead, footers, transient decoding
+	// buffers or query results. Default 1 GiB.
 	IndexMemory int64
 }
 

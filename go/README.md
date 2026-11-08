@@ -156,7 +156,9 @@ reads in progress end.
 Opening reads the manifest and every part's footer: a few reads per part, whatever its size. A read is
 routed to a part by its manifest bounds, and within the part by a binary search over its row groups' first
 keys; the first time a row group is needed, its key page index is loaded and its first key page decoded, and
-both are kept (`Limits.IndexMemory` bounds what is kept). A seek to a repeated key begins at the predecessor
+both are kept (`Limits.IndexMemory` accounts for key-page entries, their bound bytes,
+and decoded row-group first-key bytes). This budget does not include allocator overhead,
+parsed footers, transient page-decoding buffers or returned results. A seek to a repeated key begins at the predecessor
 of the first row group whose first key is at or above it, so earlier rows of its group are kept. A cursor
 finds its group's first row the same way, then moves to the row after it through the OffsetIndex row
 positions, without decoding the rows between. A warm read then decodes the key pages from the one that can

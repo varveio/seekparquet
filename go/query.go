@@ -354,16 +354,16 @@ func (s *scan) seekList(from []byte, req List, out *[]Entry) error {
 }
 
 // project reads the projected values of rows, which a scan found at the
-// given positions in dataset order: each run of consecutive rows of one
-// row group is read with one pass over each projected column, decoding
-// only the pages that hold the run.
+// given positions in dataset order: each row group is read with one pass
+// over each projected column, decoding only pages holding selected rows.
+// Sparse selections reuse the current page without retaining prior pages.
 func (r *reader) project(ctx context.Context, rows []*Row, at []position, columns []string, st *stats) error {
 	for _, row := range rows {
 		row.Columns, row.Values = columns, make([]Value, len(columns))
 	}
 	for i := 0; i < len(rows) && len(columns) > 0; {
 		j := i + 1
-		for j < len(rows) && at[j].g == at[i].g && at[j].row == at[j-1].row+1 {
+		for j < len(rows) && at[j].g == at[i].g {
 			j++
 		}
 		grp := r.groups[at[i].g]
@@ -376,12 +376,8 @@ func (r *reader) project(ctx context.Context, rows []*Row, at []position, column
 				}
 				continue
 			}
-			k := i
-			err := p.readColumn(ctx, grp.physical, col, at[i].row, j-i, st, func(values []parquet.Value) {
-				for _, v := range values {
-					rows[k].Values[c] = Value{Value: v.Clone()}
-					k++
-				}
+			err := p.readColumn(ctx, grp.physical, col, at[i:j], st, func(k int, v parquet.Value) {
+				rows[i+k].Values[c] = Value{Value: v.Clone()}
 			})
 			if err != nil {
 				return err

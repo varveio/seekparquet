@@ -84,14 +84,17 @@ func (p *part) keyIndex(ctx context.Context, physical int) (*groupIndex, error) 
 	if err != nil {
 		return nil, refusePart(CodeInvalidPageIndex, p.name, physical, "the key page index: %v", err)
 	}
-	if limit := p.r.limits.IndexMemory; p.r.indexMemory.Add(index.size) > limit {
-		p.r.indexMemory.Add(-index.size)
-		return nil, exceeded("part %s: key page indexes need more than %d bytes (Limits.IndexMemory)", p.name, limit)
+	// Recheck, charge and publish as one operation. Competing cold loads
+	// must not charge the same retained entry, even temporarily.
+	p.r.indexMu.Lock()
+	defer p.r.indexMu.Unlock()
+	if cached := p.index[physical].Load(); cached != nil {
+		return cached, nil
 	}
-	if !p.index[physical].CompareAndSwap(nil, index) {
-		p.r.indexMemory.Add(-index.size)
-		return p.index[physical].Load(), nil
+	if err := p.r.reserveIndex(index.size); err != nil {
+		return nil, err
 	}
+	p.index[physical].Store(index)
 	return index, nil
 }
 
