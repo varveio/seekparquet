@@ -97,8 +97,11 @@ func (p *part) pageHeader(ctx context.Context, physical, column int, off, end in
 	avail := end - off
 	var header format.PageHeader
 	var length int
+	// A header is read in growing pieces up to 16 MiB, far beyond any
+	// real header, without reading the page it precedes.
+	ceiling := min(avail, 16<<20, lim.MetadataMemory)
 	for want := int64(4 << 10); ; want *= 16 {
-		n := min(avail, want, lim.PageBytes)
+		n := min(want, ceiling)
 		raw := make([]byte, n)
 		if err := readFull(p.at(ctx), raw, off); err != nil {
 			if isEnvironment(ctx, err) {
@@ -115,7 +118,7 @@ func (p *part) pageHeader(ctx context.Context, physical, column int, off, end in
 		if err == nil {
 			break
 		}
-		if n == avail || n == lim.PageBytes {
+		if n == ceiling {
 			return nil, 0, bad("the page header does not decode: %v", err)
 		}
 	}
