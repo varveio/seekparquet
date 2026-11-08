@@ -84,17 +84,10 @@ type ColumnExpectation struct {
 	Check func(node parquet.Node) error
 }
 
-// PartsOptions configures OpenParts.
+// PartsOptions configures OpenParts: the options of OpenDataset, with
+// hooks for the checks a profile other than the manifest makes.
 type PartsOptions struct {
-	// Expect lists column expectations.
-	Expect []ColumnExpectation
-	// Limits bounds the resources the parts can make the reader use.
-	Limits Limits
-	// VerifyOnOpen makes OpenParts check every non-empty row group's key
-	// page index and decode its first key page, and decode each part's
-	// last key page, before it returns (CHECK-3). Otherwise these are
-	// loaded when a read first needs them.
-	VerifyOnOpen bool
+	Options
 	// CheckFooter, when set, is called once per part with its parsed
 	// footer, before the part's key column is checked. An error fails the
 	// open and is returned as is. The footer must not be modified.

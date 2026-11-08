@@ -72,7 +72,7 @@ type Source interface {
 	Open(ctx context.Context, path string) (SourceFile, error)
 }
 
-// Options configures OpenDataset.
+// Options configures OpenDataset, and OpenParts through PartsOptions.
 type Options struct {
 	// Expect lists column expectations, checked in every part on open.
 	Expect []ColumnExpectation
@@ -206,7 +206,8 @@ func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error)
 		}
 	}
 	handed = true
-	reader, err := openParts(ctx, inputs, PartsOptions{Expect: opt.Expect, Limits: lim, VerifyOnOpen: opt.VerifyOnOpen, CheckGroup: checkSorted})
+	opt.Limits = lim
+	reader, err := openParts(ctx, inputs, PartsOptions{Options: opt, CheckGroup: checkSorted})
 	if err != nil {
 		return nil, err
 	}

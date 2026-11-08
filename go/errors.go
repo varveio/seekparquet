@@ -155,5 +155,6 @@ func (e *ExpectationError) Error() string {
 // ErrClosed reports a read of a closed Reader or Dataset.
 var ErrClosed = errors.New("seekparquet: closed")
 
-// ErrLimitExceeded reports input beyond a limit set in Options (§11).
+// ErrLimitExceeded reports input beyond one of the Limits (§11): a policy
+// of the caller, not a refusal of the data.
 var ErrLimitExceeded = errors.New("seekparquet: limit exceeded")

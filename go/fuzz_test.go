@@ -53,7 +53,7 @@ func seedParts(f *testing.F) [][]byte {
 // panic or an allocation beyond the limits is not.
 func exercise(raw []byte) {
 	r, err := seekparquet.OpenParts(ctx, []seekparquet.PartSource{{Name: "fuzz", File: bytes.NewReader(raw), Size: int64(len(raw))}},
-		seekparquet.PartsOptions{Limits: fuzzLimits, VerifyOnOpen: true})
+		seekparquet.PartsOptions{Options: seekparquet.Options{Limits: fuzzLimits, VerifyOnOpen: true}})
 	if err != nil {
 		return
 	}

@@ -29,7 +29,7 @@ defer d.Close()
 // A range: start inclusive (StartExclusive to exclude it), end exclusive.
 rows, err := d.Range(ctx, seekparquet.Range{Start: []byte("logs/2026/"), Limit: 100, Columns: []string{"size"}}, nil)
 
-// A prefix read.
+// A prefix read, which may also take a start and an end.
 rows, err = d.Range(ctx, seekparquet.PrefixRange([]byte("logs/2026/"), 100), nil)
 
 // A delimited listing, paged.
@@ -48,10 +48,18 @@ Runnable examples are in [example_test.go](example_test.go).
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a manifest dataset through a `Source`), `OpenParts` (advanced: parts given directly, with footer and row-group hooks), `Reader`, `Dataset`, `Range`, `List`, `Scan` with a `ColumnSink`, `Row`, `Value`, `Entry`, `Stats`, `Successor`, `CommonPrefix`, refusal codes and errors |
+| `seekparquet` | `OpenDataset` (a manifest dataset through a `Source`), `OpenParts` (advanced: parts given directly, with footer and row-group hooks), `Reader`, `Dataset`, `Range`, `List`, `Scan` with a `ColumnSink`, `Row`, `Value`, `Entry`, `Stats`, `Limits`, `Successor`, `CommonPrefix`, refusal codes and errors |
 | `source/local` | `Dir`, a `Source` over a local directory confined by `os.Root`, and `FileCache`, which bounds the descriptors the parts hold open |
 | `seekparquettest` | writes small spec-conforming datasets for tests, with knobs for invalid variants |
 | `internal/cmd/conformance` | the adapter for the [conformance harness](../conformance/protocol.md) |
+
+To run the conformance suite from the repository root:
+
+```
+python3 conformance/harness/run.py --adapter "go -C go run ./internal/cmd/conformance"
+```
+
+or build the adapter first (`go -C go build -o /tmp/sp-adapter ./internal/cmd/conformance`) and pass its path.
 
 ## Results
 
@@ -59,30 +67,42 @@ Runnable examples are in [example_test.go](example_test.go).
 - A projected column a part does not have is `Value.Absent`, which is distinct from a null value (COL-2). A
   column no part has is absent in every row. Projecting a nested or repeated column is an
   `*UnsupportedError` (`unsupported_projection`), never reported as absent.
-- Values are parquet-go `Value`s of the column's physical type in the row's part. This module commits to
-  parquet-go's value types rather than defining its own.
+- Values are parquet-go `Value`s of the column's physical type. This module commits to parquet-go's value
+  types rather than defining its own, so a parquet-go upgrade can change this API.
 - A limit that is not positive is `ErrInvalidRequest`, not an empty result.
 
 ## What opening and reading check, and what they do not certify
 
-Opening checks everything the specification's CHECK-1 requires: the manifest (strictly: duplicate member
-names, undefined members, exact integers, canonical base64, part paths, bound order), that every part exists
-with the manifest's size and row count, that its footer is readable, self-contained and unencrypted, its
-`seekparquet.*` stamps, the `key` column (type, repetition, annotation, `column_orders`), that columns agree
-across parts, and `sorting_columns` on every non-empty row group. As CHECK-3 allows, it also checks every
-non-empty row group's key page index and decodes its first key page, and decodes each part's last key page,
-so that row-group first keys must ascend and each part's first and last keys must equal the manifest's
-bounds.
+Opening checks what the specification's CHECK-1 requires, and by default nothing more: the manifest
+(strictly: duplicate member names, undefined members, exact integers, canonical base64, part paths, bound
+order), that every part exists with the manifest's size and row count, that its footer is readable,
+self-contained and unencrypted, its `seekparquet.*` stamps, the `key` column (type, repetition, annotation,
+`column_orders`), that columns agree across parts (COL-5), and `sorting_columns` on every non-empty row group.
 
-Every read checks each key page it decodes (CHECK-2): the page header matches its OffsetIndex entry, one
-non-empty key per row, valid UTF-8 for a `STRING` key, strictly ascending, inside the page's bounds, and in
-dataset order with every other page the request decoded. Page bounds are used as Parquet defines them, as
-bounds whatever their length; overlapping bounds and `boundary_order` are never relied on.
+`Options.VerifyOnOpen` also checks, on open, every non-empty row group's key page index and first key page,
+and each part's last key page (CHECK-3): row-group first keys must ascend and each part's first and last keys
+must equal its manifest bounds. That suits a long-lived reader of local files; it costs reads across the whole
+dataset, so it is off by default. Without it the same checks happen when a read reaches those pages.
+
+Every read checks each row group's key page index before it uses the group, and each key page it decodes
+(CHECK-2): the page header matches its OffsetIndex entry, one non-empty key per row, valid UTF-8 for a
+`STRING` key, strictly ascending, inside the page's bounds and the part's manifest bounds, and in dataset
+order with every other page the request decoded. Page bounds are used as Parquet defines them, as bounds
+whatever their length; overlapping bounds and `boundary_order` are never relied on.
 
 What is **not** certified: rows a request does not decode (a query that succeeds says nothing about the pages
 it skipped), values beyond decoding them, `sha256` digests, and that files are unchanged after opening (a
 part replaced by another file is refused when it is reopened, not one rewritten in place). Full
 certification is validation (spec §8), which this module does not yet provide.
+
+## Untrusted input and limits
+
+Every size a file declares (manifest, footer, page index, page header, page, value count) is checked against
+`Options.Limits` before anything is allocated for it, and Thrift structures are walked with a bounded
+decoder before parquet-go decodes them, so a few hostile bytes cannot ask for gigabytes. Exceeding a limit is
+`ErrLimitExceeded`, the caller's policy, not a refusal of the data. Defaults suit local files; set them lower
+for untrusted remote data. A panic inside parquet-go on a hostile footer or page is reported as
+`invalid_footer` or `invalid_parquet` as a last line of defence.
 
 ## Errors
 
@@ -96,9 +116,14 @@ certification is validation (spec §8), which this module does not yet provide.
 
 ## Sources, contexts and ownership
 
-A `Source` opens files of a dataset root by relative path; `local.Dir` is one. A part file that implements
-`ContextBinder` has every read (manifest, footers, page indexes, pages) bound to the operation's context, so a
-cancelled request or `Close` ends a read that waits on the source. A plain `io.ReaderAt` cannot be interrupted
+A `Source` opens the files of a dataset root (the manifest and the parts) by relative path, as `SourceFile`s;
+`local.Dir` is one, and a remote store would be another. A file must read the same bytes for as long as it is
+open: a remote source binds it to one stored object (one version or generation) across its range requests
+and retries.
+
+A file that implements `ContextBinder` has every read (manifest, footers, page indexes, pages) bound to the
+operation's context, so a cancelled request or `Close` ends a read that waits on the source. `WithContext`
+may be called concurrently and must return independent views. A plain `io.ReaderAt` cannot be interrupted
 mid-call; the reader checks the context between pages.
 
 `OpenDataset` closes every file it opened when it fails; on success `Dataset.Close` closes them, after the
@@ -107,8 +132,12 @@ must not call `Close` from a callback.
 
 ## Cost model
 
-Opening reads the manifest, every footer, and for every non-empty row group its key page index and first key
-page, plus each part's last key page. A cold query loads the page index of each row group it touches (once,
-then shared); a warm query decodes the key pages from the one that can hold its start, and value pages only
-for the rows it returns. A value column without an OffsetIndex is decoded from the start of its chunk.
-`Stats` counts decoding work only, not bytes read or opening costs.
+Opening reads the manifest and every part's footer: a few reads per part, whatever its size. A read is
+routed to a part by its manifest bounds, and within the part by a binary search over its row groups' first
+keys; the first time a row group is needed, its key page index is loaded and its first key page decoded, and
+both are kept (`Limits.IndexMemory` bounds what is kept). A warm read then decodes the key pages from the one
+that can hold its start, and value pages only for the rows it returns; a value column without an OffsetIndex
+is decoded from the start of its chunk. A listing resumes after each common prefix at the prefix's successor,
+skipping the pages wholly under it, but the page it lands on, and the pages around a prefix's boundaries,
+still decode some of the keys under it. Each page read also reads its header once to check it. `Stats`
+counts decoding work only, not bytes read or opening costs.

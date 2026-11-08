@@ -78,9 +78,6 @@ type keyRepeated struct {
 type keyString struct {
 	Key string `parquet:"key"`
 }
-type noKey struct {
-	Name string `parquet:"name"`
-}
 type sizeString struct {
 	Key  []byte `parquet:"key"`
 	Size string `parquet:"size"`
@@ -346,14 +343,6 @@ func TestShortenedMaximum(t *testing.T) {
 	if seekparquet.CodeOf(err) != seekparquet.CodeInvalidPageIndex {
 		t.Fatalf("shortened maximum: %v", err)
 	}
-}
-
-func descending(n int) []string {
-	keys := make([]string, n)
-	for i := range keys {
-		keys[i] = fmt.Sprintf("k%04d", n-1-i)
-	}
-	return keys
 }
 
 // TestCorruptValuePage overwrites the page header of a value column: the

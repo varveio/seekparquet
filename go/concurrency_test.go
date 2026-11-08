@@ -259,7 +259,7 @@ func TestOpenParts(t *testing.T) {
 	// Bounds given for a part are checked.
 	srcs := sources(&closed)
 	srcs[0].MinKey, srcs[0].MaxKey = []byte("a"), []byte("d")
-	if _, err := seekparquet.OpenParts(ctx, srcs, seekparquet.PartsOptions{VerifyOnOpen: true}); seekparquet.CodeOf(err) != seekparquet.CodeBoundsMismatch {
+	if _, err := seekparquet.OpenParts(ctx, srcs, seekparquet.PartsOptions{Options: seekparquet.Options{VerifyOnOpen: true}}); seekparquet.CodeOf(err) != seekparquet.CodeBoundsMismatch {
 		t.Fatalf("bounds: %v", err)
 	}
 }

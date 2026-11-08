@@ -18,18 +18,24 @@
 // for directories) and checks what the specification requires on open
 // (CHECK-1): the manifest, every part's existence, size, footer, stamps,
 // row count, key column, column consistency (COL-5) and sorting_columns.
-// It also decodes the first page of every non-empty row group, after
-// checking that row group's key page index, and each part's last page, and
-// requires each part's first and last keys to equal the manifest's bounds.
-// OpenParts is the advanced path over parts given directly.
+// It reads the manifest and the footers and nothing else, unless
+// Options.VerifyOnOpen asks it also to check every row group's first key
+// page and each part's last (CHECK-3). Reads are routed to a part by its
+// manifest bounds and within it by row groups' first keys, decoded the
+// first time a read needs them. OpenParts is the advanced path over parts
+// given directly.
+//
+// Every size a file declares is checked against Options.Limits before
+// anything is allocated for it; exceeding a limit is ErrLimitExceeded.
 //
 // # Reading
 //
-// Range, List and Scan check every key page they decode (CHECK-2): the page
-// header matches its OffsetIndex entry, one non-empty key per row, strictly
-// ascending, inside the page's ColumnIndex bounds, and in dataset order with
-// every other page the request decoded. A fault ends the request with a
-// *RefusalError carrying a stable Code.
+// Range, List and Scan check a row group's key page index before using the
+// group, and every key page they decode (CHECK-2): the page header matches
+// its OffsetIndex entry, one non-empty key per row, strictly ascending,
+// inside the page's ColumnIndex bounds and its part's manifest bounds, and
+// in dataset order with every other page the request decoded. A fault
+// ends the request with a *RefusalError carrying a stable Code.
 //
 // What is not certified: rows a request does not decode (CHECK-4), values
 // beyond decoding them, the parts' SHA-256 digests, and that the files are
@@ -44,8 +50,8 @@
 // this reader does not handle, such as a nested projected column or an
 // encrypted part. An *ExpectationError reports a part that fails a caller's
 // ColumnExpectation. Anything else (storage failures, a cancelled context,
-// ErrClosed) is an error of the environment, not a statement about the
-// data.
+// ErrClosed, ErrLimitExceeded) is an error of the environment or of the
+// caller's policy, not a statement about the data.
 //
 // # Values
 //

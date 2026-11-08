@@ -53,18 +53,20 @@ var ErrMalformed = errors.New("malformed thrift")
 // ErrBudget reports input whose estimated decoded size exceeds the budget.
 var ErrBudget = errors.New("thrift input exceeds its memory budget")
 
-// Check walks one struct of type T (a pointer to a struct, such as
-// *format.FileMetaData) at the start of data. It returns the number of
+// Check walks one struct of Go type typ (a struct or a pointer to one, such
+// as *format.FileMetaData; nil when unknown) at the start of data. It returns the number of
 // bytes the struct occupies and the estimated memory a decoder will
 // allocate for it. It fails with ErrMalformed when the bytes are not a
 // well-formed struct whose lengths fit in data, and with ErrBudget as soon
 // as the estimate exceeds budget.
 func Check(data []byte, typ reflect.Type, budget int64) (n int, cost int64, err error) {
-	if typ.Kind() == reflect.Pointer {
+	if typ != nil && typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	w := walker{data: data, budget: budget}
-	w.cost = int64(typ.Size())
+	if typ != nil {
+		w.cost = int64(typ.Size())
+	}
 	if err := w.structure(typ, 0); err != nil {
 		return 0, 0, err
 	}

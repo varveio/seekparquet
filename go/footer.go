@@ -294,7 +294,9 @@ func checkLeaf(se *format.SchemaElement) error {
 	if t == format.FixedLenByteArray && (!hasLength || length <= 0) {
 		return fmt.Errorf("FIXED_LEN_BYTE_ARRAY column %q has no positive length", se.Name)
 	}
-	bad := func() error { return fmt.Errorf("column %q: annotation %s does not apply to %s", se.Name, annotation(se), t) }
+	bad := func() error {
+		return fmt.Errorf("column %q: annotation %s does not apply to %s", se.Name, annotation(se), t)
+	}
 	is := func(types ...format.Type) bool {
 		for _, want := range types {
 			if t == want {
@@ -506,4 +508,3 @@ func leafCount(schema []format.SchemaElement) int {
 	}
 	return n
 }
-
