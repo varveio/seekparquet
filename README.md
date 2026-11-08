@@ -19,6 +19,11 @@ the profile can also:
 
 by reading the manifest, part footers, a page index and a few pages, with no query engine and no catalog.
 
+## Try it in five minutes
+
+Follow the [runnable quickstart](docs/quickstart.md) to read a checked-in sample,
+list prefixes with a delimiter, and resume a listing with a cursor. Requires Go 1.26 or later.
+
 ## What it guarantees that plain Parquet does not
 
 | Parquet offers | SeekParquet requires |
