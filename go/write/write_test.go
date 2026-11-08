@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
+	"weak"
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/format"
@@ -449,5 +451,55 @@ func TestWritePage(t *testing.T) {
 	}
 	if fmt.Sprint(sizes) != "[3 2 4 1]" {
 		t.Errorf("pages of %v rows, want [3 2 4 1]", sizes)
+	}
+}
+
+// TestWritePageReleasesValues: once WritePage returns, the writer holds no
+// value that points into the caller's memory, also after a shorter page:
+// a large arena the first page's values pointed into is collected.
+func TestWritePageReleasesValues(t *testing.T) {
+	w, err := NewPart(&memFile{}, kvSchema, kvOptions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	arena := func() weak.Pointer[[1 << 20]byte] {
+		big := new([1 << 20]byte)
+		for i := range 1000 {
+			copy(big[i*8:], fmt.Sprintf("k%06d", i))
+		}
+		if err := w.WritePage(1000, func(c int, values []parquet.Value) {
+			for i := range values {
+				if c == 0 {
+					values[i] = parquet.ByteArrayValue(big[i*8:i*8+7]).Level(0, 0, 0)
+				} else {
+					values[i] = parquet.ByteArrayValue(big[i*8:i*8+7]).Level(0, 1, 1)
+				}
+			}
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return weak.Make(big)
+	}()
+	if err := w.WritePage(2, func(c int, values []parquet.Value) {
+		for i := range values {
+			values[i] = kvRows("z1", "z2")[i][c]
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for i := range w.page {
+		for j, v := range w.page[i].values[:cap(w.page[i].values)] {
+			if v != (parquet.Value{}) {
+				t.Fatalf("column %d slot %d still holds a value", i, j)
+			}
+		}
+	}
+	runtime.GC()
+	runtime.GC()
+	if arena.Value() != nil {
+		t.Errorf("the first page's arena is still reachable")
+	}
+	if _, err := w.Seal(); err != nil {
+		t.Fatal(err)
 	}
 }

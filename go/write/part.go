@@ -451,6 +451,13 @@ func (w *PartWriter) WritePage(rows int, fill func(column int, values []parquet.
 		w.err = err
 		return err
 	}
+	// The filled values borrow the caller's memory: they are cleared on
+	// every return, so that the writer does not keep it reachable.
+	defer func() {
+		for i := range w.page {
+			clear(w.page[i].values[:rows])
+		}
+	}()
 	keys := w.page[w.key].values[:rows]
 	fill(w.key, keys)
 	if err := w.checkKeys(keys); err != nil {
