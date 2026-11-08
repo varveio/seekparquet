@@ -1,0 +1,117 @@
+# multipart
+
+valid: yes
+description: Three parts listed out of file-name order, several row groups and pages each, leading/interior/trailing empty row groups, SNAPPY/ZSTD/GZIP, dictionary and DELTA_BYTE_ARRAY keys, data page v1 and v2, sha256 in the manifest, an extension, and a stray Parquet file under the root that is not part of the dataset.
+provenance: native
+producer: pyarrow 26.0.1
+source rows: generators/rows/multipart.json
+
+manifest: format_version 0, 3 parts
+  part 0: 'shards/c.parquet', rows 45, bytes 7180, keys 'README' .. 'logs/2026/02/f003.gz'
+  part 1: 'shards/a.parquet', rows 45, bytes 6321, keys 'logs/2026/02/f004.gz' .. 'logs/2026/03/f008.gz'
+  part 2: 'shards/b.parquet', rows 44, bytes 7059, keys 'logs/2026/03/f009.gz' .. 'zz-last'
+
+file shards/a.parquet: 6321 bytes, footer 2218 bytes
+  num_rows 45, row_groups 3, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  column storage_class: BYTE_ARRAY OPTIONAL def=1 rep=0
+  column mtime: INT64 OPTIONAL def=1 rep=0
+  row_group 0: rows 15, sorting_columns [col0 asc]
+    key chunk: codec ZSTD, encodings RLE,DELTA_BYTE_ARRAY
+    page headers: DATA_PAGE_V2(5) DATA_PAGE_V2(5) DATA_PAGE_V2(5)
+    offset index: 3 pages, first_row_index [0, 5, 10]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20]
+      max lengths [20, 20, 20]
+  row_group 1: rows 15, sorting_columns [col0 asc]
+    key chunk: codec ZSTD, encodings RLE,DELTA_BYTE_ARRAY
+    page headers: DATA_PAGE_V2(5) DATA_PAGE_V2(5) DATA_PAGE_V2(5)
+    offset index: 3 pages, first_row_index [0, 5, 10]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20]
+      max lengths [20, 20, 20]
+  row_group 2: rows 15, sorting_columns [col0 asc]
+    key chunk: codec ZSTD, encodings RLE,DELTA_BYTE_ARRAY
+    page headers: DATA_PAGE_V2(5) DATA_PAGE_V2(5) DATA_PAGE_V2(5)
+    offset index: 3 pages, first_row_index [0, 5, 10]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20]
+      max lengths [20, 20, 20]
+
+file shards/b.parquet: 7059 bytes, footer 2059 bytes
+  num_rows 44, row_groups 3, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  column storage_class: BYTE_ARRAY OPTIONAL def=1 rep=0
+  column mtime: INT64 OPTIONAL def=1 rep=0
+  row_group 0: rows 20, sorting_columns [col0 asc]
+    key chunk: codec GZIP, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(20) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(2)
+    offset index: 7 pages, first_row_index [0, 3, 6, 9, 12, 15, 18]
+    column index: 7 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20, 20, 20, 20, 20]
+      max lengths [20, 20, 20, 20, 20, 20, 20]
+  row_group 1: rows 24, sorting_columns [col0 asc]
+    key chunk: codec GZIP, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(24) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3)
+    offset index: 8 pages, first_row_index [0, 3, 6, 9, 12, 15, 18, 21]
+    column index: 8 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20, 20, 20, 20, 20, 4]
+      max lengths [20, 20, 20, 20, 20, 20, 20, 7]
+  row_group 2: rows 0, sorting_columns [col0 asc]
+    (no rows; ignored by SeekParquet, RG-1..RG-7 do not apply)
+
+file shards/c.parquet: 7180 bytes, footer 2709 bytes
+  num_rows 45, row_groups 5, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  column storage_class: BYTE_ARRAY OPTIONAL def=1 rep=0
+  column mtime: INT64 OPTIONAL def=1 rep=0
+  row_group 0: rows 0, sorting_columns [col0 asc]
+    (no rows; ignored by SeekParquet, RG-1..RG-7 do not apply)
+  row_group 1: rows 16, sorting_columns [col0 asc]
+    key chunk: codec SNAPPY, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(16) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(4)
+    offset index: 4 pages, first_row_index [0, 4, 8, 12]
+    column index: 4 pages, boundary_order ASCENDING, null_pages none
+      min lengths [6, 14, 14, 20]
+      max lengths [14, 14, 20, 20]
+  row_group 2: rows 16, sorting_columns [col0 asc]
+    key chunk: codec SNAPPY, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(16) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(4)
+    offset index: 4 pages, first_row_index [0, 4, 8, 12]
+    column index: 4 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20, 20]
+      max lengths [20, 20, 20, 20]
+  row_group 3: rows 0, sorting_columns [col0 asc]
+    (no rows; ignored by SeekParquet, RG-1..RG-7 do not apply)
+  row_group 4: rows 13, sorting_columns [col0 asc]
+    key chunk: codec SNAPPY, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(13) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(4) DATA_PAGE(1)
+    offset index: 4 pages, first_row_index [0, 4, 8, 12]
+    column index: 4 pages, boundary_order ASCENDING, null_pages none
+      min lengths [20, 20, 20, 20]
+      max lengths [20, 20, 20, 20]
+
+file shards/stray.parquet: 1633 bytes, footer 1291 bytes
+  num_rows 2, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  column storage_class: BYTE_ARRAY OPTIONAL def=1 rep=0
+  column mtime: INT64 OPTIONAL def=1 rep=0
+  row_group 0: rows 2, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2)
+    offset index: 1 pages, first_row_index [0]
+    column index: 1 pages, boundary_order ASCENDING, null_pages none
+      min lengths [23]
+      max lengths [23]

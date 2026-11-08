@@ -1,0 +1,545 @@
+{
+  "group": "refusals-read",
+  "target": "reader",
+  "description": "Faults a reader must detect no later than decoding the faulty data (detect: read). Each request is an unbounded range whose limit covers every row, so it decodes the faulty page under any correct access path.",
+  "cases": [
+    {
+      "id": "refusals-read/key-order-within-page",
+      "description": "Rows 2 and 3 (one page) are stored in descending order.",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/key-order-within-page",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "key_order"
+      }
+    },
+    {
+      "id": "refusals-read/key-order-duplicate",
+      "description": "Key k04 is stored twice in one page (rows 4 and 5).",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/key-order-duplicate",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "key_order"
+      }
+    },
+    {
+      "id": "refusals-read/key-order-across-pages",
+      "description": "Page 1 ends with k04 and page 2 starts with k03; each page is internally ascending.",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/key-order-across-pages",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "key_order"
+      }
+    },
+    {
+      "id": "refusals-read/key-order-across-row-groups",
+      "description": "Row group 0 ends with k06 and row group 1 starts with k05.",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/key-order-across-row-groups",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "key_order"
+      }
+    },
+    {
+      "id": "refusals-read/key-order-duplicate-across-row-groups",
+      "description": "The last key of row group 0 equals the first key of row group 1.",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/key-order-duplicate-across-row-groups",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "key_order"
+      }
+    },
+    {
+      "id": "refusals-read/invalid-key-empty",
+      "description": "The first key of the only part is empty (it still sorts first). Note: The manifest cannot express an empty min key, so it names the second key; a reader that compares first keys on open may report bounds_mismatch.",
+      "requirements": [
+        "KEY-2",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/invalid-key-empty",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "codes": [
+          "invalid_key",
+          "bounds_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "refusals-read/missing-column-index-native",
+      "description": "Row group 1 holds a 5002-byte key; pyarrow omits the whole ColumnIndex of that key chunk (statistics larger than its 4096-byte limit) but keeps the OffsetIndex.",
+      "requirements": [
+        "RG-2",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/missing-column-index-native",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "missing_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/inconsistent-column-type",
+      "description": "Column size is INT64 in part 0 and INT32 in part 1. Note: COL-5 is required on open only for projected columns, so the case projects size; an open-time refusal with this code also passes.",
+      "requirements": [
+        "COL-5",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/inconsistent-column-type",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "refused",
+        "code": "inconsistent_column"
+      }
+    },
+    {
+      "id": "refusals-read/inconsistent-column-repetition",
+      "description": "Column size is REQUIRED in part 0 and OPTIONAL in part 1.",
+      "requirements": [
+        "COL-5",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/inconsistent-column-repetition",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "refused",
+        "code": "inconsistent_column"
+      }
+    },
+    {
+      "id": "refusals-read/key-order-across-parts",
+      "description": "Part 0 ends with k09, part 1 starts with k05. The manifest hides this by declaring part 0's max key as k04 (so the manifest bounds look disjoint). Note: The manifest's max key for part 0 is not the actual last key, so bounds_mismatch is also a correct report.",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "PART-3"
+      ],
+      "dataset": "datasets/invalid/key-order-across-parts",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "codes": [
+          "key_order",
+          "bounds_mismatch"
+        ]
+      }
+    },
+    {
+      "id": "refusals-read/invalid-key-utf8",
+      "description": "non-utf8-keys with the key annotated STRING: two keys (each mid-page) are not valid UTF-8; every page bound is.",
+      "requirements": [
+        "KEY-6",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/invalid-key-utf8",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key"
+      }
+    },
+    {
+      "id": "refusals-read/invalid-parquet-page",
+      "description": "The first data page of column size in row group 1 of shards/c.parquet does not decompress.",
+      "requirements": [
+        "CHECK-5",
+        "VAL-1"
+      ],
+      "dataset": "datasets/invalid/invalid-parquet-page",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_parquet"
+      }
+    },
+    {
+      "id": "refusals-read/missing-column-index",
+      "description": "Row group 1's key chunk has no ColumnIndex.",
+      "requirements": [
+        "RG-2",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/missing-column-index",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "missing_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/missing-offset-index",
+      "description": "Row group 1's key chunk has no OffsetIndex.",
+      "requirements": [
+        "RG-2",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/missing-offset-index",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "missing_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-null-page",
+      "description": "Row group 1's key ColumnIndex marks page 1 as a null page.",
+      "requirements": [
+        "RG-4",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-null-page",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-count-mismatch",
+      "description": "Row group 0's key ColumnIndex has one entry fewer than its OffsetIndex.",
+      "requirements": [
+        "RG-4",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-count-mismatch",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-first-row-nonzero",
+      "description": "Row group 1's key OffsetIndex starts at first_row_index 1.",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-first-row-nonzero",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-first-row-not-increasing",
+      "description": "Row group 0's key OffsetIndex repeats first_row_index 2 for pages 1 and 2.",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-first-row-not-increasing",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-first-row-out-of-range",
+      "description": "Row group 1's last key page claims first_row_index 6, equal to the row group's row count.",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-first-row-out-of-range",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-location-outside-file",
+      "description": "Row group 1's last key page location points past the end of the file.",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-location-outside-file",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-rows-mismatch",
+      "description": "Row group 0's key OffsetIndex says first_row_index [0, 1, 4] for pages of 2 rows each: page 0 holds 2 rows but its indexed interval is 1 row.",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-rows-mismatch",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-list-length-mismatch",
+      "description": "Row group 1's key ColumnIndex max_values has one entry fewer than null_pages and min_values.",
+      "requirements": [
+        "RG-4",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-list-length-mismatch",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-location-mismatch",
+      "description": "Row group 0's key OffsetIndex locates page 1 one byte after its real header.",
+      "requirements": [
+        "RG-3",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-location-mismatch",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-empty",
+      "description": "Row group 0's key ColumnIndex and OffsetIndex have empty lists.",
+      "requirements": [
+        "RG-3",
+        "RG-4",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-empty",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-bound-not-utf8",
+      "description": "The STRING key's ColumnIndex max for the page ending at row-01 is row-\\xff: still an upper bound, but not valid UTF-8 (KEY-6).",
+      "requirements": [
+        "KEY-6",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-bound-not-utf8",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-min-above-first-key",
+      "description": "The key ColumnIndex min of the page starting at b'c/' is above that first key.",
+      "requirements": [
+        "RG-5",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-min-above-first-key",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-max-below-last-key",
+      "description": "The key ColumnIndex max of the page ending at b'delta' is shortened to below that key.",
+      "requirements": [
+        "RG-5",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-max-below-last-key",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "refusals-read/page-index-shortened-ff-max",
+      "description": "The key ColumnIndex max of the page ending at 0xFF*80 0x02 is shortened to 0xFF*16, which is below the page's keys (the all-0xFF truncation fault RG-5 forbids).",
+      "requirements": [
+        "RG-5",
+        "RG-7",
+        "CHECK-2"
+      ],
+      "dataset": "datasets/invalid/page-index-shortened-ff-max",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    }
+  ]
+}

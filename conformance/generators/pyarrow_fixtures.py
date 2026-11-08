@@ -177,8 +177,15 @@ def def_binary_keys():
 
 def def_projection():
     keys = [b"row-%02d" % i for i in range(18)]
-    f32s = [1.5, -0.0, float("inf"), float("-inf"), float("nan"), 3.4028234663852886e38, 1.401298464324817e-45]
-    f64s = [1.5, -0.0, float("inf"), float("nan"), 1.7976931348623157e308, 5e-324, 0.1]
+    # Exact IEEE 754 bits: 1.5, -0.0, +inf, -inf, quiet NaN, NaN with payload, signalling NaN, negative NaN,
+    # largest finite, smallest subnormal.
+    f32s = ["3fc00000", "80000000", "7f800000", "ff800000", "7fc00000", "7fc00001", "7f800001", "ffc00000",
+            "7f7fffff", "00000001"]
+    f64s = ["3ff8000000000000", "8000000000000000", "7ff0000000000000", "7ff8000000000000",
+            "7ff8000000000001", "7ff0000000000001", "fff8000000000000", "7fefffffffffffff",
+            "0000000000000001", "3fb999999999999a"]
+    u32s = [0, 1, 2147483648, 4294967295]
+    u64s = [0, 1, 9223372036854775808, 18446744073709551615]
     i32s = [0, -1, 2147483647, -2147483648, 42]
     i64s = [0, -1, 9223372036854775807, -9223372036854775808, 1 << 40]
 
@@ -189,8 +196,12 @@ def def_projection():
             "flag": NULL if nul or allnull else {"bool": i % 3 == 0},
             "i32": NULL if nul or allnull else I(i32s[i % len(i32s)]),
             "i64": NULL if (i % 7 == 6) or allnull else I(i64s[i % len(i64s)]),
-            "f32": NULL if nul or allnull else {"float32": f32_hex(f32s[i % len(f32s)])},
-            "f64": NULL if (i % 6 == 5) or allnull else {"float64": f64_hex(f64s[i % len(f64s)])},
+            "f32": NULL if nul or allnull else {"float32": f32s[i % len(f32s)]},
+            "f64": NULL if (i % 6 == 5) or allnull else {"float64": f64s[i % len(f64s)]},
+            # Unsigned annotations are ignored: values are reported as the signed physical integer.
+            "u32": I(u32s[i % 4] - (1 << 32) if u32s[i % 4] >= 1 << 31 else u32s[i % 4]),
+            "u64": NULL if allnull else I(u64s[i % 4] - (1 << 64) if u64s[i % 4] >= 1 << 63 else u64s[i % 4]),
+            "a.b": I(i * 3),
             "name": NULL if nul or allnull else S(["", "plain", "café", "日本", "x" * 40][i % 5]),
             "blob": NULL if (i % 4 == 2) or allnull else S(bytes([0, 255, i, 128])[: 1 + i % 4]),
             "fx": NULL if nul or allnull else S(bytes([i, 0, 255, 127])),
@@ -201,10 +212,12 @@ def def_projection():
         }
 
     rows = rows_of(keys, vals)
-    allc = ["flag", "i32", "i64", "f32", "f64", "name", "blob", "fx", "req", "meta", "tags"]
+    allc = ["flag", "i32", "i64", "f32", "f64", "u32", "u64", "a.b", "name", "blob", "fx", "req", "meta", "tags"]
     return {
         "dataset": "projection",
-        "description": ("Projected values of every mandatory physical type with nulls and special floats; "
+        "description": ("Projected values of every mandatory physical type with nulls, special floats given by exact bits "
+                        "(signed zero, infinities, NaN payloads), unsigned-annotated INT32/INT64 reported as signed "
+                        "physical values, and a top-level column literally named a.b; "
                         "the key column carries the STRING annotation; part 1 lacks columns f64 and req, "
                         "only part 2 has column extra; meta (struct) and tags (list) are nested."),
         "schema_id": "conformance/projection/v1",
@@ -214,6 +227,9 @@ def def_projection():
                     {"name": "i64", "type": "int64", "nullable": True},
                     {"name": "f32", "type": "float32", "nullable": True},
                     {"name": "f64", "type": "float64", "nullable": True},
+                    {"name": "u32", "type": "uint32", "nullable": False},
+                    {"name": "u64", "type": "uint64", "nullable": True},
+                    {"name": "a.b", "type": "int64", "nullable": False},
                     {"name": "name", "type": "string", "nullable": True},
                     {"name": "blob", "type": "binary", "nullable": True},
                     {"name": "fx", "type": "fixed:4", "nullable": True},
@@ -258,6 +274,36 @@ def def_delimiter():
              "rows": rows[cut1:]},
         ],
     }
+
+
+def def_list_bounds():
+    rows = rows_of([b"a/a", b"a/z", b"b/1", b"b/2", b"c"], lambda i, k: {"size": I(i)})
+    return {"dataset": "list-bounds",
+            "description": "Keys a/a, a/z, b/1, b/2, c: the worked example of LIST-7 (bounds apply to candidate keys).",
+            "schema_id": "conformance/objects/v1", "key_type": "binary",
+            "columns": [{"name": "size", "type": "int64", "nullable": False}],
+            "parts": [{"path": "data/part-00000.parquet", "row_groups": [5], "writer": W(2), "rows": rows}]}
+
+
+def def_non_utf8_keys():
+    keys = [b"k00", b"k00\xc3", b"k01", b"k02", b"k02\x80", b"k03", b"k04", b"k05", b"k06"]
+    rows = rows_of(keys, lambda i, k: {"size": I(i)})
+    return {"dataset": "non-utf8-keys",
+            "description": ("An unannotated key column holding keys that are not valid UTF-8 (allowed, KEY-6). "
+                            "Each invalid key is in the middle of a 3-row page, so every page bound is valid UTF-8."),
+            "schema_id": "conformance/objects/v1", "key_type": "binary",
+            "columns": [{"name": "size", "type": "int64", "nullable": False}],
+            "parts": [{"path": "data/part-00000.parquet", "row_groups": [9], "writer": W(3), "rows": rows}]}
+
+
+def def_inconsistent(name, desc, override):
+    r0 = [{"key_base64": b64e(b"k%02d" % i), "values": {"size": I(i)}} for i in range(4)]
+    r1 = [{"key_base64": b64e(b"k%02d" % i), "values": {"size": I(i)}} for i in range(4, 8)]
+    return {"dataset": name, "description": desc, "schema_id": "conformance/objects/v1", "key_type": "binary",
+            "columns": [{"name": "size", "type": "int64", "nullable": False}],
+            "parts": [{"path": "data/part-00000.parquet", "row_groups": [4], "writer": W(2), "rows": r0},
+                      {"path": "data/part-00001.parquet", "row_groups": [4], "writer": W(2), "rows": r1,
+                       "column_overrides": {"size": override}}]}
 
 
 def def_empty():
@@ -331,6 +377,8 @@ BASIC_VARIANTS = [
      {"stamps": {"seekparquet.schema_id": "conformance/other/v1"}}),
     ("stamp-wrong-revision", "Footer seekparquet.draft_revision is 2; the manifest says 1.",
      {"stamps": {"seekparquet.draft_revision": "2"}}),
+    ("stamp-noncanonical-revision", "Footer seekparquet.draft_revision is \"01\" (not canonical decimal).",
+     {"stamps": {"seekparquet.draft_revision": "01"}}),
     ("stamp-missing-revision", "Footer lacks seekparquet.draft_revision although format_version is 0.",
      {"stamps": {"seekparquet.draft_revision": None}}),
     ("key-nullable", "The key column is OPTIONAL (no nulls are stored).", {"key": "nullable"}),
@@ -353,7 +401,8 @@ BASIC_VARIANTS = [
 
 def arrow_type(t):
     simple = {"bool": pa.bool_(), "int32": pa.int32(), "int64": pa.int64(), "float32": pa.float32(),
-              "float64": pa.float64(), "string": pa.string(), "binary": pa.binary()}
+              "float64": pa.float64(), "string": pa.string(), "binary": pa.binary(), "uint32": pa.uint32(),
+              "uint64": pa.uint64()}
     if t in simple:
         return simple[t]
     if t.startswith("fixed:"):
@@ -416,11 +465,51 @@ def build_table(doc, part, fault):
         kfield, karr = pa.field(kname, kt, nullable=key_mode == "nullable"), pa.array(kv, kt)
     fields, arrays = [kfield], [karr]
     for n in names:
-        c = cols[n]
+        c = dict(cols[n], **part.get("column_overrides", {}).get(n, {}))
         t = arrow_type(c["type"])
         fields.append(pa.field(n, t, nullable=c["nullable"]))
-        arrays.append(pa.array([py_value(c["type"], r["values"][n]) for r in part["rows"]], t))
+        arrays.append(physical_array(c["type"], t, [r["values"][n] for r in part["rows"]]))
     return fields, arrays
+
+
+BITS = {"float32": (pa.uint32(), 32), "float64": (pa.uint64(), 64), "uint32": (pa.uint32(), 32),
+        "uint64": (pa.uint64(), 64)}
+
+
+def physical_array(tname, t, values):
+    """Build an Arrow array whose Parquet physical values are exactly the typed protocol values."""
+    if tname in ("float32", "float64"):
+        ut, _ = BITS[tname]
+        bits = [None if "null" in v else int(v[tname], 16) for v in values]
+        return pa.array(bits, ut).view(t)
+    if tname in ("uint32", "uint64"):
+        _, w = BITS[tname]
+        return pa.array([None if "null" in v else int(v["int"]) % (1 << w) for v in values], t)
+    return pa.array([py_value(tname, v) for v in values], t)
+
+
+def physical_values(tname, arr):
+    """Inverse of physical_array, for checking what pyarrow reads back."""
+    out = []
+    if tname in ("float32", "float64"):
+        bits = arr.view(BITS[tname][0]).to_pylist()
+        w = BITS[tname][1] // 4
+        return [{"null": True} if b is None else {tname: format(b, "0%dx" % w)} for b in bits]
+    for x in arr.to_pylist():
+        if x is None:
+            out.append({"null": True})
+        elif tname in ("uint32", "uint64"):
+            w = BITS[tname][1]
+            out.append({"int": str(x - (1 << w) if x >= 1 << (w - 1) else x)})
+        elif tname == "bool":
+            out.append({"bool": x})
+        elif tname in ("int32", "int64"):
+            out.append({"int": str(x)})
+        elif tname in ("string", "binary") or tname.startswith("fixed:"):
+            out.append({"bytes_base64": b64e(x.encode("utf-8") if isinstance(x, str) else x)})
+        else:
+            out.append({"json": x})
+    return out
 
 
 def write_part(doc, part, fault=None) -> bytes:
@@ -509,12 +598,11 @@ def assert_structure(data, doc, part, fault=None):
         assert t.column_names == ["key"] + names
         got_keys = [k if isinstance(k, bytes) else k.encode("utf-8") for k in t.column("key").to_pylist()]
         assert got_keys == keys
-        cols = {c["name"]: c for c in doc["columns"]}
+        cols = {c["name"]: dict(c, **part.get("column_overrides", {}).get(c["name"], {})) for c in doc["columns"]}
         for n in names:
-            exp = [py_value(cols[n]["type"], r["values"][n]) for r in part["rows"]]
-            got_v = t.column(n).to_pylist()
-            for a, b in zip(exp, got_v):
-                assert a == b or (a != a and b != b) or (isinstance(a, float) and repr(a) == repr(b)), (n, a, b)
+            exp = [r["values"][n] for r in part["rows"]]
+            got_v = physical_values(cols[n]["type"], t.column(n).combine_chunks())
+            assert exp == got_v, (n, exp, got_v)
 
 
 def manifest_for(doc, datas, version=(FORMAT_VERSION, DRAFT_REVISION)):
@@ -575,7 +663,15 @@ def write_dataset(doc, out_dir, fault=None, check=True, extra_files=None):
     return m
 
 
-VALID = [def_empty, def_basic, def_multipart, def_binary_keys, def_projection, def_delimiter]
+VALID = [def_empty, def_basic, def_multipart, def_binary_keys, def_projection, def_delimiter, def_list_bounds,
+         def_non_utf8_keys]
+
+
+def def_inconsistent_all():
+    return [def_inconsistent("inconsistent-column-type", "Column size is INT64 in part 0 and INT32 in part 1.",
+                             {"type": "int32"}),
+            def_inconsistent("inconsistent-column-repetition",
+                             "Column size is REQUIRED in part 0 and OPTIONAL in part 1.", {"nullable": True})]
 
 
 def rec(name, out_dir, rows_name, valid, desc, provenance="native", fault=None, extra=None):
@@ -592,7 +688,7 @@ def rec(name, out_dir, rows_name, valid, desc, provenance="native", fault=None, 
 def build():
     records = []
     # 1. rows documents
-    docs = [f() for f in VALID] + def_invalid_native() + [def_key_order_across_parts()]
+    docs = [f() for f in VALID] + def_invalid_native() + [def_key_order_across_parts()] + def_inconsistent_all()
     for d in docs:
         write_text(ROWS / f"{d['dataset']}.json", dumps(jsonable_rows_doc(d)))
 
@@ -628,6 +724,12 @@ def build():
         "missing-column-index-native": ({"codes": ["missing_page_index"], "detect": "read",
                                          "requirements": ["RG-2", "RG-7", "CHECK-2"]},
                                         {"expect_no_column_index_rg": 1}),
+        "inconsistent-column-type": ({"codes": ["inconsistent_column"], "detect": "read", "requirements": ["COL-5", "CHECK-1"],
+                                      "request": "range-columns:size",
+                                      "note": "COL-5 is required on open only for projected columns, so the case "
+                                              "projects size; an open-time refusal with this code also passes."}, {}),
+        "inconsistent-column-repetition": ({"codes": ["inconsistent_column"], "detect": "read", "requirements": ["COL-5", "CHECK-1"],
+                                            "request": "range-columns:size"}, {}),
         "key-order-across-parts": ({"codes": ["key_order", "bounds_mismatch"], "detect": "read",
                                     "requirements": ["KEY-3", "CHECK-2", "PART-3"],
                                     "note": "The manifest's max key for part 0 is not the actual last key, so "

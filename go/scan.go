@@ -157,7 +157,7 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 	}
 	n := 0
 	from, inclusive := rng.Start, !rng.StartExclusive
-	var seq []byte
+	var log pageLog
 	for g := r.groupFor(from); g < len(r.groups) && n < rng.Limit; g++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -166,7 +166,7 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 		if rng.End != nil && bytes.Compare(grp.first, rng.End) >= 0 {
 			break
 		}
-		keys, start, done, err := r.readKeys(ctx, grp, from, inclusive, rng.End, rng.Limit-n, &seq, stats)
+		keys, start, done, err := r.readKeys(ctx, g, from, inclusive, rng.End, rng.Limit-n, &log, stats)
 		if err != nil {
 			return err
 		}
@@ -185,10 +185,7 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 				}
 				err := p.readColumnInto(ctx, grp.physical, column, start, len(keys), stats, func(values []parquet.Value) error { return sink.Values(c, values) })
 				if err != nil {
-					if errors.As(err, new(errSink)) {
-						return err
-					}
-					return p.columnError(ctx, grp.physical, name, err)
+					return err
 				}
 			}
 			n += len(keys)
@@ -205,13 +202,14 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 // readKeys reads the keys of up to want rows of one row group at or after
 // from and below end, and the row of the first; done reports that end was
 // reached. The keys share one new allocation, each capped at its own end.
-func (r *Reader) readKeys(ctx context.Context, grp group, from []byte, inclusive bool, end []byte, want int, seq *[]byte, stats *Stats) ([][]byte, int64, bool, error) {
+func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive bool, end []byte, want int, log *pageLog, stats *Stats) ([][]byte, int64, bool, error) {
+	grp := r.groups[g]
 	p := r.parts[grp.part]
 	index, err := p.keyIndex(ctx, grp.physical)
 	if err != nil {
 		return nil, 0, false, err
 	}
-	cursor := p.keyCursor(ctx, grp.physical, index, stats, seq)
+	cursor := p.keyCursor(ctx, g, grp.physical, index, stats, log)
 	defer cursor.close()
 	stats.GroupsOpened++
 	key, row, ok, err := cursor.seek(from, inclusive)

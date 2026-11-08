@@ -1,0 +1,9 @@
+# empty
+
+valid: yes
+description: A committed dataset with no parts.
+provenance: native
+producer: pyarrow 26.0.1
+source rows: generators/rows/empty.json
+
+manifest: format_version 0, 0 parts

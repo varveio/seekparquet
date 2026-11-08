@@ -1,0 +1,47 @@
+{
+  "suite": "seekparquet-conformance-semantic",
+  "revision": "0.1.0-draft.1",
+  "status": "draft",
+  "specification": "spec/format-1.md",
+  "format_version": 0,
+  "draft_revision": 1,
+  "mandatory_targets": [
+    "reader"
+  ],
+  "mandatory_capabilities": [
+    "open",
+    "range",
+    "list",
+    "projection"
+  ],
+  "case_files": [
+    "cases/open.json",
+    "cases/range.json",
+    "cases/prefix.json",
+    "cases/list.json",
+    "cases/pagination.json",
+    "cases/projection.json",
+    "cases/requests.json",
+    "cases/refusals-open.json",
+    "cases/refusals-read.json",
+    "cases/validate-structural.json",
+    "cases/validate-profile.json",
+    "cases/validate-full.json",
+    "cases/validate-digest.json"
+  ],
+  "case_counts": {
+    "open": 15,
+    "range": 532,
+    "prefix": 30,
+    "list": 54,
+    "pagination": 89,
+    "projection": 25,
+    "requests": 17,
+    "refusals-open": 64,
+    "refusals-read": 28,
+    "validate-structural": 90,
+    "validate-profile": 27,
+    "validate-full": 14,
+    "validate-digest": 14
+  }
+}

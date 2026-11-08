@@ -6,7 +6,6 @@ package seekparquet
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -115,6 +114,11 @@ type part struct {
 	size   int64
 	footer *parquet.File
 	key    int
+	// utf8Key reports a key column annotated STRING or UTF8 (KEY-6).
+	utf8Key bool
+	// signatures spell each top-level column's physical type, repetition
+	// and nesting (COL-5).
+	signatures map[string]string
 	// leaves are the top-level non-repeated leaf columns by name, key
 	// included; unsupported are the top-level names that are groups or
 	// repeated (COL-3).
@@ -157,17 +161,18 @@ func OpenParts(ctx context.Context, parts []PartSource, opt PartsOptions) (*Read
 	return openParts(ctx, inputs, opt)
 }
 
-func openParts(ctx context.Context, inputs []partInput, opt PartsOptions) (r *Reader, err error) {
-	r = &Reader{}
+func openParts(ctx context.Context, inputs []partInput, opt PartsOptions) (_ *Reader, err error) {
+	r := &Reader{}
 	r.closing, r.closeNow = context.WithCancelCause(context.Background())
 	defer func() {
 		if err != nil {
 			closeSources(inputs)
 			r.closeNow(ErrClosed)
-			r = nil
 		}
 	}()
-	var previous []byte
+	signatures := map[string]string{} // COL-5: column name -> signature
+	owner := map[string]string{}      // column name -> first part holding it
+	var log pageLog
 	for i, in := range inputs {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -177,7 +182,15 @@ func openParts(ctx context.Context, inputs []partInput, opt PartsOptions) (r *Re
 			return nil, err
 		}
 		r.parts = append(r.parts, p)
-		r.columns = mergeColumns(r.columns, p.footer.Schema())
+		for name, sig := range p.signatures {
+			if want, ok := signatures[name]; ok && want != sig {
+				return nil, refusePart(CodeInconsistentColumn, in.Name, -1,
+					"column %s differs in physical type, repetition or nesting from part %s", name, owner[name])
+			} else if !ok {
+				signatures[name], owner[name] = sig, in.Name
+			}
+		}
+		r.columns = mergeColumns(r.columns, p)
 		first, last := len(r.groups), -1
 		for physical := range p.footer.Metadata().RowGroups {
 			rg := &p.footer.Metadata().RowGroups[physical]
@@ -192,29 +205,17 @@ func openParts(ctx context.Context, inputs []partInput, opt PartsOptions) (r *Re
 					return nil, err
 				}
 			}
-			chunk := rg.Columns[p.key]
-			if chunk.ColumnIndexOffset == 0 || chunk.ColumnIndexLength == 0 || chunk.OffsetIndexOffset == 0 || chunk.OffsetIndexLength == 0 {
-				return nil, refusePart(CodeMissingPageIndex, in.Name, physical, "the key column lacks a ColumnIndex or an OffsetIndex")
-			}
-			key, err := p.firstKey(ctx, physical)
+			g := len(r.groups)
+			key, err := p.firstKey(ctx, g, physical, &log)
 			if err != nil {
 				return nil, err
 			}
-			if previous != nil && bytes.Compare(previous, key) >= 0 {
-				e := keyOrder(in.Name, physical, 0, key)
-				e.Detail = "the row group's first key is not above the keys before it"
-				return nil, e
-			}
 			r.groups = append(r.groups, group{part: i, physical: physical, first: key, rows: rg.NumRows})
 			r.rows += rg.NumRows
-			previous, last = key, len(r.groups)-1
+			last = g
 		}
-		if err := r.checkBounds(ctx, p, in.PartSource, first, last); err != nil {
+		if err := r.checkBounds(ctx, p, in.PartSource, first, last, &log); err != nil {
 			return nil, err
-		}
-		if last >= 0 && in.MaxKey != nil {
-			// The next part's first key must follow this part's last.
-			previous = in.MaxKey
 		}
 	}
 	return r, nil
@@ -231,7 +232,7 @@ func closeSources(inputs []partInput) {
 
 // checkBounds compares a part's decoded first and last keys with the exact
 // bounds given for it.
-func (r *Reader) checkBounds(ctx context.Context, p *part, src PartSource, first, last int) error {
+func (r *Reader) checkBounds(ctx context.Context, p *part, src PartSource, first, last int, log *pageLog) error {
 	if src.MinKey == nil && src.MaxKey == nil {
 		return nil
 	}
@@ -242,7 +243,7 @@ func (r *Reader) checkBounds(ctx context.Context, p *part, src PartSource, first
 		return refusePart(CodeBoundsMismatch, src.Name, r.groups[first].physical, "the decoded first key differs from the part's minimum key")
 	}
 	if src.MaxKey != nil {
-		key, err := p.lastKey(ctx, r.groups[last].physical)
+		key, err := p.lastKey(ctx, last, r.groups[last].physical, log)
 		if err != nil {
 			return err
 		}
@@ -251,43 +252,6 @@ func (r *Reader) checkBounds(ctx context.Context, p *part, src PartSource, first
 		}
 	}
 	return nil
-}
-
-// readFooter parses a part's footer, without its page indexes or bloom
-// filters, after checking that the footer length the file declares fits
-// in the file (so a hostile length cannot make it allocate gigabytes).
-func readFooter(ctx context.Context, file io.ReaderAt, size int64) (*parquet.File, error) {
-	at := bind(ctx, file)
-	if size < 12 {
-		return nil, errors.New("the file is too short to be Parquet")
-	}
-	var tail [8]byte
-	if _, err := at.ReadAt(tail[:], size-8); err != nil && !(errors.Is(err, io.EOF)) {
-		return nil, fmt.Errorf("read the footer length: %w", err)
-	}
-	if string(tail[4:]) != "PAR1" {
-		return nil, errors.New("the file does not end with PAR1")
-	}
-	if n := int64(binary.LittleEndian.Uint32(tail[:4])); n > size-12 {
-		return nil, fmt.Errorf("the footer length %d does not fit in the file", n)
-	}
-	f, err := parquet.OpenFile(at, size, parquet.SkipPageIndex(true), parquet.SkipBloomFilters(true), parquet.ReadBufferSize(64<<10))
-	if err != nil {
-		return nil, err
-	}
-	return f, nil
-}
-
-// footerError classifies an error reading a footer: the context's own
-// error as is, anything else invalid_footer.
-func footerError(ctx context.Context, name string, err error) error {
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return ctxErr
-	}
-	if errors.Is(err, ErrClosed) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return err
-	}
-	return refusePart(CodeInvalidFooter, name, -1, "%v", err)
 }
 
 func openPart(ctx context.Context, in partInput, opt PartsOptions) (*part, error) {
@@ -301,44 +265,50 @@ func openPart(ctx context.Context, in partInput, opt PartsOptions) (*part, error
 			return nil, footerError(ctx, in.Name, err)
 		}
 	}
+	meta := footer.Metadata()
+	if err := checkSelfContained(in.Name, meta); err != nil {
+		return nil, err
+	}
 	if err := checkRowCounts(footer); err != nil {
 		return nil, refusePart(CodeInvalidFooter, in.Name, -1, "%v", err)
+	}
+	top, dup, err := topLevel(meta.Schema)
+	if err != nil {
+		return nil, refusePart(CodeInvalidFooter, in.Name, -1, "%v", err)
+	}
+	ncols := len(footer.Schema().Columns())
+	for g := range meta.RowGroups {
+		if len(meta.RowGroups[g].Columns) != ncols {
+			return nil, refusePart(CodeInvalidFooter, in.Name, g, "the row group's column chunks do not match the schema")
+		}
 	}
 	if opt.CheckFooter != nil {
 		if err := opt.CheckFooter(in.Name, footer); err != nil {
 			return nil, err
 		}
 	}
-	p := &part{name: in.Name, file: in.File, size: in.Size, footer: footer,
-		leaves: make(map[string]int), unsupported: make(map[string]bool)}
-	schema := footer.Schema()
-	keyField := topField(schema, KeyColumn)
-	if keyField == nil || !keyField.Leaf() || !keyField.Required() || keyField.Type().Kind() != parquet.ByteArray {
-		return nil, refusePart(CodeInvalidKeyColumn, in.Name, -1, "no top-level REQUIRED BYTE_ARRAY column named %s", KeyColumn)
+	utf8Key, err := checkKeyColumn(in.Name, meta, top, dup)
+	if err != nil {
+		return nil, err
 	}
-	for _, f := range schema.Fields() {
-		if !f.Leaf() || f.Repeated() {
-			p.unsupported[f.Name()] = true
+	p := &part{name: in.Name, file: in.File, size: in.Size, footer: footer, utf8Key: utf8Key,
+		leaves: make(map[string]int), unsupported: make(map[string]bool), signatures: make(map[string]string)}
+	for name, e := range top {
+		p.signatures[name] = e.signature
+		rep, _ := e.se.RepetitionType.Get()
+		if e.leaf < 0 || rep == format.Repeated || dup[name] {
+			p.unsupported[name] = true
 			continue
 		}
-		leaf, ok := schema.Lookup(f.Name())
-		if !ok {
-			return nil, refusePart(CodeInvalidFooter, in.Name, -1, "column %s is not in the schema", f.Name())
-		}
-		p.leaves[f.Name()] = leaf.ColumnIndex
+		p.leaves[name] = e.leaf
 	}
 	p.key = p.leaves[KeyColumn]
 	for _, want := range opt.Expect {
-		if err := checkExpectation(in.Name, schema, want); err != nil {
+		if err := checkExpectation(in.Name, footer.Schema(), want); err != nil {
 			return nil, err
 		}
 	}
-	for g := range footer.Metadata().RowGroups {
-		if len(footer.Metadata().RowGroups[g].Columns) != len(schema.Columns()) {
-			return nil, refusePart(CodeInvalidFooter, in.Name, g, "the row group's column chunks do not match the schema")
-		}
-	}
-	p.index = make([]atomic.Pointer[groupIndex], len(footer.Metadata().RowGroups))
+	p.index = make([]atomic.Pointer[groupIndex], len(meta.RowGroups))
 	return p, nil
 }
 
@@ -403,53 +373,30 @@ func (p *part) chunk(physical, column int) (*parquet.FileColumnChunk, error) {
 	return chunk, nil
 }
 
-// firstKey decodes the first key of a non-empty row group from its first
-// key page.
-func (p *part) firstKey(ctx context.Context, physical int) ([]byte, error) {
-	chunk, err := p.chunk(physical, p.key)
-	if err != nil {
-		return nil, err
-	}
-	pages := chunk.PagesFrom(p.at(ctx))
-	defer func() { _ = pages.Close() }()
-	page, err := pages.ReadPage()
-	if err != nil {
-		return nil, p.readError(ctx, physical, fmt.Errorf("read the first key page: %w", err))
-	}
-	defer parquet.Release(page)
-	values := make([]parquet.Value, 1)
-	n, err := page.Values().ReadValues(values)
-	if n == 0 {
-		if err == nil || errors.Is(err, io.EOF) {
-			err = errors.New("the first key page holds no values")
-		}
-		return nil, p.readError(ctx, physical, fmt.Errorf("read the first key: %w", err))
-	}
-	if values[0].IsNull() || len(values[0].ByteArray()) == 0 {
-		e := refusePart(CodeInvalidKey, p.name, physical, "the first key is empty")
-		e.Row = 0
-		return nil, e
-	}
-	return bytes.Clone(values[0].ByteArray()), nil
-}
-
-// readError wraps an error reading a part's pages with its location.
-func (p *part) readError(ctx context.Context, physical int, err error) error {
-	if ctx.Err() != nil {
-		return err
-	}
-	return fmt.Errorf("seekparquet: part %s row group %d: %w", p.name, physical, err)
-}
-
-// lastKey decodes the last key of a non-empty row group from its last key
-// page, located through the OffsetIndex.
-func (p *part) lastKey(ctx context.Context, physical int) ([]byte, error) {
+// firstKey decodes the first key of a non-empty row group, global index
+// g, from its first key page, after checking the group's key page index
+// (CHECK-2 applies to every row group a reader reads).
+func (p *part) firstKey(ctx context.Context, g, physical int, log *pageLog) ([]byte, error) {
 	index, err := p.keyIndex(ctx, physical)
 	if err != nil {
 		return nil, err
 	}
-	var seq []byte
-	cursor := p.keyCursor(ctx, physical, index, nil, &seq)
+	cursor := p.keyCursor(ctx, g, physical, index, nil, log)
+	defer cursor.close()
+	if err := cursor.decode(0); err != nil {
+		return nil, err
+	}
+	return bytes.Clone(cursor.values[0].ByteArray()), nil
+}
+
+// lastKey decodes the last key of a non-empty row group from its last key
+// page, located through the OffsetIndex.
+func (p *part) lastKey(ctx context.Context, g, physical int, log *pageLog) ([]byte, error) {
+	index, err := p.keyIndex(ctx, physical)
+	if err != nil {
+		return nil, err
+	}
+	cursor := p.keyCursor(ctx, g, physical, index, nil, log)
 	defer cursor.close()
 	if err := cursor.decode(len(index.pages) - 1); err != nil {
 		return nil, err
@@ -465,8 +412,9 @@ func bind(ctx context.Context, file io.ReaderAt) io.ReaderAt {
 	return file
 }
 
-// at returns the part's file for reads under ctx.
-func (p *part) at(ctx context.Context) io.ReaderAt { return bind(ctx, p.file) }
+// at returns the part's file for reads under ctx, its errors marked as
+// the source's own.
+func (p *part) at(ctx context.Context) io.ReaderAt { return storageReader{bind(ctx, p.file)} }
 
 // Parts returns the number of parts.
 func (r *Reader) Parts() int { return len(r.parts) }
@@ -482,11 +430,11 @@ func (r *Reader) Rows() int64 { return r.rows }
 // then any later part's additions. The slice is a copy.
 func (r *Reader) Columns() []string { return slices.Clone(r.columns) }
 
-// mergeColumns adds the top-level non-repeated value columns of schema that
-// names lacks.
-func mergeColumns(names []string, schema *parquet.Schema) []string {
-	for _, f := range schema.Fields() {
-		if f.Name() == KeyColumn || !f.Leaf() || f.Repeated() || slices.Contains(names, f.Name()) {
+// mergeColumns adds the top-level non-repeated value columns of p that
+// names lacks, in p's schema order.
+func mergeColumns(names []string, p *part) []string {
+	for _, f := range p.footer.Schema().Fields() {
+		if _, ok := p.leaves[f.Name()]; !ok || f.Name() == KeyColumn || slices.Contains(names, f.Name()) {
 			continue
 		}
 		names = append(names, f.Name())

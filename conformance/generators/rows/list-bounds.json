@@ -1,0 +1,69 @@
+{
+  "dataset": "list-bounds",
+  "description": "Keys a/a, a/z, b/1, b/2, c: the worked example of LIST-7 (bounds apply to candidate keys).",
+  "schema_id": "conformance/objects/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "size",
+      "type": "int64",
+      "nullable": false
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        5
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "YS9h",
+          "values": {
+            "size": {
+              "int": "0"
+            }
+          }
+        },
+        {
+          "key_base64": "YS96",
+          "values": {
+            "size": {
+              "int": "1"
+            }
+          }
+        },
+        {
+          "key_base64": "Yi8x",
+          "values": {
+            "size": {
+              "int": "2"
+            }
+          }
+        },
+        {
+          "key_base64": "Yi8y",
+          "values": {
+            "size": {
+              "int": "3"
+            }
+          }
+        },
+        {
+          "key_base64": "Yw==",
+          "values": {
+            "size": {
+              "int": "4"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

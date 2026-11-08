@@ -10,8 +10,11 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"unicode/utf8"
 
 	"github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go/encoding/thrift"
+	"github.com/parquet-go/parquet-go/format"
 )
 
 // Stats counts the decoding work of reads: pages and keys decoded and the
@@ -46,18 +49,18 @@ type keyCursor struct {
 	values   []parquet.Value
 	at       int // index of the decoded page, -1 before the first
 	next     int // position within values
-	// seq is the last key the request decoded, shared by its cursors:
-	// every key a request decodes must be above every key it decoded
-	// before (CHECK-2).
-	seq   *[]byte
+	// g is the row group's global index, its position in the dataset.
+	g int
+	// log holds the pages the request decoded, shared by its cursors.
+	log   *pageLog
 	stats *Stats
 }
 
-func (p *part) keyCursor(ctx context.Context, physical int, index *groupIndex, stats *Stats, seq *[]byte) *keyCursor {
+func (p *part) keyCursor(ctx context.Context, g, physical int, index *groupIndex, stats *Stats, log *pageLog) *keyCursor {
 	if stats == nil {
 		stats = new(Stats)
 	}
-	return &keyCursor{ctx: ctx, part: p, physical: physical, index: index, at: -1, stats: stats, seq: seq}
+	return &keyCursor{ctx: ctx, part: p, g: g, physical: physical, index: index, at: -1, stats: stats, log: log}
 }
 
 // seek returns the first key at or after from (after it when !inclusive)
@@ -99,57 +102,139 @@ func (c *keyCursor) advance() (key []byte, row int64, ok bool, err error) {
 	return c.seek(nil, true)
 }
 
-// decode reads key page i and checks it (CHECK-2): one non-empty key per
-// row its OffsetIndex gives it, strictly ascending, after every key the
-// request decoded before, and inside the page's ColumnIndex bounds.
+// decode reads key page i and checks it (CHECK-2): its header locates
+// exactly one data page of the rows its OffsetIndex entry gives it (RG-3);
+// it holds one non-empty key per row (KEY-2), valid UTF-8 for a STRING key
+// (KEY-6), strictly ascending, inside the page's ColumnIndex bounds (RG-5),
+// and in dataset order with every other page the request decoded (KEY-3).
 func (c *keyCursor) decode(i int) error {
 	if err := c.ctx.Err(); err != nil {
 		return err
 	}
+	p := c.part
+	meta := c.index.pages[i]
+	if err := p.checkPageHeader(c.ctx, c.physical, i, meta); err != nil {
+		return err
+	}
 	if c.pages == nil {
-		chunk, err := c.part.chunk(c.physical, c.part.key)
+		chunk, err := p.chunk(c.physical, p.key)
 		if err != nil {
 			return err
 		}
 		// SeekToRow uses the OffsetIndex once the chunk has loaded it,
 		// which keyIndex did.
-		c.pages = chunk.PagesFrom(c.part.at(c.ctx))
+		c.pages = chunk.PagesFrom(p.at(c.ctx))
 	}
 	if c.page != nil {
 		parquet.Release(c.page)
 		c.page, c.values = nil, c.values[:0]
 	}
-	meta := c.index.pages[i]
 	page, values, err := readPage(c.pages, meta.first, c.values)
 	if err != nil {
-		return c.part.readError(c.ctx, c.physical, fmt.Errorf("key page %d: %w", i, err))
+		return p.dataError(c.ctx, c.physical, fmt.Errorf("key page %d: %w", i, err))
 	}
 	c.page, c.values, c.at, c.next = page, values, i, 0
 	c.stats.PagesDecoded++
 	c.stats.KeysDecoded += int64(len(values))
 	if int64(len(values)) != meta.rows {
-		return refusePart(CodeInvalidPageIndex, c.part.name, c.physical, "key page %d holds %d rows, its OffsetIndex %d", i, len(values), meta.rows)
+		return refusePart(CodeInvalidPageIndex, p.name, c.physical, "key page %d holds %d rows, its OffsetIndex entry %d", i, len(values), meta.rows)
 	}
-	previous := *c.seq
+	var previous []byte
 	for j, value := range values {
 		key := value.ByteArray()
 		row := meta.first + int64(j)
-		if value.IsNull() || len(key) == 0 {
-			e := refusePart(CodeInvalidKey, c.part.name, c.physical, "empty key")
+		if value.IsNull() || len(key) == 0 || p.utf8Key && !utf8.Valid(key) {
+			e := refusePart(CodeInvalidKey, p.name, c.physical, "an empty key, or a STRING key that is not valid UTF-8")
 			e.Row = row
 			return e
 		}
-		if previous != nil && bytes.Compare(key, previous) <= 0 {
-			return keyOrder(c.part.name, c.physical, row, key)
+		if j > 0 && bytes.Compare(key, previous) <= 0 {
+			return keyOrder(p.name, c.physical, row, key)
 		}
 		previous = key
 	}
-	if bytes.Compare(values[0].ByteArray(), meta.lo) < 0 || bytes.Compare(values[len(values)-1].ByteArray(), meta.hi) > 0 {
-		return refusePart(CodeInvalidPageIndex, c.part.name, c.physical, "key page %d holds a key outside its ColumnIndex bounds", i)
+	first, last := values[0].ByteArray(), values[len(values)-1].ByteArray()
+	if bytes.Compare(first, meta.lo) < 0 || bytes.Compare(last, meta.hi) > 0 {
+		return refusePart(CodeInvalidPageIndex, p.name, c.physical, "key page %d holds a key outside its ColumnIndex bounds", i)
 	}
-	// The last key must outlive the page's buffers.
-	*c.seq = append((*c.seq)[:0], values[len(values)-1].ByteArray()...)
+	return c.log.add(pageSpan{g: c.g, page: i, part: p.name, physical: c.physical, firstRow: meta.first, first: first, last: last})
+}
+
+// checkPageHeader reads the page header an OffsetIndex entry locates and
+// requires it to begin exactly one data page that fills the entry and
+// holds the entry's rows (RG-3).
+func (p *part) checkPageHeader(ctx context.Context, physical, i int, meta keyPage) error {
+	bad := func(format string, args ...any) error {
+		return refusePart(CodeInvalidPageIndex, p.name, physical, "key page %d: "+format, append([]any{i}, args...)...)
+	}
+	var header format.PageHeader
+	var headerLen int64
+	for _, want := range []int64{4 << 10, 1 << 20} {
+		n := min(meta.size, want)
+		buf := make([]byte, n)
+		if got, err := p.at(ctx).ReadAt(buf, meta.offset); int64(got) < n {
+			if err == nil {
+				err = io.ErrUnexpectedEOF
+			}
+			if isEnvironment(ctx, err) {
+				return err
+			}
+			return bad("read its header: %v", err)
+		}
+		r := new(thrift.CompactProtocol).NewReaderFromBytes(buf)
+		header = format.PageHeader{}
+		if err := thrift.NewDecoder(r).Decode(&header); err != nil {
+			if n < meta.size && n == want {
+				continue // the header may be longer than the bytes read
+			}
+			return bad("its OffsetIndex entry does not locate a page header")
+		}
+		headerLen = int64(r.BytesRead())
+		break
+	}
+	if headerLen == 0 {
+		return bad("its OffsetIndex entry does not locate a page header")
+	}
+	var rows int64
+	switch header.Type {
+	case format.DataPage:
+		h, ok := header.DataPageHeader.Get()
+		if !ok {
+			return bad("a data page without its header")
+		}
+		rows = int64(h.NumValues)
+	case format.DataPageV2:
+		h, ok := header.DataPageHeaderV2.Get()
+		if !ok {
+			return bad("a data page without its header")
+		}
+		rows = int64(h.NumRows)
+	default:
+		return bad("its OffsetIndex entry locates a page of type %s, not a data page", header.Type)
+	}
+	if header.CompressedPageSize < 0 || headerLen+int64(header.CompressedPageSize) != meta.size {
+		return bad("its OffsetIndex entry does not locate exactly one page")
+	}
+	if rows != meta.rows {
+		return bad("the page holds %d rows, its OffsetIndex entry %d", rows, meta.rows)
+	}
 	return nil
+}
+
+// dataError classifies an error decoding a page: the environment's own
+// error as is, anything else corrupt Parquet data (CHECK-5).
+func (p *part) dataError(ctx context.Context, physical int, err error) error {
+	if isEnvironment(ctx, err) {
+		if ctx.Err() != nil {
+			return err
+		}
+		return fmt.Errorf("seekparquet: part %s row group %d: %w", p.name, physical, err)
+	}
+	var unsupported *UnsupportedError
+	if errors.As(err, &unsupported) {
+		return err
+	}
+	return refusePart(CodeInvalidParquet, p.name, physical, "%v", err)
 }
 
 func (c *keyCursor) close() {
@@ -231,18 +316,11 @@ func (p *part) readValues(ctx context.Context, physical int, row int64, n int, n
 			return nil
 		})
 		if err != nil {
-			return nil, p.columnError(ctx, physical, name, err)
+			return nil, err
 		}
 		out[i] = values
 	}
 	return out, nil
-}
-
-func (p *part) columnError(ctx context.Context, physical int, name string, err error) error {
-	if ctx.Err() != nil {
-		return err
-	}
-	return fmt.Errorf("seekparquet: part %s row group %d column %s: %w", p.name, physical, name, err)
 }
 
 // errSink marks an error a ColumnSink returned, so that it is returned to
@@ -254,7 +332,13 @@ func (e errSink) Error() string { return e.err.Error() }
 // readColumnInto hands n rows of a value column of a physical row group
 // from row on to emit, a page at a time; the values alias the page's
 // buffers and are valid only until emit returns.
+//
+// Errors in the data are invalid_parquet refusals (CHECK-5); a column
+// chunk whose codec this reader does not decode is unsupported.
 func (p *part) readColumnInto(ctx context.Context, physical, column int, row int64, n int, stats *Stats, emit func([]parquet.Value) error) error {
+	if err := p.checkCodec(physical, column); err != nil {
+		return err
+	}
 	chunk, err := p.chunk(physical, column)
 	if err != nil {
 		return err
@@ -262,7 +346,7 @@ func (p *part) readColumnInto(ctx context.Context, physical, column int, row int
 	// Without an OffsetIndex SeekToRow decodes from the chunk's start,
 	// which is correct, only slower (COL-4).
 	if _, err := chunk.OffsetIndexFrom(p.at(ctx)); err != nil && !errors.Is(err, parquet.ErrMissingOffsetIndex) {
-		return fmt.Errorf("read the OffsetIndex: %w", err)
+		return p.dataError(ctx, physical, fmt.Errorf("read the OffsetIndex of column %d: %w", column, err))
 	}
 	pages := chunk.PagesFrom(p.at(ctx))
 	defer func() { _ = pages.Close() }()
@@ -273,7 +357,7 @@ func (p *part) readColumnInto(ctx context.Context, physical, column int, row int
 		}
 		page, values, err := readPage(pages, next, scratch)
 		if err != nil {
-			return err
+			return p.dataError(ctx, physical, fmt.Errorf("column %d: %w", column, err))
 		}
 		stats.PagesDecoded++
 		take := min(len(values), n-done)

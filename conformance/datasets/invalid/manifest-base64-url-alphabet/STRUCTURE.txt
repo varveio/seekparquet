@@ -1,0 +1,56 @@
+# manifest-base64-url-alphabet
+
+valid: no
+description: Part 1's max_key_base64 (0xFF*81) is written in the URL-safe alphabet ('_' for '/').
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/binary-keys
+expected refusal: invalid_manifest, detected at the latest on open (PART-3, CHECK-1)
+changes:
+  - manifest: parts.1.max_key_base64 "////////////////////////////////////////////////////////////////////////////////////////////////////////////" -> "____________________________________________________________________________________________________________"
+
+manifest: format_version 0, 2 parts
+  part 0: 'data/part-00000.parquet', rows 24, bytes 3128, keys '\x00' .. 'p'
+  part 1: 'data/part-00001.parquet', rows 22, bytes 2503, keys 'cHE=' .. '____________________________________________________________________________________________________________' (not decodable)
+
+file data/part-00000.parquet: 3128 bytes, footer 1295 bytes
+  num_rows 24, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/binary/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column v: INT32 REQUIRED def=0 rep=0
+  row_group 0: rows 12, sorting_columns [col0 asc]
+    key chunk: codec ZSTD, encodings RLE,DELTA_BYTE_ARRAY
+    page headers: DATA_PAGE(3) DATA_PAGE(3) DATA_PAGE(3) DATA_PAGE(3)
+    offset index: 4 pages, first_row_index [0, 3, 6, 9]
+    column index: 4 pages, boundary_order ASCENDING, null_pages none
+      min lengths [1, 1, 1, 122]
+      max lengths [2, 1, 122, 122]
+  row_group 1: rows 12, sorting_columns [col0 asc]
+    key chunk: codec ZSTD, encodings RLE,DELTA_BYTE_ARRAY
+    page headers: DATA_PAGE(3) DATA_PAGE(3) DATA_PAGE(3) DATA_PAGE(3)
+    offset index: 4 pages, first_row_index [0, 3, 6, 9]
+    column index: 4 pages, boundary_order ASCENDING, null_pages none
+      min lengths [122, 81, 3, 3]
+      max lengths [81, 2, 2, 1]
+
+file data/part-00001.parquet: 2503 bytes, footer 1179 bytes
+  num_rows 22, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/binary/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column v: INT32 REQUIRED def=0 rep=0
+  row_group 0: rows 9, sorting_columns [col0 asc]
+    key chunk: codec SNAPPY, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(9) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3)
+    offset index: 3 pages, first_row_index [0, 3, 6]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [2, 1, 1]
+      max lengths [4, 2, 2]
+  row_group 1: rows 13, sorting_columns [col0 asc]
+    key chunk: codec SNAPPY, encodings PLAIN,RLE,RLE_DICTIONARY
+    page headers: DICTIONARY_PAGE(13) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(3) DATA_PAGE_V2(1)
+    offset index: 5 pages, first_row_index [0, 3, 6, 9, 12]
+    column index: 5 pages, boundary_order ASCENDING, null_pages none
+      min lengths [2, 4, 2, 3, 81]
+      max lengths [3, 1, 2, 81, 81]

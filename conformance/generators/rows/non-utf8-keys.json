@@ -1,0 +1,101 @@
+{
+  "dataset": "non-utf8-keys",
+  "description": "An unannotated key column holding keys that are not valid UTF-8 (allowed, KEY-6). Each invalid key is in the middle of a 3-row page, so every page bound is valid UTF-8.",
+  "schema_id": "conformance/objects/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "size",
+      "type": "int64",
+      "nullable": false
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        9
+      ],
+      "writer": {
+        "max_rows_per_page": 3,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "azAw",
+          "values": {
+            "size": {
+              "int": "0"
+            }
+          }
+        },
+        {
+          "key_base64": "azAwww==",
+          "values": {
+            "size": {
+              "int": "1"
+            }
+          }
+        },
+        {
+          "key_base64": "azAx",
+          "values": {
+            "size": {
+              "int": "2"
+            }
+          }
+        },
+        {
+          "key_base64": "azAy",
+          "values": {
+            "size": {
+              "int": "3"
+            }
+          }
+        },
+        {
+          "key_base64": "azAygA==",
+          "values": {
+            "size": {
+              "int": "4"
+            }
+          }
+        },
+        {
+          "key_base64": "azAz",
+          "values": {
+            "size": {
+              "int": "5"
+            }
+          }
+        },
+        {
+          "key_base64": "azA0",
+          "values": {
+            "size": {
+              "int": "6"
+            }
+          }
+        },
+        {
+          "key_base64": "azA1",
+          "values": {
+            "size": {
+              "int": "7"
+            }
+          }
+        },
+        {
+          "key_base64": "azA2",
+          "values": {
+            "size": {
+              "int": "8"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+# key-order-duplicate-across-row-groups
+
+valid: no
+description: The last key of row group 0 equals the first key of row group 1.
+provenance: native
+producer: pyarrow 26.0.1
+source rows: generators/rows/key-order-duplicate-across-row-groups.json
+expected refusal: key_order, detected at the latest on read (KEY-3, CHECK-2)
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 1845, keys 'k00' .. 'k11'
+
+file data/part-00000.parquet: 1845 bytes, footer 1109 bytes
+  num_rows 12, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  row_group 0: rows 6, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 3 pages, first_row_index [0, 2, 4]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [3, 3, 3]
+      max lengths [3, 3, 3]
+  row_group 1: rows 6, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 3 pages, first_row_index [0, 2, 4]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [3, 3, 3]
+      max lengths [3, 3, 3]

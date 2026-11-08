@@ -25,11 +25,13 @@ const (
 	CodeInvalidFooter         Code = "invalid_footer"
 	CodeStampMismatch         Code = "stamp_mismatch"
 	CodeInvalidKeyColumn      Code = "invalid_key_column"
+	CodeInconsistentColumn    Code = "inconsistent_column"
 	CodeMissingSortingColumns Code = "missing_sorting_columns"
 	CodeMissingPageIndex      Code = "missing_page_index"
 	CodeInvalidPageIndex      Code = "invalid_page_index"
 	CodeInvalidKey            Code = "invalid_key"
 	CodeKeyOrder              Code = "key_order"
+	CodeInvalidParquet        Code = "invalid_parquet"
 	CodeBoundsMismatch        Code = "bounds_mismatch"
 )
 
@@ -120,12 +122,15 @@ const (
 	// UnsupportedEncoding: a file uses an encoding or codec outside what
 	// this reader decodes (ENC-1).
 	UnsupportedEncoding = "unsupported_encoding"
+	// UnsupportedEncryption: a part uses Parquet modular encryption
+	// (FILE-2).
+	UnsupportedEncryption = "unsupported_encryption"
 )
 
 // UnsupportedError reports a valid dataset or request that uses a feature
 // this reader does not support. It is not a refusal of the data.
 type UnsupportedError struct {
-	// Code is UnsupportedProjection or UnsupportedEncoding.
+	// Code is one of the Unsupported constants.
 	Code   string
 	Detail string
 }

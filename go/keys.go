@@ -34,7 +34,7 @@ func CommonPrefix(key, prefix []byte, delim byte) []byte {
 		return nil
 	}
 	if i := bytes.IndexByte(key[len(prefix):], delim); i >= 0 {
-		return key[:len(prefix)+i+1 : len(prefix)+i+1]
+		return key[: len(prefix)+i+1 : len(prefix)+i+1]
 	}
 	return nil
 }

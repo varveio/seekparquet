@@ -1,0 +1,3523 @@
+{
+  "group": "list",
+  "target": "reader",
+  "description": "Delimited listing (LIST-1 to LIST-7). Expected entries come from oracle.py.",
+  "cases": [
+    {
+      "id": "list/delimiter/root",
+      "description": "empty prefix; keys beginning with the delimiter roll up to '/'",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Lw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YTA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6k=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Y2Fmw6kv"
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqXo=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95/3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP96",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP//",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/y8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "//8v"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "////Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/a",
+      "description": "prefix without a trailing delimiter; key a is a row",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YQ==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YTA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/a-slash",
+      "description": "key equal to the prefix is a row; a// and a/b/ roll up",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v"
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/a-slash-slash",
+      "description": "repeated delimiters",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8v",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8v",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8vLw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8vYg==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/a-b",
+      "description": "a/b/ spans parts 0 and 1",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS9iLw==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iLw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iL2M=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iL2Mv"
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iL2Q=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/a-b-c",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS9iL2M=",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iL2M=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iL2Mv"
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/slash",
+      "description": "delimiter at the start of keys",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "Lw==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Lw==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Ly8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "L2E=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "L2Ev"
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/slash-slash",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "Ly8=",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Ly8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Ly94",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/no-match",
+      "description": "no key has the prefix",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "cQ==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "list/delimiter/ff-delim-root",
+      "description": "non-ASCII delimiter 0xFF",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-1"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Lw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Ly8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Ly94",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "L2E=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "L2EvYg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8v",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8vLw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8vYg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iL2M=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iL2Mv",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iL2MvZA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iL2Q=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YTA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yi8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yi94",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6k=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6kveA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqXo=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "eP8="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/w=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/ff-delim-x",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-1"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "eA==",
+        "delimiter_base64": "/w==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "eP8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/ff-delim-xff",
+      "description": "x\\xff\\xff rolls up to itself",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-1"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "eP8=",
+        "delimiter_base64": "/w==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "eP95",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "eP95/w=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP96",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "eP//"
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/utf8-lead-byte",
+      "description": "delimiter equal to a UTF-8 lead byte",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-1"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "Y2Fm",
+        "delimiter_base64": "ww==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Y2Fmww=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/utf8-cont-byte",
+      "description": "delimiter equal to a UTF-8 continuation byte",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-1"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "Y2Fmww==",
+        "delimiter_base64": "qQ==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Y2Fmw6k="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/prefix-ff",
+      "description": "prefix 0xFF has no successor",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "/w==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/y8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "//8v"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "////Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/prefix-ff-ff",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "//8=",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "//8v"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "////Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/delim-a",
+      "description": "a letter as delimiter",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "YQ==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Lw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Ly8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Ly94",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "L2E="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YQ=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yi8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yi94",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Y2E="
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95/3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP96",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP//",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/y9h"
+          },
+          {
+            "kind": "row",
+            "key_base64": "/y9iL2M=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "//8vYQ=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "////L3g=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/limit-1",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/limit-2",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Lw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/columns",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": [
+              {
+                "int": "60"
+              }
+            ]
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v"
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": [
+              {
+                "int": "160"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/columns-root",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Lw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": [
+              {
+                "int": "50"
+              }
+            ]
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YTA=",
+            "values": [
+              {
+                "int": "180"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": [
+              {
+                "int": "190"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": [
+              {
+                "int": "200"
+              }
+            ]
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6k=",
+            "values": [
+              {
+                "int": "230"
+              }
+            ]
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Y2Fmw6kv"
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqQ==",
+            "values": [
+              {
+                "int": "250"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqXo=",
+            "values": [
+              {
+                "int": "260"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95",
+            "values": [
+              {
+                "int": "270"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95/3o=",
+            "values": [
+              {
+                "int": "280"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP96",
+            "values": [
+              {
+                "int": "290"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP//",
+            "values": [
+              {
+                "int": "300"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": [
+              {
+                "int": "310"
+              }
+            ]
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/y8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": [
+              {
+                "int": "340"
+              }
+            ]
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "//8v"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "////Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/end-inside-prefix",
+      "description": "end inside the range of a/",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "end_base64": "YS9i",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Lw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/end-at-prefix",
+      "description": "end equal to a common prefix: the key a/b/ is not a candidate",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "end_base64": "YS9iLw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v"
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/end-inside-a-b",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "end_base64": "YS9iL2Mv",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v"
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/end-empty",
+      "description": "an empty end: nothing",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "QUERY-2"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "end_base64": "",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "list/delimiter/end-below-prefix",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "Yg==",
+        "delimiter_base64": "Lw==",
+        "end_base64": "YQ==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "list/delimiter/after-row",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS8=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v"
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/after-inside-prefix",
+      "description": "continuation false: a/b/ is returned because a/b/c/ and later keys roll up to it",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS9iL2M=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/after-inside-prefix-continuation",
+      "description": "continuation true: a/b/ is not returned",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "LIST-5",
+        "LIST-6"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS9iL2M=",
+        "continuation": true,
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/after-equals-prefix-continuation",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "LIST-5",
+        "LIST-6"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS9iLw==",
+        "continuation": true,
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/after-past-prefix",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS96eg==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YTA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6k=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Y2Fmw6kv"
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqXo=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95/3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP96",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP//",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/y8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "//8v"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "////Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/after-empty",
+      "description": "every key is greater than the empty after",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "QUERY-2"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Lw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YTA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6k=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Y2Fmw6kv"
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqXo=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95/3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP96",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP//",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/y8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "//8v"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "////Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/continuation-without-after",
+      "description": "continuation has no effect without after",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "continuation": true,
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v"
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/delimiter/after-and-end",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS8v",
+        "end_base64": "YS9j",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/list-bounds/worked-example",
+      "description": "LIST-7: a/a is a candidate, so a/ appears",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "end_base64": "YS9i",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/list-bounds/worked-example-without-a-a",
+      "description": "LIST-7: with a/a excluded by after, a/z alone (beyond end) does not make a/ appear",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS9h",
+        "end_base64": "YS9i",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "list/list-bounds/after-a-a",
+      "description": "continuation false: a/ is returned because a/z rolls up to it",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "LIST-5"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS9h",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yw==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/list-bounds/after-a-a-continuation",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7",
+        "LIST-5"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS9h",
+        "continuation": true,
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yw==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/list-bounds/end-c",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-7"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "end_base64": "Yw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/multipart/root",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "UkVBRE1F",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YXBwLw=="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "dG1wLw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "enotbGFzdA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/multipart/logs",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8=",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI2Lw=="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/multipart/logs-2026",
+      "description": "logs/2026/02/ spans parts 0 and 1",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8yMDI2Lw==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI2LzAxLw=="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI2LzAyLw=="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI2LzAzLw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/multipart/logs-2026-02",
+      "description": "rows from two parts",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000,
+        "columns": [
+          "size",
+          "mtime"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "values": [
+              {
+                "int": "882854000"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "values": [
+              {
+                "int": "936166262"
+              },
+              {
+                "int": "1768899794"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+            "values": [
+              {
+                "int": "1989090778"
+              },
+              {
+                "int": "1770132074"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+            "values": [
+              {
+                "int": "232002150"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "values": [
+              {
+                "int": "1685066606"
+              },
+              {
+                "int": "1775418049"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+            "values": [
+              {
+                "int": "1207775224"
+              },
+              {
+                "int": "1771860611"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+            "values": [
+              {
+                "int": "175160838"
+              },
+              {
+                "int": "1776162286"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDcuZ3o=",
+            "values": [
+              {
+                "int": "1189262629"
+              },
+              {
+                "int": "1773917107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDguZ3o=",
+            "values": [
+              {
+                "int": "1536265996"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDkuZ3o=",
+            "values": [
+              {
+                "int": "283147767"
+              },
+              {
+                "int": "1773320231"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+            "values": [
+              {
+                "int": "1428079770"
+              },
+              {
+                "int": "1774168261"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+            "values": [
+              {
+                "int": "219617200"
+              },
+              {
+                "int": "1773035602"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+            "values": [
+              {
+                "int": "1680509420"
+              },
+              {
+                "int": "1776949909"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+            "values": [
+              {
+                "int": "865546578"
+              },
+              {
+                "int": "1772958125"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTQuZ3o=",
+            "values": [
+              {
+                "int": "570222112"
+              },
+              {
+                "int": "1770811813"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTUuZ3o=",
+            "values": [
+              {
+                "int": "196094001"
+              },
+              {
+                "int": "1767963104"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTYuZ3o=",
+            "values": [
+              {
+                "int": "438733841"
+              },
+              {
+                "int": "1776261333"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTcuZ3o=",
+            "values": [
+              {
+                "int": "1318442420"
+              },
+              {
+                "int": "1772288161"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTguZ3o=",
+            "values": [
+              {
+                "int": "1856824044"
+              },
+              {
+                "int": "1775539284"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTkuZ3o=",
+            "values": [
+              {
+                "int": "1264208374"
+              },
+              {
+                "int": "1768064381"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+            "values": [
+              {
+                "int": "1350654560"
+              },
+              {
+                "int": "1770785198"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjEuZ3o=",
+            "values": [
+              {
+                "int": "697701077"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjIuZ3o=",
+            "values": [
+              {
+                "int": "2016265940"
+              },
+              {
+                "int": "1771819412"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjMuZ3o=",
+            "values": [
+              {
+                "int": "1676122187"
+              },
+              {
+                "int": "1768073096"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjQuZ3o=",
+            "values": [
+              {
+                "int": "822573084"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjUuZ3o=",
+            "values": [
+              {
+                "int": "827309862"
+              },
+              {
+                "int": "1769640014"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjYuZ3o=",
+            "values": [
+              {
+                "int": "510752354"
+              },
+              {
+                "int": "1771254856"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+            "values": [
+              {
+                "int": "334315265"
+              },
+              {
+                "int": "1774592315"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjguZ3o=",
+            "values": [
+              {
+                "int": "1500041918"
+              },
+              {
+                "int": "1773253162"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjkuZ3o=",
+            "values": [
+              {
+                "int": "905890783"
+              },
+              {
+                "int": "1772770242"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzAuZ3o=",
+            "values": [
+              {
+                "int": "1814310535"
+              },
+              {
+                "int": "1770548250"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzEuZ3o=",
+            "values": [
+              {
+                "int": "1922162610"
+              },
+              {
+                "int": "1774011753"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzIuZ3o=",
+            "values": [
+              {
+                "int": "1361819783"
+              },
+              {
+                "int": "1773327670"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+            "values": [
+              {
+                "int": "2049076646"
+              },
+              {
+                "int": "1771302670"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+            "values": [
+              {
+                "int": "400105941"
+              },
+              {
+                "int": "1773892065"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzUuZ3o=",
+            "values": [
+              {
+                "int": "1680692067"
+              },
+              {
+                "int": "1774724288"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzYuZ3o=",
+            "values": [
+              {
+                "int": "1444407357"
+              },
+              {
+                "int": "1775229449"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzcuZ3o=",
+            "values": [
+              {
+                "int": "411071564"
+              },
+              {
+                "int": "1773471760"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+            "values": [
+              {
+                "int": "622630868"
+              },
+              {
+                "int": "1772753692"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+            "values": [
+              {
+                "int": "976415507"
+              },
+              {
+                "int": "1776664949"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/multipart/logs-2026-02-limit",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "delimiter_base64": "Lw==",
+        "limit": 5
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/multipart/tmp",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "dG1wLw==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "dG1wLw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "dG1wL3g=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/multipart/delim-dot",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8yMDI3LzAxLw==",
+        "delimiter_base64": "Lg==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDAu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDEu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDIu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDMu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDQu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDUu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDYu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDcu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDgu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDku"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTAu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTEu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTIu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTMu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTQu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTUu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTYu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTcu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTgu"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTku"
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/binary-keys/nul-delim",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-1"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "AA==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "AA=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "AQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Hw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "IA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "QQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDM=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDQ=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDU=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDY=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8C",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YQA="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJj",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJk",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHFy",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHFycw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "fg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "fw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "f/8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "gA==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "gAA="
+          },
+          {
+            "kind": "row",
+            "key_base64": "wyg=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "w6k=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "4oI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "772e",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "8J+YgA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/g==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/wA="
+          },
+          {
+            "kind": "row",
+            "key_base64": "//4=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/binary-keys/nul-delim-a",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-1"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YQ==",
+        "delimiter_base64": "AA==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YQA="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJj",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJk",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/binary-keys/ff-delim",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-1"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "AA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AAA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AAE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Hw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "IA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "QQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDM=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDQ=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDU=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDY=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQAA",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJj",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJk",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHFy",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHFycw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "fg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "fw==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "f/8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "gA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "gAA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "wyg=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "w6k=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "4oI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "772e",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "8J+YgA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/g==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/w=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/binary-keys/ff-delim-ff",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-1"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "prefix_base64": "/w==",
+        "delimiter_base64": "/w==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/wA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//4=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "//8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/binary-keys/upper-l-delim",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-1"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "TA==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "AA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AAA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AAE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Hw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "IA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "QQ==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "TA=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8C",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQAA",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJj",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJk",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHFy",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHFycw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "fg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "fw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "f/8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "gA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "gAA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "wyg=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "w6k=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "4oI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "772e",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "8J+YgA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/g==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/wA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//4=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/truncated-bounds-2/ff-delim-ff",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "LIST-1",
+        "RG-6"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "list",
+        "prefix_base64": "/w==",
+        "delimiter_base64": "/w==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/wA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//4=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "//8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/truncated-bounds-2/upper-m-prefix",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4",
+        "RG-6"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "list",
+        "prefix_base64": "TQ==",
+        "delimiter_base64": "/w==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/empty/root",
+      "requirements": [
+        "LIST-2",
+        "LIST-3",
+        "LIST-4"
+      ],
+      "dataset": "datasets/empty",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    }
+  ]
+}

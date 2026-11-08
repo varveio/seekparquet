@@ -1,0 +1,340 @@
+{
+  "group": "validate-digest",
+  "target": "validator-digest",
+  "description": "Validation at the digest level (section 8): valid datasets complete; faults in scope fail with their code.",
+  "cases": [
+    {
+      "id": "validate-digest/empty",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/empty",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/basic",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/multipart",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 3
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/binary-keys",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/projection",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/delimiter",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/list-bounds",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/non-utf8-keys",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/non-utf8-keys",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/truncated-bounds",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/truncated-bounds",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/truncated-bounds-2",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/non-monotone-bounds",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/non-monotone-bounds",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/key-legacy-utf8",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/key-legacy-utf8",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/no-value-page-index",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/no-value-page-index",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/digest-mismatch",
+      "description": "Part 2's sha256 is wrong (all zeros).",
+      "requirements": [
+        "PART-5",
+        "VAL-2"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/invalid/digest-mismatch",
+      "detect": "validate:digest",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "digest_mismatch"
+      }
+    }
+  ]
+}

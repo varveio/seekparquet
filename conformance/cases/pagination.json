@@ -1,0 +1,3728 @@
+{
+  "group": "pagination",
+  "target": "reader",
+  "description": "Paginated listings and ranges (LIST-6, QUERY-3): each page is a case; make_cases.py asserts that the pages concatenate to the unpaginated result.",
+  "cases": [
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-00",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-01",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Lw==",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-02",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YQ==",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-03",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS8=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YTA=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-04",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YTA=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-05",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YWI=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-06",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Yg==",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-07",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Yi8=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6k=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-08",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Y2Fmw6k=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Y2Fmw6kv"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-09",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Y2Fmw6kv",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqQ==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-10",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Y2Fmw6nDqQ==",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqXo=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-11",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Y2Fmw6nDqXo=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "eP95",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-12",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "eP95",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "eP95/3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-13",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "eP95/3o=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "eP96",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-14",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "eP96",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "eP//",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-15",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "eP//",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-16",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "/w==",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "/y8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-17",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "/y8=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-18",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "//8=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "//8v"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-19",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "//8v",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "////Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit1/page-20",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "////Lw==",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit3/page-00",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 3
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Lw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit3/page-01",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS8=",
+        "continuation": true,
+        "limit": 3
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YTA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit3/page-02",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Yg==",
+        "continuation": true,
+        "limit": 3
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6k=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "Y2Fmw6kv"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit3/page-03",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Y2Fmw6kv",
+        "continuation": true,
+        "limit": 3
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqXo=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP95",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit3/page-04",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "eP95",
+        "continuation": true,
+        "limit": 3
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "eP95/3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP96",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "eP//",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit3/page-05",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "eP//",
+        "continuation": true,
+        "limit": 3
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/y8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-2f-limit3/page-06",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "//8=",
+        "continuation": true,
+        "limit": 3
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "//8v"
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "////Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-00",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-01",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS8v",
+        "continuation": true,
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-02",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS9iLw==",
+        "continuation": true,
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/a/-2f-limit2/page-03",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS9j",
+        "continuation": true,
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-ff-limit4/page-00",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Lw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Ly8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Ly94",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "L2E=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-ff-limit4/page-01",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "L2E=",
+        "continuation": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "L2EvYg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8v",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-ff-limit4/page-02",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "YS8v",
+        "continuation": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8vLw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8vYg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLw==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-ff-limit4/page-03",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "YS9iLw==",
+        "continuation": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iL2M=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iL2Mv",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iL2MvZA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iL2Q=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-ff-limit4/page-04",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "YS9iL2Q=",
+        "continuation": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YTA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-ff-limit4/page-05",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "YWI=",
+        "continuation": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yi8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yi94",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6k=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-ff-limit4/page-06",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "Y2Fmw6k=",
+        "continuation": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6kveA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2Fmw6nDqXo=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "eP8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/delimiter/root-ff-limit4/page-07",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "eP8=",
+        "continuation": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "/w=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/root-2f-limit2/page-00",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "UkVBRE1F",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YXBwLw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/root-2f-limit2/page-01",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YXBwLw==",
+        "continuation": true,
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8="
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "dG1wLw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/root-2f-limit2/page-02",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "dG1wLw==",
+        "continuation": true,
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "enotbGFzdA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-00",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "delimiter_base64": "Lw==",
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-01",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "delimiter_base64": "Lw==",
+        "after_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+        "continuation": true,
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-02",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "delimiter_base64": "Lw==",
+        "after_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+        "continuation": true,
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-03",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "delimiter_base64": "Lw==",
+        "after_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+        "continuation": true,
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-04",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "delimiter_base64": "Lw==",
+        "after_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+        "continuation": true,
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/logs/2026/02/-2f-limit7/page-05",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "delimiter_base64": "Lw==",
+        "after_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+        "continuation": true,
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/logs/-2f-limit1/page-00",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8=",
+        "delimiter_base64": "Lw==",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI2Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/logs/-2f-limit1/page-01",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "bG9ncy8yMDI2Lw==",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "bG9ncy8yMDI3Lw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/multipart/logs/-2f-limit1/page-02",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "list",
+        "prefix_base64": "bG9ncy8=",
+        "delimiter_base64": "Lw==",
+        "after_base64": "bG9ncy8yMDI3Lw==",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "pagination/list/binary-keys/root-ff-limit5/page-00",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "limit": 5
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "AA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AAA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AAE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Hw==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/binary-keys/root-ff-limit5/page-01",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "Hw==",
+        "continuation": true,
+        "limit": 5
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "IA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "QQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDI=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/binary-keys/root-ff-limit5/page-02",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDI=",
+        "continuation": true,
+        "limit": 5
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDM=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDQ=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDU=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDY=",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/binary-keys/root-ff-limit5/page-03",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf8=",
+        "continuation": true,
+        "limit": 5
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQAA",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/binary-keys/root-ff-limit5/page-04",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "YWI=",
+        "continuation": true,
+        "limit": 5
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWJj",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJk",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHFy",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/binary-keys/root-ff-limit5/page-05",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "cHFy",
+        "continuation": true,
+        "limit": 5
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cHFycw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "fg==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "fw==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "f/8="
+          },
+          {
+            "kind": "row",
+            "key_base64": "gA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/binary-keys/root-ff-limit5/page-06",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "gA==",
+        "continuation": true,
+        "limit": 5
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "gAA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "wyg=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "w6k=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "4oI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "772e",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/binary-keys/root-ff-limit5/page-07",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "/w==",
+        "after_base64": "772e",
+        "continuation": true,
+        "limit": 5
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "8J+YgA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/g==",
+            "values": []
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "/w=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-00",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-01",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "YS8=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "Yi8="
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-02",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Yi8=",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yw==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/list/list-bounds/root-2f-limit1/page-03",
+      "requirements": [
+        "LIST-6",
+        "QUERY-3",
+        "LIST-5"
+      ],
+      "dataset": "datasets/list-bounds",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "Lw==",
+        "after_base64": "Yw==",
+        "continuation": true,
+        "limit": 1
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "pagination/range/multipart-limit25/page-00",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "limit": 25
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "UkVBRE1F",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDM=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDQ=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDU=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDY=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDc=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDg=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDk=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTMuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/multipart-limit25/page-01",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "start_base64": "bG9ncy8yMDI2LzAxL2YwMTMuZ3o=",
+        "start_exclusive": true,
+        "limit": 25
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDguZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/multipart-limit25/page-02",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "start_base64": "bG9ncy8yMDI2LzAyL2YwMDguZ3o=",
+        "start_exclusive": true,
+        "limit": 25
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/multipart-limit25/page-03",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "start_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+        "start_exclusive": true,
+        "limit": 25
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTguZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/multipart-limit25/page-04",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "start_base64": "bG9ncy8yMDI2LzAzL2YwMTguZ3o=",
+        "start_exclusive": true,
+        "limit": 25
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTMuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/multipart-limit25/page-05",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "start_base64": "bG9ncy8yMDI3LzAxL2YwMTMuZ3o=",
+        "start_exclusive": true,
+        "limit": 25
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "dG1wLw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "dG1wL3g=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "enotbGFzdA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/binary-keys-limit7/page-00",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "AA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AAA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AAE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Hw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "IA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "QQ==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/binary-keys-limit7/page-01",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "start_base64": "QQ==",
+        "start_exclusive": true,
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDM=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDQ=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDU=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDY=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/binary-keys-limit7/page-02",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "start_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDY=",
+        "start_exclusive": true,
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8C",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQAA",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/binary-keys-limit7/page-03",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "start_base64": "YWI=",
+        "start_exclusive": true,
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWJj",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJk",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHFy",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHFycw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "fg==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/binary-keys-limit7/page-04",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "start_base64": "fg==",
+        "start_exclusive": true,
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "fw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "f/8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "gA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "gAA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "wyg=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "w6k=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "4oI=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/binary-keys-limit7/page-05",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "start_base64": "4oI=",
+        "start_exclusive": true,
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "772e",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "8J+YgA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/g==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/wA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//4=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/binary-keys-limit7/page-06",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "start_base64": "//8=",
+        "start_exclusive": true,
+        "limit": 7
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "////",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-00",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "AA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AAA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AAE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "AQ==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-01",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "start_base64": "AQ==",
+        "start_exclusive": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Hw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "IA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "QQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDA=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-02",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "start_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDA=",
+        "start_exclusive": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDM=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDQ=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-03",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "start_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDQ=",
+        "start_exclusive": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDU=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDY=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8C",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-04",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "start_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8C",
+        "start_exclusive": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQAA",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQE=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-05",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "start_base64": "YQE=",
+        "start_exclusive": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJj",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWJk",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cA==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-06",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "start_base64": "cA==",
+        "start_exclusive": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cHE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHFy",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "cHFycw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "fg==",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-07",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "start_base64": "fg==",
+        "start_exclusive": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "fw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "f/8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "gA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "gAA=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-08",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "start_base64": "gAA=",
+        "start_exclusive": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "wyg=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "w6k=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "4oI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "772e",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-09",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "start_base64": "772e",
+        "start_exclusive": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "8J+YgA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/g==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/w==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "/wA=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-10",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "start_base64": "/wA=",
+        "start_exclusive": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "//4=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "pagination/range/truncated-bounds-2-limit4/page-11",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "start_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",
+        "start_exclusive": true,
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+            "values": []
+          }
+        ]
+      }
+    }
+  ]
+}

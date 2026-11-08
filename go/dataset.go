@@ -263,7 +263,9 @@ func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entr
 	return in, nil
 }
 
-// checkStamps applies STAMP-1 and STAMP-2.
+// checkStamps applies STAMP-1 and STAMP-2: each stamp exactly once, no
+// draft_revision stamp unless format_version is 0, values compared as exact
+// strings with the manifest's canonical decimal and schema_id.
 func checkStamps(name string, footer *parquet.File, m *manifest.Manifest) error {
 	want := map[string]string{
 		StampFormatVersion: strconv.FormatInt(m.Version.FormatVersion, 10),
@@ -271,20 +273,27 @@ func checkStamps(name string, footer *parquet.File, m *manifest.Manifest) error 
 	}
 	if m.Version.FormatVersion == 0 {
 		want[StampDraftRevision] = strconv.FormatInt(m.Version.DraftRevision, 10)
-	} else if _, ok := footer.Lookup(StampDraftRevision); ok {
-		return refusePart(CodeStampMismatch, name, -1, "%s is present on a final format version", StampDraftRevision)
+	}
+	got := map[string][]string{}
+	for _, kv := range footer.Metadata().KeyValueMetadata {
+		switch kv.Key {
+		case StampFormatVersion, StampDraftRevision, StampSchemaID:
+			got[kv.Key] = append(got[kv.Key], kv.Value)
+		}
 	}
 	for _, key := range []string{StampFormatVersion, StampDraftRevision, StampSchemaID} {
+		values := got[key]
 		expected, required := want[key]
-		if !required {
-			continue
-		}
-		got, ok := footer.Lookup(key)
-		if !ok {
+		switch {
+		case !required && len(values) > 0:
+			return refusePart(CodeStampMismatch, name, -1, "%s is present on a final format version", key)
+		case !required:
+		case len(values) == 0:
 			return refusePart(CodeStampMismatch, name, -1, "the footer has no %s", key)
-		}
-		if got != expected {
-			return refusePart(CodeStampMismatch, name, -1, "%s is %q, the manifest's %q", key, got, expected)
+		case len(values) > 1:
+			return refusePart(CodeStampMismatch, name, -1, "the footer has %s %d times", key, len(values))
+		case values[0] != expected:
+			return refusePart(CodeStampMismatch, name, -1, "%s is %q, the manifest's %q", key, values[0], expected)
 		}
 	}
 	return nil

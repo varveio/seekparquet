@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -124,8 +123,8 @@ func Parse(raw []byte) (*Manifest, error) {
 	if err := member(top, "schema_id", &m.SchemaID, true); err != nil {
 		return nil, err
 	}
-	if m.SchemaID == "" {
-		return nil, invalid("schema_id is empty")
+	if m.SchemaID == "" || hasControl(m.SchemaID) {
+		return nil, invalid("schema_id is empty or holds a control character")
 	}
 	if ext, ok := top["extensions"]; ok {
 		if err := checkExtensions(ext); err != nil {
@@ -280,44 +279,33 @@ func member(fields map[string]json.RawMessage, name string, s *string, required 
 	return nil
 }
 
-// integer decodes a JSON number that is an integer: JSON Schema's integer
-// type, which admits any number whose fractional part is zero (1.0, 1e2).
+// integer decodes an integer member exactly (MAN-6): a JSON number with no
+// sign, fraction, exponent or leading zero, from 0 to 2^63-1.
 func integer(raw json.RawMessage) (int64, error) {
-	text := strings.TrimSpace(string(raw))
-	if text == "" || !(text[0] == '-' || text[0] >= '0' && text[0] <= '9') {
-		return 0, errors.New("not a number")
-	}
-	if i := strings.IndexAny(text, "eE"); i >= 0 {
-		// Bound the exponent before big.Rat expands it: no integer that
-		// fits in 64 bits needs one beyond a few hundred.
-		exp, err := strconv.Atoi(strings.TrimPrefix(text[i+1:], "+"))
-		if err != nil || exp > 400 || exp < -400 {
-			if strings.Trim(text[:i], "-0.") == "" {
-				return 0, nil // zero, whatever its exponent
-			}
-			return 0, errors.New("not a 64-bit integer")
-		}
-	}
-	r, ok := new(big.Rat).SetString(text)
-	if !ok || !r.IsInt() || !r.Num().IsInt64() {
+	text := string(raw)
+	if text == "" || len(text) > 1 && text[0] == '0' {
 		return 0, errors.New("not an integer")
 	}
-	return r.Num().Int64(), nil
+	for i := 0; i < len(text); i++ {
+		if text[i] < '0' || text[i] > '9' {
+			return 0, errors.New("not an integer")
+		}
+	}
+	n, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		return 0, errors.New("not an integer from 0 to 2^63-1")
+	}
+	return n, nil
 }
 
-// DecodeKey decodes a non-empty key in standard base64 with padding
-// (RFC 4648 §4), refusing any other spelling: unpadded, URL-safe, with
-// whitespace or line breaks, or with non-zero trailing bits.
+// DecodeKey decodes a non-empty key in canonical standard base64 with
+// padding (PART-3): decoding and re-encoding must give back the same string,
+// so whitespace, missing padding, the URL-safe alphabet and non-zero unused
+// bits are all refused.
 func DecodeKey(s string) ([]byte, error) {
-	if s == "" {
-		return nil, errors.New("a key is not empty")
-	}
-	if strings.ContainsAny(s, "\r\n") {
-		return nil, errors.New("not standard base64")
-	}
-	key, err := base64.StdEncoding.Strict().DecodeString(s)
-	if err != nil {
-		return nil, errors.New("not standard base64")
+	key, err := base64.StdEncoding.DecodeString(s)
+	if err != nil || base64.StdEncoding.EncodeToString(key) != s {
+		return nil, errors.New("not canonical standard base64")
 	}
 	if len(key) == 0 {
 		return nil, errors.New("a key is not empty")
@@ -326,7 +314,9 @@ func DecodeKey(s string) ([]byte, error) {
 }
 
 // CheckPath applies PART-1 to a part path: segments separated by "/", each
-// non-empty, neither "." nor "..", without "\" or NUL, and no leading "/".
+// non-empty, neither "." nor "..", without "\" or a control character
+// (U+0000 to U+001F, U+007F), and no leading "/". Paths are literal: nothing
+// is decoded or normalised.
 func CheckPath(path string) error {
 	if path == "" {
 		return errors.New("empty")
@@ -334,8 +324,8 @@ func CheckPath(path string) error {
 	if strings.HasPrefix(path, "/") {
 		return errors.New("begins with /")
 	}
-	if strings.ContainsAny(path, "\\\x00") {
-		return errors.New(`contains \ or NUL`)
+	if strings.ContainsRune(path, '\\') || hasControl(path) {
+		return errors.New(`contains \ or a control character`)
 	}
 	for seg := range strings.SplitSeq(path, "/") {
 		switch seg {
@@ -361,6 +351,16 @@ func checkExtensions(raw json.RawMessage) error {
 	return nil
 }
 
+// hasControl reports whether s holds U+0000 to U+001F or U+007F.
+func hasControl(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 func isLowerHex(s string, n int) bool {
 	if len(s) != n {
 		return false
@@ -376,6 +376,9 @@ func isLowerHex(s string, n int) bool {
 // checkSyntax requires raw to be exactly one JSON value with no object
 // holding the same member name twice, at any depth (MAN-2).
 func checkSyntax(raw []byte) error {
+	if err := checkSurrogates(raw); err != nil {
+		return err
+	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	if err := walk(dec); err != nil {
@@ -426,4 +429,67 @@ func walk(dec *json.Decoder) error {
 		}
 	}
 	return nil
+}
+
+// checkSurrogates refuses an escaped unpaired surrogate in any string
+// (MAN-1), which encoding/json would silently replace with U+FFFD. It runs
+// on any input and assumes nothing about its validity: whatever it does not
+// refuse, the JSON parser still checks.
+func checkSurrogates(raw []byte) error {
+	inString := false
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if !inString {
+			if c == '"' {
+				inString = true
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inString = false
+		case '\\':
+			if i+1 < len(raw) && raw[i+1] == 'u' {
+				r, ok := hex4(raw, i+2)
+				switch {
+				case ok && r >= 0xd800 && r <= 0xdbff:
+					low, okLow := rune(0), false
+					if i+7 < len(raw) && raw[i+6] == '\\' && raw[i+7] == 'u' {
+						low, okLow = hex4(raw, i+8)
+					}
+					if !okLow || low < 0xdc00 || low > 0xdfff {
+						return errors.New("a string holds an unpaired surrogate escape")
+					}
+					i += 11
+					continue
+				case ok && r >= 0xdc00 && r <= 0xdfff:
+					return errors.New("a string holds an unpaired surrogate escape")
+				}
+			}
+			i++ // skip the escaped character
+		}
+	}
+	return nil
+}
+
+// hex4 decodes the four hex digits at raw[i:i+4].
+func hex4(raw []byte, i int) (rune, bool) {
+	if i+4 > len(raw) {
+		return 0, false
+	}
+	var r rune
+	for _, c := range raw[i : i+4] {
+		r <<= 4
+		switch {
+		case c >= '0' && c <= '9':
+			r |= rune(c - '0')
+		case c >= 'a' && c <= 'f':
+			r |= rune(c-'a') + 10
+		case c >= 'A' && c <= 'F':
+			r |= rune(c-'A') + 10
+		default:
+			return 0, false
+		}
+	}
+	return r, true
 }

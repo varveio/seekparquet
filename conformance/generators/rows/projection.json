@@ -1,6 +1,6 @@
 {
   "dataset": "projection",
-  "description": "Projected values of every mandatory physical type with nulls and special floats; the key column carries the STRING annotation; part 1 lacks columns f64 and req, only part 2 has column extra; meta (struct) and tags (list) are nested.",
+  "description": "Projected values of every mandatory physical type with nulls, special floats given by exact bits (signed zero, infinities, NaN payloads), unsigned-annotated INT32/INT64 reported as signed physical values, and a top-level column literally named a.b; the key column carries the STRING annotation; part 1 lacks columns f64 and req, only part 2 has column extra; meta (struct) and tags (list) are nested.",
   "schema_id": "conformance/projection/v1",
   "key_type": "string",
   "columns": [
@@ -28,6 +28,21 @@
       "name": "f64",
       "type": "float64",
       "nullable": true
+    },
+    {
+      "name": "u32",
+      "type": "uint32",
+      "nullable": false
+    },
+    {
+      "name": "u64",
+      "type": "uint64",
+      "nullable": true
+    },
+    {
+      "name": "a.b",
+      "type": "int64",
+      "nullable": false
     },
     {
       "name": "name",
@@ -74,6 +89,9 @@
         "i64",
         "f32",
         "f64",
+        "u32",
+        "u64",
+        "a.b",
         "name",
         "blob",
         "fx",
@@ -109,6 +127,15 @@
             },
             "f64": {
               "float64": "3ff8000000000000"
+            },
+            "u32": {
+              "int": "0"
+            },
+            "u64": {
+              "int": "0"
+            },
+            "a.b": {
+              "int": "0"
             },
             "name": {
               "bytes_base64": ""
@@ -152,6 +179,15 @@
             },
             "f64": {
               "float64": "8000000000000000"
+            },
+            "u32": {
+              "int": "1"
+            },
+            "u64": {
+              "int": "1"
+            },
+            "a.b": {
+              "int": "3"
             },
             "name": {
               "bytes_base64": "cGxhaW4="
@@ -197,6 +233,15 @@
             },
             "f64": {
               "float64": "7ff0000000000000"
+            },
+            "u32": {
+              "int": "-2147483648"
+            },
+            "u64": {
+              "int": "-9223372036854775808"
+            },
+            "a.b": {
+              "int": "6"
             },
             "name": {
               "bytes_base64": "Y2Fmw6k="
@@ -244,6 +289,15 @@
             "f64": {
               "float64": "7ff8000000000000"
             },
+            "u32": {
+              "int": "-1"
+            },
+            "u64": {
+              "int": "-1"
+            },
+            "a.b": {
+              "int": "9"
+            },
             "name": {
               "bytes_base64": "5pel5pys"
             },
@@ -285,7 +339,16 @@
               "null": true
             },
             "f64": {
-              "float64": "7fefffffffffffff"
+              "float64": "7ff8000000000001"
+            },
+            "u32": {
+              "int": "0"
+            },
+            "u64": {
+              "int": "0"
+            },
+            "a.b": {
+              "int": "12"
             },
             "name": {
               "null": true
@@ -323,10 +386,19 @@
               "int": "0"
             },
             "f32": {
-              "float32": "7f7fffff"
+              "float32": "7fc00001"
             },
             "f64": {
               "null": true
+            },
+            "u32": {
+              "int": "1"
+            },
+            "u64": {
+              "int": "1"
+            },
+            "a.b": {
+              "int": "15"
             },
             "name": {
               "bytes_base64": ""
@@ -365,6 +437,9 @@
         "i32",
         "i64",
         "f32",
+        "u32",
+        "u64",
+        "a.b",
         "name",
         "blob",
         "fx",
@@ -395,10 +470,19 @@
               "null": true
             },
             "f32": {
-              "float32": "00000001"
+              "float32": "7f800001"
             },
             "f64": {
-              "float64": "3fb999999999999a"
+              "float64": "fff8000000000000"
+            },
+            "u32": {
+              "int": "-2147483648"
+            },
+            "u64": {
+              "int": "-9223372036854775808"
+            },
+            "a.b": {
+              "int": "18"
             },
             "name": {
               "bytes_base64": "cGxhaW4="
@@ -438,10 +522,19 @@
               "int": "9223372036854775807"
             },
             "f32": {
-              "float32": "3fc00000"
+              "float32": "ffc00000"
             },
             "f64": {
-              "float64": "3ff8000000000000"
+              "float64": "7fefffffffffffff"
+            },
+            "u32": {
+              "int": "-1"
+            },
+            "u64": {
+              "int": "-1"
+            },
+            "a.b": {
+              "int": "21"
             },
             "name": {
               "bytes_base64": "Y2Fmw6k="
@@ -483,10 +576,19 @@
               "int": "-9223372036854775808"
             },
             "f32": {
-              "float32": "80000000"
+              "float32": "7f7fffff"
             },
             "f64": {
-              "float64": "8000000000000000"
+              "float64": "0000000000000001"
+            },
+            "u32": {
+              "int": "0"
+            },
+            "u64": {
+              "int": "0"
+            },
+            "a.b": {
+              "int": "24"
             },
             "name": {
               "bytes_base64": "5pel5pys"
@@ -534,6 +636,15 @@
             "f64": {
               "null": true
             },
+            "u32": {
+              "int": "1"
+            },
+            "u64": {
+              "null": true
+            },
+            "a.b": {
+              "int": "27"
+            },
             "name": {
               "null": true
             },
@@ -570,10 +681,19 @@
               "int": "0"
             },
             "f32": {
-              "float32": "ff800000"
+              "float32": "3fc00000"
             },
             "f64": {
-              "float64": "7ff8000000000000"
+              "float64": "3ff8000000000000"
+            },
+            "u32": {
+              "int": "-2147483648"
+            },
+            "u64": {
+              "int": "-9223372036854775808"
+            },
+            "a.b": {
+              "int": "30"
             },
             "name": {
               "bytes_base64": ""
@@ -615,10 +735,19 @@
               "int": "-1"
             },
             "f32": {
-              "float32": "7fc00000"
+              "float32": "80000000"
             },
             "f64": {
               "null": true
+            },
+            "u32": {
+              "int": "-1"
+            },
+            "u64": {
+              "int": "-1"
+            },
+            "a.b": {
+              "int": "33"
             },
             "name": {
               "bytes_base64": "cGxhaW4="
@@ -658,6 +787,9 @@
         "i64",
         "f32",
         "f64",
+        "u32",
+        "u64",
+        "a.b",
         "name",
         "blob",
         "fx",
@@ -689,10 +821,19 @@
               "int": "9223372036854775807"
             },
             "f32": {
-              "float32": "7f7fffff"
+              "float32": "7f800000"
             },
             "f64": {
-              "float64": "0000000000000001"
+              "float64": "7ff0000000000000"
+            },
+            "u32": {
+              "int": "0"
+            },
+            "u64": {
+              "int": "0"
+            },
+            "a.b": {
+              "int": "36"
             },
             "name": {
               "bytes_base64": "Y2Fmw6k="
@@ -732,10 +873,19 @@
               "null": true
             },
             "f32": {
-              "float32": "00000001"
+              "float32": "ff800000"
             },
             "f64": {
-              "float64": "3fb999999999999a"
+              "float64": "7ff8000000000000"
+            },
+            "u32": {
+              "int": "1"
+            },
+            "u64": {
+              "int": "1"
+            },
+            "a.b": {
+              "int": "39"
             },
             "name": {
               "bytes_base64": "5pel5pys"
@@ -780,7 +930,16 @@
               "null": true
             },
             "f64": {
-              "float64": "3ff8000000000000"
+              "float64": "7ff8000000000001"
+            },
+            "u32": {
+              "int": "-2147483648"
+            },
+            "u64": {
+              "int": "-9223372036854775808"
+            },
+            "a.b": {
+              "int": "42"
             },
             "name": {
               "null": true
@@ -818,10 +977,19 @@
               "int": "0"
             },
             "f32": {
-              "float32": "80000000"
+              "float32": "7fc00001"
             },
             "f64": {
-              "float64": "8000000000000000"
+              "float64": "7ff0000000000001"
+            },
+            "u32": {
+              "int": "-1"
+            },
+            "u64": {
+              "int": "-1"
+            },
+            "a.b": {
+              "int": "45"
             },
             "name": {
               "bytes_base64": ""
@@ -861,10 +1029,19 @@
               "int": "-1"
             },
             "f32": {
-              "float32": "7f800000"
+              "float32": "7f800001"
             },
             "f64": {
-              "float64": "7ff0000000000000"
+              "float64": "fff8000000000000"
+            },
+            "u32": {
+              "int": "0"
+            },
+            "u64": {
+              "int": "0"
+            },
+            "a.b": {
+              "int": "48"
             },
             "name": {
               "bytes_base64": "cGxhaW4="
@@ -906,10 +1083,19 @@
               "int": "9223372036854775807"
             },
             "f32": {
-              "float32": "ff800000"
+              "float32": "ffc00000"
             },
             "f64": {
               "null": true
+            },
+            "u32": {
+              "int": "1"
+            },
+            "u64": {
+              "int": "1"
+            },
+            "a.b": {
+              "int": "51"
             },
             "name": {
               "bytes_base64": "Y2Fmw6k="

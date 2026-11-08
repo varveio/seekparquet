@@ -1,0 +1,29 @@
+# invalid-key-utf8
+
+valid: no
+description: non-utf8-keys with the key annotated STRING: two keys (each mid-page) are not valid UTF-8; every page bound is.
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/non-utf8-keys
+expected refusal: invalid_key, detected at the latest on read (KEY-6, CHECK-2)
+changes:
+  - data/part-00000.parquet: footer: schema element key: converted_type UTF8 and logicalType STRING added
+  - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 1338 -> 1344
+  - manifest: parts[0].bytes 1338 -> 1344
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 9, bytes 1344, keys 'k00' .. 'k06'
+
+file data/part-00000.parquet: 1344 bytes, footer 924 bytes
+  num_rows 9, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  row_group 0: rows 9, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(3) DATA_PAGE(3) DATA_PAGE(3)
+    offset index: 3 pages, first_row_index [0, 3, 6]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [3, 3, 3]
+      max lengths [3, 3, 3]

@@ -119,7 +119,7 @@ type listScan struct {
 	out         []Entry
 	cursor      *keyCursor
 	cursorGroup int
-	seq         []byte
+	log         pageLog
 	values      valueRun
 }
 
@@ -188,7 +188,7 @@ func (s *listScan) run(ctx context.Context) ([]Entry, error) {
 			if err != nil {
 				return nil, err
 			}
-			s.cursor = p.keyCursor(ctx, grp.physical, index, s.stats, &s.seq)
+			s.cursor = p.keyCursor(ctx, g, grp.physical, index, s.stats, &s.log)
 			s.cursorGroup = g
 			s.stats.GroupsOpened++
 		}

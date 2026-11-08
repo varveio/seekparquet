@@ -1,0 +1,38 @@
+{
+  "format": "seekparquet",
+  "format_version": 0,
+  "draft_revision": 1,
+  "schema_id": "conformance/objects/v1",
+  "parts": [
+    {
+      "path": "shards/c.parquet",
+      "rows": 45,
+      "bytes": 7180,
+      "min_key_base64": "UkVBRE1F",
+      "max_key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+      "sha256": "096c98159d01833a96d6aefa43ff85b752053c130f0748556967de7c7fd78d71"
+    },
+    {
+      "path": "shards/a.parquet",
+      "rows": 45,
+      "bytes": 6321,
+      "min_key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+      "max_key_base64": "bG9ncy8yMDI2LzAzL2YwMDguZ3o=",
+      "sha256": "9aba9ab78698e75c0b7723f10764e03ea5a6520f839d03a6d336fa38ad3dea9f"
+    },
+    {
+      "path": "shards/b.parquet",
+      "rows": 44,
+      "bytes": 7059,
+      "min_key_base64": "bG9ncy8yMDI2LzAzL2YwMDkuZ3o=",
+      "max_key_base64": "enotbGFzdA==",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "extensions": {
+    "conformance": {
+      "synthetic": true,
+      "note": "ignored by readers"
+    }
+  }
+}
