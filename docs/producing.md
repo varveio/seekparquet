@@ -39,20 +39,26 @@ promises. Readers and validators check the result; nothing here relaxes a rule o
 
 `write` enforces step 3 and cannot be told otherwise: its options set the key, the schema id, the codec
 (ZSTD by default), page and row-group sizes, `created_by` and column-parallel encoding, but not the
-indexes, bounds or stamps. It checks every key as it arrives (KEY-2, KEY-3) and fails with
+indexes, bounds or stamps. It checks every key as it arrives (KEY-2, KEY-3, KEY-6) and fails with
 `write.ErrProfile`, naming the rule, rather than write a part a reader would refuse. It streams: it holds
 one page of rows and one row group of encoded pages, and computes the part's SHA-256 as the bytes are
 written. Its page bounds are exact on every column, including keys longer than 1,024 bytes and keys that
 begin with `0xFF` bytes, whose bounds a shortening writer can get wrong (RG-5).
 
-`local` confines every path to the dataset root (an `os.Root`). `Commit` checks the manifest as a reader
-would (`MarshalManifest`), checks every listed part's size on disk, and links the manifest into place,
-so an existing manifest is never replaced, even by a concurrent writer. Its result says what an error
-left behind: `Unpublished` (no dataset), `Visible` (the dataset is there, but not proven to survive a
-power loss) or `Durable`.
+`local` confines every path to the dataset root (an `os.Root`) and follows swath's protocol. `WriteDir`
+creates the dataset root, which must not exist, and syncs its parent; it creates `data/` and syncs the
+root, before any part is published. `PublishPart` syncs a part, renames it into place and syncs its
+directory. `Commit` checks the manifest as a reader would (`MarshalManifest`), checks every listed part's
+size on disk, writes the manifest to a temporary file, syncs it, renames it to `manifest.json` and syncs
+the root. The rename replaces a manifest already there: one writer owns a root, and `WriteDir` keeps
+datasets immutable by writing only into a directory it creates. `Commit` reports whether the manifest was
+installed; with an error, that means the root's last sync failed and the dataset is visible but not
+proven durable, so the caller must not remove it.
 
-Windows has no directory sync in Go, so a rename or link there cannot be made durable. `local` refuses
-to publish on Windows unless the caller sets `AllowUnsynced` and accepts `Visible` commits.
+Durability is what the file system guarantees for synced files and directories: on tmpfs, a synced
+dataset does not survive a reboot, and network file systems vary. Windows has no directory sync in Go,
+so a rename there cannot be made durable: `local` refuses to publish on Windows unless the caller sets
+`AllowUnsynced` and accepts datasets that are visible but not proven durable.
 
 ## What `WriteDir` does not do
 
@@ -63,8 +69,9 @@ itself, as swath does.
 
 ## Checking the output
 
-Open the dataset with `seekparquet.OpenDir` and `Options.VerifyOnOpen` for the open-time checks. Full
-validation (§8) is a separate tool. The conformance job validates the module's sample datasets at the
+Open the dataset with `seekparquet.OpenDir` and `Options.VerifyOnOpen` for the open-time checks, and
+validate it in full with `seekparquet.ValidateDir` (§8); the module's own tests do both for every dataset
+they write. The conformance job validates the module's sample datasets at the
 `full` and `digest` levels with the reference adapter and with the Python validator oracle
 (`conformance/validator/`), and reads them with DuckDB
 (`conformance/harness/check_datasets.py`, fed by `go -C go run ./internal/cmd/samples DIR`).

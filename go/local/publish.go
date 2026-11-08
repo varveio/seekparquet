@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package local publishes SeekParquet datasets in a local directory,
-// durably and confined to the dataset root: parts first, each synced and
-// moved into place with its directory synced, then the manifest, written
-// whole, synced, and linked into place, which commits the dataset
-// (COMMIT-1). A manifest is never replaced: a dataset root is committed
-// once (COMMIT-3). WriteDir composes these steps with package write.
+// durably and confined to the dataset root, with swath's protocol: parts
+// first, each synced and renamed into place with its directory synced,
+// then the manifest, written whole, synced and renamed into place, which
+// commits the dataset (COMMIT-1), and its directory synced. A dataset root
+// belongs to one writer at a time; WriteDir, which composes these steps
+// with package write, writes only into a directory it creates.
 package local
 
 import (
@@ -15,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -29,17 +29,21 @@ import (
 // Ops.AllowUnsynced accepts the weaker outcome.
 var ErrDirSyncUnsupported = errors.New("seekparquet/local: directory sync is not supported on this platform")
 
-// Step names one step of a publication, for Ops.Inject.
-type Step string
+// step names one step of a publication, for fault tests (inject).
+type step string
 
-// The steps of PublishPart and Commit, in the order they run.
+// The steps of WriteDir, PublishPart and Commit.
 const (
-	StepWriteManifest Step = "write manifest" // write the manifest's temporary file
-	StepSyncFile      Step = "sync file"      // sync a part, or the manifest's temporary file
-	StepRename        Step = "rename part"    // move a part to its final path
-	StepLink          Step = "link manifest"  // link the manifest into place: the commit
-	StepSyncDir       Step = "sync directory" // sync the directory of a part or of the manifest
+	stepWriteManifest step = "write manifest" // write the manifest's temporary file
+	stepSyncFile      step = "sync file"      // sync a part, or the manifest's temporary file
+	stepRename        step = "rename"         // rename a part or the manifest into place
+	stepSyncDir       step = "sync directory" // sync a directory
 )
+
+// inject, when set (by tests), runs before each step with the step and
+// the path it acts on, and fails the step with its error, as if the step
+// had failed.
+var inject func(s step, path string) error
 
 // Ops is how publication reaches the file system. Every path is
 // slash-separated and relative to Root, which confines it (PART-1).
@@ -47,24 +51,20 @@ type Ops struct {
 	Root *os.Root
 	// AllowUnsynced lets publication go ahead where directories cannot be
 	// synced (ErrDirSyncUnsupported): files are then made visible, but not
-	// proven to survive a power loss, and Commit reports Visible rather
-	// than Durable. Without it, publication there is refused before
-	// anything changes.
+	// proven to survive a power loss. Without it, publication there is
+	// refused before anything changes.
 	AllowUnsynced bool
-	// Inject, when set, runs before each step and fails the step with its
-	// error, as if the step had failed: for fault tests.
-	Inject func(Step) error
 }
 
 // dirSyncSupported reports whether directories can be synced here (a
 // variable for tests).
 var dirSyncSupported = dirSync
 
-func (o Ops) step(s Step) error {
-	if o.Inject == nil {
+func at(s step, path string) error {
+	if inject == nil {
 		return nil
 	}
-	return o.Inject(s)
+	return inject(s, path)
 }
 
 // durable reports whether directory syncs will run, or refuses.
@@ -79,7 +79,7 @@ func (o Ops) durable() (bool, error) {
 }
 
 func (o Ops) syncDir(dir string) error {
-	if err := o.step(StepSyncDir); err != nil {
+	if err := at(stepSyncDir, dir); err != nil {
 		return err
 	}
 	d, err := o.Root.Open(filepath.FromSlash(dir))
@@ -89,19 +89,31 @@ func (o Ops) syncDir(dir string) error {
 	return errors.Join(d.Sync(), d.Close())
 }
 
+// syncPath syncs the directory at path, outside any root: the parent of a
+// dataset root WriteDir creates.
+func syncPath(dir string) error {
+	if err := at(stepSyncDir, dir); err != nil {
+		return err
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	return errors.Join(d.Sync(), d.Close())
+}
+
 // PublishPart installs a written part: it syncs the file at temporary,
-// renames it to final, which must not exist yet, and syncs final's
-// directory, so that the part is durable under its final path before a
-// manifest lists it (COMMIT-1). An error leaves the part unpublished, or,
-// when the directory sync failed, visible at final but not proven
-// durable; either way the caller does not list it. The check that final
-// does not exist is not atomic: the destination belongs to one writer.
+// renames it to final and syncs final's directory, so that the part is
+// durable under its final path before a manifest lists it (COMMIT-1). An
+// error leaves the part unpublished, or, when the directory sync failed,
+// at final but not proven durable; either way the caller does not list
+// it. final's directory must exist.
 func PublishPart(ops Ops, temporary, final string) error {
 	durable, err := ops.durable()
 	if err != nil {
 		return err
 	}
-	if err := ops.step(StepSyncFile); err != nil {
+	if err := at(stepSyncFile, temporary); err != nil {
 		return fmt.Errorf("publish %s: %w", final, err)
 	}
 	f, err := ops.Root.OpenFile(filepath.FromSlash(temporary), os.O_RDWR, 0)
@@ -111,12 +123,7 @@ func PublishPart(ops Ops, temporary, final string) error {
 	if err := errors.Join(f.Sync(), f.Close()); err != nil {
 		return fmt.Errorf("publish %s: sync: %w", final, err)
 	}
-	if _, err := ops.Root.Lstat(filepath.FromSlash(final)); err == nil {
-		return fmt.Errorf("publish %s: %w", final, fs.ErrExist)
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("publish %s: %w", final, err)
-	}
-	if err := ops.step(StepRename); err != nil {
+	if err := at(stepRename, final); err != nil {
 		return fmt.Errorf("publish %s: %w", final, err)
 	}
 	if err := ops.Root.Rename(filepath.FromSlash(temporary), filepath.FromSlash(final)); err != nil {
@@ -130,77 +137,48 @@ func PublishPart(ops Ops, temporary, final string) error {
 	return nil
 }
 
-// CommitResult is what a Commit left behind.
-type CommitResult int
-
-const (
-	// Unpublished: no manifest was installed; the root holds no dataset
-	// (LAYOUT-1).
-	Unpublished CommitResult = iota
-	// Visible: the manifest is installed, complete, and readers see the
-	// dataset, but it is not proven to survive a power loss (its
-	// directory sync failed, or was skipped under Ops.AllowUnsynced).
-	Visible
-	// Durable: the manifest is installed and its directory synced.
-	Durable
-)
-
-func (r CommitResult) String() string {
-	switch r {
-	case Unpublished:
-		return "unpublished"
-	case Visible:
-		return "visible"
-	case Durable:
-		return "durable"
-	}
-	return fmt.Sprintf("CommitResult(%d)", int(r))
-}
-
 // Commit publishes the manifest of parts already installed under the root
 // (by PublishPart) and never changed afterwards (COMMIT-2). It marshals m
 // (MarshalManifest, which refuses a manifest this module would not read),
 // requires every part to be a regular file of the size m gives it, writes
-// the manifest to a temporary file, syncs it, links it into place as
-// manifest.json, which commits the dataset atomically, and syncs the root
-// (COMMIT-1). An existing manifest is never replaced: Commit is refused
-// with fs.ErrExist, also when another writer commits first.
+// the manifest to a temporary file beside its target, syncs it, renames it
+// to manifest.json, which commits the dataset atomically (COMMIT-1), and
+// syncs the root. The rename replaces a manifest already there: keeping a
+// dataset immutable (COMMIT-3) is the caller's, who owns the root, as
+// WriteDir owns the directory it creates.
 //
-// The result says what an error left behind: Unpublished (nothing
-// committed) or Visible (committed, durability unknown). Without an error
-// it is Durable, or Visible under Ops.AllowUnsynced where directories
-// cannot be synced. The temporary file is removed; a crash may leave one,
-// which readers ignore.
-func Commit(ops Ops, m seekparquet.Manifest) (CommitResult, error) {
+// installed reports whether the manifest is in place, complete: readers
+// see the dataset. With an error, installed is true only when the root's
+// sync failed after the rename, so the dataset is visible but not proven
+// to survive a power loss, and the caller must not remove it. Durability
+// is the file system's own: a synced file on tmpfs does not survive a
+// reboot. Under Ops.AllowUnsynced the root is not synced at all.
+func Commit(ops Ops, m seekparquet.Manifest) (installed bool, err error) {
 	durable, err := ops.durable()
 	if err != nil {
-		return Unpublished, err
+		return false, err
 	}
 	raw, err := seekparquet.MarshalManifest(m)
 	if err != nil {
-		return Unpublished, err
+		return false, err
 	}
 	for _, p := range m.Parts {
 		fi, err := ops.Root.Lstat(filepath.FromSlash(p.Path))
 		if err != nil {
-			return Unpublished, fmt.Errorf("commit: part %s: %w", p.Path, err)
+			return false, fmt.Errorf("commit: part %s: %w", p.Path, err)
 		}
 		if !fi.Mode().IsRegular() || fi.Size() != p.Bytes {
-			return Unpublished, fmt.Errorf("commit: part %s is not a regular file of %d bytes", p.Path, p.Bytes)
+			return false, fmt.Errorf("commit: part %s is not a regular file of %d bytes", p.Path, p.Bytes)
 		}
-	}
-	if _, err := ops.Root.Lstat(seekparquet.ManifestName); err == nil {
-		return Unpublished, fmt.Errorf("commit: %s: %w", seekparquet.ManifestName, fs.ErrExist)
 	}
 	var nonce [8]byte
 	_, _ = rand.Read(nonce[:])
 	tmp := "." + seekparquet.ManifestName + "." + hex.EncodeToString(nonce[:]) + ".tmp"
 	f, err := ops.Root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return Unpublished, fmt.Errorf("commit: %w", err)
+		return false, fmt.Errorf("commit: %w", err)
 	}
-	defer func() { _ = ops.Root.Remove(tmp) }()
-	err = ops.step(StepWriteManifest)
+	err = at(stepWriteManifest, tmp)
 	if err == nil {
 		var n int
 		if n, err = f.Write(raw); err == nil && n != len(raw) {
@@ -208,25 +186,25 @@ func Commit(ops Ops, m seekparquet.Manifest) (CommitResult, error) {
 		}
 	}
 	if err == nil {
-		err = ops.step(StepSyncFile)
+		err = at(stepSyncFile, tmp)
 	}
 	if err == nil {
 		err = f.Sync()
 	}
-	if err = errors.Join(err, f.Close()); err != nil {
-		return Unpublished, fmt.Errorf("commit: write %s: %w", seekparquet.ManifestName, err)
+	if err = errors.Join(err, f.Close()); err == nil {
+		err = at(stepRename, seekparquet.ManifestName)
 	}
-	if err := ops.step(StepLink); err != nil {
-		return Unpublished, fmt.Errorf("commit: %w", err)
+	if err == nil {
+		err = ops.Root.Rename(tmp, seekparquet.ManifestName)
 	}
-	if err := ops.Root.Link(tmp, seekparquet.ManifestName); err != nil {
-		return Unpublished, fmt.Errorf("commit: %w", err)
+	if err != nil {
+		_ = ops.Root.Remove(tmp)
+		return false, fmt.Errorf("commit: write %s: %w", seekparquet.ManifestName, err)
 	}
-	if !durable {
-		return Visible, nil
+	if durable {
+		if err := ops.syncDir("."); err != nil {
+			return true, fmt.Errorf("commit: sync the dataset root: %w", err)
+		}
 	}
-	if err := ops.syncDir("."); err != nil {
-		return Visible, fmt.Errorf("commit: sync the dataset root: %w", err)
-	}
-	return Durable, nil
+	return true, nil
 }

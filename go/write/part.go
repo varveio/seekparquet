@@ -10,8 +10,8 @@
 // group's first sorting column (RG-1), a ColumnIndex and an OffsetIndex on
 // every column, the key column's among them (RG-2 to RG-4), with exact
 // page bounds (RG-5), and key pages of at most 1,024 rows by default
-// (GEO-1). Its keys are checked as they arrive (KEY-2, KEY-3). Publishing
-// parts and committing a manifest is package local's.
+// (GEO-1). Its keys are checked as they arrive (KEY-2, KEY-3, KEY-6).
+// Publishing parts and committing a manifest is package local's.
 package write
 
 import (
@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"unicode/utf8"
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/compress"
@@ -101,6 +102,7 @@ type PartWriter struct {
 	out   *tracking
 	w     *parquet.GenericWriter[any]
 	key   int            // the key column's leaf index
+	utf8  bool           // the key column is annotated STRING or UTF8 (KEY-6)
 	kinds []parquet.Kind // each leaf column's physical kind
 	page  []column       // each leaf column's values of the page being filled
 
@@ -149,7 +151,7 @@ func NewPart(f PartFile, schema *parquet.Schema, opt PartOptions) (*PartWriter, 
 	if opt.Codec == nil {
 		opt.Codec = defaultCodec
 	}
-	field, err := keyField(schema, opt.Key.Column)
+	field, utf8Key, err := keyField(schema, opt.Key.Column)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +181,7 @@ func NewPart(f PartFile, schema *parquet.Schema, opt PartOptions) (*PartWriter, 
 		options = append(options, &parquet.WriterConfig{CreatedBy: opt.CreatedBy})
 	}
 	out := &tracking{w: f, digest: sha256.New()}
-	w := &PartWriter{opt: opt, file: f, out: out, w: parquet.NewGenericWriter[any](out, options...), key: leaf.ColumnIndex}
+	w := &PartWriter{opt: opt, file: f, out: out, w: parquet.NewGenericWriter[any](out, options...), key: leaf.ColumnIndex, utf8: utf8Key}
 	w.kinds = make([]parquet.Kind, len(schema.Columns()))
 	for _, path := range schema.Columns() {
 		c, _ := schema.Lookup(path...)
@@ -198,10 +200,10 @@ func NewPart(f PartFile, schema *parquet.Schema, opt PartOptions) (*PartWriter, 
 
 // keyField returns the position of the top-level field named column after
 // checking it against KEY-1: one such field, a REQUIRED BYTE_ARRAY leaf,
-// unannotated or annotated STRING (or UTF8).
-func keyField(schema *parquet.Schema, column string) (int, error) {
+// unannotated or annotated STRING (or UTF8), and whether it is annotated.
+func keyField(schema *parquet.Schema, column string) (int, bool, error) {
 	if column == "" {
-		return 0, violation("KEY-1: no key column")
+		return 0, false, violation("KEY-1: no key column")
 	}
 	found := -1
 	for i, f := range schema.Fields() {
@@ -209,36 +211,42 @@ func keyField(schema *parquet.Schema, column string) (int, error) {
 			continue
 		}
 		if found >= 0 {
-			return 0, violation("KEY-1: two top-level columns are named %q", column)
+			return 0, false, violation("KEY-1: two top-level columns are named %q", column)
 		}
 		found = i
 	}
 	if found < 0 {
-		return 0, violation("KEY-1: the schema has no top-level column %q", column)
+		return 0, false, violation("KEY-1: the schema has no top-level column %q", column)
 	}
 	f := schema.Fields()[found]
 	switch {
 	case !f.Leaf():
-		return 0, violation("KEY-1: the key column %q is nested", column)
+		return 0, false, violation("KEY-1: the key column %q is nested", column)
 	case !f.Required():
-		return 0, violation("KEY-1: the key column %q is not REQUIRED", column)
+		return 0, false, violation("KEY-1: the key column %q is not REQUIRED", column)
 	case f.Type().Kind() != parquet.ByteArray:
-		return 0, violation("KEY-1: the key column %q is %s, not BYTE_ARRAY", column, f.Type().Kind())
+		return 0, false, violation("KEY-1: the key column %q is %s, not BYTE_ARRAY", column, f.Type().Kind())
 	}
+	utf8Key := false
 	if lt := f.Type().LogicalType(); lt != nil && lt.Value != nil {
 		if _, ok := lt.Value.(*format.StringType); !ok {
-			return 0, violation("KEY-1: the key column %q is annotated %s", column, lt)
+			return 0, false, violation("KEY-1: the key column %q is annotated %s", column, lt)
 		}
+		utf8Key = true
 	}
-	if ct := f.Type().ConvertedType(); ct != nil && *ct != deprecated.UTF8 {
-		return 0, violation("KEY-1: the key column %q has converted type %d", column, *ct)
+	if ct := f.Type().ConvertedType(); ct != nil {
+		if *ct != deprecated.UTF8 {
+			return 0, false, violation("KEY-1: the key column %q has converted type %d", column, *ct)
+		}
+		utf8Key = true
 	}
-	return found, nil
+	return found, utf8Key, nil
 }
 
 // WriteRows appends rows to the part. Rows are parquet-go rows of the
 // schema, with their values in column order; they may be reused once
-// WriteRows returns. Keys must be non-empty (KEY-2) and follow the
+// WriteRows returns. Keys must be non-empty (KEY-2), valid UTF-8 when the
+// key column is annotated STRING (KEY-6), and follow the
 // previous row's key (KEY-3): strictly above it when keys are unique, at
 // or above it otherwise.
 //
@@ -308,6 +316,9 @@ func (w *PartWriter) check(row parquet.Row) ([]byte, error) {
 			key = v.ByteArray()
 			if v.IsNull() || len(key) == 0 {
 				return nil, violation("KEY-2: row %d has an empty key", w.rows)
+			}
+			if w.utf8 && !utf8.Valid(key) {
+				return nil, violation("KEY-6: row %d: the STRING key %q is not valid UTF-8", w.rows, key)
 			}
 		}
 	}

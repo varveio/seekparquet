@@ -16,9 +16,10 @@ versioning; while it is v0, minor versions may change the API.
 - Package `write`: a streaming part writer that enforces the profile (key column, key order, page indexes
   with exact bounds on every column, `sorting_columns`, stamps, column orders) and returns the part's
   rows, size, exact bounds and SHA-256.
-- Package `local`: `PublishPart` and `Commit`, durable root-confined publication that never replaces a
-  manifest and refuses where directories cannot be synced (Windows) unless the caller accepts a visible
-  but unproven commit; `WriteDir` writes sorted rows as a new dataset.
+- Package `local`: `PublishPart` and `Commit`, durable root-confined publication (swath's protocol: sync,
+  rename, sync the directory), refused where directories cannot be synced (Windows) unless the caller
+  accepts a visible but unproven commit; `WriteDir` writes sorted rows as a new dataset in a directory it
+  creates, its parent and root synced before any part is published.
 - Validation at the specification's four levels: `Validate` over a `Source`, `ValidateDir` over a local
   directory, with `ValidateOptions{Level, Limits}` and a `Report` of each level's result, refusal code and
   location, or the reason it is incomplete. Profile and full validation walk every column chunk page by

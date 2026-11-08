@@ -113,7 +113,25 @@ func TestWriteRowsRefuses(t *testing.T) {
 			t.Errorf("%s: Seal after an error: %v, closed %d times", name, err, f.closed)
 		}
 	}
-	w, err := NewPart(&memFile{}, kvSchema, kvOptions(false))
+	type stringKey struct {
+		Key string `parquet:"key"`
+	}
+	strSchema := parquet.SchemaOf(new(stringKey))
+	w, err := NewPart(&memFile{}, strSchema, kvOptions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	strRows := []parquet.Row{strSchema.Deconstruct(nil, &stringKey{Key: "caf\u00e9"}), strSchema.Deconstruct(nil, &stringKey{Key: "caf\xff"})}
+	if n, err := w.WriteRows(strRows); n != 1 || !errors.Is(err, ErrProfile) || !strings.Contains(err.Error(), "KEY-6") {
+		t.Errorf("a STRING key that is not UTF-8: %d, %v", n, err)
+	}
+	if w, err = NewPart(&memFile{}, kvSchema, kvOptions(true)); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := w.WriteRows(kvRows("a", "\xff")); n != 2 || err != nil {
+		t.Errorf("an unannotated key that is not UTF-8: %d, %v", n, err)
+	}
+	w, err = NewPart(&memFile{}, kvSchema, kvOptions(false))
 	if err != nil {
 		t.Fatal(err)
 	}

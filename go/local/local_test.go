@@ -29,14 +29,6 @@ import (
 // then accept visible commits, and skip faults of directory syncs.
 var unsynced = !*local.DirSyncSupported
 
-// committed is what a successful commit reports here.
-var committed = func() local.CommitResult {
-	if unsynced {
-		return local.Visible
-	}
-	return local.Durable
-}()
-
 func must(t testing.TB, err error) {
 	t.Helper()
 	if err != nil {
@@ -47,6 +39,7 @@ func must(t testing.TB, err error) {
 // checkDataset opens dir with the module's reader, checking every row
 // group's first key page and each part's last on open, reads every row
 // with every column, and compares keys and values with the rows written;
+// it validates the dataset at the full and digest levels (ValidateDir);
 // it checks the parts' names, digests and that no temporary file is left.
 func checkDataset(t *testing.T, dir string, s samples.Sample) seekparquet.Metadata {
 	t.Helper()
@@ -96,6 +89,15 @@ func checkDataset(t *testing.T, dir string, s samples.Sample) seekparquet.Metada
 		must(t, err)
 		if sum := sha256.Sum256(raw); p.SHA256 != hex.EncodeToString(sum[:]) {
 			t.Errorf("%s: part %d digest %s does not match", s.Name, i, p.SHA256)
+		}
+	}
+	report, err := seekparquet.ValidateDir(context.Background(), dir, seekparquet.ValidateOptions{Level: seekparquet.LevelFull})
+	must(t, err)
+	digest, err := seekparquet.ValidateDir(context.Background(), dir, seekparquet.ValidateOptions{Level: seekparquet.LevelDigest})
+	must(t, err)
+	for _, lr := range append(report.Levels, digest.Levels...) {
+		if lr.Result != seekparquet.Complete {
+			t.Errorf("%s: validation %s: %+v", s.Name, lr.Level, lr)
 		}
 	}
 	filepath.WalkDir(dir, func(path string, e fs.DirEntry, err error) error {
@@ -298,8 +300,8 @@ func installed(t *testing.T) (*os.Root, seekparquet.Manifest) {
 	return root, m
 }
 
-func failAt(step local.Step) func(local.Step) error {
-	return func(s local.Step) error {
+func failAt(step local.Step) func(local.Step, string) error {
+	return func(s local.Step, _ string) error {
 		if s == step {
 			return errors.New("injected at " + string(s))
 		}
@@ -312,21 +314,24 @@ func exists(root *os.Root, name string) bool {
 	return err == nil
 }
 
-// TestCommitFaults: a failure at each step of Commit leaves no manifest
-// and no temporary file, except a failed directory sync, which leaves the
-// complete manifest visible; a commit after a failed one succeeds.
+// TestCommitFaults: a failure at each step of Commit before the rename
+// leaves no manifest and no temporary file; a failed sync of the root
+// after it leaves the complete manifest installed. A commit after a
+// failed one succeeds.
 func TestCommitFaults(t *testing.T) {
-	for step, want := range map[local.Step]local.CommitResult{local.StepWriteManifest: local.Unpublished, local.StepSyncFile: local.Unpublished, local.StepLink: local.Unpublished, local.StepSyncDir: local.Visible} {
+	for step, want := range map[local.Step]bool{local.StepWriteManifest: false, local.StepSyncFile: false, local.StepRename: false, local.StepSyncDir: true} {
 		if unsynced && step == local.StepSyncDir {
 			continue
 		}
 		root, m := installed(t)
-		result, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced, Inject: failAt(step)}, m)
-		if err == nil || result != want {
-			t.Errorf("%s: %v, %v; want %v", step, result, err, want)
+		local.SetInject(failAt(step))
+		ok, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, m)
+		local.SetInject(nil)
+		if err == nil || ok != want {
+			t.Errorf("%s: installed %v, %v; want installed %v", step, ok, err, want)
 		}
-		if exists(root, seekparquet.ManifestName) != (want == local.Visible) {
-			t.Errorf("%s: manifest present %v after %v", step, exists(root, seekparquet.ManifestName), result)
+		if exists(root, seekparquet.ManifestName) != want {
+			t.Errorf("%s: manifest present %v", step, exists(root, seekparquet.ManifestName))
 		}
 		entries, err := fs.ReadDir(root.FS(), ".")
 		must(t, err)
@@ -335,9 +340,9 @@ func TestCommitFaults(t *testing.T) {
 				t.Errorf("%s: temporary file %s left", step, e.Name())
 			}
 		}
-		if want == local.Unpublished {
-			if result, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, m); result != committed || err != nil {
-				t.Errorf("%s: commit after the failure: %v, %v", step, result, err)
+		if !want {
+			if ok, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, m); !ok || err != nil {
+				t.Errorf("%s: commit after the failure: %v, %v", step, ok, err)
 			}
 		}
 		if _, err := seekparquet.OpenDir(context.Background(), root.Name(), seekparquet.Options{VerifyOnOpen: true}); err != nil {
@@ -346,70 +351,37 @@ func TestCommitFaults(t *testing.T) {
 	}
 }
 
-// TestCommitRefuses: a manifest that does not match the installed parts,
-// or an existing manifest, is refused without a change.
+// TestCommitRefuses: a manifest that does not match the installed parts
+// is refused without a change.
 func TestCommitRefuses(t *testing.T) {
 	root, m := installed(t)
 	bad := m
 	bad.Parts = slices.Clone(m.Parts)
 	bad.Parts[1].Bytes++
-	if result, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, bad); result != local.Unpublished || err == nil {
-		t.Errorf("wrong size: %v, %v", result, err)
+	if ok, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, bad); ok || err == nil {
+		t.Errorf("wrong size: %v, %v", ok, err)
 	}
 	bad.Parts[1] = m.Parts[1]
 	bad.Parts[1].Path = "data/missing.parquet"
-	if result, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, bad); result != local.Unpublished || !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("missing part: %v, %v", result, err)
+	if ok, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, bad); ok || !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("missing part: %v, %v", ok, err)
 	}
 	bad = m
 	bad.SchemaID = ""
-	if result, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, bad); result != local.Unpublished || seekparquet.CodeOf(err) != seekparquet.CodeInvalidManifest {
-		t.Errorf("invalid manifest: %v, %v", result, err)
+	if ok, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, bad); ok || seekparquet.CodeOf(err) != seekparquet.CodeInvalidManifest {
+		t.Errorf("invalid manifest: %v, %v", ok, err)
 	}
 	if exists(root, seekparquet.ManifestName) {
 		t.Fatal("a refused commit installed a manifest")
 	}
-	if result, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, m); result != committed || err != nil {
-		t.Fatalf("commit: %v, %v", result, err)
-	}
-	if result, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, m); result != local.Unpublished || !errors.Is(err, fs.ErrExist) {
-		t.Errorf("second commit: %v, %v", result, err)
-	}
-}
-
-// TestCommitRace: of two commits racing for one root, exactly one
-// installs its manifest; the other is refused.
-func TestCommitRace(t *testing.T) {
-	for range 20 {
-		root, m := installed(t)
-		other := m
-		other.SchemaID = "other"
-		results := make([]local.CommitResult, 2)
-		errs := make([]error, 2)
-		var wg sync.WaitGroup
-		for i, mm := range []seekparquet.Manifest{m, other} {
-			wg.Go(func() { results[i], errs[i] = local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, mm) })
-		}
-		wg.Wait()
-		won := 0
-		for i := range errs {
-			switch {
-			case errs[i] == nil && results[i] == committed:
-				won++
-			case errors.Is(errs[i], fs.ErrExist) && results[i] == local.Unpublished:
-			default:
-				t.Fatalf("commit %d: %v, %v", i, results[i], errs[i])
-			}
-		}
-		if won != 1 {
-			t.Fatalf("%d commits won", won)
-		}
+	if ok, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, m); !ok || err != nil {
+		t.Fatalf("commit: %v, %v", ok, err)
 	}
 }
 
 // TestPublishPartFaults: a failure before the rename leaves the part at
 // its temporary path; a failed directory sync leaves it visible at its
-// final path; an existing final path is refused.
+// final path; a path outside the root is refused.
 func TestPublishPartFaults(t *testing.T) {
 	root, err := os.OpenRoot(t.TempDir())
 	must(t, err)
@@ -422,20 +394,14 @@ func TestPublishPartFaults(t *testing.T) {
 		name := strings.ReplaceAll(string(step), " ", "-")
 		tmp, final := "data/"+name+".tmp", "data/"+name+".parquet"
 		must(t, root.WriteFile(tmp, []byte("part"), 0o644))
-		err := local.PublishPart(local.Ops{Root: root, AllowUnsynced: unsynced, Inject: failAt(step)}, tmp, final)
+		local.SetInject(failAt(step))
+		err := local.PublishPart(local.Ops{Root: root, AllowUnsynced: unsynced}, tmp, final)
+		local.SetInject(nil)
 		if err == nil || exists(root, final) != visible || exists(root, tmp) == visible {
 			t.Errorf("%s: %v; final present %v, temporary present %v", step, err, exists(root, final), exists(root, tmp))
 		}
 	}
-	must(t, root.WriteFile("data/a.tmp", []byte("a"), 0o644))
 	must(t, root.WriteFile("data/b.tmp", []byte("b"), 0o644))
-	must(t, local.PublishPart(local.Ops{Root: root, AllowUnsynced: unsynced}, "data/a.tmp", "data/x.parquet"))
-	if err := local.PublishPart(local.Ops{Root: root, AllowUnsynced: unsynced}, "data/b.tmp", "data/x.parquet"); !errors.Is(err, fs.ErrExist) {
-		t.Errorf("publishing over a part: %v", err)
-	}
-	if got, _ := root.ReadFile("data/x.parquet"); string(got) != "a" {
-		t.Errorf("the part was replaced")
-	}
 	if err := local.PublishPart(local.Ops{Root: root, AllowUnsynced: unsynced}, "data/b.tmp", "../outside.parquet"); err == nil {
 		t.Errorf("published outside the root")
 	}
@@ -448,8 +414,8 @@ func TestUnsupportedDirSync(t *testing.T) {
 	defer func(v bool) { *local.DirSyncSupported = v }(*local.DirSyncSupported)
 	root, m := installed(t)
 	*local.DirSyncSupported = false
-	if result, err := local.Commit(local.Ops{Root: root}, m); result != local.Unpublished || !errors.Is(err, local.ErrDirSyncUnsupported) {
-		t.Errorf("commit: %v, %v", result, err)
+	if ok, err := local.Commit(local.Ops{Root: root}, m); ok || !errors.Is(err, local.ErrDirSyncUnsupported) {
+		t.Errorf("commit: %v, %v", ok, err)
 	}
 	if err := local.PublishPart(local.Ops{Root: root}, m.Parts[0].Path, "data/other.parquet"); !errors.Is(err, local.ErrDirSyncUnsupported) || !exists(root, m.Parts[0].Path) {
 		t.Errorf("publish: %v", err)
@@ -463,10 +429,64 @@ func TestUnsupportedDirSync(t *testing.T) {
 	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("local.WriteDir created its destination: %v", err)
 	}
-	if result, err := local.Commit(local.Ops{Root: root, AllowUnsynced: true}, m); result != local.Visible || err != nil {
-		t.Errorf("commit, unsynced allowed: %v, %v", result, err)
+	if ok, err := local.Commit(local.Ops{Root: root, AllowUnsynced: true}, m); !ok || err != nil {
+		t.Errorf("commit, unsynced allowed: %v, %v", ok, err)
 	}
 	s.Options.AllowUnsynced = true
 	must(t, local.WriteDir(context.Background(), dir, s.Schema, s.Reader(), s.Options))
 	checkDataset(t, dir, s)
+}
+
+// TestWriteDirCrashPoints: WriteDir syncs the new root's parent and the
+// root itself before it publishes a part; a failure at any step before the
+// manifest's rename leaves no dataset, and one after it (the root's last
+// sync) leaves the complete dataset in place.
+func TestWriteDirCrashPoints(t *testing.T) {
+	if unsynced {
+		t.Skip("directories cannot be synced here")
+	}
+	s := sample("string-key")
+	type event struct {
+		step local.Step
+		path string
+	}
+	var steps []event
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "d")
+	local.SetInject(func(st local.Step, path string) error { steps = append(steps, event{st, path}); return nil })
+	err := local.WriteDir(context.Background(), dir, s.Schema, s.Reader(), s.Options)
+	local.SetInject(nil)
+	must(t, err)
+	rename, commit := slices.IndexFunc(steps, func(e event) bool { return e.step == local.StepRename }),
+		slices.IndexFunc(steps, func(e event) bool { return e.step == local.StepRename && e.path == seekparquet.ManifestName })
+	if len(steps) < 4 || steps[0] != (event{local.StepSyncDir, parent}) || steps[1] != (event{local.StepSyncDir, "."}) || rename < 2 || commit < rename {
+		t.Fatalf("steps %v: want the parent and the root synced before the first part is published", steps)
+	}
+	if last := steps[len(steps)-1]; last != (event{local.StepSyncDir, "."}) || commit != len(steps)-2 {
+		t.Fatalf("steps %v: want the manifest's rename, then the root's sync, last", steps)
+	}
+	for i, e := range steps {
+		dir := filepath.Join(t.TempDir(), "d")
+		n := 0
+		local.SetInject(func(local.Step, string) error {
+			if n++; n == i+1 {
+				return errors.New("crash")
+			}
+			return nil
+		})
+		err := local.WriteDir(context.Background(), dir, s.Schema, s.Reader(), s.Options)
+		local.SetInject(nil)
+		if err == nil {
+			t.Fatalf("step %d (%v): no error", i, e)
+		}
+		_, statErr := os.Stat(dir)
+		switch {
+		case i < commit && !errors.Is(statErr, fs.ErrNotExist):
+			t.Errorf("step %d (%v): the unpublished dataset was left: %v", i, e, statErr)
+		case i > commit:
+			if _, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.Options{VerifyOnOpen: true}); err != nil {
+				t.Errorf("step %d (%v): the committed dataset is gone: %v", i, e, err)
+			}
+		}
+	}
 }

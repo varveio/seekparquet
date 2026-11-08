@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/parquet-go/parquet-go"
 
@@ -45,10 +46,11 @@ type DatasetOptions struct {
 
 // WriteDir writes the rows rows yields as a new dataset at dir, which must
 // not exist (its parent must): rows must already be in key order (KEY-3),
-// as the parquet-go rows of schema. It creates dir, writes the parts as
-// data/part-NNNNN.parquet (LAYOUT-3), publishes each (PublishPart) and
-// commits the manifest (Commit), with the parts' SHA-256 digests. With no
-// rows it commits an empty dataset.
+// as the parquet-go rows of schema. It creates dir, syncs its parent, and
+// creates and syncs data/; writes the parts as data/part-NNNNN.parquet
+// (LAYOUT-3), publishes each (PublishPart) and commits the manifest
+// (Commit), with the parts' SHA-256 digests. With no rows it commits an
+// empty dataset.
 //
 // WriteDir does not sort, deduplicate or merge rows, write to an object
 // store, or replace or extend an existing dataset; a second writer to the
@@ -74,16 +76,27 @@ func WriteDir(ctx context.Context, dir string, schema *parquet.Schema, rows parq
 		return errors.Join(err, os.Remove(dir))
 	}
 	d := &dirWriter{ops: Ops{Root: root, AllowUnsynced: opt.AllowUnsynced}, schema: schema, opt: opt, keyColumn: leaf.ColumnIndex}
-	result := Unpublished
+	installed := false
 	defer func() {
 		d.abort()
 		err = errors.Join(err, root.Close())
-		if result == Unpublished {
+		if !installed {
 			err = errors.Join(err, os.RemoveAll(dir))
 		}
 	}()
 	if err := root.Mkdir("data", 0o755); err != nil {
 		return err
+	}
+	// The dataset root's entry in its parent, and data's in the root, are
+	// made durable before any part is published, so that a durable
+	// manifest never names a part a power loss can unlink.
+	if dirSyncSupported {
+		if err := syncPath(filepath.Dir(dir)); err != nil {
+			return fmt.Errorf("seekparquet/local: sync the parent of %s: %w", dir, err)
+		}
+		if err := d.ops.syncDir("."); err != nil {
+			return fmt.Errorf("seekparquet/local: sync %s: %w", dir, err)
+		}
 	}
 	// The first part is started before any row is read, so that the
 	// schema and options are checked even for an empty dataset.
@@ -121,7 +134,7 @@ func WriteDir(ctx context.Context, dir string, schema *parquet.Schema, rows parq
 	}
 	m := seekparquet.Manifest{Key: opt.Part.Key, Version: seekparquet.Version{FormatVersion: seekparquet.FormatVersion, DraftRevision: seekparquet.DraftRevision},
 		SchemaID: opt.Part.SchemaID, Parts: d.parts, Extensions: opt.Extensions}
-	result, err = Commit(d.ops, m)
+	installed, err = Commit(d.ops, m)
 	return err
 }
 

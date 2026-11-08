@@ -11,3 +11,16 @@ var (
 )
 
 const ReadRows = readRows
+
+type Step = step
+
+const (
+	StepWriteManifest = stepWriteManifest
+	StepSyncFile      = stepSyncFile
+	StepRename        = stepRename
+
+	StepSyncDir = stepSyncDir
+)
+
+// SetInject sets the fault hook; nil removes it.
+func SetInject(f func(s Step, path string) error) { inject = f }
