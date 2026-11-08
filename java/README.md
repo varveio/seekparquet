@@ -232,7 +232,7 @@ The adapter claims the `reader` target and must pass every case of it; validator
 yet, so the harness skips their cases. Run both commands above for Java verification; the repository
 CI workflow does not yet gate Java changes.
 
-The build uses the checked-in Gradle wrapper (Gradle 8.14.3) and a Java 21 toolchain. The unit
+The build uses the checked-in Gradle wrapper (Gradle 9.9.0) and a Java 21 toolchain. The unit
 tests write their Parquet files to temporary directories, using a small test-only writer. They also
 read the shared fixtures under `conformance/datasets`.
 
