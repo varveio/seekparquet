@@ -126,6 +126,10 @@ Exceeding a limit is `ErrLimitExceeded`, the caller's policy, not a refusal of t
 files; set them lower for untrusted remote data. A panic inside parquet-go on a hostile footer or page is
 reported as `invalid_footer` or `invalid_parquet` as a last line of defence.
 
+Dataset-wide row positions use signed 64-bit ordinals. Opening fails with `ErrLimitExceeded` if the
+sum of the parts' row counts exceeds 2^63-1, before any ordinal can wrap. This fixed implementation
+limit is separate from the configurable allocation limits and does not make the manifest invalid.
+
 ## Errors
 
 | Error | Meaning |

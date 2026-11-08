@@ -142,6 +142,7 @@ func (e *UnsupportedError) Error() string {
 // ErrClosed reports a read of a closed Dataset.
 var ErrClosed = errors.New("seekparquet: closed")
 
-// ErrLimitExceeded reports input beyond one of the Limits (§11): a policy
-// of the caller, not a refusal of the data.
+// ErrLimitExceeded reports input beyond one of the Limits (§11), or a
+// dataset row total above the reader's signed 64-bit ordinal capacity.
+// It is an implementation or caller limit, not a refusal of the data.
 var ErrLimitExceeded = errors.New("seekparquet: limit exceeded")
