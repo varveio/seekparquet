@@ -228,6 +228,12 @@ python3 conformance/harness/run.py \
     --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
 ```
 
+The adapter accepts arbitrarily large positive integer query limits. It uses bounded library
+requests (at most the default `maxResultEntries` per internal page) and tagged continuations to
+assemble one protocol response, stopping at the requested limit or exhaustion. It never clamps
+the requested total to Java's `int` range, and it leaves the library defaults unchanged. The full
+JSON response is still buffered in memory; internal paging is not a total response-memory bound.
+
 The adapter claims the `reader` target and must pass every case of it; validator targets are not claimed
 yet, so the harness skips their cases. Run both commands above for Java verification; the repository
 CI workflow does not yet gate Java changes.
