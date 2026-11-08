@@ -37,7 +37,7 @@ jobs:
           echo "$files"
           if echo "$files" | grep -qE '^(go/|\.github/)'; then echo "go=true" >> "$GITHUB_OUTPUT"; else echo "go=false" >> "$GITHUB_OUTPUT"; fi
           if echo "$files" | grep -qE '^(java/|\.github/)'; then echo "java=true" >> "$GITHUB_OUTPUT"; else echo "java=false" >> "$GITHUB_OUTPUT"; fi
-          if echo "$files" | grep -qE '^(spec/|conformance/|\.github/)'; then echo "contract=true" >> "$GITHUB_OUTPUT"; else echo "contract=false" >> "$GITHUB_OUTPUT"; fi
+          if echo "$files" | grep -qE '^(spec/|conformance/|tools/|\.github/)'; then echo "contract=true" >> "$GITHUB_OUTPUT"; else echo "contract=false" >> "$GITHUB_OUTPUT"; fi
 
   go:
     needs: changes
@@ -103,6 +103,11 @@ jobs:
           python conformance/generators/check_boolean.py --adapter "$RUNNER_TEMP/seekparquet-conformance"
           python conformance/generators/check_independent.py --adapter "$RUNNER_TEMP/seekparquet-conformance"
           python conformance/harness/check_indexed_access.py --language go
+      - name: Python tooling and Go producer interoperability
+        run: |
+          python -m pip install -e tools/seekparquet
+          export SEEKPARQUET_TEST_ADAPTERS="[\"$RUNNER_TEMP/seekparquet-conformance\"]"
+          python -m unittest discover -s tools/seekparquet/tests -v
 
   java:
     needs: changes
@@ -128,6 +133,12 @@ jobs:
           python conformance/generators/check_boolean.py --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
           python conformance/generators/check_independent.py --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
           python conformance/harness/check_indexed_access.py --language java
+
+      - name: Python tooling and Java producer interoperability
+        run: |
+          python -m pip install -e tools/seekparquet
+          export SEEKPARQUET_TEST_ADAPTERS='["java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance"]'
+          python -m unittest discover -s tools/seekparquet/tests -v
 
   ci-ok:
     if: always()
