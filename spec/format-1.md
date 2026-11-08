@@ -305,8 +305,8 @@ finds them. A reader MAY use any access path, provided its results are these.
 
 - [RANGE-1] The result is the rows whose keys begin with the prefix, are at or after the start (strictly
   after, when the start is exclusive) and are strictly before the end, and that come after the cursor when
-  one is given (PAGE-1), in ascending key order, at most limit of them. Bounds and prefix filtering include or exclude whole groups; a limit may split a group.
-  Rows with equal keys retain file order.
+  one is given (PAGE-1), in ascending key order, at most limit of them. Bounds and prefix filtering include
+  or exclude whole groups; a limit may split a group. Rows with equal keys retain file order.
 - [RANGE-2] Each returned row carries its key and, for each projected column in request order, the value,
   null, or absent (COL-2).
 
