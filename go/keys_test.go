@@ -54,12 +54,15 @@ func TestSuccessorAndCommonPrefix(t *testing.T) {
 // string that begins with p, and every string t with p <= t < successor
 // begins with p; and p has none exactly when it is empty or all 0xFF.
 func FuzzSuccessor(f *testing.F) {
-	for _, seed := range [][2]string{{"a", "a\xff"}, {"", "x"}, {"\xff\xff", "\xff"}, {"a\xfe\xff", "a\xff"}, {"ab", "ab\x00"}} {
+	for _, seed := range [][2]string{{"a", "a\xff"}, {"", "x"}, {"\xff\xff", "\xff"}, {"a\xfe\xff", "a\xff"}, {"ab", "ab\x00"}, {"\x80", "0"}} {
 		f.Add([]byte(seed[0]), []byte(seed[1]))
 	}
 	f.Fuzz(func(t *testing.T, p, probe []byte) {
 		s, ok := seekparquet.Successor(p)
-		allFF := len(bytes.Trim(p, "\xff")) == 0
+		allFF := true
+		for _, c := range p {
+			allFF = allFF && c == 0xff
+		}
 		if ok == allFF {
 			t.Fatalf("Successor(%x) ok=%v", p, ok)
 		}

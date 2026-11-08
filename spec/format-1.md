@@ -70,7 +70,7 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
 - [MAN-7] A reader determines the version before anything else. It first reads `format`, `format_version`
   and `draft_revision`. If `format` is not `"seekparquet"`, if `format_version` is missing or not an
   integer, or if `draft_revision` is missing when `format_version` is 0, present when it is not, or not an
-  integer, the manifest is `invalid_manifest`. If they are well formed but name a version the reader
+  integer of at least 1, the manifest is `invalid_manifest`. If they are well formed but name a version the reader
   does not support, it MUST refuse with `unsupported_version` without applying the rest of this section.
   Only then does it apply the rules of the version it supports. The JSON Schema accepts any
   `format_version` structurally; that does not authorise writing a version this document does not define.
@@ -161,7 +161,8 @@ Each part is a Parquet file that any conforming Parquet reader can read.
   repetition is `REQUIRED`, and which is not nested. It is either unannotated or annotated `STRING` (or the
   legacy converted type `UTF8`). Both annotations order values by unsigned bytes, as §1 does; no other
   annotation is allowed.
-- [KEY-5] The file's `column_orders` is present and gives the `key` column `TYPE_ORDER`, without which
+- [KEY-5] The file's `column_orders` is present, has one entry per leaf column, and gives the `key` column
+  `TYPE_ORDER`, without which
   Parquet leaves the meaning of its statistics and page bounds undefined.
 - [KEY-6] When `key` is annotated `STRING` or `UTF8`, every key is valid UTF-8, and so is every page bound,
   shortened or not. An unannotated key may hold any bytes.
@@ -207,11 +208,12 @@ and are ignored.
   report the value as absent, which is distinct from a null value.
 - [COL-3] A reader MUST support projecting top-level, non-repeated columns of the physical types `BOOLEAN`,
   `INT32`, `INT64`, `FLOAT`, `DOUBLE`, `BYTE_ARRAY` and `FIXED_LEN_BYTE_ARRAY`. A request to project a
-  nested or repeated column MAY be rejected (`unsupported_projection`); it MUST NOT be answered as if the
-  column were absent.
+  nested or repeated column, or one of a physical type outside this list (`INT96`), MAY be rejected
+  (`unsupported_projection`); it MUST NOT be answered as if the column were absent.
 - [COL-4] Value columns SHOULD carry an OffsetIndex, so that a reader can seek to the rows it needs. A reader
   MUST still read a value column that lacks one.
-- [COL-5] A column that appears in several parts has the same physical type, repetition and nesting in each.
+- [COL-5] A column that appears in several parts has the same physical type (including `type_length` for
+  `FIXED_LEN_BYTE_ARRAY`), repetition and nesting in each.
   A reader MUST check this for a column no later than the first request that projects it, and SHOULD check
   it for all columns on open (`inconsistent_column`). Structural validation checks it for all columns.
 - [COL-7] Projecting a column that no part has is not an error: the column is absent in every row.

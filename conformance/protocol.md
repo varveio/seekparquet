@@ -115,7 +115,7 @@ Validator targets therefore include the open-stage faults. The `digest` level ad
 | `ok` | `entries` for `range` and `list`; `levels` for `validate` | success |
 | `refused` | `code` | the data breaks the specification; `code` is from `spec/refusal-codes.json` |
 | `invalid_request` | `message` (optional) | the request is malformed (QUERY-1, LIST-1) |
-| `unsupported` | `code`, `message` (optional) | the data is valid but uses an unsupported feature |
+| `unsupported` | `code`, `message` (optional) | the data is valid but uses an unsupported feature, or the adapter does not implement the operation (`unsupported_operation`) |
 | `error` | `message` | anything else; the harness counts it as a failure |
 
 Entries (a row always has `values`, empty when no columns were requested; a prefix never has them):
