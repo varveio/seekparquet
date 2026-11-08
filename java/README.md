@@ -229,8 +229,10 @@ python3 conformance/harness/run.py \
 ```
 
 The adapter claims the `reader` target and must pass every case of it; validator targets are not claimed
-yet, so the harness skips their cases. Run both commands above for Java verification; the repository
-CI workflow does not yet gate Java changes.
+yet, so the harness skips their cases. Run the build and harness commands above for Java verification.
+The [CI workflow](../.github/workflows/ci.yml) runs the Java build, unit tests and reader conformance
+suite for changes under `java/`, `spec/`, `conformance/` or `.github/`. Its `ci-ok` job requires the
+Java job to succeed whenever those paths make it necessary.
 
 The build uses the checked-in Gradle wrapper (Gradle 9.9.0) and a Java 21 toolchain. The unit
 tests write their Parquet files to temporary directories, using a small test-only writer. They also

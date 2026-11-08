@@ -18,6 +18,13 @@ Questions go in GitHub issues for now.
 ## Development
 
 - **Go** (`go/`): Go 1.26 or later. `cd go && gofmt -l . && go vet ./... && go test -race ./...`
+- **Java** (`java/`): JDK 21 or later. `cd java && ./gradlew build :conformance:installDist`, then
+  run the reader conformance suite from the repository root:
+
+  ```bash
+  python3 conformance/harness/run.py --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
+  ```
+
 - **Conformance** (`conformance/`): Python 3.11 or later. The harness uses only the standard library; the
   fixture generators need the pinned packages in `conformance/generators/requirements.txt`. Run the suite
   against the Go adapter with:
