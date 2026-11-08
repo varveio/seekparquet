@@ -105,6 +105,7 @@ type PartWriter struct {
 	utf8  bool           // the key column is annotated STRING or UTF8 (KEY-6)
 	kinds []parquet.Kind // each leaf column's physical kind
 	page  []column       // each leaf column's values of the page being filled
+	flat  bool           // no leaf column repeats: one value per row in each
 
 	pageRows, groupRows int64
 	baseline            int64 // w.Size() when the row group began
@@ -183,9 +184,11 @@ func NewPart(f PartFile, schema *parquet.Schema, opt PartOptions) (*PartWriter, 
 	out := &tracking{w: f, digest: sha256.New()}
 	w := &PartWriter{opt: opt, file: f, out: out, w: parquet.NewGenericWriter[any](out, options...), key: leaf.ColumnIndex, utf8: utf8Key}
 	w.kinds = make([]parquet.Kind, len(schema.Columns()))
+	w.flat = true
 	for _, path := range schema.Columns() {
 		c, _ := schema.Lookup(path...)
 		w.kinds[c.ColumnIndex] = c.Node.Type().Kind()
+		w.flat = w.flat && c.MaxRepetitionLevel == 0
 	}
 	if n := len(w.w.ColumnWriters()); n != len(w.kinds) {
 		return nil, fmt.Errorf("seekparquet/write: %d column writers for %d columns", n, len(w.kinds))
@@ -336,30 +339,13 @@ func (w *PartWriter) check(row parquet.Row) ([]byte, error) {
 	return key, nil
 }
 
-// flushPage encodes the buffered rows as one page of every column, and
-// ends the row group when it has reached its size or row target.
+// flushPage encodes the rows WriteRows buffered as one page of every
+// column.
 func (w *PartWriter) flushPage() error {
 	if w.pageRows == 0 {
 		return nil
 	}
-	if err := w.encodePage(); err != nil {
-		return err
-	}
-	w.groupRows += w.pageRows
-	w.pageRows = 0
-	if w.w.Size()-w.baseline >= w.opt.RowGroupBytes || w.groupRows >= w.opt.RowGroupRows {
-		return w.flushGroup()
-	}
-	return nil
-}
-
-// encodePage writes and flushes every column of the buffered page.
-// parquet-go column writers are independent (their own buffers and page
-// state; the shared pools and the codec are safe for concurrent use), so
-// several goroutines may take columns; the bytes equal the serial result.
-func (w *PartWriter) encodePage() error {
-	cols := w.w.ColumnWriters()
-	one := func(i int) error {
+	err := w.encodePage(func(i int) []parquet.Value {
 		c := &w.page[i]
 		for _, s := range c.spans {
 			v := c.values[s.value]
@@ -370,10 +356,38 @@ func (w *PartWriter) encodePage() error {
 				c.values[s.value] = parquet.ByteArrayValue(b).Level(v.RepetitionLevel(), v.DefinitionLevel(), i)
 			}
 		}
-		err := writeColumn(cols[i], c.values)
+		return c.values
+	})
+	for i := range w.page {
+		c := &w.page[i]
 		c.values, c.data, c.spans = c.values[:0], c.data[:0], c.spans[:0]
+	}
+	if err != nil {
 		return err
 	}
+	n := w.pageRows
+	w.pageRows = 0
+	return w.endPage(n)
+}
+
+// endPage ends the row group after a page of n rows when it has reached
+// its size or row target.
+func (w *PartWriter) endPage(n int64) error {
+	w.groupRows += n
+	if w.w.Size()-w.baseline >= w.opt.RowGroupBytes || w.groupRows >= w.opt.RowGroupRows {
+		return w.flushGroup()
+	}
+	return nil
+}
+
+// encodePage writes and flushes every column of a page, whose values
+// column(i) returns for leaf column i. parquet-go column writers are
+// independent (their own buffers and page state; the shared pools and the
+// codec are safe for concurrent use), so several goroutines may take
+// columns, column(i) included; the bytes equal the serial result.
+func (w *PartWriter) encodePage(column func(i int) []parquet.Value) error {
+	cols := w.w.ColumnWriters()
+	one := func(i int) error { return writeColumn(cols[i], column(i)) }
 	workers := 1
 	if w.opt.ColumnWorkers != nil {
 		workers = min(w.opt.ColumnWorkers(), len(cols))
@@ -398,6 +412,96 @@ func (w *PartWriter) encodePage() error {
 	}
 	wg.Wait()
 	return errors.Join(errs...)
+}
+
+// WritePage writes rows rows as one page of every column, without copying
+// them: fill(i, values) sets values, of length rows, to leaf column i's
+// value for each row, and the page is encoded before WritePage returns, so
+// the values may point into the caller's memory, which must stay unchanged
+// until then and may be reused after. It is for a producer that keeps its
+// own rows and builds each column's values from them, page by page, as a
+// row-at-a-time intake cannot do without copying.
+//
+// The schema's leaf columns must not repeat (one value per row each), and
+// rows must be from 1 to PartOptions.PageRows; rows WriteRows buffered are
+// first flushed as a page of their own. fill is called once per column,
+// the key column first, on WritePage's goroutine, then the others, on as
+// many goroutines as ColumnWorkers allows, so it must be safe to call
+// concurrently for different columns. Values must be of the column's
+// physical kind, or null where the column is optional, with their levels
+// and column index set, as parquet.Schema.Deconstruct makes them. Only the
+// key column's are checked, each key once: non-null and non-empty (KEY-2)
+// and in the declared order after the key before it (KEY-3). A violation
+// fails with ErrProfile before any column is encoded; as with WriteRows,
+// any error leaves the part to be aborted. Unlike WriteRows, WritePage
+// does not check that a STRING key is valid UTF-8 (KEY-6): that is the
+// caller's, as the column's annotation promises it, and validation
+// (seekparquet.ValidateDir, profile level) finds a key that breaks it.
+func (w *PartWriter) WritePage(rows int, fill func(column int, values []parquet.Value)) error {
+	if w.done {
+		return errors.New("seekparquet/write: the part is sealed or aborted")
+	}
+	if w.err != nil {
+		return w.err
+	}
+	if !w.flat || rows < 1 || rows > w.opt.PageRows {
+		return fmt.Errorf("seekparquet/write: WritePage of %d rows (1 to %d, a schema whose columns do not repeat)", rows, w.opt.PageRows)
+	}
+	if err := w.flushPage(); err != nil {
+		w.err = err
+		return err
+	}
+	keys := w.page[w.key].values[:rows]
+	fill(w.key, keys)
+	if err := w.checkKeys(keys); err != nil {
+		w.err = err
+		return err
+	}
+	err := w.encodePage(func(i int) []parquet.Value {
+		if i == w.key {
+			return keys
+		}
+		values := w.page[i].values[:rows]
+		fill(i, values)
+		return values
+	})
+	if err == nil {
+		err = w.endPage(int64(rows))
+	}
+	if err != nil {
+		w.err = err
+	}
+	return err
+}
+
+// checkKeys checks a page's keys (KEY-2, KEY-3) and records them.
+func (w *PartWriter) checkKeys(keys []parquet.Value) error {
+	previous := w.lastKey
+	for j, v := range keys {
+		row := w.rows + int64(j)
+		if v.Kind() != parquet.ByteArray || v.IsNull() {
+			return violation("KEY-2: row %d has no key", row)
+		}
+		key := v.ByteArray()
+		if len(key) == 0 {
+			return violation("KEY-2: row %d has an empty key", row)
+		}
+		if row > 0 {
+			switch cmp := bytes.Compare(key, previous); {
+			case cmp < 0:
+				return violation("KEY-3: row %d: key %q is below the key before it, %q", row, key, previous)
+			case cmp == 0 && w.opt.Key.Unique:
+				return violation("KEY-3: row %d: key %q repeats with unique keys", row, key)
+			}
+		}
+		previous = key
+	}
+	if w.rows == 0 {
+		w.minKey = bytes.Clone(keys[0].ByteArray())
+	}
+	w.lastKey = append(w.lastKey[:0], previous...)
+	w.rows += int64(len(keys))
+	return nil
 }
 
 // writeColumn writes a column's page values writeQuantum rows at a time,

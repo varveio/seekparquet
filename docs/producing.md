@@ -31,7 +31,7 @@ promises. Readers and validators check the result; nothing here relaxes a rule o
 
 | Step | API |
 |---|---|
-| 3 | `write.NewPart`, `PartWriter.WriteRows`, `PartWriter.Seal` (or `Abort`) |
+| 3 | `write.NewPart`, `PartWriter.WriteRows` or `PartWriter.WritePage`, `PartWriter.Seal` (or `Abort`) |
 | 4 | `local.PublishPart` |
 | 5 | `seekparquet.MarshalManifest`, `local.Commit` |
 | 2 to 5, from sorted rows | `local.WriteDir` |
@@ -42,7 +42,10 @@ promises. Readers and validators check the result; nothing here relaxes a rule o
 indexes, bounds or stamps. It checks every key as it arrives (KEY-2, KEY-3, KEY-6) and fails with
 `write.ErrProfile`, naming the rule, rather than write a part a reader would refuse. It streams: it holds
 one page of rows and one row group of encoded pages, and computes the part's SHA-256 as the bytes are
-written. Its page bounds are exact on every column, including keys longer than 1,024 bytes and keys that
+written. `WriteRows` copies each row's byte values, so the caller may reuse its rows at once.
+`WritePage` copies nothing: the caller fills each column of a page from its own rows, which must stay
+unchanged until the call returns; it checks only the keys (KEY-2, KEY-3), leaving KEY-6 to the caller
+and to validation, and encodes as fast as a writer built for one schema. Its page bounds are exact on every column, including keys longer than 1,024 bytes and keys that
 begin with `0xFF` bytes, whose bounds a shortening writer can get wrong (RG-5).
 
 `local` confines every path to the dataset root (an `os.Root`) and follows swath's protocol. `WriteDir`

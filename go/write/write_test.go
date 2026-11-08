@@ -331,3 +331,123 @@ func TestPartProfile(t *testing.T) {
 		}
 	}
 }
+
+// TestWritePage: WritePage checks the keys it is given, refuses page sizes
+// outside 1 to PageRows and repeated columns, flushes rows WriteRows
+// buffered as a page of their own, and copies nothing.
+func TestWritePage(t *testing.T) {
+	page := func(keys ...string) func(int, []parquet.Value) {
+		rows := kvRows(keys...)
+		return func(c int, values []parquet.Value) {
+			for i := range values {
+				values[i] = rows[i][c]
+			}
+		}
+	}
+	for name, c := range map[string]struct {
+		unique bool
+		pages  [][]string
+		rule   string
+	}{
+		"descending in a page":   {true, [][]string{{"a", "c", "b"}}, "KEY-3"},
+		"descending across":      {true, [][]string{{"a", "c"}, {"b"}}, "KEY-3"},
+		"equal across, unique":   {true, [][]string{{"a", "b"}, {"b"}}, "KEY-3"},
+		"empty key":              {true, [][]string{{"a", ""}}, "KEY-2"},
+		"descending, groups":     {false, [][]string{{"a", "b"}, {"b", "a"}}, "KEY-3"},
+		"equal across, grouped":  {false, [][]string{{"a", "b"}, {"b", "c"}}, ""},
+		"ascending across pages": {true, [][]string{{"a", "b"}, {"c"}}, ""},
+	} {
+		f := &memFile{}
+		w, err := NewPart(f, kvSchema, kvOptions(c.unique))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, keys := range c.pages {
+			if err = w.WritePage(len(keys), page(keys...)); err != nil {
+				break
+			}
+		}
+		if c.rule == "" {
+			if err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+			continue
+		}
+		if !errors.Is(err, ErrProfile) || !strings.Contains(err.Error(), c.rule) {
+			t.Errorf("%s: %v, want %s", name, err, c.rule)
+		}
+		if again := w.WritePage(1, page("zzz")); again != err {
+			t.Errorf("%s: a page after the error: %v", name, again)
+		}
+		if _, err := w.Seal(); err == nil {
+			t.Errorf("%s: sealed after an error", name)
+		}
+	}
+
+	opt := kvOptions(true)
+	opt.PageRows = 4
+	w, err := NewPart(&memFile{}, kvSchema, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []int{0, 5} {
+		if err := w.WritePage(n, page("a", "b", "c", "d", "e")); err == nil {
+			t.Errorf("a page of %d rows with PageRows 4", n)
+		}
+	}
+	w, _ = NewPart(&memFile{}, kvSchema, opt)
+	if err := w.WritePage(4, page("a", "b", "c", "d")); err != nil {
+		t.Fatal(err)
+	}
+	for i := range w.page {
+		if cap(w.page[i].data) > 0 || cap(w.page[i].spans) > 0 {
+			t.Errorf("column %d: WritePage copied values", i)
+		}
+	}
+	type repeated struct {
+		Key  []byte  `parquet:"key"`
+		Tags []int64 `parquet:"tags,list"`
+	}
+	rw, err := NewPart(&memFile{}, parquet.SchemaOf(new(repeated)), kvOptions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rw.WritePage(1, func(int, []parquet.Value) { t.Error("filled a repeated schema") }); err == nil {
+		t.Errorf("WritePage on a schema with a repeated column")
+	}
+
+	f := &memFile{}
+	w, err = NewPart(f, kvSchema, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.WriteRows(kvRows("a", "b", "c")); err != nil {
+		t.Fatal(err)
+	}
+	for _, keys := range [][]string{{"d", "e"}, {"f", "g", "h", "i"}} {
+		if err := w.WritePage(len(keys), page(keys...)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := w.WriteRows(kvRows("j")); err != nil {
+		t.Fatal(err)
+	}
+	info, err := w.Seal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Rows != 10 || string(info.MinKey) != "a" || string(info.MaxKey) != "j" {
+		t.Errorf("PartInfo %+v", info)
+	}
+	pages, err := seekparquet.InspectKeyPages(bytes.NewReader(f.Bytes()), int64(f.Len()), "key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sizes []int64
+	for _, p := range pages {
+		sizes = append(sizes, p.Rows)
+	}
+	if fmt.Sprint(sizes) != "[3 2 4 1]" {
+		t.Errorf("pages of %v rows, want [3 2 4 1]", sizes)
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/encoding"
@@ -115,26 +116,140 @@ type encoded struct {
 
 func (f encoded) Encoding() encoding.Encoding { return f.enc }
 
-// parquetRow is swath's fill for one row.
-func (r *swathRow) parquetRow() parquet.Row {
-	opt := func(ok bool, v parquet.Value, col int) parquet.Value {
+// value is swath's fill for column c of one row: the values point into the
+// row's strings, as swath's do.
+func (r *swathRow) value(c int) parquet.Value {
+	opt := func(ok bool, v parquet.Value) parquet.Value {
 		if !ok {
-			return parquet.NullValue().Level(0, 0, col)
+			return parquet.NullValue().Level(0, 0, c)
 		}
-		return v.Level(0, 1, col)
+		return v.Level(0, 1, c)
 	}
-	return parquet.Row{
-		parquet.ByteArrayValue([]byte(r.key)).Level(0, 0, 0),
-		opt(true, parquet.Int64Value(r.size), 1),
-		opt(true, parquet.Int64Value(r.mtime), 2),
-		parquet.ByteArrayValue([]byte(r.kind)).Level(0, 0, 3),
-		opt(r.has&1 != 0, parquet.Int32Value(int32(r.mode)), 4),
-		opt(r.has&1 != 0, parquet.Int64Value(r.inode), 5),
-		opt(r.has&1 != 0, parquet.Int32Value(r.small), 6),
-		opt(r.has&1 != 0, parquet.BooleanValue(r.flag), 7),
-		opt(r.has&2 != 0, parquet.ByteArrayValue([]byte(r.link)), 8),
-		opt(r.etag != "", parquet.ByteArrayValue([]byte(r.etag)), 9),
+	switch c {
+	case 0:
+		return parquet.ByteArrayValue(unsafeBytes(r.key)).Level(0, 0, 0)
+	case 1:
+		return opt(true, parquet.Int64Value(r.size))
+	case 2:
+		return opt(true, parquet.Int64Value(r.mtime))
+	case 3:
+		return parquet.ByteArrayValue(unsafeBytes(r.kind)).Level(0, 0, 3)
+	case 4:
+		return opt(r.has&1 != 0, parquet.Int32Value(int32(r.mode)))
+	case 5:
+		return opt(r.has&1 != 0, parquet.Int64Value(r.inode))
+	case 6:
+		return opt(r.has&1 != 0, parquet.Int32Value(r.small))
+	case 7:
+		return opt(r.has&1 != 0, parquet.BooleanValue(r.flag))
+	case 8:
+		return opt(r.has&2 != 0, parquet.ByteArrayValue(unsafeBytes(r.link)))
+	default:
+		return opt(r.etag != "", parquet.ByteArrayValue(unsafeBytes(r.etag)))
 	}
+}
+
+// swathColumns is the number of leaf columns of swathSchema.
+const swathColumns = 10
+
+// parquetRow is the row of r's values, its byte values copies of its
+// strings (the copying intake must not depend on them).
+func (r *swathRow) parquetRow() parquet.Row {
+	row := make(parquet.Row, swathColumns)
+	for c := range row {
+		row[c] = r.value(c).Clone()
+	}
+	return row
+}
+
+// swathColumn is one value column of swath's binding (schema.Column): an
+// accessor per kind, and whether the column is INT32.
+type swathColumn struct {
+	required bool
+	int32    bool
+	str      func(*swathRow) (string, bool)
+	int      func(*swathRow) (int64, bool)
+	bool     func(*swathRow) (bool, bool)
+}
+
+// swathValueColumns are swathSchema's value columns, in order, as swath's test
+// schema binds them.
+var swathValueColumns = []swathColumn{
+	{int: func(r *swathRow) (int64, bool) { return r.size, true }},
+	{int: func(r *swathRow) (int64, bool) { return r.mtime, true }},
+	{required: true, str: func(r *swathRow) (string, bool) { return r.kind, true }},
+	{int32: true, int: func(r *swathRow) (int64, bool) { return int64(int32(r.mode)), r.has&1 != 0 }},
+	{int: func(r *swathRow) (int64, bool) { return r.inode, r.has&1 != 0 }},
+	{int32: true, int: func(r *swathRow) (int64, bool) { return int64(r.small), r.has&1 != 0 }},
+	{bool: func(r *swathRow) (bool, bool) { return r.flag, r.has&1 != 0 }},
+	{str: func(r *swathRow) (string, bool) { return r.link, r.has&2 != 0 }},
+	{str: func(r *swathRow) (string, bool) { return r.etag, r.etag != "" }},
+}
+
+// fillPage is swath's page fill for WritePage: its binding's fillKey and
+// fill (swath go/internal/parquetout/binding.go at a832c783), column c of
+// rows.
+func fillPage(rows []swathRow) func(c int, values []parquet.Value) {
+	return func(c int, values []parquet.Value) { fillColumn(rows, c, values) }
+}
+
+// fillColumn is the fill itself, a plain function as swath's is: the
+// closure's captured rows would be reloaded on every store.
+func fillColumn(rows []swathRow, c int, values []parquet.Value) {
+	if c == 0 {
+		for i := range rows {
+			values[i] = parquet.ByteArrayValue(unsafeBytes(rows[i].key)).Level(0, 0, 0)
+		}
+		return
+	}
+	col := &swathValueColumns[c-1]
+	def := 1
+	if col.required {
+		def = 0
+	}
+	switch {
+	case col.str != nil:
+		for i := range rows {
+			if v, ok := col.str(&rows[i]); ok {
+				values[i] = parquet.ByteArrayValue(unsafeBytes(v)).Level(0, def, c)
+			} else {
+				values[i] = parquet.NullValue().Level(0, 0, c)
+			}
+		}
+	case col.int32:
+		for i := range rows {
+			if v, ok := col.int(&rows[i]); ok {
+				values[i] = parquet.Int32Value(int32(v)).Level(0, def, c)
+			} else {
+				values[i] = parquet.NullValue().Level(0, 0, c)
+			}
+		}
+	case col.bool != nil:
+		for i := range rows {
+			if v, ok := col.bool(&rows[i]); ok {
+				values[i] = parquet.BooleanValue(v).Level(0, def, c)
+			} else {
+				values[i] = parquet.NullValue().Level(0, 0, c)
+			}
+		}
+	default:
+		for i := range rows {
+			if v, ok := col.int(&rows[i]); ok {
+				values[i] = parquet.Int64Value(v).Level(0, def, c)
+			} else {
+				values[i] = parquet.NullValue().Level(0, 0, c)
+			}
+		}
+	}
+}
+
+// unsafeBytes views an immutable string as bytes without copying, as
+// swath's binding does.
+func unsafeBytes(s string) []byte {
+	if s == "" {
+		return []byte{}
+	}
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 // testRows is swath's testRows: n unique keys from a seeded generator,
@@ -211,13 +326,26 @@ func (f *memFile) Close() error { f.closed++; return nil }
 
 // writeSwathPart writes rows as swath's writer would, with the rows passed
 // in batches of 1,500 and reused between batches, two column workers.
-func writeSwathPart(t *testing.T, schema *parquet.Schema, schemaID string, unique bool, rows []swathRow) ([]byte, seekparquet.PartInfo) {
+func writeSwathPart(t *testing.T, schema *parquet.Schema, schemaID string, unique bool, rows []swathRow, pages bool) ([]byte, seekparquet.PartInfo) {
 	t.Helper()
 	f := &memFile{}
 	w, err := NewPart(f, schema, PartOptions{Key: seekparquet.Key{Column: "key", Unique: unique}, SchemaID: schemaID,
 		CreatedBy: parityCreatedBy, ColumnWorkers: func() int { return 2 }})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if pages {
+		for i := 0; i < len(rows); i += defaultPageRows {
+			page := rows[i:min(i+defaultPageRows, len(rows))]
+			if err := w.WritePage(len(page), fillPage(page)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		info, err := w.Seal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f.Bytes(), info
 	}
 	batch := make([]parquet.Row, 0, 1500)
 	for i := 0; i < len(rows); i += 1500 {
@@ -248,7 +376,7 @@ func writeSwathPart(t *testing.T, schema *parquet.Schema, schemaID string, uniqu
 
 // TestSwathParity: the three scenarios of swath's TestFooterOnlyChange,
 // written through this package with swath's parameters, give swath's
-// bytes.
+// bytes, through WriteRows and through WritePage alike.
 func TestSwathParity(t *testing.T) {
 	unique := testRows(6000, 11)
 	scenarios := []struct {
@@ -265,7 +393,10 @@ func TestSwathParity(t *testing.T) {
 	pinned := runtime.GOOS+"/"+runtime.GOARCH == parityPlatform
 	for _, sc := range scenarios {
 		for i, rows := range sc.parts {
-			raw, info := writeSwathPart(t, swathSchema(sc.binary), sc.schemaID, sc.unique, rows)
+			raw, info := writeSwathPart(t, swathSchema(sc.binary), sc.schemaID, sc.unique, rows, false)
+			if paged, _ := writeSwathPart(t, swathSchema(sc.binary), sc.schemaID, sc.unique, rows, true); !bytes.Equal(paged, raw) {
+				t.Errorf("%s part %d: WritePage wrote other bytes than WriteRows", sc.name, i)
+			}
 			got, want := digestPart(t, raw), swathGolden[sc.name][i]
 			if pinned && (got.Data != want.Data || got.Meta != want.Meta || got.Offsets != want.Offsets) || got.Values != want.Values || got.Keys != want.Keys {
 				t.Errorf("%s part %d: %+v, swath %+v", sc.name, i, got, want)

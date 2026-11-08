@@ -5,6 +5,9 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- `PartWriter.WritePage` writes a page column by column from the caller's own values, without copying
+  them and checking only the keys (KEY-2, KEY-3): with swath's binding it writes swath's bytes at its old
+  writer's speed (`BenchmarkSwathWriter`). `WriteRows` still copies, for callers that reuse their rows.
 - Lazy open (spec CHECK-1 as now written): `OpenDataset` and `OpenDir` read and check the manifest only,
   and open no part. A part is opened and checked (size, footer, stamps, row count, key column, RG-1, and
   COL-5 against the parts already checked) the first time a read routes to it; a refusal surfaces from
