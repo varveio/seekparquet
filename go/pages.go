@@ -126,7 +126,11 @@ type chunk struct {
 	// code refuses a page its index entry does not describe:
 	// invalid_page_index for the key column (RG-3, RG-7), invalid_parquet
 	// for a value column (CHECK-5).
-	code     Code
+	code Code
+	// first is the offset of the chunk's first data page when an
+	// OffsetIndex gives it, so that what precedes it is the dictionary's
+	// extent; zero when not known.
+	first    int64
 	dict     parquet.Dictionary
 	dictRead bool
 	stats    *ReadStats
@@ -163,6 +167,17 @@ func (c *chunk) corrupt(err error) error {
 // that follows the header too.
 func (c *chunk) header(off int64) (*format.PageHeader, int64, []byte, error) {
 	return c.p.pageHeader(c.ctx, c.physical, c.col.index, off, c.end, c.stats)
+}
+
+// located reads the page that a page index locates at off, size bytes
+// with its header, in one read, and returns what header returns. A size
+// beyond any page within the limits is read through header instead, so
+// that it fails as any page beyond them does.
+func (c *chunk) located(off, size int64) (*format.PageHeader, int64, []byte, error) {
+	if lim := &c.p.r.limits; size > lim.PageBytes+lim.headerBytes() {
+		return c.header(off)
+	}
+	return c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, c.end, c.stats)
 }
 
 // payload returns the page data after a header of length n at off, from
@@ -202,7 +217,7 @@ func (c *chunk) indexed(i int, loc pageLoc) ([]parquet.Value, error) {
 	bad := func(format string, args ...any) error {
 		return refusePart(c.code, c.p.name, c.physical, "column chunk %d page %d: "+format, append([]any{c.col.index, i}, args...)...)
 	}
-	h, n, raw, err := c.header(loc.offset)
+	h, n, raw, err := c.located(loc.offset, loc.size)
 	if err != nil {
 		if CodeOf(err) == CodeInvalidParquet {
 			return nil, bad("its OffsetIndex entry does not locate a page header")
@@ -415,21 +430,40 @@ func held(typ parquet.Type, decoded *encoding.Values) int64 {
 }
 
 // dictionary returns the chunk's dictionary, nil when it has none: the
-// dictionary page that begins the chunk, decoded on first use.
+// dictionary page that begins the chunk, decoded on first use. When the
+// chunk's first data page is known, the bytes before it are the
+// dictionary's extent, read at once.
 func (c *chunk) dictionary() (parquet.Dictionary, error) {
 	if c.dictRead {
 		return c.dict, nil
 	}
 	c.dictRead = true
-	h, n, raw, err := c.header(c.start)
-	if err != nil {
-		return nil, err
-	}
-	if h.Type != format.DictionaryPage || !h.DictionaryPageHeader.Valid {
+	none := func() (parquet.Dictionary, error) {
 		if c.p.footer.Metadata().RowGroups[c.physical].Columns[c.col.index].MetaData.DictionaryPageOffset != 0 {
 			return nil, c.corrupt(errors.New("no dictionary page at its dictionary offset"))
 		}
 		return nil, nil
+	}
+	var h *format.PageHeader
+	var n int64
+	var raw []byte
+	var err error
+	switch {
+	case c.first == c.start:
+		return none()
+	case c.first != 0:
+		h, n, raw, err = c.located(c.start, c.first-c.start)
+	default:
+		h, n, raw, err = c.header(c.start)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if h.Type != format.DictionaryPage || !h.DictionaryPageHeader.Valid {
+		return none()
+	}
+	if c.first != 0 && n+int64(h.CompressedPageSize) > c.first-c.start {
+		return nil, c.corrupt(errors.New("the dictionary page overlaps the first data page"))
 	}
 	d := &h.DictionaryPageHeader.V
 	if d.Encoding != format.Plain && d.Encoding != format.PlainDictionary {
@@ -566,47 +600,83 @@ func deltaStream(src []byte, n int) ([]byte, error) {
 // decode is invalid_parquet. It returns the header, its length and the
 // bytes read from off.
 func (p *part) pageHeader(ctx context.Context, physical, column int, off, end int64, st *ReadStats) (*format.PageHeader, int64, []byte, error) {
-	lim := &p.r.limits
-	bad := func(format string, args ...any) error {
-		return refusePart(CodeInvalidParquet, p.name, physical, "column chunk %d page at %d: "+format, append([]any{column, off}, args...)...)
-	}
+	bad := p.badPage(physical, column, off)
 	if off < 0 || off >= end {
 		return nil, 0, nil, bad("outside the column chunk")
 	}
-	avail := end - off
-	var header format.PageHeader
-	var length int
-	var raw []byte
-	// A header is read in growing pieces up to 16 MiB, far beyond any
-	// real header; a small page arrives with its header.
-	ceiling := min(avail, 16<<20, lim.MetadataMemory)
+	// A header is read in growing pieces up to headerBytes; a small page
+	// arrives with its header.
+	ceiling := min(end-off, p.r.limits.headerBytes())
 	for want := int64(4 << 10); ; want *= 16 {
-		n := min(want, ceiling)
-		raw = make([]byte, n)
-		if err := readFull(p.at(ctx, st), raw, off); err != nil {
-			if isEnvironment(ctx, err) {
-				return nil, 0, nil, err
-			}
-			return nil, 0, nil, bad("%v", err)
+		raw, err := p.readPage(ctx, off, min(want, ceiling), st, bad)
+		if err != nil {
+			return nil, 0, nil, err
 		}
-		header = format.PageHeader{}
-		var err error
-		length, err = decodeBounded(raw, &header, lim.MetadataMemory)
-		if errors.Is(err, ErrLimitExceeded) {
-			return nil, 0, nil, fmt.Errorf("part %s: page header: %w", p.name, err)
+		h, n, err := p.decodeHeader(raw, end-off, int64(len(raw)) == ceiling, bad)
+		if h != nil || err != nil {
+			return h, n, raw, err
 		}
-		if err == nil {
-			break
+	}
+}
+
+// pageExtent reads the size bytes at off that a page index locates as one
+// page, header included, in a single read, and decodes and checks its
+// header as pageHeader does, in a column chunk ending at end. The caller
+// bounds size (chunk.located).
+func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, end int64, st *ReadStats) (*format.PageHeader, int64, []byte, error) {
+	bad := p.badPage(physical, column, off)
+	if off < 0 || off >= end || size > end-off {
+		return nil, 0, nil, bad("outside the column chunk")
+	}
+	raw, err := p.readPage(ctx, off, size, st, bad)
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	h, n, err := p.decodeHeader(raw, end-off, true, bad)
+	return h, n, raw, err
+}
+
+// badPage returns the invalid_parquet refusal of the page at off.
+func (p *part) badPage(physical, column int, off int64) func(string, ...any) error {
+	return func(format string, args ...any) error {
+		return refusePart(CodeInvalidParquet, p.name, physical, "column chunk %d page at %d: "+format, append([]any{column, off}, args...)...)
+	}
+}
+
+// readPage reads n bytes of a column chunk at off.
+func (p *part) readPage(ctx context.Context, off, n int64, st *ReadStats, bad func(string, ...any) error) ([]byte, error) {
+	raw := make([]byte, n)
+	if err := readFull(p.at(ctx, st), raw, off); err != nil {
+		if isEnvironment(ctx, err) {
+			return nil, err
 		}
-		if n == ceiling {
-			return nil, 0, nil, bad("the page header does not decode: %v", err)
-		}
+		return nil, bad("%v", err)
+	}
+	return raw, nil
+}
+
+// decodeHeader decodes the page header at the start of raw and checks it
+// against the limits and against avail, the bytes from the header to the
+// end of its column chunk. A header that does not decode from raw is
+// refused when raw is all there is to read (final), and otherwise reported
+// by a nil header and error, so that the caller reads more.
+func (p *part) decodeHeader(raw []byte, avail int64, final bool, bad func(string, ...any) error) (*format.PageHeader, int64, error) {
+	lim := &p.r.limits
+	var header format.PageHeader
+	length, err := decodeBounded(raw, &header, lim.MetadataMemory)
+	switch {
+	case errors.Is(err, ErrLimitExceeded):
+		return nil, 0, fmt.Errorf("part %s: page header: %w", p.name, err)
+	case err != nil && final:
+		return nil, 0, bad("the page header does not decode: %v", err)
+	case err != nil:
+		return nil, 0, nil
 	}
 	if header.CompressedPageSize < 0 || header.UncompressedPageSize < 0 || int64(length)+int64(header.CompressedPageSize) > avail {
-		return nil, 0, nil, bad("the page sizes are invalid")
+		return nil, 0, bad("the page sizes are invalid")
 	}
 	if size := int64(max(header.CompressedPageSize, header.UncompressedPageSize)); size > lim.PageBytes {
-		return nil, 0, nil, exceeded("part %s: a page of %d bytes (Limits.PageBytes %d)", p.name, size, lim.PageBytes)
+		return nil, 0, exceeded("part %s: a page of %d bytes (Limits.PageBytes %d)", p.name, size, lim.PageBytes)
 	}
 	var values int64
 	switch header.Type {
@@ -618,19 +688,19 @@ func (p *part) pageHeader(ctx context.Context, physical, column int, off, end in
 		values = int64(max(h.NumValues, h.NumRows))
 		if h.NumValues < 0 || h.NumRows < 0 || h.NumNulls < 0 || h.DefinitionLevelsByteLength < 0 || h.RepetitionLevelsByteLength < 0 ||
 			int64(h.DefinitionLevelsByteLength)+int64(h.RepetitionLevelsByteLength) > int64(min(header.CompressedPageSize, header.UncompressedPageSize)) {
-			return nil, 0, nil, bad("the data page header is invalid")
+			return nil, 0, bad("the data page header is invalid")
 		}
 	case format.DictionaryPage:
 		h, _ := header.DictionaryPageHeader.Get()
 		values = int64(h.NumValues)
 	}
 	if values < 0 {
-		return nil, 0, nil, bad("the value count is negative")
+		return nil, 0, bad("the value count is negative")
 	}
 	if values > lim.PageValues {
-		return nil, 0, nil, exceeded("part %s: a page of %d values (Limits.PageValues %d)", p.name, values, lim.PageValues)
+		return nil, 0, exceeded("part %s: a page of %d values (Limits.PageValues %d)", p.name, values, lim.PageValues)
 	}
-	return &header, int64(length), raw, nil
+	return &header, int64(length), nil
 }
 
 // loadOffsetIndex returns the OffsetIndex of a column chunk, nil when it
@@ -683,63 +753,105 @@ func (p *part) dataError(ctx context.Context, physical int, err error) error {
 	return refusePart(CodeInvalidParquet, p.name, physical, "%v", err)
 }
 
-// readColumn hands the selected rows of a value column to emit in order.
-// selected is non-empty, ascending, and confined to this physical row group.
-// Through the OffsetIndex it reads only pages holding selected rows; without
-// one (COL-4) it walks headers, decoding only pages holding selected rows.
-// Each data page is decoded at most once, and only the current decoded page
-// and chunk dictionary are retained, regardless of gaps in the selection.
-func (p *part) readColumn(ctx context.Context, physical int, col leaf, selected []position, st *ReadStats, emit func(int, parquet.Value)) error {
+// columnPages reads the pages of one value column chunk forward, for one
+// request, holding the page it decoded last: rows selected in ascending
+// order, over one call or several, decode each page at most once, and only
+// that page and the chunk's dictionary are retained. Through the
+// OffsetIndex it reads only the pages holding selected rows, each in one
+// read of the extent the index gives it; without an OffsetIndex (COL-4) it
+// walks the page headers from the chunk's start, decoding only pages
+// holding selected rows. The dictionary is read when a page needs it, or,
+// for a planned scan, before the first page, as ProjectedBytes counted it.
+type columnPages struct {
+	c *chunk
+	// locs are the chunk's pages, nil when it has no OffsetIndex.
+	locs []pageLoc
+	rows int64 // the row group's row count
+	// values are the page decoded last, holding rows from first on.
+	values []parquet.Value
+	first  int64
+	// off and walked are the walk's position: the offset of the next page
+	// header, and the first row of that page.
+	off, walked int64
+	// planned reads the dictionary before the first page.
+	planned bool
+}
+
+// openColumn opens the chunk of the named column in a physical row group,
+// with its OffsetIndex when it has one; nil when the part lacks the column
+// (COL-2).
+func (p *part) openColumn(ctx context.Context, physical int, name string, st *ReadStats) (*columnPages, error) {
+	col, ok := p.leaves[name]
+	if !ok {
+		return nil, nil
+	}
 	c, err := p.openChunk(ctx, physical, col, st, &st.ValuePagesDecoded)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	rows := p.footer.Metadata().RowGroups[physical].NumRows
+	cp := &columnPages{c: c, rows: p.footer.Metadata().RowGroups[physical].NumRows, off: c.start}
 	index, err := p.loadOffsetIndex(ctx, physical, col.index, st)
 	if err != nil {
-		return c.corrupt(fmt.Errorf("the OffsetIndex: %w", err))
-	}
-	next := 0
-	emitPage := func(values []parquet.Value, first int64) {
-		end := first + int64(len(values))
-		for next < len(selected) && selected[next].row < end {
-			emit(next, values[selected[next].row-first])
-			next++
-		}
+		return nil, c.corrupt(fmt.Errorf("the OffsetIndex: %w", err))
 	}
 	if index != nil {
-		locs, err := checkLocations(index, rows, c.start, c.end)
-		if err != nil {
-			return c.corrupt(err)
+		if cp.locs, err = checkLocations(index, cp.rows, c.start, c.end); err != nil {
+			return nil, c.corrupt(err)
 		}
-		for next < len(selected) {
-			if err := ctx.Err(); err != nil {
-				return err
+		c.first = cp.locs[0].offset
+	}
+	return cp, nil
+}
+
+// dictionaryBytes returns the extent of the chunk's dictionary page when
+// the OffsetIndex locates the first data page after the chunk's start.
+func (cp *columnPages) dictionaryBytes() int64 { return cp.c.first - cp.c.start }
+
+// pages returns the pages holding rows [from, to) of the row group, which
+// has an OffsetIndex.
+func (cp *columnPages) pages(from, to int64) (first, last int) {
+	return pageAt(cp.locs, from), pageAt(cp.locs, to-1)
+}
+
+// read hands the selected rows to emit in order. selected is non-empty,
+// ascending, after every row of an earlier call, and confined to this
+// physical row group.
+func (cp *columnPages) read(selected []position, emit func(int, parquet.Value)) error {
+	c := cp.c
+	for next := 0; next < len(selected); {
+		row := selected[next].row
+		if row >= cp.first && row < cp.first+int64(len(cp.values)) {
+			emit(next, cp.values[row-cp.first])
+			next++
+			continue
+		}
+		if err := c.ctx.Err(); err != nil {
+			return err
+		}
+		if cp.locs != nil {
+			if cp.planned && !c.dictRead && cp.dictionaryBytes() > 0 {
+				if _, err := c.dictionary(); err != nil {
+					return err
+				}
 			}
-			i := pageAt(locs, selected[next].row)
-			values, err := c.indexed(i, locs[i])
+			i := pageAt(cp.locs, row)
+			values, err := c.indexed(i, cp.locs[i])
 			if err != nil {
 				return err
 			}
-			emitPage(values, locs[i].first)
+			cp.values, cp.first = values, cp.locs[i].first
+			continue
 		}
-		return nil
-	}
-	first := int64(0)
-	for off := c.start; next < len(selected); {
-		if err := ctx.Err(); err != nil {
-			return err
+		if cp.off >= c.end {
+			return c.corrupt(fmt.Errorf("the chunk holds %d of its row group's %d rows", cp.walked, cp.rows))
 		}
-		if off >= c.end {
-			return c.corrupt(fmt.Errorf("the chunk holds %d of its row group's %d rows", first, rows))
-		}
-		h, length, raw, err := c.header(off)
+		h, length, raw, err := c.header(cp.off)
 		if err != nil {
 			return err
 		}
 		pageRows, isData := dataRows(h)
-		if isData && first+pageRows > selected[next].row {
-			data, err := c.payload(h, off, length, raw)
+		if isData && cp.walked+pageRows > row {
+			data, err := c.payload(h, cp.off, length, raw)
 			if err != nil {
 				return err
 			}
@@ -750,10 +862,10 @@ func (p *part) readColumn(ctx context.Context, physical int, col leaf, selected 
 			if int64(len(values)) != pageRows {
 				return c.corrupt(fmt.Errorf("a page declares %d rows and holds %d", pageRows, len(values)))
 			}
-			emitPage(values, first)
+			cp.values, cp.first = values, cp.walked
 		}
-		first += pageRows
-		off += length + int64(h.CompressedPageSize)
+		cp.walked += pageRows
+		cp.off += length + int64(h.CompressedPageSize)
 	}
 	return nil
 }

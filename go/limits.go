@@ -65,3 +65,7 @@ func (l Limits) withDefaults() Limits {
 func exceeded(format string, args ...any) error {
 	return fmt.Errorf("%w: "+format, append([]any{ErrLimitExceeded}, args...)...)
 }
+
+// headerBytes is the most bytes a page header is read in: 16 MiB, far
+// beyond any real header, or MetadataMemory when that is less.
+func (l *Limits) headerBytes() int64 { return min(16<<20, l.MetadataMemory) }

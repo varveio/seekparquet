@@ -579,10 +579,16 @@ func (r *reader) groupFor(ctx context.Context, from []byte, inclusive bool, log 
 	return at(a - 1), nil
 }
 
+// partAt returns the part holding the dataset row ordinal, or the number
+// of parts when the dataset has fewer rows.
+func (r *reader) partAt(ordinal int64) int {
+	return sort.Search(len(r.parts), func(i int) bool { return r.parts[i].start+r.parts[i].rows > ordinal })
+}
+
 // groupAt returns the row group holding the dataset row ordinal, checking
 // its part, or r.end() when the dataset has fewer rows.
 func (r *reader) groupAt(ctx context.Context, ordinal int64, st *ReadStats) (groupRef, error) {
-	i := sort.Search(len(r.parts), func(i int) bool { return r.parts[i].start+r.parts[i].rows > ordinal })
+	i := r.partAt(ordinal)
 	if i == len(r.parts) {
 		return r.end(), nil
 	}
@@ -591,6 +597,20 @@ func (r *reader) groupAt(ctx context.Context, ordinal int64, st *ReadStats) (gro
 		return groupRef{}, err
 	}
 	return groupRef{i, sort.Search(len(p.groups), func(j int) bool { return p.groups[j].start+p.groups[j].rows > ordinal })}, nil
+}
+
+// startOf returns the dataset ordinal of row group g's first row: that of
+// its part's first row for the part's first group, whether or not the part
+// is checked, and the dataset's row count past the last part.
+func (r *reader) startOf(g groupRef) int64 {
+	if g.part >= len(r.parts) {
+		return r.rows
+	}
+	p := r.parts[g.part]
+	if g.index > 0 {
+		return p.groups[g.index].start
+	}
+	return p.start
 }
 
 // startsAtOrAfter reports whether row group g is known, without reading

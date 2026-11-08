@@ -54,6 +54,19 @@
 // where) or is incomplete: an unsupported feature, a limit or a storage
 // error, never a statement about the data.
 //
+// # Planned selections
+//
+// Dataset.PlanRanges plans reading every row of a set of ranges before
+// reading it: RangePlan.Count is the number of rows, derived from the key
+// pages at the two ends of each range (checked as a Range checks them),
+// row-group row counts and OffsetIndex row positions, and exact once every
+// part holding one of the rows is checked; RangePlan.ProjectedBytes is the
+// compressed bytes of the projected columns' pages, and dictionaries, that
+// RangePlan.Scan will request, each extent once, so that a caller can
+// refuse a read over budget before it reads a data page. Scan yields the
+// rows in dataset order, checking every key page it decodes. A count
+// certifies only the rows at the ends it decoded (CHECK-4).
+//
 // # Equal keys and pagination
 //
 // When the manifest declares keys not unique, consecutive rows with equal
@@ -87,7 +100,8 @@
 //
 // # Read statistics
 //
-// Setting Range.Stats or List.Stats to a *ReadStats makes the request report
+// Setting Range.Stats or List.Stats to a *ReadStats (or passing one to
+// RangePlan.Scan) makes the request report
 // the pages, keys, row groups and Source reads it used, exactly, even when
 // it fails. They are diagnostics, not part of the format contract.
 //

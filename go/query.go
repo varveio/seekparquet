@@ -388,26 +388,33 @@ func (r *reader) project(ctx context.Context, rows []*Row, at []position, column
 			j++
 		}
 		p := r.parts[at[i].g.part]
-		grp := p.groups[at[i].g.index]
 		if err := p.checkProjection(columns); err != nil {
 			return err
 		}
 		for c, name := range columns {
-			col, ok := p.leaves[name]
-			if !ok {
-				for _, row := range rows[i:j] {
-					row.Values[c] = Value{Absent: true}
-				}
-				continue
-			}
-			err := p.readColumn(ctx, grp.physical, col, at[i:j], st, func(k int, v parquet.Value) {
-				rows[i+k].Values[c] = Value{Value: v.Clone()}
-			})
+			cp, err := p.openColumn(ctx, p.groups[at[i].g.index].physical, name, st)
 			if err != nil {
+				return err
+			}
+			if err := projectColumn(rows[i:j], at[i:j], c, cp); err != nil {
 				return err
 			}
 		}
 		i = j
 	}
 	return nil
+}
+
+// projectColumn sets value c of rows, found at positions at in one row
+// group, from the column's pages, or absent when cp is nil.
+func projectColumn(rows []*Row, at []position, c int, cp *columnPages) error {
+	if cp == nil {
+		for _, row := range rows {
+			row.Values[c] = Value{Absent: true}
+		}
+		return nil
+	}
+	return cp.read(at, func(k int, v parquet.Value) {
+		rows[k].Values[c] = Value{Value: v.Clone()}
+	})
 }
