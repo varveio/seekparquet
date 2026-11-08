@@ -46,6 +46,7 @@ internally, external indexes over Parquet, and table formats.
 | [`conformance/`](conformance/) | The language-neutral conformance suite: fixtures, cases, the runner protocol and harness |
 | [`go/`](go/) | The Go reader, module `github.com/varveio/seekparquet/go` |
 | [`java/`](java/) | The Java reader, package `io.varve.seekparquet` |
+| [`tools/seekparquet/`](tools/seekparquet/) | Local Python producer and independent dataset validator |
 | [`docs/`](docs/) | Related work and guides |
 
 ## Implementations
@@ -55,7 +56,9 @@ internally, external indexes over Parquet, and table formats.
 | [Go](go/README.md) | pre-release | format 1 draft revision 1: open, range, list, projection |
 | [Java](java/README.md) | pre-release; not yet published | format 1 draft revision 1: open, range, list, projection |
 
-Both implementations are readers, not production dataset writers or validators (§8 of the specification).
+The Go and Java implementations provide reading APIs. The [Python tooling](tools/seekparquet/README.md)
+creates new local datasets from sorted Arrow tables and [validates stored datasets](tools/seekparquet/VALIDATOR.md)
+at the structural, profile, full and digest levels (§8). The tools remain pre-release and local-only.
 The shared conformance suite checks reader semantics; it does not yet certify indexed-access efficiency.
 See the [Go usage examples](go/example_test.go) and [Java usage and build instructions](java/README.md)
 to get started, and the [Java qualification report](java/QUALIFICATION.md) for its Parquet library choice

@@ -30,7 +30,7 @@ reader implementations, but is not an independent implementation of PyArrow's
 Parquet decoding or of the fixture metadata codec.
 
 Only immutable local snapshots and format 0 draft revision 1 are supported.
-Validate a producer output before publishing it. The validator does not establish
+Validate a producer output before exposing the snapshot to consumers. The validator does not establish
 atomic publication, source completeness, remote object identity, or concurrent
 mutation safety. A digest does not establish those properties either.
 

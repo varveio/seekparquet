@@ -1,4 +1,4 @@
-# Python producer (draft revision 1)
+# Python producer and validator (draft revision 1)
 
 This small supported producer writes a **new local immutable dataset** from an
 already sorted, in-memory `pyarrow.Table`. It supports Python 3.11+ and pins
@@ -65,3 +65,10 @@ python -m unittest discover -s tools/seekparquet/tests -v
 Set `SEEKPARQUET_TEST_ADAPTERS` to a JSON array of Go/Java adapter commands to run
 input-derived interoperability checks. CI runs both real readers. Test files
 are generated in temporary directories; no binary fixtures are committed.
+
+## Validate the stored output
+
+Run `seekparquet-validate /new/dataset --level full` and, when hashes are present,
+`seekparquet-validate /new/dataset --level digest` before exposing the snapshot to consumers.
+See [validator behavior and limits](VALIDATOR.md) for per-level reports, unsupported
+features, resource bounds, and codec provenance. Validation does not prove source completeness.

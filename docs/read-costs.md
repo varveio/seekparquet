@@ -69,5 +69,5 @@ Name the reader/version, writer options, file geometry, key distribution, projec
 limit and cache state. Compare the same workload against a suitable baseline. Tiny synthetic
 probes expose an access pattern; they do not establish production throughput or cloud latency.
 
-The [quickstart](quickstart.md) is a semantic example using checked-in fixtures. A production
-writer, validator and representative remote qualification remain separate work.
+The [quickstart](quickstart.md) is a semantic example using checked-in fixtures. The [local producer and validator](../tools/seekparquet/README.md) support a bounded development workflow;
+representative remote qualification remains separate work.
