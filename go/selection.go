@@ -125,6 +125,9 @@ func (plan *RangePlan) Scan(ctx context.Context, st *ReadStats, fn func(Row) err
 					if err != nil {
 						return err
 					}
+					if cp != nil {
+						cp.planned = true
+					}
 					pages[c] = cp
 				}
 			}

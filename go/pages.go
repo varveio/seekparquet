@@ -758,10 +758,10 @@ func (p *part) dataError(ctx context.Context, physical int, err error) error {
 // order, over one call or several, decode each page at most once, and only
 // that page and the chunk's dictionary are retained. Through the
 // OffsetIndex it reads only the pages holding selected rows, each in one
-// read of the extent the index gives it, and the dictionary, when the chunk
-// has one, before the first of them; without an OffsetIndex (COL-4) it
+// read of the extent the index gives it; without an OffsetIndex (COL-4) it
 // walks the page headers from the chunk's start, decoding only pages
-// holding selected rows.
+// holding selected rows. The dictionary is read when a page needs it, or,
+// for a planned scan, before the first page, as ProjectedBytes counted it.
 type columnPages struct {
 	c *chunk
 	// locs are the chunk's pages, nil when it has no OffsetIndex.
@@ -773,6 +773,8 @@ type columnPages struct {
 	// off and walked are the walk's position: the offset of the next page
 	// header, and the first row of that page.
 	off, walked int64
+	// planned reads the dictionary before the first page.
+	planned bool
 }
 
 // openColumn opens the chunk of the named column in a physical row group,
@@ -827,7 +829,7 @@ func (cp *columnPages) read(selected []position, emit func(int, parquet.Value)) 
 			return err
 		}
 		if cp.locs != nil {
-			if !c.dictRead && cp.dictionaryBytes() > 0 {
+			if cp.planned && !c.dictRead && cp.dictionaryBytes() > 0 {
 				if _, err := c.dictionary(); err != nil {
 					return err
 				}

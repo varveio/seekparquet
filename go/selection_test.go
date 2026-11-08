@@ -555,3 +555,125 @@ func TestPlanConcurrent(t *testing.T) {
 		}
 	}
 }
+
+// fallbackRow has a dictionary-encoded value column.
+type fallbackRow struct {
+	Key  []byte `parquet:"key"`
+	Size int64  `parquet:"size,dict"`
+}
+
+// TestRangeReadsDictionaryOnlyForItsPages: a chunk whose dictionary
+// outgrew its limit continues in PLAIN pages; a Range projecting only a
+// PLAIN page reads no byte of the dictionary, and succeeds under a
+// Limits.PageBytes the dictionary page exceeds, while a plan's Scan, which
+// counts the dictionary, reads it and so meets the limit.
+func TestRangeReadsDictionaryOnlyForItsPages(t *testing.T) {
+	rows := make([]fallbackRow, 700)
+	for i := range rows {
+		rows[i] = fallbackRow{Key: fmt.Appendf(nil, "k%04d", i), Size: int64(i) * 1000}
+	}
+	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: rows, PageBytes: 256, DictionaryMaxBytes: 2048}}})
+	last := rows[len(rows)-1].Key
+	footer, err := testutil.ReadFooter(partFile(dir, 0))
+	must(t, err)
+	meta := footer.RowGroups[0].Columns[1].MetaData
+	if meta.DictionaryPageOffset == 0 {
+		t.Fatal("the size chunk has no dictionary")
+	}
+	dict := chunkExtent{testutil.PartPath(0), meta.DictionaryPageOffset, meta.DataPageOffset}
+	whole := chunkExtent{testutil.PartPath(0), meta.DictionaryPageOffset, meta.DictionaryPageOffset + meta.TotalCompressedSize}
+
+	limits := Limits{PageBytes: 1024}
+	src := &extentSource{Source: dirOf(t, dir)}
+	d, err := OpenDataset(ctx, src, Options{Limits: limits})
+	must(t, err)
+	defer d.Close()
+	must(t, d.r.checkParts(ctx, new(ReadStats)))
+	cp, err := d.r.parts[0].openColumn(ctx, 0, "size", new(ReadStats))
+	must(t, err)
+	if cp.dictionaryBytes() <= limits.PageBytes {
+		t.Fatalf("the dictionary takes %d bytes, within Limits.PageBytes", cp.dictionaryBytes())
+	}
+	for i, want := range map[int]bool{0: true, len(cp.locs) - 1: false} {
+		h, _, _, err := cp.c.header(cp.locs[i].offset)
+		must(t, err)
+		enc := h.DataPageHeader.V.Encoding
+		if h.DataPageHeaderV2.Valid {
+			enc = h.DataPageHeaderV2.V.Encoding
+		}
+		if (enc == parquet.RLEDictionary.Encoding() || enc == parquet.PlainDictionary.Encoding()) != want {
+			t.Fatalf("page %d is encoded %s", i, enc)
+		}
+	}
+
+	src.take()
+	got, err := d.Range(ctx, KeyRange(last, 1, "size"))
+	must(t, err)
+	if len(got) != 1 || got[0].Values[0].Int64() != rows[len(rows)-1].Size {
+		t.Fatalf("range: %+v", got)
+	}
+	reads := src.take()
+	if n := chunkBytes(t, "range", reads, []chunkExtent{dict}); n != 0 {
+		t.Fatalf("a Range of a PLAIN page read %d bytes of the dictionary", n)
+	}
+	if n := chunkBytes(t, "range", reads, []chunkExtent{whole}); n != cp.locs[len(cp.locs)-1].size {
+		t.Fatalf("a Range of one page read %d bytes of the chunk, the page is %d", n, cp.locs[len(cp.locs)-1].size)
+	}
+	plan, err := d.PlanRanges(ctx, []Range{KeyRange(last, 0)}, []string{"size"})
+	must(t, err)
+	if n, _ := plan.ProjectedBytes(); n != cp.dictionaryBytes()+cp.locs[len(cp.locs)-1].size {
+		t.Fatalf("projected %d bytes", n)
+	}
+	if err := plan.Scan(ctx, nil, func(Row) error { return nil }); !errors.Is(err, ErrLimitExceeded) {
+		t.Fatalf("a planned scan of a dictionary over the limit: %v", err)
+	}
+}
+
+// TestPlanCursorInEqualKeys plans a range continuing after a cursor deep
+// inside a group of equal keys that spans several pages, with ranges
+// overlapping it and each other, and checks the rows and offsets Scan
+// yields, and the count, against the rows a full Range returns.
+func TestPlanCursorInEqualKeys(t *testing.T) {
+	stem := strings.Repeat("x", 40)
+	var keys []string
+	keys = append(keys, "a"+stem, "a"+stem)
+	for range 60 {
+		keys = append(keys, "b"+stem)
+	}
+	keys = append(keys, "c"+stem, "c"+stem, "c"+stem, "d"+stem)
+	dir := write(t, testutil.Dataset{RepeatedKeys: true, Parts: []testutil.Part{{Rows: testutil.Rows(keys...), PageBytes: 128, GroupRows: 25}}})
+	d := open(t, dir, Options{})
+	all, err := d.Range(ctx, Range{Limit: 1000, Columns: []string{"size"}})
+	must(t, err)
+	index, err := d.r.parts[0].keyIndex(ctx, d.r.parts[0].groups[1].physical, new(ReadStats))
+	must(t, err)
+	if len(index.pages) < 3 {
+		t.Fatalf("row group 1 has %d key pages: the group of b is not across pages", len(index.pages))
+	}
+	b, c, end := []byte("b"+stem), []byte("c"+stem), []byte("d")
+	for _, ranges := range [][]Range{
+		{{Start: b, End: end, Cursor: &Cursor{Key: b, Offset: 37}}, {Start: b, Cursor: &Cursor{Key: b, Offset: 50}}},
+		{{Start: b, Cursor: &Cursor{Key: b, Offset: 41}}, {Start: c, End: end}, KeyRange(b, 0)},
+		{{Start: b, End: c, Cursor: &Cursor{Key: b, Offset: 59}}, {Prefix: []byte("c")}},
+		{{Start: b, End: end, Cursor: &Cursor{Key: b, Offset: 12}}, {Prefix: []byte("b"), Cursor: &Cursor{Key: b, Offset: 30}}},
+	} {
+		var want []string
+		for _, row := range all {
+			if slices.ContainsFunc(ranges, func(rng Range) bool {
+				return selects(rng, row.Key) && afterCursor(rng.Cursor, row.Key, row.Offset)
+			}) {
+				want = append(want, fmt.Sprintf("%s/%d=%d", row.Key, row.Offset, row.Values[0].Int64()))
+			}
+		}
+		plan, err := d.PlanRanges(ctx, ranges, []string{"size"})
+		must(t, err)
+		var got []string
+		must(t, plan.Scan(ctx, nil, func(row Row) error {
+			got = append(got, fmt.Sprintf("%s/%d=%d", row.Key, row.Offset, row.Values[0].Int64()))
+			return nil
+		}))
+		if n, exact := plan.Count(); !slices.Equal(got, want) || n != int64(len(want)) || !exact {
+			t.Fatalf("%s: count %d (exact %v)\n got %q\nwant %q", describe(ranges), n, exact, got, want)
+		}
+	}
+}

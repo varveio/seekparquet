@@ -102,6 +102,9 @@ type Part struct {
 	DataPageVersion int
 	// Compression is the codec; nil is parquet-go's default.
 	Compression parquet.WriterOption
+	// DictionaryMaxBytes, when positive, makes a dictionary-encoded column
+	// fall back to PLAIN pages once its dictionary exceeds it.
+	DictionaryMaxBytes int64
 }
 
 // Dataset describes a dataset.
@@ -216,6 +219,9 @@ func writePart(path string, part Part, stamps map[string]string, keyColumn strin
 	}
 	if part.Compression != nil {
 		options = append(options, part.Compression)
+	}
+	if part.DictionaryMaxBytes > 0 {
+		options = append(options, parquet.DictionaryMaxBytes(part.DictionaryMaxBytes))
 	}
 	if !part.Unsorted {
 		options = append(options, parquet.SortingWriterConfig(parquet.SortingColumns(parquet.Ascending(keyColumn))))

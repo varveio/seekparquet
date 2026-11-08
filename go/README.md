@@ -254,8 +254,9 @@ still untouched. `ProjectedBytes()` is the compressed bytes `Scan` will request 
 the extent of each page holding a selected row and of its chunk's dictionary, once each however many ranges
 share them; it is not exact when a projected chunk has no OffsetIndex. `Scan(ctx, stats, fn)` yields the
 rows in dataset order with their values, reading each counted extent in one request, and checks every key
-page it decodes. A page an OffsetIndex locates is read in one request of exactly its extent, by `Range` and
-`List` too, and a chunk's dictionary with it.
+page it decodes, reading a chunk's dictionary before its first page whether or not the pages use it. A page an
+OffsetIndex locates is read in one request of exactly its extent, by `Range` and `List` too; they read a
+dictionary only for a page that uses it.
 
 **Read statistics.** Set `Range.Stats` or `List.Stats` to a `*ReadStats` to see what one request did: key and
 value pages decoded, keys decoded, row groups opened and key page indexes loaded, page-index seeks and prefix

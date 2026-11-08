@@ -12,8 +12,9 @@ versioning; while it is v0, minor versions may change the API.
   reports whether it is exact (every projected chunk has an OffsetIndex). `Scan(ctx, stats, fn)` yields the
   rows in dataset order. A plan is bound to its `Dataset`. No format change.
 - A page that an OffsetIndex locates is read in one request of exactly its extent instead of a 4 KiB header
-  window and a second read for a larger payload; a value chunk's dictionary page is read with it, as the
-  extent before the chunk's first data page, before that chunk's first page.
+  window and a second read for a larger payload, and so is a value chunk's dictionary page, as the extent
+  before the chunk's first data page. `Range` and `List` still read a dictionary only for a page that uses
+  it; a plan's `Scan` reads it before the chunk's first page, as `ProjectedBytes` counts it.
 
 - `PartWriter.WritePage` writes a page column by column from the caller's own values, without copying
   them and checking only the keys (KEY-2, KEY-3): with swath's binding it writes swath's bytes at its old
