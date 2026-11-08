@@ -659,9 +659,9 @@ func (v *validator) digest(lr *LevelReport) error {
 		var e *manifest.Error
 		switch {
 		case errors.As(err, &e):
-			return refuse(Code(e.Code), "%s: %s", manifestName, e.Detail)
+			return refuse(Code(e.Code), "%s: %s", ManifestName, e.Detail)
 		case errors.Is(err, manifest.ErrTooManyParts):
-			return exceeded("%s lists more than %d parts (Limits.Parts)", manifestName, v.limits.Parts)
+			return exceeded("%s lists more than %d parts (Limits.Parts)", ManifestName, v.limits.Parts)
 		}
 		return err
 	}

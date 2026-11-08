@@ -8,6 +8,18 @@ versioning; while it is v0, minor versions may change the API.
 - `Range.Stats` and `List.Stats` take a `*ReadStats` that the reader fills with the request's exact
   counts: key and value pages decoded, keys decoded, row groups opened, key page index loads, page-index
   seeks, prefix resumes, row groups skipped whole, and `Source` reads and requested bytes.
+- `Format`, `FormatVersion`, `DraftRevision`, `ManifestName` and the five stamp keys are exported.
+- `Manifest`, `ParseManifest` (the strict parser opening uses) and `MarshalManifest` (canonical JSON in
+  the member order of the spec's examples, checked by the same parser).
+- `InspectFooter` and `InspectKeyPages` read one part's footer and key page index, checked as a read
+  checks them, without reading a data page.
+- Package `write`: a streaming part writer that enforces the profile (key column, key order, page indexes
+  with exact bounds on every column, `sorting_columns`, stamps, column orders) and returns the part's
+  rows, size, exact bounds and SHA-256.
+- Package `local`: `PublishPart` and `Commit`, durable root-confined publication (swath's protocol: sync,
+  rename, sync the directory), refused where directories cannot be synced (Windows) unless the caller
+  accepts a visible but unproven commit; `WriteDir` writes sorted rows as a new dataset in a directory it
+  creates, its parent and root synced before any part is published.
 - Validation at the specification's four levels: `Validate` over a `Source`, `ValidateDir` over a local
   directory, with `ValidateOptions{Level, Limits}` and a `Report` of each level's result, refusal code and
   location, or the reason it is incomplete. Profile and full validation walk every column chunk page by

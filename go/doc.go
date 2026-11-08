@@ -89,6 +89,13 @@
 // the pages, keys, row groups and Source reads it used, exactly, even when
 // it fails. They are diagnostics, not part of the format contract.
 //
+// # Manifests, parts and writing
+//
+// ParseManifest and MarshalManifest read and write a manifest.json as a
+// Manifest; InspectFooter and InspectKeyPages read one part's footer and
+// key page index without its pages. Package write writes part files and
+// package local publishes them and commits the manifest.
+//
 // # Concurrency and cancellation
 //
 // A Dataset is safe for concurrent use; page indexes are loaded once per

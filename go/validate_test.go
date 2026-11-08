@@ -501,7 +501,7 @@ func (f failingFile) ReadAt(p []byte, off int64) (int, error) {
 
 func (s failingSource) Open(c context.Context, path string) (SourceFile, error) {
 	f, err := s.Source.Open(c, path)
-	if err != nil || path == manifestName {
+	if err != nil || path == ManifestName {
 		return f, err
 	}
 	var tail [8]byte

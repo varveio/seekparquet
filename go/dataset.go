@@ -19,18 +19,6 @@ import (
 	"github.com/varveio/seekparquet/go/internal/manifest"
 )
 
-// manifestName is the name of the manifest file in a dataset root.
-const manifestName = "manifest.json"
-
-// Footer stamps of a part (STAMP-1), in the order they are checked.
-var stampKeys = []string{
-	"seekparquet.format_version",
-	"seekparquet.draft_revision",
-	"seekparquet.schema_id",
-	"seekparquet.key_column",
-	"seekparquet.key_unique",
-}
-
 // Version is a (format_version, draft_revision) pair. DraftRevision is 0
 // for a final format version, which has none.
 type Version struct {
@@ -142,15 +130,7 @@ type PartInfo struct {
 // Extension returns the value of one extensions namespace exactly as
 // written, and whether the manifest has it.
 func (m Metadata) Extension(namespace string) (json.RawMessage, bool) {
-	if m.Extensions == nil {
-		return nil, false
-	}
-	var ext map[string]json.RawMessage
-	if err := json.Unmarshal(m.Extensions, &ext); err != nil {
-		return nil, false
-	}
-	v, ok := ext[namespace]
-	return v, ok
+	return extension(m.Extensions, namespace)
 }
 
 func (m Metadata) clone() Metadata {
@@ -200,15 +180,8 @@ func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error)
 	if err != nil {
 		return nil, err
 	}
-	m, err := manifest.Parse(raw, opt.Limits.Parts)
+	m, err := parseManifest(raw, &opt.Limits)
 	if err != nil {
-		var e *manifest.Error
-		switch {
-		case errors.As(err, &e):
-			return nil, refuse(Code(e.Code), "%s: %s", manifestName, e.Detail)
-		case errors.Is(err, manifest.ErrTooManyParts):
-			return nil, exceeded("%s lists more than %d parts (Limits.Parts)", manifestName, opt.Limits.Parts)
-		}
 		return nil, err
 	}
 	meta := Metadata{Key: Key{Column: m.KeyColumn, Unique: m.KeyUnique}, Version: Version(m.Version), SchemaID: m.SchemaID,
@@ -235,21 +208,21 @@ func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error)
 }
 
 func readManifest(ctx context.Context, src Source, limit int64) ([]byte, error) {
-	f, err := src.Open(ctx, manifestName)
+	f, err := src.Open(ctx, ManifestName)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, refuse(CodeNoManifest, "the dataset root has no %s", manifestName)
+			return nil, refuse(CodeNoManifest, "the dataset root has no %s", ManifestName)
 		}
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
 	size := f.Size()
 	if size > limit {
-		return nil, exceeded("%s is %d bytes (Limits.ManifestBytes %d)", manifestName, size, limit)
+		return nil, exceeded("%s is %d bytes (Limits.ManifestBytes %d)", ManifestName, size, limit)
 	}
 	raw := make([]byte, size)
 	if err := readFull(bind(ctx, f), raw, 0); err != nil {
-		return nil, fmt.Errorf("read %s: %w", manifestName, err)
+		return nil, fmt.Errorf("read %s: %w", ManifestName, err)
 	}
 	return raw, nil
 }
