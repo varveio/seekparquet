@@ -11,9 +11,9 @@ changes:
 
 manifest: format_version 0, 0 parts
 
-file data/part-00000.parquet: 2619 bytes, footer 1384 bytes
+file data/part-00000.parquet: 2828 bytes, footer 1593 bytes
   num_rows 12, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
-  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
   other key-value keys ['ARROW:schema']
   column key: BYTE_ARRAY REQUIRED def=0 rep=0
   column size: INT64 REQUIRED def=0 rep=0

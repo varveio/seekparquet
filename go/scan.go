@@ -29,6 +29,8 @@ type Value struct {
 // is the result's own copy of the projected names, shared by the rows of
 // one result: do not modify it.
 type Row struct {
+	// Offset is the zero-based position within this key's group in file order.
+	Offset  int64
 	Key     []byte
 	Columns []string
 	Values  []Value
@@ -50,6 +52,8 @@ func (row *Row) Value(name string) (Value, bool) {
 // before End, in ascending unsigned byte order of their keys, at most Limit
 // of them.
 type Range struct {
+	// Cursor resumes after a row returned by this query.
+	Cursor *Cursor
 	// Prefix, when not empty, confines the range to the keys that begin
 	// with it: it is intersected with Start and End, so the read never
 	// leaves [Prefix, Successor(Prefix)).
@@ -81,6 +85,12 @@ func PrefixRange(prefix []byte, limit int, columns ...string) Range {
 // that begin with Prefix.
 func (rng Range) bounds() (start []byte, exclusive bool, end []byte) {
 	start, exclusive, end = rng.Start, rng.StartExclusive, rng.End
+	if rng.Cursor != nil {
+		floor, excl := rng.Cursor.floor()
+		if start == nil || bytes.Compare(floor, start) > 0 {
+			start, exclusive = floor, excl
+		}
+	}
 	if len(rng.Prefix) == 0 {
 		return start, exclusive, end
 	}
@@ -132,6 +142,9 @@ type ColumnSink interface {
 // Scan reads the rows of rng as Range does and hands them to sink, without
 // cloning a value or building a row.
 func (r *Reader) Scan(ctx context.Context, rng Range, stats *Stats, sink ColumnSink) error {
+	if err := rng.Cursor.check(); err != nil {
+		return err
+	}
 	if rng.Limit <= 0 {
 		return invalidRequest("limit %d is not positive", rng.Limit)
 	}
@@ -174,6 +187,7 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 		return nil
 	}
 	n := 0
+	var position groupPosition
 	from, inclusive := start, !exclusive
 	var log pageLog
 	g, err := r.groupFor(ctx, from, &log, stats)
@@ -188,11 +202,14 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 		if end != nil && r.startsAtOrAfter(g, end) {
 			break
 		}
-		keys, first, done, err := r.readKeys(ctx, g, from, inclusive, end, rng.Limit-n, &log, stats)
+		keys, first, done, err := r.readKeys(ctx, g, from, inclusive, end, rng.Limit-n, &log, stats, &position, rng.Cursor)
 		if err != nil {
 			return err
 		}
 		if len(keys) > 0 {
+			if s, ok := sink.(*rowSink); ok {
+				s.nextOffsets = position.offsets
+			}
 			if err := sink.Keys(keys); err != nil {
 				return errSink{err}
 			}
@@ -235,7 +252,7 @@ func (r *Reader) startsAtOrAfter(g int, key []byte) bool {
 // readKeys reads the keys of up to want rows of one row group at or after
 // from and below end, and the row of the first; done reports that end was
 // reached. The keys share one new allocation, each capped at its own end.
-func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive bool, end []byte, want int, log *pageLog, stats *Stats) ([][]byte, int64, bool, error) {
+func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive bool, end []byte, want int, log *pageLog, stats *Stats, position *groupPosition, after *Cursor) ([][]byte, int64, bool, error) {
 	cursor, err := r.cursor(ctx, g, log, stats)
 	if err != nil {
 		return nil, 0, false, err
@@ -246,6 +263,7 @@ func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive boo
 		return nil, 0, false, err
 	}
 	start := row
+	position.offsets = nil
 	var arena []byte
 	var ends []int
 	done := false
@@ -254,12 +272,27 @@ func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive boo
 			done = true
 			break
 		}
+		offset := int64(0)
+		if !r.key.Unique {
+			offset = position.next(key)
+		}
+		if !after.allows(key, offset) {
+			key, row, ok, err = cursor.advance()
+			if err != nil {
+				return nil, 0, false, err
+			}
+			continue
+		}
+		if len(ends) == 0 {
+			start = row
+		}
+		position.offsets = append(position.offsets, offset)
 		arena = append(arena, key...)
 		ends = append(ends, len(arena))
 		if len(ends) == want {
 			break
 		}
-		key, _, ok, err = cursor.advance()
+		key, row, ok, err = cursor.advance()
 		if err != nil {
 			return nil, 0, false, err
 		}
@@ -277,14 +310,17 @@ func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive boo
 
 // rowSink builds Range's rows, cloning each value out of its page.
 type rowSink struct {
-	columns []string
-	rows    []Row
-	keys    [][]byte
-	values  [][]parquet.Value
+	offsets     []int64
+	nextOffsets []int64
+	columns     []string
+	rows        []Row
+	keys        [][]byte
+	values      [][]parquet.Value
 }
 
 func (s *rowSink) Keys(keys [][]byte) error {
 	s.flush()
+	s.offsets = append(s.offsets[:0], s.nextOffsets...)
 	s.keys, s.values = keys, make([][]parquet.Value, len(s.columns))
 	return nil
 }
@@ -304,7 +340,7 @@ func (s *rowSink) Absent(int) error { return nil }
 // flush adds the run's rows.
 func (s *rowSink) flush() {
 	for i := range s.keys {
-		s.rows = append(s.rows, Row{Key: s.keys[i], Columns: s.columns, Values: rowValues(s.values, i)})
+		s.rows = append(s.rows, Row{Key: s.keys[i], Offset: s.offsets[i], Columns: s.columns, Values: rowValues(s.values, i)})
 	}
 	s.keys, s.values = nil, nil
 }

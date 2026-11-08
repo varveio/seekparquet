@@ -3,18 +3,22 @@
   "format_version": 0,
   "draft_revision": 1,
   "schema_id": "conformance/objects/v1",
+  "key": {
+    "column": "key",
+    "unique": true
+  },
   "parts": [
     {
       "path": "data/part-00000.parquet",
       "rows": 6,
-      "bytes": 1291,
+      "bytes": 1492,
       "min_key_base64": "azAw",
       "max_key_base64": "azA0"
     },
     {
       "path": "data/part-00001.parquet",
       "rows": 6,
-      "bytes": 1291,
+      "bytes": 1492,
       "min_key_base64": "azA1",
       "max_key_base64": "azEx"
     }

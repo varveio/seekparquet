@@ -27,6 +27,8 @@ const (
 	StampFormatVersion = "seekparquet.format_version"
 	StampDraftRevision = "seekparquet.draft_revision"
 	StampSchemaID      = "seekparquet.schema_id"
+	StampKeyColumn     = "seekparquet.key_column"
+	StampKeyUnique     = "seekparquet.key_unique"
 )
 
 // Version is a (format_version, draft_revision) pair. DraftRevision is 0
@@ -97,7 +99,15 @@ type Dataset struct {
 
 // Metadata is a read-only view of a dataset's manifest. Metadata returns a
 // copy each time, so a caller may keep and change it freely.
+// Key declares the exact key column and whether keys must be unique.
+type Key struct {
+	Column string
+	Unique bool
+}
+
+// Metadata is a copy of a dataset's manifest metadata.
 type Metadata struct {
+	Key      Key
 	Version  Version
 	SchemaID string
 	Parts    []PartInfo
@@ -184,7 +194,7 @@ func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error)
 		}
 		return nil, err
 	}
-	meta := Metadata{Version: Version(m.Version), SchemaID: m.SchemaID, Extensions: m.Extensions, Manifest: raw}
+	meta := Metadata{Version: Version(m.Version), SchemaID: m.SchemaID, Key: Key{Column: m.KeyColumn, Unique: m.KeyUnique}, Extensions: m.Extensions, Manifest: raw}
 	for _, p := range m.Parts {
 		meta.Parts = append(meta.Parts, PartInfo(p))
 	}
@@ -207,7 +217,9 @@ func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error)
 	}
 	handed = true
 	opt.Limits = lim
-	reader, err := openParts(ctx, inputs, PartsOptions{Options: opt, CheckGroup: checkSorted})
+	reader, err := openParts(ctx, inputs, PartsOptions{Options: opt, Key: &meta.Key, CheckGroup: func(name string, footer *parquet.File, physical int, group *format.RowGroup) error {
+		return checkSortedColumn(name, footer, physical, group, m.KeyColumn)
+	}})
 	if err != nil {
 		return nil, err
 	}
@@ -274,6 +286,8 @@ func checkStamps(name string, footer *parquet.File, m *manifest.Manifest) error 
 	want := map[string]string{
 		StampFormatVersion: strconv.FormatInt(m.Version.FormatVersion, 10),
 		StampSchemaID:      m.SchemaID,
+		StampKeyColumn:     m.KeyColumn,
+		StampKeyUnique:     strconv.FormatBool(m.KeyUnique),
 	}
 	if m.Version.FormatVersion == 0 {
 		want[StampDraftRevision] = strconv.FormatInt(m.Version.DraftRevision, 10)
@@ -281,11 +295,11 @@ func checkStamps(name string, footer *parquet.File, m *manifest.Manifest) error 
 	got := map[string][]string{}
 	for _, kv := range footer.Metadata().KeyValueMetadata {
 		switch kv.Key {
-		case StampFormatVersion, StampDraftRevision, StampSchemaID:
+		case StampFormatVersion, StampDraftRevision, StampSchemaID, StampKeyColumn, StampKeyUnique:
 			got[kv.Key] = append(got[kv.Key], kv.Value)
 		}
 	}
-	for _, key := range []string{StampFormatVersion, StampDraftRevision, StampSchemaID} {
+	for _, key := range []string{StampFormatVersion, StampDraftRevision, StampSchemaID, StampKeyColumn, StampKeyUnique} {
 		values := got[key]
 		expected, required := want[key]
 		switch {
@@ -306,10 +320,14 @@ func checkStamps(name string, footer *parquet.File, m *manifest.Manifest) error 
 // checkSorted applies RG-1: a non-empty row group declares the key column
 // ascending as its first sorting column.
 func checkSorted(name string, footer *parquet.File, physical int, group *format.RowGroup) error {
-	key, _ := footer.Schema().Lookup(KeyColumn)
+	return checkSortedColumn(name, footer, physical, group, KeyColumn)
+}
+
+func checkSortedColumn(name string, footer *parquet.File, physical int, group *format.RowGroup, keyColumn string) error {
+	key, _ := footer.Schema().Lookup(keyColumn)
 	sorting := group.SortingColumns
 	if len(sorting) == 0 || int(sorting[0].ColumnIdx) != key.ColumnIndex || sorting[0].Descending {
-		return refusePart(CodeMissingSortingColumns, name, physical, "the row group does not declare %s ascending as its first sorting column", KeyColumn)
+		return refusePart(CodeMissingSortingColumns, name, physical, "the row group does not declare %s ascending as its first sorting column", keyColumn)
 	}
 	return nil
 }

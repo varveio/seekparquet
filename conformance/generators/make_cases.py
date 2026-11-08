@@ -28,7 +28,7 @@ sys.path.insert(0, str(HERE))
 import oracle  # noqa: E402
 from common import b64e, dumps, load_rows, write_text  # noqa: E402
 
-SUITE_REVISION = "0.1.0-draft.3"
+SUITE_REVISION = "0.1.0-draft.4"
 GENERATOR = "generators/make_cases.py"
 # Datasets renamed for clarity: old label (kept in case ids, which are stable) -> dataset directory.
 RENAMED = {"truncated-bounds": "binary-bounds-truncated-16-byte",
@@ -133,10 +133,10 @@ def run(ds, req):
     try:
         if req["op"] == "range":
             e = ds.range(prefix=dec(args.get("prefix_base64")), start=dec(args.get("start_base64")), start_exclusive=args.get("start_exclusive", False),
-                         end=dec(args.get("end_base64")), limit=args["limit"], columns=cols)
+                         end=dec(args.get("end_base64")), limit=args["limit"], columns=cols, after=args.get("after"))
         else:
             e = ds.list(prefix=dec(args.get("prefix_base64")) or b"", delimiter=dec(args["delimiter_base64"]),
-                        after=dec(args.get("after_base64")), continuation=args.get("continuation", False),
+                        after=args.get("after", dec(args.get("after_base64"))), continuation=args.get("continuation", False),
                         end=dec(args.get("end_base64")), limit=args["limit"], columns=cols)
     except oracle.InvalidRequest:
         return {"status": "invalid_request"}
@@ -771,6 +771,41 @@ def refusal_groups(lock):
     return [g_open, g_read] + [gv[x] for x in ("structural", "profile", "full", "digest")]
 
 
+def repeated_group():
+    g = Group("repeated", "reader", "Repeated groups, exact key column names, whole-group bounds and tagged continuation.")
+    for name in ("repeated-keys", "one-large-group", "named-key"):
+        ds = oracle.Dataset.load(name)
+        g.fam("boundaries", "Inclusive and exclusive seeks at every group key, plus exact-group lookups and prefix reads")
+        for i, key in enumerate(dict.fromkeys(ds.keys())):
+            for exclusive in (False, True):
+                req = rq_range(start=key, start_exclusive=exclusive, limit=BIG, columns=[ds.key_column, "size"])
+                g.add(f"{name}/seek-{i}-{int(exclusive)}", ["MAN-8", "KEY-1", "KEY-3", "KEY-7", "ROUTE-1", "RANGE-1"], name, run(ds, req), request=req)
+            for label, req in (("lookup", rq_range(start=key, end=key+b"\x00", columns=["size"])),
+                               ("prefix", rq_range(prefix=key, columns=["size"]))):
+                g.add(f"{name}/{label}-{i}", ["RANGE-1", "KEY-7", "ROUTE-1"], name, run(ds, req), request=req)
+        g.fam("pagination", "Every page size 1, 2, 5, 7; row cursors resume inside groups, prefix cursors skip rollups")
+        for op in ("range", "list"):
+            for size in (1, 2, 5, 7):
+                req = rq_range(limit=size, columns=["size"]) if op == "range" else rq_list(limit=size, columns=["size"])
+                step = 0
+                while True:
+                    exp = run(ds, req)
+                    g.add(f"{name}/{op}-{size}/{step}", ["PAGE-1", "PAGE-2", "LIST-6", "KEY-7"], name, exp, request=dict(req),
+                          meta={"scenario_id": f"{name}/{op}-{size}", "step": step})
+                    if len(exp["entries"]) < size:
+                        break
+                    last = exp["entries"][-1]
+                    req["after"] = ({"key_base64": last["key_base64"], "offset": last["offset"]} if last["kind"] == "row" else {"prefix_base64": last["key_base64"]})
+                    step += 1
+    g.fam("invalid-cursors", "Malformed tags, offsets and base64 are rejected")
+    for i, cursor in enumerate(({}, {"key_base64": "YQ=="}, {"key_base64": "YQ==", "offset": -1},
+                                {"key_base64": "YQ==", "offset": True}, {"key_base64": "YQ==", "offset": 1.5},
+                                {"key_base64": "@@@@", "offset": 0}, {"prefix_base64": "YQ==", "offset": 0})):
+        g.add(f"invalid-cursor-{i}", ["QUERY-1", "PAGE-1"], "basic", {"status": "invalid_request"},
+              raw_request={"op": "range", "limit": 2, "after": cursor})
+    return g
+
+
 # Assembly --------------------------------------------------------------------
 
 def behaviour(c):
@@ -809,7 +844,7 @@ def check_core_case(c, candidate):
 
 
 def build_all(lock):
-    groups = [open_group(lock), range_group(), prefix_group(), list_group(), pagination_group(),
+    groups = [repeated_group(), open_group(lock), range_group(), prefix_group(), list_group(), pagination_group(),
               projection_group(), requests_group()] + refusal_groups(lock)
     core, core_files = load_core()
     cand = {c["id"]: c for g in groups for c in g.cases}

@@ -214,6 +214,8 @@ def top_level(pf):
 class Part:
     def __init__(self, root, entry, manifest):
         self.entry = entry
+        self.key_name = manifest["key"]["column"]
+        self.unique = manifest["key"]["unique"]
         rel = entry["path"]
         full = (root / rel).resolve()
         if os.path.commonpath([str(full), str(root.resolve())]) != str(root.resolve()):
@@ -250,7 +252,8 @@ class Part:
                 raise Refusal("missing_sorting_columns", f"{rel} row group {ri}")
 
     def check_stamps(self, m):
-        want = {"seekparquet.format_version": str(m["format_version"]), "seekparquet.schema_id": m["schema_id"]}
+        want = {"seekparquet.format_version": str(m["format_version"]), "seekparquet.schema_id": m["schema_id"],
+                "seekparquet.key_column": m["key"]["column"], "seekparquet.key_unique": str(m["key"]["unique"]).lower()}
         if m["format_version"] == 0:
             want["seekparquet.draft_revision"] = str(m["draft_revision"])
         got = {}
@@ -269,7 +272,7 @@ class Part:
             raise Refusal("stamp_mismatch", "draft_revision on a non-draft file")
 
     def check_key(self):
-        f = next((x for x in self.fields if x[0] == "key"), None)
+        f = next((x for x in self.fields if x[0] == self.key_name), None)
         if f is None:
             raise Refusal("invalid_key_column", "no key column")
         _n, el, _sig, leaves = f
@@ -335,7 +338,7 @@ class Part:
     def key_checks(self, ri, intervals, mins, maxs, prev):
         """KEY-2, KEY-3, KEY-6, RG-5 over the decoded keys of one row group. Returns the last key."""
         try:
-            col = pq.ParquetFile(self.path).read_row_group(ri, columns=["key"]).column(0).combine_chunks()
+            col = pq.ParquetFile(self.path).read_row_group(ri, columns=[self.key_name]).column(0).combine_chunks()
         except (OSError, pa.ArrowException) as e:
             raise Refusal("invalid_parquet", str(e)) from None
         if pa.types.is_string(col.type) or pa.types.is_large_string(col.type):
@@ -356,7 +359,7 @@ class Part:
                         k.decode("utf-8")
                     except UnicodeDecodeError:
                         raise Refusal("invalid_key", "key is not UTF-8 (KEY-6)") from None
-                if prev is not None and k <= prev:
+                if prev is not None and (k < prev or self.unique and k == prev):
                     raise Refusal("key_order", f"{k!r} after {prev!r}")
                 prev = k
             if keys[a:b] and (lo > keys[a] or hi < keys[b - 1]):
@@ -439,18 +442,24 @@ class Dataset:
         self.colcache = {}
         rows = []
         for pi, t in enumerate(tables):
-            keys = t.column("key").combine_chunks()
+            keys = t.column(self.manifest["key"]["column"]).combine_chunks()
             if pa.types.is_string(keys.type) or pa.types.is_large_string(keys.type):
                 keys = keys.view(pa.binary() if pa.types.is_string(keys.type) else pa.large_binary())
             for ri, k in enumerate(keys.to_pylist()):
                 rows.append((k, (pi, ri)))
-        self.rows = rows
-        return rows
+        previous, offset = None, 0
+        positioned = []
+        for key, pos in rows:
+            offset = offset + 1 if key == previous else 0
+            previous = key
+            positioned.append((key, offset, pos))
+        self.rows = positioned
+        return positioned
 
     def value(self, key, pos, col):
         """The protocol value of one projected column, converted lazily per (part, column)."""
         pi, ri = pos
-        if col == "key":
+        if col == self.manifest["key"]["column"]:
             return {"bytes_base64": base64.b64encode(key).decode("ascii")}
         p = self.parts[pi]
         field = next((f for f in p.fields if f[0] == col), None)
@@ -542,7 +551,30 @@ def b64arg(req, name, required=False):
         raise BadRequest(f"{name} is not canonical base64") from None
 
 
+def cursor_arg(req):
+    if "after" not in req:
+        return None
+    if "after_base64" in req:
+        raise BadRequest("conflicting cursors")
+    a = req["after"]
+    if not isinstance(a, dict):
+        raise BadRequest("cursor must be an object")
+    if set(a) == {"prefix_base64"}:
+        return ("prefix", b64arg(a, "prefix_base64", True), 0)
+    if set(a) == {"key_base64", "offset"} and _is_int(a["offset"]) and 0 <= a["offset"] <= MAX_INT:
+        return ("row", b64arg(a, "key_base64", True), a["offset"])
+    raise BadRequest("malformed cursor")
+
+
+def past_cursor(cursor, key, offset):
+    if cursor is None:
+        return True
+    tag, floor, n = cursor
+    return key > floor or tag == "row" and key == floor and offset > n
+
+
 def common_args(req):
+    cursor_arg(req)
     limit = req.get("limit")
     if not _is_int(limit) or limit < 1:
         raise BadRequest("limit must be a positive integer")
@@ -569,16 +601,19 @@ def do_range(ds, req):
             raise NotSupported("unsupported_projection", c)
     rows = ds.load()
     entries = []
-    for k, v in rows:
+    cursor = cursor_arg(req)
+    for k, offset, v in rows:
         if len(entries) >= limit:
             break
+        if not past_cursor(cursor, k, offset):
+            continue
         if start is not None and (k < start or (excl and k == start)):
             continue
         if end is not None and k >= end:
             break
         if prefix is not None and not k.startswith(prefix):
             continue
-        entries.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "values": project(ds, k, v, cols)})
+        entries.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "offset": offset, "values": project(ds, k, v, cols)})
     return entries
 
 
@@ -596,20 +631,23 @@ def do_list(ds, req):
     rows = ds.load()
     entries = []
     last_prefix = None
-    for k, v in rows:
+    cursor = cursor_arg(req)
+    for k, offset, v in rows:
         if len(entries) >= limit:
             break
         if k[: len(prefix)] != prefix or (after is not None and k <= after) or (end is not None and k >= end):
             continue
+        if not past_cursor(cursor, k, offset):
+            continue
         rest = k[len(prefix):]
         if d in rest:
             cp = k[: len(prefix) + rest.index(d) + 1]
-            if cp == last_prefix or (cont and cp <= after):
+            if cp == last_prefix or (cont and cp <= after) or (cursor and cursor[0] == "prefix" and cp <= cursor[1]):
                 continue
             last_prefix = cp
             entries.append({"kind": "prefix", "key_base64": base64.b64encode(cp).decode()})
         else:
-            entries.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "values": project(ds, k, v, cols)})
+            entries.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "offset": offset, "values": project(ds, k, v, cols)})
     return entries
 
 

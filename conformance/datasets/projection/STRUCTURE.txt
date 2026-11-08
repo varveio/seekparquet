@@ -7,13 +7,13 @@ producer: pyarrow 26.0.1
 source rows: generators/rows/projection.json
 
 manifest: format_version 0, 3 parts
-  part 0: 'data/part-00000.parquet', rows 6, bytes 9076, keys 'row-00' .. 'row-05'
-  part 1: 'data/part-00001.parquet', rows 6, bytes 7989, keys 'row-06' .. 'row-11'
-  part 2: 'data/part-00002.parquet', rows 6, bytes 6206, keys 'row-12' .. 'row-17'
+  part 0: 'data/part-00000.parquet', rows 6, bytes 9285, keys 'row-00' .. 'row-05'
+  part 1: 'data/part-00001.parquet', rows 6, bytes 8186, keys 'row-06' .. 'row-11'
+  part 2: 'data/part-00002.parquet', rows 6, bytes 6403, keys 'row-12' .. 'row-17'
 
-file data/part-00000.parquet: 9076 bytes, footer 4455 bytes
+file data/part-00000.parquet: 9285 bytes, footer 4664 bytes
   num_rows 6, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
-  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/projection/v1'}
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/projection/v1'}
   other key-value keys ['ARROW:schema']
   column key: BYTE_ARRAY REQUIRED def=0 rep=0
   column flag: BOOLEAN OPTIONAL def=1 rep=0
@@ -45,9 +45,9 @@ file data/part-00000.parquet: 9076 bytes, footer 4455 bytes
       min lengths [6, 6]
       max lengths [6, 6]
 
-file data/part-00001.parquet: 7989 bytes, footer 4247 bytes
+file data/part-00001.parquet: 8186 bytes, footer 4444 bytes
   num_rows 6, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
-  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/projection/v1'}
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/projection/v1'}
   other key-value keys ['ARROW:schema']
   column key: BYTE_ARRAY REQUIRED def=0 rep=0
   column flag: BOOLEAN OPTIONAL def=1 rep=0
@@ -77,9 +77,9 @@ file data/part-00001.parquet: 7989 bytes, footer 4247 bytes
       min lengths [6, 6]
       max lengths [6, 6]
 
-file data/part-00002.parquet: 6206 bytes, footer 3391 bytes
+file data/part-00002.parquet: 6403 bytes, footer 3588 bytes
   num_rows 6, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
-  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/projection/v1'}
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/projection/v1'}
   other key-value keys ['ARROW:schema']
   column key: BYTE_ARRAY REQUIRED def=0 rep=0
   column flag: BOOLEAN OPTIONAL def=1 rep=0

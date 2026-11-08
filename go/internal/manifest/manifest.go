@@ -80,9 +80,11 @@ func invalid(format string, args ...any) error {
 
 // Manifest is a parsed, validated manifest.
 type Manifest struct {
-	Version  Version
-	SchemaID string
-	Parts    []Part
+	Version   Version
+	SchemaID  string
+	KeyColumn string
+	KeyUnique bool
+	Parts     []Part
 	// Extensions is the extensions object exactly as written, nil when the
 	// manifest has none.
 	Extensions json.RawMessage
@@ -138,7 +140,7 @@ func Parse(raw []byte, maxParts int) (*Manifest, error) {
 
 	for name := range top {
 		switch name {
-		case "format", "format_version", "draft_revision", "schema_id", "parts", "extensions":
+		case "format", "format_version", "draft_revision", "schema_id", "key", "parts", "extensions":
 		default:
 			return nil, invalid("undefined member %q", name)
 		}
@@ -150,6 +152,20 @@ func Parse(raw []byte, maxParts int) (*Manifest, error) {
 	if m.SchemaID == "" || hasControl(m.SchemaID) {
 		return nil, invalid("schema_id is empty or holds a control character")
 	}
+	var key map[string]json.RawMessage
+	if err := json.Unmarshal(top["key"], &key); err != nil || key == nil || len(key) != 2 {
+		return nil, invalid("key must contain column and unique")
+	}
+	if err := member(key, "column", &m.KeyColumn, true); err != nil {
+		return nil, err
+	}
+	if m.KeyColumn == "" || hasControl(m.KeyColumn) {
+		return nil, invalid("invalid key column name")
+	}
+	if string(key["unique"]) != "true" && string(key["unique"]) != "false" {
+		return nil, invalid("key.unique must be boolean")
+	}
+	m.KeyUnique = string(key["unique"]) == "true"
 	if ext, ok := top["extensions"]; ok {
 		if err := checkExtensions(ext); err != nil {
 			return nil, err

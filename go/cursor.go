@@ -156,7 +156,7 @@ func (c *keyCursor) decode(i int) error {
 			e.Row = row
 			return e
 		}
-		if j > 0 && bytes.Compare(key, previous) <= 0 {
+		if j > 0 && c.r.outOfOrder(previous, key) {
 			return keyOrder(p.name, c.physical, row, key)
 		}
 		previous = key
@@ -168,7 +168,7 @@ func (c *keyCursor) decode(i int) error {
 	if err := c.checkPartBounds(i, first, last); err != nil {
 		return err
 	}
-	if err := c.log.add(pageSpan{g: c.g, page: i, part: p.name, physical: c.physical, firstRow: meta.first, first: first, last: last}); err != nil {
+	if err := c.log.add(pageSpan{g: c.g, page: i, part: p.name, physical: c.physical, firstRow: meta.first, first: first, last: last, repeated: !c.r.key.Unique}); err != nil {
 		return err
 	}
 	if i == 0 {

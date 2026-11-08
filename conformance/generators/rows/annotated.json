@@ -294,5 +294,9 @@
         }
       ]
     }
-  ]
+  ],
+  "key": {
+    "column": "key",
+    "unique": true
+  }
 }

@@ -137,7 +137,7 @@ Validator targets therefore include the open-stage faults. The `digest` level ad
 Entries (a row always has `values`, empty when no columns were requested; a prefix never has them):
 
 ```json
-{"kind": "row", "key_base64": "Yg==", "values": [{"int": "12"}]}
+{"kind": "row", "key_base64": "Yg==", "offset": 0, "values": [{"int": "12"}]}
 {"kind": "prefix", "key_base64": "YS8="}
 ```
 
@@ -184,3 +184,17 @@ protocol's representational limit, not a requirement of the specification to rej
 - **Indexed access** (planned): fixtures and an instrumented source that fail a reader which reads pages it
   should have skipped. Passing the semantic suite does not claim indexed access.
 - **Benchmarks**: outside the conformance suite.
+
+### Tagged continuation
+
+Both range and list accept `after = {"key_base64": "...", "offset": n}` after a row,
+or `after = {"prefix_base64": "..."}` after a common prefix (PAGE-1/PAGE-2).
+Each row response includes `offset`, its zero-based position within its group in file order;
+it is always zero when the manifest declares unique keys. Offsets are non-negative integers
+at most 2^63-1. Tags have exactly the members shown, and base64 is canonical.
+A row cursor resumes at offset n+1 of that key, then later keys. A prefix cursor suppresses
+that common prefix and all earlier prefixes. Query bounds still apply to whole groups;
+a page limit may split a group. Repeating pages must equal the unpaginated result.
+`after_base64` remains a listing byte floor, with `continuation` controlling LIST-5 suppression;
+it is not a row cursor. It must not be combined with `after`.
+Lookup uses range with start k inclusive and end k followed by a zero byte; no new operation is needed.

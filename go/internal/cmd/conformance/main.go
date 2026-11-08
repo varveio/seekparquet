@@ -156,6 +156,9 @@ func (a *adapter) rangeOp(ctx context.Context, req map[string]json.RawMessage) r
 		return invalid(err)
 	}
 	var rng seekparquet.Range
+	if rng.Cursor, err = cursorField(req); err != nil {
+		return invalid(err)
+	}
 	if rng.Prefix, err = bytesField(req, "prefix_base64"); err != nil {
 		return invalid(err)
 	}
@@ -199,6 +202,9 @@ func (a *adapter) listOp(ctx context.Context, req map[string]json.RawMessage) re
 		return invalid(err)
 	}
 	var list seekparquet.List
+	if list.Cursor, err = cursorField(req); err != nil {
+		return invalid(err)
+	}
 	if list.Prefix, err = bytesField(req, "prefix_base64"); err != nil {
 		return invalid(err)
 	}
@@ -259,7 +265,49 @@ func rowEntry(row *seekparquet.Row) (map[string]any, error) {
 		}
 		values = append(values, enc)
 	}
-	return map[string]any{"kind": "row", "key_base64": base64.StdEncoding.EncodeToString(row.Key), "values": values}, nil
+	return map[string]any{"kind": "row", "key_base64": base64.StdEncoding.EncodeToString(row.Key), "offset": row.Offset, "values": values}, nil
+}
+
+func cursorField(req map[string]json.RawMessage) (*seekparquet.Cursor, error) {
+	raw, ok := req["after"]
+	if !ok {
+		return nil, nil
+	}
+	if _, conflict := req["after_base64"]; conflict {
+		return nil, errors.New("conflicting cursors")
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+		return nil, errors.New("cursor must be an object")
+	}
+	if _, ok := fields["prefix_base64"]; ok && len(fields) == 1 {
+		p, err := bytesField(fields, "prefix_base64")
+		if err != nil || p == nil {
+			return nil, errors.New("invalid prefix cursor")
+		}
+		return &seekparquet.Cursor{Prefix: p}, nil
+	}
+	if _, ok := fields["key_base64"]; ok && len(fields) == 2 {
+		k, err := bytesField(fields, "key_base64")
+		if err != nil || k == nil {
+			return nil, errors.New("invalid row cursor")
+		}
+		var n int64
+		raw := string(fields["offset"])
+		if raw == "" {
+			return nil, errors.New("missing offset")
+		}
+		for _, c := range raw {
+			if c < '0' || c > '9' {
+				return nil, errors.New("invalid offset")
+			}
+		}
+		if err := json.Unmarshal(fields["offset"], &n); err != nil || n < 0 {
+			return nil, errors.New("invalid offset")
+		}
+		return &seekparquet.Cursor{Key: k, Offset: n}, nil
+	}
+	return nil, errors.New("invalid cursor tag")
 }
 
 // errInt96 reports a value the protocol has no encoding for.

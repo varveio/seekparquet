@@ -194,9 +194,12 @@ def norm_entries(entries, ncols, where):
                 raise CaseFail(f"{w}: a row entry must have values (an array, empty without columns)")
             if ncols is not None and len(vals) != ncols:
                 raise CaseFail(f"{w}: {len(vals)} values for {ncols} requested columns")
-            if set(e) - {"kind", "key_base64", "values"}:
+            if set(e) - {"kind", "key_base64", "values", "offset"}:
                 raise CaseFail(f"{w}: unexpected members")
-            out.append(("row", key, tuple(check_value(v, f"{w}.values[{j}]") for j, v in enumerate(vals))))
+            offset = e.get("offset")
+            if type(offset) is not int or not 0 <= offset <= (1 << 63) - 1:
+                raise CaseFail(f"{w}: invalid group offset")
+            out.append(("row", key, (offset, tuple(check_value(v, f"{w}.values[{j}]") for j, v in enumerate(vals)))))
     return out
 
 

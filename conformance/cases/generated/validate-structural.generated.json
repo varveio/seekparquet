@@ -10,6 +10,75 @@
   },
   "cases": [
     {
+      "id": "validate-structural/repeated-keys",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/one-large-group",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/named-key",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/named-key",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-structural/empty",
       "family": "validate-structural/valid-dataset",
       "requirements": [
@@ -2601,6 +2670,473 @@
           "structural": {
             "result": "failed",
             "code": "invalid_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-column-missing",
+      "description": "The key_column stamp is missing.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-column-missing",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-column-missing",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-column-mismatch",
+      "description": "The key_column stamp is mismatch.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-column-mismatch",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-column-mismatch",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-column-noncanonical",
+      "description": "The key_column stamp is noncanonical.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-column-noncanonical",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-column-noncanonical",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-duplicate-key-column",
+      "description": "The key declaration footer stamp appears twice.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-duplicate-key-column",
+      "requirements": [
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-duplicate-key-column",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-unique-missing",
+      "description": "The key_unique stamp is missing.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-unique-missing",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-unique-missing",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-unique-mismatch",
+      "description": "The key_unique stamp is mismatch.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-unique-mismatch",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-unique-mismatch",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-key-unique-noncanonical",
+      "description": "The key_unique stamp is noncanonical.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-key-unique-noncanonical",
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-key-unique-noncanonical",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/stamp-duplicate-key-unique",
+      "description": "The key declaration footer stamp appears twice.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "stamp-duplicate-key-unique",
+      "requirements": [
+        "STAMP-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/stamp-duplicate-key-unique",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-null",
+      "description": "Malformed required manifest key declaration: manifest-key-null",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-null",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-null",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-empty",
+      "description": "Malformed required manifest key declaration: manifest-key-empty",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-empty",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-empty",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-unique-string",
+      "description": "Malformed required manifest key declaration: manifest-key-unique-string",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-unique-string",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-unique-string",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-empty-column",
+      "description": "Malformed required manifest key declaration: manifest-key-empty-column",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-empty-column",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-empty-column",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-control-column",
+      "description": "Malformed required manifest key declaration: manifest-key-control-column",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-control-column",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-control-column",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-extra",
+      "description": "Malformed required manifest key declaration: manifest-key-extra",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-extra",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-extra",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-key-missing",
+      "description": "The required manifest key declaration is missing.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-key-missing",
+      "requirements": [
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-key-missing",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/named-key-absent",
+      "description": "The declared key column is absent from the part.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "named-key-absent",
+      "requirements": [
+        "KEY-1",
+        "MAN-8",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/named-key-absent",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/group-split-parts",
+      "description": "A key group is split across parts; their manifest bounds overlap.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "group-split-parts",
+      "requirements": [
+        "PART-4",
+        "KEY-7",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/group-split-parts",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
           }
         }
       }

@@ -18,7 +18,7 @@ import (
 	"github.com/parquet-go/parquet-go/format"
 )
 
-// KeyColumn is the name of the column every part is sorted by (KEY-1).
+// KeyColumn is the default key column name for OpenParts.
 const KeyColumn = "key"
 
 // ContextBinder is implemented by a file whose reads can be bounded by a
@@ -88,6 +88,8 @@ type ColumnExpectation struct {
 // hooks for the checks a profile other than the manifest makes.
 type PartsOptions struct {
 	Options
+	// Key defaults to column "key" with unique keys when nil.
+	Key *Key
 	// CheckFooter, when set, is called once per part with its parsed
 	// footer, before the part's key column is checked. An error fails the
 	// open and is returned as is. The footer must not be modified.
@@ -104,6 +106,7 @@ type PartsOptions struct {
 // Callers must not modify the sources, the slices of a request while it
 // runs, or a Stats that another read is updating.
 type Reader struct {
+	key     Key
 	parts   []*part
 	groups  []*group
 	columns []string
@@ -189,7 +192,13 @@ func OpenParts(ctx context.Context, parts []PartSource, opt PartsOptions) (*Read
 }
 
 func openParts(ctx context.Context, inputs []partInput, opt PartsOptions) (_ *Reader, err error) {
-	r := &Reader{limits: opt.Limits.withDefaults(), bounded: true}
+	r := &Reader{limits: opt.Limits.withDefaults(), bounded: true, key: Key{Column: KeyColumn, Unique: true}}
+	if opt.Key != nil {
+		r.key = *opt.Key
+	}
+	if r.key.Column == "" {
+		return nil, invalidRequest("empty key column")
+	}
 	r.closing, r.closeNow = context.WithCancelCause(context.Background())
 	defer func() {
 		if err != nil {
@@ -295,7 +304,7 @@ func (r *Reader) openPart(ctx context.Context, in partInput, opt PartsOptions) (
 		}
 	}
 	top, dup := topLevel(meta.Schema)
-	utf8Key, err := checkKeyColumn(in.Name, meta, top, dup, leafCount(meta.Schema))
+	utf8Key, err := checkKeyColumn(in.Name, meta, top, dup, leafCount(meta.Schema), r.key.Column)
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +320,7 @@ func (r *Reader) openPart(ctx context.Context, in partInput, opt PartsOptions) (
 		}
 		p.leaves[name] = e.leaf
 	}
-	p.key = p.leaves[KeyColumn]
+	p.key = p.leaves[r.key.Column]
 	for _, want := range opt.Expect {
 		if err := checkExpectation(in.Name, footer.Schema(), want); err != nil {
 			return nil, err
@@ -402,14 +411,14 @@ func (r *Reader) noteFirst(g int, key []byte) error {
 	grp := r.groups[g]
 	name := r.parts[grp.part].name
 	if g > 0 {
-		if prev := r.groups[g-1].first.Load(); prev != nil && bytes.Compare(*prev, key) >= 0 {
+		if prev := r.groups[g-1].first.Load(); prev != nil && r.outOfOrder(*prev, key) {
 			e := keyOrder(name, grp.physical, 0, key)
 			e.Detail = "the row group's first key is not above the previous row group's"
 			return e
 		}
 	}
 	if g+1 < len(r.groups) {
-		if next := r.groups[g+1].first.Load(); next != nil && bytes.Compare(key, *next) >= 0 {
+		if next := r.groups[g+1].first.Load(); next != nil && r.outOfOrder(key, *next) {
 			n := r.groups[g+1]
 			e := keyOrder(r.parts[n.part].name, n.physical, 0, *next)
 			e.Detail = "the row group's first key is not above the previous row group's"
@@ -452,13 +461,19 @@ func (r *Reader) groupFor(ctx context.Context, from []byte, log *pageLog, stats 
 		if err != nil {
 			return 0, err
 		}
-		if bytes.Compare(key, from) > 0 {
+		if cmp := bytes.Compare(key, from); cmp > 0 || cmp == 0 && !r.key.Unique {
 			b = mid
 		} else {
 			a = mid + 1
 		}
 	}
 	return a - 1, nil
+}
+
+// outOfOrder compares keys in their file order.
+func (r *Reader) outOfOrder(previous, next []byte) bool {
+	cmp := bytes.Compare(previous, next)
+	return cmp > 0 || cmp == 0 && r.key.Unique
 }
 
 // bind returns file bound to ctx when it is a ContextBinder.
@@ -491,7 +506,7 @@ func (r *Reader) Columns() []string { return slices.Clone(r.columns) }
 // names lacks, in p's schema order.
 func mergeColumns(names []string, p *part) []string {
 	for _, f := range p.footer.Schema().Fields() {
-		if _, ok := p.leaves[f.Name()]; !ok || f.Name() == KeyColumn || slices.Contains(names, f.Name()) {
+		if _, ok := p.leaves[f.Name()]; !ok || f.Name() == p.r.key.Column || slices.Contains(names, f.Name()) {
 			continue
 		}
 		names = append(names, f.Name())

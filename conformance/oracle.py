@@ -36,6 +36,8 @@ class Dataset:
 
     def __init__(self, doc):
         self.name = doc["dataset"]
+        key = doc.get("key", {"column": "key", "unique": True})
+        self.key_column, self.unique = key["column"], key["unique"]
         self.types = {c["name"]: c["type"] for c in doc["columns"]}
         allcols = [c["name"] for c in doc["columns"]]
         self.rows = []  # (key bytes, {column: value}, set of columns present in the row's part)
@@ -46,7 +48,14 @@ class Dataset:
         keys = [k for k, _v, _p in self.rows]
         # Source rows of a valid dataset are unique and ascending (KEY-2, KEY-3).
         assert all(keys), f"{self.name}: empty key in source rows"
-        assert all(a < b for a, b in zip(keys, keys[1:])), f"{self.name}: source rows not strictly ascending"
+        assert all(a < b if self.unique else a <= b for a, b in zip(keys, keys[1:])), f"{self.name}: source rows not strictly ascending"
+
+    def positioned(self):
+        previous, offset = None, 0
+        for key, values, present in self.rows:
+            offset = offset + 1 if key == previous else 0
+            previous = key
+            yield key, offset, values, present
 
     @classmethod
     def load(cls, name):
@@ -59,7 +68,7 @@ class Dataset:
     def _values(self, key, values, present, columns):
         out = []
         for c in columns:
-            if c == "key":  # the key column is projected like any other BYTE_ARRAY column
+            if c == self.key_column:  # the key column is projected like any other BYTE_ARRAY column
                 out.append({"bytes_base64": b64(key)})
             elif c not in present:  # COL-2, and COL-7 for a column no part has
                 out.append({"absent": True})
@@ -74,19 +83,21 @@ class Dataset:
             if c in self.types and self.types[c].startswith(NESTED_TYPES):
                 raise Unsupported("unsupported_projection")
 
-    def range(self, prefix=None, start=None, start_exclusive=False, end=None, limit=None, columns=()):
+    def range(self, prefix=None, start=None, start_exclusive=False, end=None, limit=None, columns=(), after=None):
         """RANGE-1, RANGE-2, QUERY-2."""
         columns = list(columns)
         self._check(limit, columns)
         out = []
-        for k, v, present in self.rows:
+        for k, offset, v, present in self.positioned():
+            if not cursor_allows(after, k, offset):
+                continue
             if prefix is not None and not k.startswith(prefix):
                 continue
             if start is not None and (k < start or (start_exclusive and k == start)):
                 continue
             if end is not None and not k < end:
                 continue
-            out.append({"kind": "row", "key_base64": b64(k), "values": self._values(k, v, present, columns)})
+            out.append({"kind": "row", "key_base64": b64(k), "offset": offset, "values": self._values(k, v, present, columns)})
             if len(out) == limit:
                 break
         return out
@@ -98,30 +109,33 @@ class Dataset:
             raise InvalidRequest("delimiter must be exactly one byte")
         self._check(limit, columns)
         out, seen = [], set()
-        for k, v, present in self.rows:
+        for k, offset, v, present in self.positioned():
             # candidate keys (LIST-7): begin with prefix, > after, < end
             if not k.startswith(prefix):
                 continue
-            if after is not None and not k > after:
+            if isinstance(after, dict) and not cursor_allows(after, k, offset):
+                continue
+            if isinstance(after, bytes) and not k > after:
                 continue
             if end is not None and not k < end:
                 continue
             i = k.find(delimiter, len(prefix))
             if i >= 0:
                 cp = k[: i + 1]  # LIST-2
-                if continuation and after is not None and cp <= after:  # LIST-5
+                if ((continuation and isinstance(after, bytes) and cp <= after) or
+                    (isinstance(after, dict) and "prefix_base64" in after and cp <= base64.b64decode(after["prefix_base64"]))):  # LIST-5
                     continue
                 if cp in seen:
                     continue
                 seen.add(cp)
                 out.append({"kind": "prefix", "key_base64": b64(cp)})
             else:  # LIST-3
-                out.append({"kind": "row", "key_base64": b64(k), "values": self._values(k, v, present, columns)})
+                out.append({"kind": "row", "key_base64": b64(k), "offset": offset, "values": self._values(k, v, present, columns)})
             if len(out) == limit:
                 break
         # LIST-4: distinct and ascending by entry bytes.
         eb = [base64.b64decode(e["key_base64"]) for e in out]
-        assert all(a < b for a, b in zip(eb, eb[1:])), "oracle: entries not ascending"
+        assert all(a <= b for a, b in zip(eb, eb[1:])), "oracle: entries not ascending"
         return out
 
 
@@ -134,3 +148,19 @@ def successor(p: bytes):
     if not q:
         return None
     return q[:-1] + bytes([q[-1] + 1])
+
+
+def cursor_allows(after, key, offset):
+    if after is None:
+        return True
+    if not isinstance(after, dict):
+        raise InvalidRequest("cursor must be tagged")
+    if set(after) == {"key_base64", "offset"}:
+        n = after["offset"]
+        if type(n) is not int or n < 0 or n > (1 << 63) - 1:
+            raise InvalidRequest("invalid cursor offset")
+        k = base64.b64decode(after["key_base64"], validate=True)
+        return key > k or key == k and offset > n
+    if set(after) == {"prefix_base64"}:
+        return key > base64.b64decode(after["prefix_base64"], validate=True)
+    raise InvalidRequest("invalid cursor tag")

@@ -11,6 +11,84 @@
   },
   "cases": [
     {
+      "id": "validate-profile/repeated-keys",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/one-large-group",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/named-key",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/named-key",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-profile/empty",
       "family": "validate-profile/valid-dataset",
       "requirements": [
@@ -848,6 +926,37 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/digest-on-profile-invalid",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/grouped-key-decreasing",
+      "description": "A repeated-key dataset decreases inside a page.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "grouped-key-decreasing",
+      "requirements": [
+        "KEY-3",
+        "CHECK-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/grouped-key-decreasing",
       "request": {
         "op": "validate",
         "level": "profile"

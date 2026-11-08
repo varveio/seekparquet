@@ -18,6 +18,8 @@ import (
 // any other candidate yields its row. The entries are distinct, in
 // ascending byte order, at most Limit of them.
 type List struct {
+	// Cursor resumes after a row or common prefix; mutually exclusive with After.
+	Cursor *Cursor
 	// Prefix scopes the listing; empty lists every key. The read is
 	// confined to [Prefix, Successor(Prefix)).
 	Prefix []byte
@@ -65,6 +67,12 @@ func (e Entry) Bytes() []byte {
 // Keys under a prefix that share a page with the keys around them are
 // decoded. Its entries are those of the specification's definition.
 func (r *Reader) List(ctx context.Context, req List, stats *Stats) ([]Entry, error) {
+	if err := req.Cursor.check(); err != nil {
+		return nil, err
+	}
+	if req.Cursor != nil && req.After != nil {
+		return nil, invalidRequest("conflicting cursors")
+	}
 	if req.Limit <= 0 {
 		return nil, invalidRequest("limit %d is not positive", req.Limit)
 	}
@@ -81,6 +89,14 @@ func (r *Reader) List(ctx context.Context, req List, stats *Stats) ([]Entry, err
 	}
 	if len(r.groups) == 0 {
 		return nil, nil
+	}
+	if !r.key.Unique {
+		out, err := r.listRepeated(rctx, req, stats)
+		return out, finish(ctx, rctx, err)
+	}
+	if req.Cursor != nil {
+		req.After, _ = req.Cursor.floor()
+		req.Continuation = true
 	}
 	s := listScan{r: r, req: req, columns: slices.Clone(req.Columns), stats: stats, cursorGroup: -1}
 	// The read is the intersection of [Prefix, Successor(Prefix)), the
@@ -254,4 +270,76 @@ func (s *listScan) valuesAt(ctx context.Context, g int, row int64, want int) ([]
 		*run = valueRun{group: g, first: row, values: values, n: n}
 	}
 	return run.values, int(row - run.first), nil
+}
+
+// listRepeated walks rows in file order so equal keys remain distinct entries.
+// Common prefixes still emit once and can skip directly to their successor.
+func (r *Reader) listRepeated(ctx context.Context, req List, stats *Stats) ([]Entry, error) {
+	from, exclusive := req.Prefix, false
+	if req.After != nil && bytes.Compare(req.After, from) >= 0 {
+		from, exclusive = req.After, true
+	}
+	if req.Cursor != nil {
+		floor, excl := req.Cursor.floor()
+		if bytes.Compare(floor, from) > 0 {
+			from, exclusive = floor, excl
+		}
+	}
+	end := req.End
+	if upper, ok := Successor(req.Prefix); ok && (end == nil || bytes.Compare(upper, end) < 0) {
+		end = upper
+	}
+	var log pageLog
+	g, err := r.groupFor(ctx, from, &log, stats)
+	if err != nil {
+		return nil, err
+	}
+	var position groupPosition
+	var out []Entry
+	var lastPrefix []byte
+	columns := slices.Clone(req.Columns)
+	for ; g < len(r.groups) && len(out) < req.Limit; g++ {
+		if end != nil && r.startsAtOrAfter(g, end) {
+			break
+		}
+		c, err := r.cursor(ctx, g, &log, stats)
+		if err != nil {
+			return nil, err
+		}
+		// Closing within the group bounds retained page buffers to one cursor.
+		err = func() error {
+			defer c.close()
+			key, row, ok, err := c.seek(from, !exclusive)
+			for ok && err == nil && len(out) < req.Limit {
+				if end != nil && bytes.Compare(key, end) >= 0 {
+					return nil
+				}
+				offset := position.next(key)
+				if bytes.HasPrefix(key, req.Prefix) && req.Cursor.allows(key, offset) {
+					prefix := CommonPrefix(key, req.Prefix, req.Delimiter)
+					if prefix != nil {
+						suppressed := bytes.Equal(prefix, lastPrefix) || req.Continuation && req.After != nil && bytes.Compare(prefix, req.After) <= 0 || req.Cursor != nil && req.Cursor.Prefix != nil && bytes.Compare(prefix, req.Cursor.Prefix) <= 0
+						if !suppressed {
+							lastPrefix = bytes.Clone(prefix)
+							out = append(out, Entry{CommonPrefix: lastPrefix})
+						}
+					} else {
+						grp := r.groups[g]
+						values, err := r.parts[grp.part].readValues(ctx, grp.physical, row, 1, columns, stats)
+						if err != nil {
+							return err
+						}
+						out = append(out, Entry{Row: &Row{Key: bytes.Clone(key), Offset: offset, Columns: columns, Values: rowValues(values, 0)}})
+					}
+				}
+				key, row, ok, err = c.advance()
+			}
+			return err
+		}()
+		if err != nil {
+			return nil, err
+		}
+		from, exclusive = nil, false
+	}
+	return out, nil
 }

@@ -15,6 +15,7 @@ const validManifest = `{
   "format_version": 0,
   "draft_revision": 1,
   "schema_id": "example/objects/v1",
+  "key": {"column": "key", "unique": true},
   "parts": [
     {"path": "data/part-00000.parquet", "rows": 3, "bytes": 1843,
      "min_key_base64": "bG9ncy8yMDI2LzAxL2EuZ3o=", "max_key_base64": "bG9ncy8yMDI2LzAxL3ouZ3o=",
@@ -39,7 +40,7 @@ func TestParseValid(t *testing.T) {
 	if !bytes.Contains(m.Extensions, []byte(`"complete": true`)) {
 		t.Fatalf("extensions %s", m.Extensions)
 	}
-	empty, err := Parse([]byte(`{"format":"seekparquet","format_version":0,"draft_revision":1,"schema_id":"x","parts":[]}`), 1000)
+	empty, err := Parse([]byte(`{"format":"seekparquet","format_version":0,"draft_revision":1,"schema_id":"x","key":{"column":"key","unique":true},"parts":[]}`), 1000)
 	if err != nil || len(empty.Parts) != 0 || empty.Extensions != nil {
 		t.Fatalf("empty dataset: %+v, %v", empty, err)
 	}
@@ -141,7 +142,7 @@ func TestPathsAreLiteral(t *testing.T) {
 // to satisfy the rules it is meant to have checked.
 func FuzzParse(f *testing.F) {
 	f.Add([]byte(validManifest))
-	f.Add([]byte(`{"format":"seekparquet","format_version":0,"draft_revision":1,"schema_id":"x","parts":[]}`))
+	f.Add([]byte(`{"format":"seekparquet","format_version":0,"draft_revision":1,"schema_id":"x","key":{"column":"key","unique":true},"parts":[]}`))
 	f.Add([]byte(`{"format":"seekparquet","format_version":7,"parts":[]}`))
 	f.Add([]byte(`{"a":"𐀀","a":1}`))
 	f.Add([]byte(`{"format":"seekparquet","format_version":1e999999999}`))

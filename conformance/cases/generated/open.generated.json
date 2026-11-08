@@ -10,6 +10,60 @@
   },
   "cases": [
     {
+      "id": "open/repeated-keys",
+      "description": "Repeated groups cross two-row pages and four-row row groups; groups stay within parts.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/one-large-group",
+      "description": "One group occupies an entire part, spanning six row groups and twelve pages.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/named-key",
+      "description": "The manifest names object.id as the key column; dots are literal.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/named-key",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
       "id": "open/binary-keys",
       "description": "Keys exercising unsigned byte order: NUL, 0x7F/0x80, 0xFF, invalid UTF-8, UTF-8 whose UTF-16 order differs, prefix chains, keys longer than 64 bytes (pyarrow does not shorten bounds), and long keys of 0xFF bytes. Pages of 3 rows.",
       "family": "open/valid-dataset",

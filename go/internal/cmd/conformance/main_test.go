@@ -74,16 +74,16 @@ func TestAdapter(t *testing.T) {
 	if resps[1]["status"] != "ok" {
 		t.Fatalf("open %v", resps[1])
 	}
-	want3 := `[{"key_base64":"YQ==","kind":"row","values":[{"int":"0"},{"bytes_base64":"bmFtZS0w"},{"absent":true}]},` +
-		`{"key_base64":"YS9i","kind":"row","values":[{"int":"1"},{"bytes_base64":"bmFtZS0x"},{"absent":true}]},` +
-		`{"key_base64":"YS9jL2Q=","kind":"row","values":[{"int":"2"},{"null":true},{"absent":true}]}]`
+	want3 := `[{"key_base64":"YQ==","kind":"row","offset":0,"values":[{"int":"0"},{"bytes_base64":"bmFtZS0w"},{"absent":true}]},` +
+		`{"key_base64":"YS9i","kind":"row","offset":0,"values":[{"int":"1"},{"bytes_base64":"bmFtZS0x"},{"absent":true}]},` +
+		`{"key_base64":"YS9jL2Q=","kind":"row","offset":0,"values":[{"int":"2"},{"null":true},{"absent":true}]}]`
 	if got := jsonString(resps[2]["entries"]); got != want3 {
 		t.Fatalf("range:\n got %s\nwant %s", got, want3)
 	}
-	if got := jsonString(resps[3]["entries"]); got != `[{"key_base64":"YS9i","kind":"row","values":[]}]` {
+	if got := jsonString(resps[3]["entries"]); got != `[{"key_base64":"YS9i","kind":"row","offset":0,"values":[]}]` {
 		t.Fatalf("exclusive start: %s", got)
 	}
-	if got := jsonString(resps[4]["entries"]); got != `[{"key_base64":"YS9i","kind":"row","values":[]},{"key_base64":"YS9jLw==","kind":"prefix"}]` {
+	if got := jsonString(resps[4]["entries"]); got != `[{"key_base64":"YS9i","kind":"row","offset":0,"values":[]},{"key_base64":"YS9jLw==","kind":"prefix"}]` {
 		t.Fatalf("list: %s", got)
 	}
 	for _, i := range []int{5, 6, 7, 8, 12} {

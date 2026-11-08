@@ -11,6 +11,93 @@
   },
   "cases": [
     {
+      "id": "validate-full/repeated-keys",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/one-large-group",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/named-key",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/named-key",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-full/empty",
       "family": "validate-full/valid-dataset",
       "requirements": [

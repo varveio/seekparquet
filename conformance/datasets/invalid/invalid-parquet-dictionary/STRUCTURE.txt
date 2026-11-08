@@ -10,12 +10,12 @@ changes:
   - data/part-00000.parquet: row group 0 column 3: dictionary page at 323: first value's length prefix 5 -> 2147483647
 
 manifest: format_version 0, 2 parts
-  part 0: 'data/part-00000.parquet', rows 12, bytes 3061, keys 'enc/000' .. 'enc/011'
-  part 1: 'data/part-00001.parquet', rows 12, bytes 2446, keys 'enc/012' .. 'enc/023'
+  part 0: 'data/part-00000.parquet', rows 12, bytes 3262, keys 'enc/000' .. 'enc/011'
+  part 1: 'data/part-00001.parquet', rows 12, bytes 2647, keys 'enc/012' .. 'enc/023'
 
-file data/part-00000.parquet: 3061 bytes, footer 1690 bytes
+file data/part-00000.parquet: 3262 bytes, footer 1891 bytes
   num_rows 12, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
-  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/encodings/v1'}
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/encodings/v1'}
   other key-value keys ['ARROW:schema']
   column key: BYTE_ARRAY REQUIRED def=0 rep=0
   column i32: INT32 OPTIONAL def=1 rep=0
@@ -36,9 +36,9 @@ file data/part-00000.parquet: 3061 bytes, footer 1690 bytes
       min lengths [7, 7]
       max lengths [7, 7]
 
-file data/part-00001.parquet: 2446 bytes, footer 1257 bytes
+file data/part-00001.parquet: 2647 bytes, footer 1458 bytes
   num_rows 12, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
-  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/encodings/v1'}
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/encodings/v1'}
   other key-value keys ['ARROW:schema']
   column key: BYTE_ARRAY REQUIRED def=0 rep=0
   column i32: INT32 OPTIONAL def=1 rep=0

@@ -293,6 +293,14 @@ def set_file_path(rg, col, value):
     return fn
 
 
+def set_stamp(key, value):
+    def fn(part):
+        e = next(x for x in part.meta.get(pm.FMD_KV).items if x.get(pm.KV_KEY) == key)
+        e.set(pm.KV_VALUE, pm.CT_BINARY, value)
+        part.changes.append(f"footer: {key.decode()} changed")
+    return fn
+
+
 def duplicate_stamp(key):
     def fn(part):
         kv = part.meta.get(pm.FMD_KV).items

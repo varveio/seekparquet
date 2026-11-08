@@ -1,6 +1,6 @@
 {
   "suite": "seekparquet-conformance-semantic",
-  "revision": "0.1.0-draft.3",
+  "revision": "0.1.0-draft.4",
   "status": "draft",
   "specification": "spec/format-1.md",
   "format_version": 0,
@@ -28,6 +28,7 @@
     "cases/core/validate-full.json",
     "cases/core/validate-profile.json",
     "cases/core/validate-structural.json",
+    "cases/generated/repeated.generated.json",
     "cases/generated/open.generated.json",
     "cases/generated/range.generated.json",
     "cases/generated/prefix.generated.json",
@@ -59,23 +60,24 @@
     "cases/core/validate-full.json": 4,
     "cases/core/validate-profile.json": 4,
     "cases/core/validate-structural.json": 10,
-    "cases/generated/open.generated.json": 14,
+    "cases/generated/repeated.generated.json": 311,
+    "cases/generated/open.generated.json": 17,
     "cases/generated/range.generated.json": 538,
     "cases/generated/prefix.generated.json": 43,
     "cases/generated/list.generated.json": 39,
     "cases/generated/pagination.generated.json": 81,
     "cases/generated/projection.generated.json": 35,
     "cases/generated/requests.generated.json": 8,
-    "cases/generated/refusals-open.generated.json": 39,
-    "cases/generated/refusals-read.generated.json": 19,
-    "cases/generated/validate-structural.generated.json": 95,
-    "cases/generated/validate-profile.generated.json": 35,
-    "cases/generated/validate-full.generated.json": 26,
+    "cases/generated/refusals-open.generated.json": 56,
+    "cases/generated/refusals-read.generated.json": 20,
+    "cases/generated/validate-structural.generated.json": 115,
+    "cases/generated/validate-profile.generated.json": 39,
+    "cases/generated/validate-full.generated.json": 29,
     "cases/generated/validate-digest.generated.json": 2
   },
   "totals": {
     "core": 150,
-    "generated": 974
+    "generated": 1333
   },
   "renamed_datasets": {
     "datasets/truncated-bounds": "datasets/binary-bounds-truncated-16-byte",
@@ -171,5 +173,5 @@
       "duplicate_of": "open/empty-list"
     }
   ],
-  "content_sha256": "c5818ad8c3227ca306fe36c94d2b79a8bc2f0a6c893cdcea3dc357163a7804cc"
+  "content_sha256": "1ad86f0547a02962e864e57517d0dbd65c4bed5348e4db64b449e91b0802468d"
 }

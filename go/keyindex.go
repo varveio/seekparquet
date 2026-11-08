@@ -173,6 +173,7 @@ func checkKeyIndex(columns *format.ColumnIndex, offsets *parquet.FileOffsetIndex
 
 // pageSpan is one key page a request decoded, at its dataset position.
 type pageSpan struct {
+	repeated    bool
 	g, page     int
 	part        string
 	physical    int
@@ -199,10 +200,10 @@ func (l *pageLog) add(s pageSpan) error {
 	if i < len(l.spans) && l.spans[i].g == s.g && l.spans[i].page == s.page {
 		return nil // read again
 	}
-	if i > 0 && bytes.Compare(s.first, l.spans[i-1].last) <= 0 {
+	if i > 0 && (bytes.Compare(s.first, l.spans[i-1].last) < 0 || !s.repeated && bytes.Equal(s.first, l.spans[i-1].last)) {
 		return keyOrder(s.part, s.physical, s.firstRow, s.first)
 	}
-	if i < len(l.spans) && bytes.Compare(l.spans[i].first, s.last) <= 0 {
+	if i < len(l.spans) && (bytes.Compare(l.spans[i].first, s.last) < 0 || !s.repeated && bytes.Equal(l.spans[i].first, s.last)) {
 		t := l.spans[i]
 		return keyOrder(t.part, t.physical, t.firstRow, t.first)
 	}

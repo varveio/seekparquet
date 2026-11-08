@@ -102,6 +102,9 @@ type Part struct {
 
 // Dataset describes a dataset.
 type Dataset struct {
+	// KeyColumn defaults to "key"; RepeatedKeys permits equal consecutive keys.
+	KeyColumn    string
+	RepeatedKeys bool
 	// SchemaID is the manifest's and the stamps' schema id; "" is
 	// SchemaID.
 	SchemaID string
@@ -117,11 +120,15 @@ func PartPath(i int) string { return fmt.Sprintf("data/part-%05d.parquet", i) }
 // Write writes d into dir (created if needed): its parts, then its
 // manifest, whose bounds are each part's first and last keys as written.
 func Write(dir string, d Dataset) error {
+	keyColumn := d.KeyColumn
+	if keyColumn == "" {
+		keyColumn = "key"
+	}
 	schemaID := d.SchemaID
 	if schemaID == "" {
 		schemaID = SchemaID
 	}
-	m := map[string]any{"format": "seekparquet", "format_version": 0, "draft_revision": 1, "schema_id": schemaID}
+	m := map[string]any{"format": "seekparquet", "format_version": 0, "draft_revision": 1, "schema_id": schemaID, "key": map[string]any{"column": keyColumn, "unique": !d.RepeatedKeys}}
 	if d.Extensions != nil {
 		m["extensions"] = d.Extensions
 	}
@@ -130,7 +137,7 @@ func Write(dir string, d Dataset) error {
 		return err
 	}
 	for i, part := range d.Parts {
-		stamps := map[string]string{StampFormatVersion: "0", StampDraftRevision: "1", StampSchemaID: schemaID}
+		stamps := map[string]string{StampFormatVersion: "0", StampDraftRevision: "1", StampSchemaID: schemaID, "seekparquet.key_column": keyColumn, "seekparquet.key_unique": strconv.FormatBool(!d.RepeatedKeys)}
 		for k, v := range part.Stamps {
 			if v == "" {
 				delete(stamps, k)
@@ -140,7 +147,7 @@ func Write(dir string, d Dataset) error {
 		}
 		rel := PartPath(i)
 		path := filepath.Join(dir, filepath.FromSlash(rel))
-		first, last, rows, err := writePart(path, part, stamps)
+		first, last, rows, err := writePart(path, part, stamps, keyColumn)
 		if err != nil {
 			return fmt.Errorf("part %d: %w", i, err)
 		}
@@ -169,7 +176,7 @@ func writeManifest(dir string, m map[string]any) error {
 
 // writePart writes part to path with the footer key-value metadata stamps
 // and returns its first and last keys and row count.
-func writePart(path string, part Part, stamps map[string]string) (first, last []byte, rows int, err error) {
+func writePart(path string, part Part, stamps map[string]string, keyColumn string) (first, last []byte, rows int, err error) {
 	rowsValue := reflect.ValueOf(part.Rows)
 	if part.Rows == nil {
 		rowsValue = reflect.ValueOf([]Row{})
@@ -179,7 +186,7 @@ func writePart(path string, part Part, stamps map[string]string) (first, last []
 	}
 	rows = rowsValue.Len()
 	base := parquet.SchemaOf(reflect.New(rowsValue.Type().Elem()).Elem().Interface())
-	keyLeaf, ok := base.Lookup("key")
+	keyLeaf, ok := base.Lookup(keyColumn)
 	if !ok {
 		return nil, nil, 0, errors.New("the rows have no key column")
 	}
@@ -202,7 +209,7 @@ func writePart(path string, part Part, stamps map[string]string) (first, last []
 		options = append(options, parquet.DataPageVersion(part.DataPageVersion))
 	}
 	if !part.Unsorted {
-		options = append(options, parquet.SortingWriterConfig(parquet.SortingColumns(parquet.Ascending("key"))))
+		options = append(options, parquet.SortingWriterConfig(parquet.SortingColumns(parquet.Ascending(keyColumn))))
 	}
 	keys := slices.Sorted(func(yield func(string) bool) {
 		for k := range stamps {

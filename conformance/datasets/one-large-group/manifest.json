@@ -1,0 +1,19 @@
+{
+  "format": "seekparquet",
+  "format_version": 0,
+  "draft_revision": 1,
+  "schema_id": "conformance/repeated/v1",
+  "key": {
+    "column": "key",
+    "unique": false
+  },
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "rows": 24,
+      "bytes": 3652,
+      "min_key_base64": "b25seQ==",
+      "max_key_base64": "b25seQ=="
+    }
+  ]
+}

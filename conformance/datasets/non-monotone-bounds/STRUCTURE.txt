@@ -7,15 +7,15 @@ producer: generators/mutate_metadata.py
 derived from: datasets/basic
 changes:
   - data/part-00000.parquet: row group 0 key ColumnIndex: min_values[1] 'a/b/3.txt' -> 'a' (below min_values[0]); max_values[0] 'a/2.txt' -> ffff (above max_values[1]); boundary_order -> UNORDERED. Both are still true bounds.
-  - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2606
-  - manifest: parts[0].bytes 2619 -> 2606
+  - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2828 -> 2815
+  - manifest: parts[0].bytes 2828 -> 2815
 
 manifest: format_version 0, 1 parts
-  part 0: 'data/part-00000.parquet', rows 12, bytes 2606, keys 'a/1.txt' .. 'foxtrot'
+  part 0: 'data/part-00000.parquet', rows 12, bytes 2815, keys 'a/1.txt' .. 'foxtrot'
 
-file data/part-00000.parquet: 2606 bytes, footer 1384 bytes
+file data/part-00000.parquet: 2815 bytes, footer 1593 bytes
   num_rows 12, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
-  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
   other key-value keys ['ARROW:schema']
   column key: BYTE_ARRAY REQUIRED def=0 rep=0
   column size: INT64 REQUIRED def=0 rep=0

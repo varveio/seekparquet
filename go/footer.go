@@ -458,34 +458,34 @@ func topLevel(schema []format.SchemaElement) (map[string]element, map[string]boo
 
 // checkKeyColumn applies KEY-1 and KEY-5 and reports whether the key is
 // annotated as a string (KEY-6). leaves is the schema's leaf count.
-func checkKeyColumn(name string, meta *format.FileMetaData, top map[string]element, dup map[string]bool, leaves int) (utf8Key bool, err error) {
+func checkKeyColumn(name string, meta *format.FileMetaData, top map[string]element, dup map[string]bool, leaves int, keyColumn string) (utf8Key bool, err error) {
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidKeyColumn, name, -1, format, args...)
 	}
-	e, ok := top[KeyColumn]
-	if !ok || dup[KeyColumn] {
-		return false, bad("no single top-level column named %s", KeyColumn)
+	e, ok := top[keyColumn]
+	if !ok || dup[keyColumn] {
+		return false, bad("no single top-level column named %s", keyColumn)
 	}
 	se := e.se
 	if e.leaf < 0 {
-		return false, bad("the %s column is nested", KeyColumn)
+		return false, bad("the %s column is nested", keyColumn)
 	}
 	if t, ok := se.Type.Get(); !ok || t != format.ByteArray {
-		return false, bad("the %s column is not BYTE_ARRAY", KeyColumn)
+		return false, bad("the %s column is not BYTE_ARRAY", keyColumn)
 	}
 	if rep, ok := se.RepetitionType.Get(); !ok || rep != format.Required {
-		return false, bad("the %s column is not REQUIRED", KeyColumn)
+		return false, bad("the %s column is not REQUIRED", keyColumn)
 	}
 	switch se.LogicalType.Value.(type) {
 	case nil:
 	case *format.StringType:
 		utf8Key = true
 	default:
-		return false, bad("the %s column is annotated %s", KeyColumn, se.LogicalType.String())
+		return false, bad("the %s column is annotated %s", keyColumn, se.LogicalType.String())
 	}
 	if ct, ok := se.ConvertedType.Get(); ok {
 		if ct != deprecated.UTF8 {
-			return false, bad("the %s column has converted type %d", KeyColumn, ct)
+			return false, bad("the %s column has converted type %d", keyColumn, ct)
 		}
 		utf8Key = true
 	}
@@ -493,7 +493,7 @@ func checkKeyColumn(name string, meta *format.FileMetaData, top map[string]eleme
 		return false, bad("column_orders has %d entries for %d leaf columns", len(meta.ColumnOrders), leaves)
 	}
 	if _, ok := meta.ColumnOrders[e.leaf].Value.(*format.TypeDefinedOrder); !ok {
-		return false, bad("column_orders does not give the %s column TYPE_ORDER", KeyColumn)
+		return false, bad("column_orders does not give the %s column TYPE_ORDER", keyColumn)
 	}
 	return utf8Key, nil
 }

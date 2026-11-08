@@ -3,18 +3,22 @@
   "format_version": 0,
   "draft_revision": 1,
   "schema_id": "conformance/binary/v1",
+  "key": {
+    "column": "key",
+    "unique": true
+  },
   "parts": [
     {
       "path": "data/part-00000.parquet",
       "rows": 24,
-      "bytes": 3128,
+      "bytes": 3337,
       "min_key_base64": "AA==",
       "max_key_base64": "cA=="
     },
     {
       "path": "data/part-00001.parquet",
       "rows": 22,
-      "bytes": 2438,
+      "bytes": 2647,
       "min_key_base64": "cHE=",
       "max_key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////"
     }

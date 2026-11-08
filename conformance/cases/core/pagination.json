@@ -82,7 +82,8 @@
           {
             "kind": "row",
             "key_base64": "Yw==",
-            "values": []
+            "values": [],
+            "offset": 0
           }
         ]
       }
@@ -133,7 +134,8 @@
           {
             "kind": "row",
             "key_base64": "YS8=",
-            "values": []
+            "values": [],
+            "offset": 0
           },
           {
             "kind": "prefix",
@@ -167,7 +169,8 @@
           {
             "kind": "row",
             "key_base64": "YS9i",
-            "values": []
+            "values": [],
+            "offset": 0
           },
           {
             "kind": "prefix",
@@ -201,12 +204,14 @@
           {
             "kind": "row",
             "key_base64": "YS9iYw==",
-            "values": []
+            "values": [],
+            "offset": 0
           },
           {
             "kind": "row",
             "key_base64": "YS9j",
-            "values": []
+            "values": [],
+            "offset": 0
           }
         ]
       }

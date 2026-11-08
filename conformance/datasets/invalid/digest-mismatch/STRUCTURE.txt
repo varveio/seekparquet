@@ -7,16 +7,16 @@ producer: generators/mutate_metadata.py
 derived from: datasets/multipart
 fault (generators/faults.json): digest-mismatch: digest_mismatch; reader detects on validate; lowest validation level digest (PART-5); location: manifest.json
 changes:
-  - manifest: parts.2.sha256 "0d19daf03675f432b94f0a111bec6ae2bc6a9ba33a3a47b9e5c97dcd0f14bb4f" -> "0000000000000000000000000000000000000000000000000000000000000000"
+  - manifest: parts.2.sha256 "c6bb040398c045858aa97187182a4d301d0391f5260a089f3525cf8cf6fda786" -> "0000000000000000000000000000000000000000000000000000000000000000"
 
 manifest: format_version 0, 3 parts
-  part 0: 'shards/c.parquet', rows 45, bytes 7180, keys 'README' .. 'logs/2026/02/f003.gz'
-  part 1: 'shards/a.parquet', rows 45, bytes 6321, keys 'logs/2026/02/f004.gz' .. 'logs/2026/03/f008.gz'
-  part 2: 'shards/b.parquet', rows 44, bytes 7059, keys 'logs/2026/03/f009.gz' .. 'zz-last'
+  part 0: 'shards/c.parquet', rows 45, bytes 7381, keys 'README' .. 'logs/2026/02/f003.gz'
+  part 1: 'shards/a.parquet', rows 45, bytes 6522, keys 'logs/2026/02/f004.gz' .. 'logs/2026/03/f008.gz'
+  part 2: 'shards/b.parquet', rows 44, bytes 7260, keys 'logs/2026/03/f009.gz' .. 'zz-last'
 
-file shards/a.parquet: 6321 bytes, footer 2218 bytes
+file shards/a.parquet: 6522 bytes, footer 2419 bytes
   num_rows 45, row_groups 3, created_by 'parquet-cpp-arrow version 26.0.1'
-  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
   other key-value keys ['ARROW:schema']
   column key: BYTE_ARRAY REQUIRED def=0 rep=0
   column size: INT64 REQUIRED def=0 rep=0
@@ -44,9 +44,9 @@ file shards/a.parquet: 6321 bytes, footer 2218 bytes
       min lengths [20, 20, 20]
       max lengths [20, 20, 20]
 
-file shards/b.parquet: 7059 bytes, footer 2059 bytes
+file shards/b.parquet: 7260 bytes, footer 2260 bytes
   num_rows 44, row_groups 3, created_by 'parquet-cpp-arrow version 26.0.1'
-  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
   other key-value keys ['ARROW:schema']
   column key: BYTE_ARRAY REQUIRED def=0 rep=0
   column size: INT64 REQUIRED def=0 rep=0
@@ -69,9 +69,9 @@ file shards/b.parquet: 7059 bytes, footer 2059 bytes
   row_group 2: rows 0, sorting_columns [col0 asc]
     (no rows; ignored by SeekParquet, RG-1..RG-7 do not apply)
 
-file shards/c.parquet: 7180 bytes, footer 2709 bytes
+file shards/c.parquet: 7381 bytes, footer 2910 bytes
   num_rows 45, row_groups 5, created_by 'parquet-cpp-arrow version 26.0.1'
-  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
   other key-value keys ['ARROW:schema']
   column key: BYTE_ARRAY REQUIRED def=0 rep=0
   column size: INT64 REQUIRED def=0 rep=0

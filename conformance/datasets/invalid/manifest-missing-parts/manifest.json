@@ -2,5 +2,9 @@
   "format": "seekparquet",
   "format_version": 0,
   "draft_revision": 1,
-  "schema_id": "conformance/objects/v1"
+  "schema_id": "conformance/objects/v1",
+  "key": {
+    "column": "key",
+    "unique": true
+  }
 }

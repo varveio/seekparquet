@@ -1540,6 +1540,249 @@
       ],
       "location": "key column data pages; the manifest declares a correct sha256",
       "note": "Used by the digest cases: digest validation is independent of the profile fault (VAL-2), so it completes."
+    },
+    {
+      "id": "stamp-key-column-missing",
+      "dataset": "datasets/invalid/stamp-key-column-missing",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "stamp-key-column-mismatch",
+      "dataset": "datasets/invalid/stamp-key-column-mismatch",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "stamp-key-column-noncanonical",
+      "dataset": "datasets/invalid/stamp-key-column-noncanonical",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "stamp-duplicate-key-column",
+      "dataset": "datasets/invalid/stamp-duplicate-key-column",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-2"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "stamp-key-unique-missing",
+      "dataset": "datasets/invalid/stamp-key-unique-missing",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "stamp-key-unique-mismatch",
+      "dataset": "datasets/invalid/stamp-key-unique-mismatch",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "stamp-key-unique-noncanonical",
+      "dataset": "datasets/invalid/stamp-key-unique-noncanonical",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-1",
+        "STAMP-2"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "stamp-duplicate-key-unique",
+      "dataset": "datasets/invalid/stamp-duplicate-key-unique",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-2"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "manifest-key-null",
+      "dataset": "datasets/invalid/manifest-key-null",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-8"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "manifest-key-empty",
+      "dataset": "datasets/invalid/manifest-key-empty",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-8"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "manifest-key-unique-string",
+      "dataset": "datasets/invalid/manifest-key-unique-string",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-8"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "manifest-key-empty-column",
+      "dataset": "datasets/invalid/manifest-key-empty-column",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-8"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "manifest-key-control-column",
+      "dataset": "datasets/invalid/manifest-key-control-column",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-8"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "manifest-key-extra",
+      "dataset": "datasets/invalid/manifest-key-extra",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-8"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "manifest-key-missing",
+      "dataset": "datasets/invalid/manifest-key-missing",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-8"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "named-key-absent",
+      "dataset": "datasets/invalid/named-key-absent",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_key_column"
+      ],
+      "requirements": [
+        "KEY-1",
+        "MAN-8"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "grouped-key-decreasing",
+      "dataset": "datasets/invalid/grouped-key-decreasing",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "key_order"
+      ],
+      "requirements": [
+        "KEY-3",
+        "CHECK-2"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "group-split-parts",
+      "dataset": "datasets/invalid/group-split-parts",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "PART-4",
+        "KEY-7"
+      ],
+      "location": "manifest or key column footer/data, as described by the fixture"
     }
   ]
 }
