@@ -57,6 +57,63 @@ class SeekCostTest {
     }
 
     @Test
+    void manyPartsWithLongPrefixesHaveBoundedColdAndWarmShortRangesAndLists() throws IOException {
+        String stem = "x".repeat(128) + "/";
+        List<List<TestRow>> parts = new ArrayList<>();
+        for (int p = 0; p < 16; p++) {
+            List<TestRow> rows = new ArrayList<>();
+            for (int i = 0; i < 256; i++) {
+                rows.add(TestRow.of(String.format("%sp%02d/d%02d/f%03d", stem, p, i / 16, i), i));
+            }
+            parts.add(rows);
+        }
+        TestDatasets.Spec spec = new TestDatasets.Spec();
+        spec.rowsPerGroup = 16;
+        spec.rowsPerPage = 16;
+        spec.nonMonotoneKeyBounds = true;
+        CountingStorage storage = new CountingStorage(TestDatasets.write(tmp, spec, parts));
+        for (int n : new int[] {1, 5}) {
+            try (Dataset ds = Dataset.open(storage)) {
+                // Exclude CHECK-1 open, which checks every part, from query counters.
+                for (boolean warm : new boolean[] {false, true}) {
+                    storage.reads.set(0);
+                    storage.bytes.set(0);
+                    List<Row> got = ds.range(RangeQuery.builder()
+                            .start(Bytes.wrap(parts.get(14).get(240).key())).limit(n).columns("size").build());
+                    assertEquals(n, got.size());
+                    for (int i = 0; i < n; i++) {
+                        assertEquals(Bytes.wrap(parts.get(14).get(240 + i).key()), got.get(i).key());
+                        assertEquals(new Value.Int64(240 + i), got.get(i).values().getFirst());
+                    }
+                    // Four binary probes, each an index pair and a 16-row key page,
+                    // plus selected key/value pages. Long keys dominate byte cost.
+                    assertTrue(storage.reads.get() <= 20, "reads=" + storage.reads.get());
+                    assertTrue(storage.bytes.get() <= 32 * 1024, "bytes=" + storage.bytes.get());
+                    if (warm) assertTrue(storage.reads.get() <= 3, "warm reads=" + storage.reads.get());
+                    System.out.printf("ACCESS_METRIC {\"operation\":\"range\",\"rows\":%d,\"warm\":%b,\"reads\":%d,\"requested_bytes\":%d}%n",
+                            n, warm, storage.reads.get(), storage.bytes.get());
+                }
+                for (int repeat = 0; repeat < 2; repeat++) {
+                    storage.reads.set(0);
+                    storage.bytes.set(0);
+                    List<ListEntry> got = ds.list(ListQuery.builder((byte) '/')
+                            .prefix(Bytes.utf8(stem + "p13/")).limit(100).build());
+                    assertEquals(16, got.size());
+                    for (int i = 0; i < 16; i++) {
+                        assertEquals(new ListEntry.CommonPrefix(Bytes.utf8(String.format("%sp13/d%02d/", stem, i))), got.get(i));
+                    }
+                    // One directory per group: two index reads and up to two key
+                    // reads per prefix, with space for routing probes.
+                    assertTrue(storage.reads.get() <= 80, "reads=" + storage.reads.get());
+                    assertTrue(storage.bytes.get() <= 160 * 1024, "bytes=" + storage.bytes.get());
+                    System.out.printf("ACCESS_METRIC {\"operation\":\"list\",\"warm\":%b,\"reads\":%d,\"requested_bytes\":%d}%n",
+                            repeat > 0, storage.reads.get(), storage.bytes.get());
+                }
+            }
+        }
+    }
+
+    @Test
     void repeatedPaginationJumpsToPhysicalRowsForRangeAndList() throws IOException {
         TestDatasets.Spec spec = new TestDatasets.Spec();
         spec.unique = false;

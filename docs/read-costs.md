@@ -3,6 +3,8 @@
 SeekParquet defines results and validity, not a constant read count. The shared semantic
 conformance suite does not yet certify indexed-access efficiency. These are considerations for
 choosing and measuring a writer configuration, not a qualified performance preset.
+See the [indexed-access coverage matrix](indexed-access.md) for deterministic regression
+evidence and the remaining qualification gaps.
 
 ## Measure three phases separately
 
