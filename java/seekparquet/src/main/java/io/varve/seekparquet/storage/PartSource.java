@@ -9,6 +9,9 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Optional;
+import java.util.Objects;
+import org.apache.parquet.io.InputFile;
+import org.apache.parquet.io.SeekableInputStream;
 
 /**
  * One opened part: an immutable object of known size, read by position.
@@ -30,7 +33,65 @@ import java.util.Optional;
  * <p><b>Ownership.</b> The reader closes each part it opened when the dataset is closed, or at once
  * when opening the dataset fails. {@link #close()} may be called while no read is in progress only.
  */
-public interface PartSource extends Closeable {
+public interface PartSource extends InputFile, Closeable {
+
+    /** {@return the known part size, using parquet-java's InputFile contract} */
+    @Override
+    default long getLength() {
+        return size();
+    }
+
+    /** Opens an independent parquet-java stream without transferring ownership of this source.
+     * @return an independently positioned stream
+     */
+    @Override
+    default SeekableInputStream newStream() {
+        return new PositionedStream(this);
+    }
+
+    /** Adapts an existing parquet-java input file. Each positioned read uses its own stream, so
+     * concurrent requests never share a seek position. The file must describe an immutable object;
+     * its owner retains responsibility for any resources held by the InputFile itself.
+     * @param path the manifest path
+     * @param file the parquet-java file, safe for concurrent newStream calls
+     * @param version the optional pinned object identity, enforced by the input file
+     * @return a source whose streams are closed after each read
+     * @throws IOException if obtaining the file length fails
+     */
+    static PartSource of(String path, InputFile file, Optional<String> version) throws IOException {
+        Objects.requireNonNull(path, "path");
+        Objects.requireNonNull(file, "file");
+        Objects.requireNonNull(version, "version");
+        long length = file.getLength();
+        if (length < 0) {
+            throw new IOException("negative input file length");
+        }
+        return new PartSource() {
+            @Override public String path() { return path; }
+            @Override public long size() { return length; }
+            @Override public Optional<String> version() { return version; }
+            @Override public void close() { }
+            @Override public ByteBuffer read(long position, int count, Cancellation cancellation) throws IOException {
+                if (position < 0 || count < 0 || position > length - count) {
+                    throw new EOFException("read outside the part");
+                }
+                cancellation.throwIfCancelled();
+                try (SeekableInputStream in = file.newStream();
+                        Cancellation.Registration registration = cancellation.onCancel(() -> {
+                            try { in.close(); } catch (IOException ignored) { }
+                        })) {
+                    in.seek(position);
+                    ByteBuffer out = ByteBuffer.allocate(count);
+                    in.readFully(out);
+                    cancellation.throwIfCancelled();
+                    return out.flip();
+                } catch (IOException e) {
+                    cancellation.throwIfCancelled();
+                    throw e;
+                }
+            }
+        };
+    }
 
     /** {@return the part's manifest path, for diagnostics} */
     String path();

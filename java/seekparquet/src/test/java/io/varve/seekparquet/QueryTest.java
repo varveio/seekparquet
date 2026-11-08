@@ -156,7 +156,7 @@ class QueryTest {
                 }
                 e = new ListEntry.CommonPrefix(common);
             } else {
-                e = new ListEntry.RowEntry(new Row(k, List.of(), List.of()));
+                e = new ListEntry.RowEntry(new Row(k, 0, List.of(), List.of()));
             }
             if (out.size() < q.limit()) {
                 out.add(e);

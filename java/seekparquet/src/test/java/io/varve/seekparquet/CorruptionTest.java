@@ -26,7 +26,7 @@ class CorruptionTest {
     Path tmp;
 
     @ParameterizedTest
-    @ValueSource(strings = {"basic", "multipart", "projection", "binary-keys", "truncated-bounds"})
+    @ValueSource(strings = {"basic", "multipart", "projection", "binary-keys", "binary-bounds-truncated-2-byte"})
     void corruptPartsFailOnlyWithSeekParquetExceptions(String name) throws IOException {
         Path source = ConformanceFixturesTest.fixture("datasets/" + name);
         List<Path> files;

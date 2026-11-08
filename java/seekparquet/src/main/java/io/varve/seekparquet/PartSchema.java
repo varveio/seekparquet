@@ -41,12 +41,14 @@ final class PartSchema {
     final Set<String> duplicates;
     /** The schema elements of the leaf columns, by leaf index. */
     final List<SchemaElement> leaves;
+    final List<List<String>> leafPaths;
 
-    private PartSchema(List<Field> fields, Map<String, Field> byName, Set<String> duplicates, List<SchemaElement> leaves) {
+    private PartSchema(List<Field> fields, Map<String, Field> byName, Set<String> duplicates, List<SchemaElement> leaves, List<List<String>> leafPaths) {
         this.fields = fields;
         this.byName = byName;
         this.duplicates = duplicates;
         this.leaves = leaves;
+        this.leafPaths = leafPaths;
     }
 
     /** Parses a footer's flattened schema. */
@@ -56,6 +58,9 @@ final class PartSchema {
         }
         Walker w = new Walker(schema);
         SchemaElement root = schema.get(0);
+        if (root.isSetType() || !root.isSetNum_children()) {
+            throw new DataException("the schema root is not a group");
+        }
         int children = root.isSetNum_children() ? root.getNum_children() : 0;
         if (children < 0 || children > schema.size() - 1) {
             throw new DataException("the schema root declares " + children + " children");
@@ -73,12 +78,14 @@ final class PartSchema {
         if (w.pos != schema.size()) {
             throw new DataException("the schema holds " + (schema.size() - w.pos) + " elements outside its tree");
         }
-        return new PartSchema(List.copyOf(fields), Collections.unmodifiableMap(byName), Set.copyOf(duplicates), List.copyOf(w.leaves));
+        return new PartSchema(List.copyOf(fields), Collections.unmodifiableMap(byName), Set.copyOf(duplicates), List.copyOf(w.leaves), List.copyOf(w.leafPaths));
     }
 
     private static final class Walker {
         final List<SchemaElement> schema;
         final List<SchemaElement> leaves = new ArrayList<>();
+        final List<List<String>> leafPaths = new ArrayList<>();
+        final List<String> path = new ArrayList<>();
         int pos = 1;
 
         Walker(List<SchemaElement> schema) {
@@ -113,12 +120,18 @@ final class PartSchema {
             if (depth > MAX_NESTING) {
                 throw new LimitExceededException("schemaNesting", depth, MAX_NESTING, "a part's schema");
             }
+            if (se.isSetNum_children() && (se.getNum_children() < 0 || se.isSetType() && se.getNum_children() > 0)) {
+                throw new DataException("a schema element has an invalid child count or both a type and children");
+            }
+            path.add(se.getName());
             if (!isGroup(se)) {
                 Column.Type t = type(se);
                 if (t == Column.Type.FIXED_LEN_BYTE_ARRAY && (!se.isSetType_length() || se.getType_length() <= 0)) {
                     throw new DataException("a FIXED_LEN_BYTE_ARRAY column without a positive type length");
                 }
                 leaves.add(se);
+                leafPaths.add(List.copyOf(path));
+                path.removeLast();
                 return ":" + t + (t == Column.Type.FIXED_LEN_BYTE_ARRAY ? "(" + se.getType_length() + ")" : "");
             }
             int n = se.getNum_children();
@@ -128,9 +141,10 @@ final class PartSchema {
             StringBuilder sb = new StringBuilder("{");
             for (int i = 0; i < n; i++) {
                 SchemaElement child = element();
-                sb.append('"').append(child.getName().replace("\"", "\\\"")).append("\":").append(repetition(child));
+                sb.append(child.getName().length()).append(':').append(child.getName()).append(':').append(repetition(child));
                 sb.append(subtree(child, depth + 1)).append(';');
             }
+            path.removeLast();
             return sb.append('}').toString();
         }
 

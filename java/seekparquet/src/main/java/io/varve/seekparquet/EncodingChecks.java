@@ -28,6 +28,9 @@ final class EncodingChecks {
             long header = uleb(b, pos, to);
             if ((header & 1) == 1) {
                 long groups = header >>> 1;
+                if (groups > (maxValues - values + 7) / 8) {
+                    throw new DataException("a bit-packed run exceeds the remaining value count");
+                }
                 long count = groups * 8;
                 if (count - 7 > maxValues - values) {
                     throw new DataException("a bit-packed run of " + count + " values where at most " + (maxValues - values) + " remain");
@@ -125,6 +128,9 @@ final class EncodingChecks {
                 throw new DataException("a truncated varint");
             }
             int x = b[pos[0]++] & 0xFF;
+            if (shift == 63 && (x & 0x7F) != 0) {
+                throw new DataException("a varint above 2^63-1");
+            }
             v |= (long) (x & 0x7F) << shift;
             if ((x & 0x80) == 0) {
                 if (v < 0) {

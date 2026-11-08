@@ -9,9 +9,9 @@ import java.util.Arrays;
  * Walks the dataset's keys forward, in dataset order, for one request.
  *
  * <p>Seeking routes in three steps. Parts are chosen by the manifest's exact bounds: the first part
- * whose last key reaches the target. Row groups within a part are chosen by binary search over the
- * maximum of each group's last key page, and pages within a row group by binary search over the
- * page maxima ({@link KeyIndex#pageFor}). Bounds may be shortened, so both searches may land early,
+ * whose last key reaches the target. Row groups within a part are chosen by examining the
+ * upper bounds of each group in order, and pages within a row group by the
+ * earliest candidate upper bound ({@link KeyIndex#pageFor}). Bounds may be shortened, so both searches may land early,
  * never late; decoding forward from there finds the first key at or after the target.
  *
  * <p>The cursor never moves backwards, so it decodes key pages in ascending dataset position, and
@@ -31,7 +31,18 @@ final class KeyCursor {
     private int page;
     private byte[][] keys;
     private int pos;
+    private long[] offsets;
+    private int decodedPart = -1;
+    private int decodedSlot = -1;
+    private boolean decodedLastPage;
+    private int decodedPage = -1;
+    private long tailOffset;
+
     private boolean exhausted;
+
+    long offset() {
+        return offsets[pos];
+    }
 
     KeyCursor(PartFile[] parts, ReadContext ctx) {
         this.parts = parts;
@@ -117,16 +128,11 @@ final class KeyCursor {
             // The whole part is at or after the target: start at its first key.
             return decodeForward(p, 0, 0, target, exclusive);
         }
-        // The first row group whose last page's maximum reaches the target.
+        // Upper bounds may overlap and be non-monotone: visit the earliest candidate.
         int lo = firstSlot;
-        int hi = pf.groups.length;
-        while (lo < hi) {
-            int mid = (lo + hi) >>> 1;
-            if (Arrays.compareUnsigned(pf.keyIndex(pf.groups[mid], ctx).upper(), target) >= 0) {
-                hi = mid;
-            } else {
-                lo = mid + 1;
-            }
+        while (lo < pf.groups.length
+                && Arrays.compareUnsigned(pf.keyIndex(pf.groups[lo], ctx).upper(), target) < 0) {
+            lo++;
         }
         if (lo >= pf.groups.length) {
             // No row group of the part reaches it: continue at the next part's first key.
@@ -206,11 +212,30 @@ final class KeyCursor {
     /** Decodes a key page of the current row group and checks its order against the last page decoded. */
     private void load(int pg) {
         PartFile pf = parts[part];
+        ctx.enterGroup(part, physical);
         byte[][] decoded = pf.keyPage(physical, index, pg, ctx);
-        if (ctx.lastKey != null && Arrays.compareUnsigned(decoded[0], ctx.lastKey) <= 0) {
+        if (ctx.lastKey != null && (Arrays.compareUnsigned(decoded[0], ctx.lastKey) < 0
+                || (pf.unique && Arrays.equals(decoded[0], ctx.lastKey)))) {
             throw new RefusalException(RefusalCode.KEY_ORDER, pf.name, "the first key of row group " + physical + " key page " + pg
                     + " does not sort after the last key of " + ctx.lastKeyWhere);
         }
+        boolean adjacent = decodedPart == part
+                && ((decodedSlot == slot && decodedPage + 1 == pg)
+                    || (decodedSlot + 1 == slot && pg == 0 && decodedLastPage));
+        // A seek skips only pages bounded strictly below its target. A returned group
+        // therefore starts here unless the immediately preceding decoded page ends in it.
+        offsets = new long[decoded.length];
+        if (!pf.unique) {
+            offsets[0] = adjacent && Arrays.equals(decoded[0], ctx.lastKey) ? tailOffset + 1 : 0;
+            for (int i = 1; i < decoded.length; i++) {
+                offsets[i] = Arrays.equals(decoded[i - 1], decoded[i]) ? offsets[i - 1] + 1 : 0;
+            }
+        }
+        tailOffset = offsets[offsets.length - 1];
+        decodedPart = part;
+        decodedSlot = slot;
+        decodedLastPage = pg + 1 == index.pages();
+        decodedPage = pg;
         ctx.lastKey = decoded[decoded.length - 1];
         ctx.lastKeyWhere = "part " + pf.name + " row group " + physical + " key page " + pg;
         page = pg;

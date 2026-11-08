@@ -5,6 +5,23 @@ independent of the specification's draft revisions.
 
 ## Unreleased
 
+### Completed
+
+- Named manifest keys (`KeyDefinition`) and exact `key_column`/`key_unique` footer stamps.
+- Repeated-key groups with non-decreasing order, stable file order, group offsets on `Row`, and
+  lookup through `RangeQuery.lookup` or `Dataset.lookup`.
+- Tagged `Continuation.RowPosition` and `Continuation.CommonPrefix` cursors, including exact range
+  and listing pagination inside groups and across row groups.
+- Earliest-candidate routing through non-monotone page and row-group bounds.
+- Parquet `InputFile` interoperability in `PartSource`, independent `SeekableInputStream` views,
+  and an adapter for existing `InputFile` implementations. Local files remain the only supplied storage.
+- Footer schema/path checks before value decoding, exact Thrift structure boundaries, and refusal
+  of every `file_path` reference, including an empty one.
+- Configurable result-entry limits and request caches scoped to the current row group.
+- Updated fixtures and regression tests for grouped pagination, footer validation, storage
+  interoperability, resource limits, and optional eager checks. Lazy CHECK-1 opening remains the default.
+- Complete reader conformance: 1,379 passed, zero failed, zero skipped reader cases.
+
 ### Added
 
 - A reader for SeekParquet format 1, draft revision 1 (on disk: `format_version` 0,

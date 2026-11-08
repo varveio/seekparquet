@@ -8,6 +8,7 @@ junit = "5.13.4"
 slf4j = "1.7.36"
 
 [libraries]
+parquet-common = { module = "org.apache.parquet:parquet-common", version.ref = "parquet" }
 parquet-column = { module = "org.apache.parquet:parquet-column", version.ref = "parquet" }
 parquet-format-structures = { module = "org.apache.parquet:parquet-format-structures", version.ref = "parquet" }
 aircompressor = { module = "io.airlift:aircompressor", version.ref = "aircompressor" }

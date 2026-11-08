@@ -4,6 +4,7 @@
 package io.varve.seekparquet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import io.varve.seekparquet.storage.LocalStorage;
@@ -29,7 +30,7 @@ class ConformanceFixturesTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"basic", "binary-keys", "delimiter", "empty", "key-legacy-utf8", "list-bounds", "multipart",
-            "no-value-page-index", "non-monotone-bounds", "non-utf8-keys", "projection", "truncated-bounds", "truncated-bounds-2"})
+            "no-value-page-index", "non-monotone-bounds", "non-utf8-keys", "projection", "repeated-keys", "one-large-group", "named-key", "binary-bounds-truncated-2-byte", "binary-bounds-truncated-16-byte"})
     void everyValidFixtureReadsInFull(String name) {
         Path root = fixture("datasets/" + name);
         OpenOptions options = OpenOptions.DEFAULT.withVerifyPartBounds(true).withOpenConcurrency(1);
@@ -38,7 +39,7 @@ class ConformanceFixturesTest {
             List<Row> rows = ds.range(RangeQuery.builder().limit(1_000_000).columns(columns).build());
             assertEquals(ds.rows(), rows.size());
             for (int i = 1; i < rows.size(); i++) {
-                assertEquals(-1, Integer.signum(rows.get(i - 1).key().compareTo(rows.get(i).key())));
+                assertTrue(rows.get(i - 1).key().compareTo(rows.get(i).key()) <= (ds.manifest().key().unique() ? -1 : 0));
             }
         }
     }

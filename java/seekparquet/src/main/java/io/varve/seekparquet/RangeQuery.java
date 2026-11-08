@@ -31,10 +31,11 @@ import java.util.Optional;
  * @param startExclusive whether a key equal to {@code start} is excluded
  * @param end the exclusive upper bound, when there is one
  * @param limit the most rows returned; positive (QUERY-1)
+ * @param cursor the tagged continuation, when present
  * @param columns the columns to project, by exact top-level name (COL-6), in order
  */
 public record RangeQuery(
-        Bytes prefix, Optional<Bytes> start, boolean startExclusive, Optional<Bytes> end, int limit, List<String> columns) {
+        Bytes prefix, Optional<Bytes> start, boolean startExclusive, Optional<Bytes> end, int limit, List<String> columns, Optional<Continuation> cursor) {
 
     /**
      * Creates a range query.
@@ -44,6 +45,7 @@ public record RangeQuery(
      * @param startExclusive whether the lower bound is exclusive
      * @param end the upper bound
      * @param limit the limit
+     * @param cursor the tagged continuation
      * @param columns the projected columns
      * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1)
      */
@@ -51,6 +53,7 @@ public record RangeQuery(
         Objects.requireNonNull(prefix, "prefix");
         Objects.requireNonNull(start, "start");
         Objects.requireNonNull(end, "end");
+        Objects.requireNonNull(cursor, "cursor");
         columns = List.copyOf(columns);
         if (limit <= 0) {
             throw new IllegalArgumentException("limit " + limit + " is not a positive integer");
@@ -78,6 +81,16 @@ public record RangeQuery(
         return builder().prefix(prefix).limit(limit).build();
     }
 
+    /** Creates a range covering exactly one equal-key group, paginated with {@link #next(Row)}.
+     * @param key the key to look up
+     * @param limit the maximum rows returned
+     * @return the lookup range
+     */
+    public static RangeQuery lookup(Bytes key, int limit) {
+        byte[] end = Arrays.copyOf(key.unsafeArray(), Math.addExact(key.length(), 1));
+        return builder().start(key).end(Bytes.wrap(end)).limit(limit).build();
+    }
+
     /** {@return a builder with no bounds, no columns and no limit set} */
     public static Builder builder() {
         return new Builder();
@@ -92,18 +105,19 @@ public record RangeQuery(
         b.end = end;
         b.limit = limit;
         b.columns = columns;
+        b.cursor = cursor;
         return b;
     }
 
     /**
      * Returns the query for the rows after {@code last}, the last row of a result of this query: the
-     * same query with its start moved to just after that row's key.
+     * same bounds with a tagged continuation after that row, including its group offset.
      *
      * @param last the last row returned
      * @return the next query
      */
     public RangeQuery next(Row last) {
-        return toBuilder().startAfter(last.key()).build();
+        return toBuilder().after(last.continuation()).build();
     }
 
     /** Builds a {@link RangeQuery}. Not thread-safe. */
@@ -114,6 +128,7 @@ public record RangeQuery(
         private Optional<Bytes> end = Optional.empty();
         private int limit;
         private List<String> columns = List.of();
+        private Optional<Continuation> cursor = Optional.empty();
 
         private Builder() {}
 
@@ -195,6 +210,15 @@ public record RangeQuery(
             return this;
         }
 
+        /** Sets the tagged position after the last returned entry.
+         * @param cursor the continuation
+         * @return this builder
+         */
+        public Builder after(Continuation cursor) {
+            this.cursor = Optional.of(cursor);
+            return this;
+        }
+
         /**
          * Builds the query.
          *
@@ -202,7 +226,7 @@ public record RangeQuery(
          * @throws IllegalArgumentException if the limit is not set or not positive
          */
         public RangeQuery build() {
-            return new RangeQuery(prefix, start, startExclusive, end, limit, columns);
+            return new RangeQuery(prefix, start, startExclusive, end, limit, columns, cursor);
         }
     }
 }

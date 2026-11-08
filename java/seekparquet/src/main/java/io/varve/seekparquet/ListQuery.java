@@ -12,11 +12,12 @@ import java.util.Optional;
  * A delimited listing (spec §6.3). The candidate keys begin with {@code prefix}, are greater than
  * {@code after} when it is given, and are less than {@code end} when it is given. A candidate whose
  * remainder after the prefix contains the delimiter yields the common prefix up to and including the
- * first such delimiter; any other candidate yields its row. Entries are distinct, in ascending byte
+ * first such delimiter; any other candidate yields its row. Common prefixes are distinct; repeated rows retain file order. Entries are in ascending byte
  * order, at most {@code limit} of them.
  *
- * <p>To read the next page, repeat the query with {@code after} set to the last entry's bytes and
- * {@code continuation} true (LIST-6), which {@link #next(ListEntry)} does.
+ * <p>Use {@link #next(ListEntry)} to continue after the last returned entry with a tagged
+ * row position or common prefix (PAGE-1/PAGE-2). Legacy byte floors are available through
+ * {@link Builder#after(Bytes)} and {@link Builder#continuation(boolean)}.
  *
  * <pre>{@code
  * ListQuery q = ListQuery.builder((byte) '/').prefix(Bytes.utf8("photos/")).limit(100).build();
@@ -34,6 +35,7 @@ import java.util.Optional;
  *     at or before {@code after} is then not returned (LIST-5); no effect without {@code after}
  * @param end keys must be strictly less, when given
  * @param limit the most entries returned; positive (QUERY-1)
+ * @param cursor the tagged continuation, when present
  * @param columns the columns to project for row entries, by exact top-level name, in order
  */
 public record ListQuery(
@@ -43,7 +45,7 @@ public record ListQuery(
         boolean continuation,
         Optional<Bytes> end,
         int limit,
-        List<String> columns) {
+        List<String> columns, Optional<Continuation> cursor) {
 
     /**
      * Creates a listing query.
@@ -54,6 +56,7 @@ public record ListQuery(
      * @param continuation whether this continues a listing
      * @param end the exclusive upper bound
      * @param limit the limit
+     * @param cursor the tagged continuation
      * @param columns the projected columns
      * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1)
      */
@@ -61,6 +64,10 @@ public record ListQuery(
         Objects.requireNonNull(prefix, "prefix");
         Objects.requireNonNull(after, "after");
         Objects.requireNonNull(end, "end");
+        Objects.requireNonNull(cursor, "cursor");
+        if (after.isPresent() && cursor.isPresent()) {
+            throw new IllegalArgumentException("a byte floor and a tagged continuation cannot be combined");
+        }
         columns = List.copyOf(columns);
         if (limit <= 0) {
             throw new IllegalArgumentException("limit " + limit + " is not a positive integer");
@@ -86,6 +93,7 @@ public record ListQuery(
         b.end = end;
         b.limit = limit;
         b.columns = columns;
+        b.cursor = cursor;
         return b;
     }
 
@@ -96,7 +104,13 @@ public record ListQuery(
      * @return the next query
      */
     public ListQuery next(ListEntry last) {
-        return toBuilder().after(last.bytes()).continuation(true).build();
+        Continuation next = switch (last) {
+            case ListEntry.RowEntry r -> r.row().continuation();
+            case ListEntry.CommonPrefix p -> new Continuation.CommonPrefix(p.prefix());
+        };
+        Builder b = toBuilder();
+        b.after = Optional.empty();
+        return b.after(next).build();
     }
 
     /** Builds a {@link ListQuery}. Not thread-safe. */
@@ -108,6 +122,7 @@ public record ListQuery(
         private Optional<Bytes> end = Optional.empty();
         private int limit;
         private List<String> columns = List.of();
+        private Optional<Continuation> cursor = Optional.empty();
 
         private Builder(byte delimiter) {
             this.delimiter = delimiter;
@@ -189,6 +204,15 @@ public record ListQuery(
             return this;
         }
 
+        /** Sets the tagged position after the last returned entry.
+         * @param cursor the continuation
+         * @return this builder
+         */
+        public Builder after(Continuation cursor) {
+            this.cursor = Optional.of(cursor);
+            return this;
+        }
+
         /**
          * Builds the query.
          *
@@ -196,7 +220,7 @@ public record ListQuery(
          * @throws IllegalArgumentException if the limit is not set or not positive
          */
         public ListQuery build() {
-            return new ListQuery(prefix, delimiter, after, continuation, end, limit, columns);
+            return new ListQuery(prefix, delimiter, after, continuation, end, limit, columns, cursor);
         }
     }
 }

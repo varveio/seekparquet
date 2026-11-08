@@ -19,6 +19,20 @@ final class ReadContext {
     private final Map<ChunkKey, DecodedPage> valuePages = new HashMap<>();
     private final Map<ChunkKey, long[]> sequential = new HashMap<>();
 
+    private int activePart = -1;
+    private int activeGroup = -1;
+
+    /** Only the current row group's value pages and dictionaries are retained. */
+    void enterGroup(int part, int group) {
+        if (part != activePart || group != activeGroup) {
+            dictionaries.clear();
+            valuePages.clear();
+            sequential.clear();
+            activePart = part;
+            activeGroup = group;
+        }
+    }
+
     /**
      * The last key of the last key page decoded, in dataset order. A request decodes key pages in
      * ascending dataset position only, so checking each new page's first key against it checks the

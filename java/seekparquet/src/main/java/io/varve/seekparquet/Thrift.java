@@ -42,16 +42,24 @@ final class Thrift {
         return new Decoded<>(struct, len - in.available());
     }
 
+    private static <T extends TBase<?, ?>> T complete(byte[] bytes, T struct) throws DataException {
+        Decoded<T> decoded = read(bytes, 0, bytes.length, struct);
+        if (decoded.length() != bytes.length) {
+            throw new DataException("trailing bytes after the Thrift structure");
+        }
+        return decoded.value();
+    }
+
     static FileMetaData fileMetaData(byte[] b) throws DataException {
-        return read(b, 0, b.length, new FileMetaData()).value();
+        return complete(b, new FileMetaData());
     }
 
     static ColumnIndex columnIndex(byte[] b) throws DataException {
-        return read(b, 0, b.length, new ColumnIndex()).value();
+        return complete(b, new ColumnIndex());
     }
 
     static OffsetIndex offsetIndex(byte[] b) throws DataException {
-        return read(b, 0, b.length, new OffsetIndex()).value();
+        return complete(b, new OffsetIndex());
     }
 
     static Decoded<PageHeader> pageHeader(byte[] b, int off, int len) throws DataException {

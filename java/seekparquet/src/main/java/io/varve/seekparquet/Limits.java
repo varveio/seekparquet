@@ -13,17 +13,30 @@ package io.varve.seekparquet;
  * @param maxIndexBytes the largest ColumnIndex or OffsetIndex of one column chunk
  * @param maxPageBytes the largest page, compressed or uncompressed, dictionary pages included
  * @param maxPageValues the most values in one page
+ * @param maxResultEntries the most entries requested in one result
  */
 public record Limits(
-        int maxManifestBytes, int maxParts, int maxFooterBytes, int maxIndexBytes, int maxPageBytes, int maxPageValues) {
+        int maxManifestBytes, int maxParts, int maxFooterBytes, int maxIndexBytes, int maxPageBytes, int maxPageValues, int maxResultEntries) {
 
     private static final int MIB = 1 << 20;
 
     /**
      * The defaults: a 64 MiB manifest, 1,000,000 parts, a 64 MiB footer, a 16 MiB page index, a
-     * 256 MiB page and 4 Mi (4,194,304) values per page.
+     * 256 MiB page, 4 Mi (4,194,304) values per page and 1,000,000 entries per result.
      */
-    public static final Limits DEFAULT = new Limits(64 * MIB, 1_000_000, 64 * MIB, 16 * MIB, 256 * MIB, 4 * MIB);
+    public static final Limits DEFAULT = new Limits(64 * MIB, 1_000_000, 64 * MIB, 16 * MIB, 256 * MIB, 4 * MIB, 1_000_000);
+
+    /** Creates limits with at most one million entries per result.
+     * @param maxManifestBytes the largest manifest
+     * @param maxParts the most parts
+     * @param maxFooterBytes the largest footer
+     * @param maxIndexBytes the largest page index
+     * @param maxPageBytes the largest page
+     * @param maxPageValues the most values in a page
+     */
+    public Limits(int maxManifestBytes, int maxParts, int maxFooterBytes, int maxIndexBytes, int maxPageBytes, int maxPageValues) {
+        this(maxManifestBytes, maxParts, maxFooterBytes, maxIndexBytes, maxPageBytes, maxPageValues, 1_000_000);
+    }
 
     /**
      * Creates limits; every limit must be positive.
@@ -34,10 +47,11 @@ public record Limits(
      * @param maxIndexBytes the largest page index
      * @param maxPageBytes the largest page
      * @param maxPageValues the most values in a page
+     * @param maxResultEntries the largest request limit
      */
     public Limits {
         if (maxManifestBytes <= 0 || maxParts <= 0 || maxFooterBytes <= 0 || maxIndexBytes <= 0 || maxPageBytes <= 0
-                || maxPageValues <= 0) {
+                || maxPageValues <= 0 || maxResultEntries <= 0) {
             throw new IllegalArgumentException("every limit must be positive");
         }
     }

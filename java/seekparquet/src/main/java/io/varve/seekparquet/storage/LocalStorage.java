@@ -76,6 +76,10 @@ public final class LocalStorage implements DatasetStorage {
     @Override
     public PartSource openPart(String path, long expectedSize, Cancellation cancellation) throws IOException {
         cancellation.throwIfCancelled();
+        if (path.startsWith("/") || path.indexOf('\\') >= 0
+                || path.chars().anyMatch(c -> c < 32 || c == 127)) {
+            throw new IOException("part path is not a plain relative path");
+        }
         Path file = root;
         for (String segment : path.split("/", -1)) {
             if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) {
@@ -149,6 +153,7 @@ public final class LocalStorage implements DatasetStorage {
             cancellation.throwIfCancelled();
             ByteBuffer buffer = ByteBuffer.allocate(length);
             while (buffer.hasRemaining()) {
+                cancellation.throwIfCancelled();
                 FileChannel ch = channel;
                 if (closed) {
                     throw new ClosedChannelException();

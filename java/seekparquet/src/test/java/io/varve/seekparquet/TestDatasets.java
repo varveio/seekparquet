@@ -58,6 +58,8 @@ final class TestDatasets {
         int rowsPerPage = 2;
         int rowsPerGroup = 4;
         boolean noteColumn;
+        boolean unique = true;
+        String keyColumn = "key";
         /** Whether the key column is annotated STRING (keys must then be UTF-8). */
         boolean stringKey = true;
         boolean omitKeyColumnIndex;
@@ -73,7 +75,8 @@ final class TestDatasets {
         Files.createDirectories(root.resolve("data"));
         StringBuilder manifest = new StringBuilder();
         manifest.append("{\"format\":\"seekparquet\",\"format_version\":0,\"draft_revision\":1,\"schema_id\":\"")
-                .append(spec.schemaId).append("\",\"parts\":[");
+                .append(spec.schemaId).append("\",\"key\":{\"column\":\"").append(spec.keyColumn)
+                .append("\",\"unique\":").append(spec.unique).append("},\"parts\":[");
         for (int p = 0; p < parts.size(); p++) {
             List<TestRow> rows = new ArrayList<>(parts.get(p));
             if (spec.swapFirstKeys && p == 0 && rows.size() >= 2) {
@@ -138,7 +141,7 @@ final class TestDatasets {
                 out.write(data);
                 groupBytes += data.length;
                 Type type = c == 1 ? Type.INT64 : Type.BYTE_ARRAY;
-                String name = c == 0 ? "key" : c == 1 ? "size" : "note";
+                String name = c == 0 ? spec.keyColumn : c == 1 ? "size" : "note";
                 ColumnMetaData md = new ColumnMetaData(type, List.of(Encoding.PLAIN, Encoding.RLE), List.of(name), CompressionCodec.UNCOMPRESSED,
                         group.size(), data.length, data.length, chunkStart);
                 ColumnChunk cc = new ColumnChunk(chunkStart);
@@ -181,7 +184,7 @@ final class TestDatasets {
         SchemaElement root = new SchemaElement("schema");
         root.setNum_children(ncols);
         schema.add(root);
-        SchemaElement key = new SchemaElement("key");
+        SchemaElement key = new SchemaElement(spec.keyColumn);
         key.setType(Type.BYTE_ARRAY);
         key.setRepetition_type(FieldRepetitionType.REQUIRED);
         if (spec.stringKey) {
@@ -202,7 +205,9 @@ final class TestDatasets {
         meta.setKey_value_metadata(List.of(
                 new KeyValue("seekparquet.format_version").setValue("0"),
                 new KeyValue("seekparquet.draft_revision").setValue("1"),
-                new KeyValue("seekparquet.schema_id").setValue(spec.schemaId)));
+                new KeyValue("seekparquet.schema_id").setValue(spec.schemaId),
+                new KeyValue("seekparquet.key_column").setValue(spec.keyColumn),
+                new KeyValue("seekparquet.key_unique").setValue(Boolean.toString(spec.unique))));
         List<ColumnOrder> orders = new ArrayList<>();
         for (int c = 0; c < ncols; c++) {
             orders.add(ColumnOrder.TYPE_ORDER(new TypeDefinedOrder()));

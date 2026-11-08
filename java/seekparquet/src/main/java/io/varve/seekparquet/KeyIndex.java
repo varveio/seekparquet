@@ -108,25 +108,14 @@ final class KeyIndex {
         return out;
     }
 
-    /**
-     * Returns the first page at or after {@code from} that may hold a key at or after {@code target}
-     * ({@code pages()} when none may). Pages holding such keys have a maximum at or after it and form
-     * a suffix of the group, so this binary search never passes the first of them; a page before them
-     * whose maximum was shortened upwards may stop it early, which costs a page read, not a wrong
-     * answer.
-     */
+    /** Returns the earliest candidate; upper bounds may be non-monotone (ROUTE-1). */
     int pageFor(int from, byte[] target) {
-        int lo = from;
-        int hiIdx = pages();
-        while (lo < hiIdx) {
-            int mid = (lo + hiIdx) >>> 1;
-            if (Arrays.compareUnsigned(hi[mid], target) >= 0) {
-                hiIdx = mid;
-            } else {
-                lo = mid + 1;
+        for (int i = from; i < pages(); i++) {
+            if (Arrays.compareUnsigned(hi[i], target) >= 0) {
+                return i;
             }
         }
-        return lo;
+        return pages();
     }
 
     /** {@return the maximum of the last page: an upper bound on every key of the group} */

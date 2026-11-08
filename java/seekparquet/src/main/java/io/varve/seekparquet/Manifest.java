@@ -18,22 +18,25 @@ import java.util.Objects;
  *
  * @param version the format version and draft revision
  * @param schemaId the producer's identifier for the columns and their meaning
+ * @param key the key column and ordering mode
  * @param parts the parts in ascending key order; empty for an empty dataset
  * @param extensions each extension namespace mapped to its value's JSON text, in manifest order
  */
-public record Manifest(FormatVersion version, String schemaId, List<ManifestPart> parts, Map<String, String> extensions) {
+public record Manifest(FormatVersion version, String schemaId, KeyDefinition key, List<ManifestPart> parts, Map<String, String> extensions) {
 
     /**
      * Creates a manifest. Only nullness is checked here; {@link #parse} checks the rest.
      *
      * @param version the version pair
      * @param schemaId the schema id
+     * @param key the key declaration
      * @param parts the parts
      * @param extensions the extensions
      */
     public Manifest {
         Objects.requireNonNull(version, "version");
         Objects.requireNonNull(schemaId, "schemaId");
+        Objects.requireNonNull(key, "key");
         parts = List.copyOf(parts);
         extensions = Collections.unmodifiableMap(new LinkedHashMap<>(extensions));
     }

@@ -96,6 +96,16 @@ class RefusalTest {
     }
 
     @Test
+    void eagerBoundsChecksCompareEveryDistinctPageTheyDecode() throws IOException {
+        Path root = TestDatasets.write(tmp, new TestDatasets.Spec(), List.of(List.of(
+                TestRow.of("a", 1), TestRow.of("z", 2), TestRow.of("b", 3), TestRow.of("c", 4))));
+        Dataset.open(root).close();
+        assertEquals(RefusalCode.KEY_ORDER, assertThrows(RefusalException.class,
+                () -> Dataset.open(io.varve.seekparquet.storage.LocalStorage.of(root),
+                        OpenOptions.DEFAULT.withVerifyPartBounds(true), Cancellation.none())).code());
+    }
+
+    @Test
     void limitsAreNotRefusals() throws IOException {
         Path root = TestDatasets.write(tmp, new TestDatasets.Spec(), rows());
         OpenOptions tiny = OpenOptions.DEFAULT.withLimits(new Limits(1 << 20, 1, 1 << 20, 1 << 20, 1 << 20, 1 << 20));

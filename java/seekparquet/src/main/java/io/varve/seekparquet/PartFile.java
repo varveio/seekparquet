@@ -49,6 +49,8 @@ final class PartFile implements AutoCloseable {
 
     private static final String STAMP_VERSION = "seekparquet.format_version";
     private static final String STAMP_DRAFT = "seekparquet.draft_revision";
+    private static final String STAMP_KEY_COLUMN = "seekparquet.key_column";
+    private static final String STAMP_KEY_UNIQUE = "seekparquet.key_unique";
     private static final String STAMP_SCHEMA = "seekparquet.schema_id";
 
     final int ordinal;
@@ -60,6 +62,7 @@ final class PartFile implements AutoCloseable {
     final PartSchema schema;
     final int keyLeaf;
     final boolean utf8Key;
+    final boolean unique;
     final ColumnSpec keySpec;
     /** The physical indexes of the row groups that hold rows, in order. */
     final int[] groups;
@@ -71,7 +74,7 @@ final class PartFile implements AutoCloseable {
     private final ConcurrentHashMap<Long, Optional<ValueIndex>> valueIndexes = new ConcurrentHashMap<>();
 
     private PartFile(int ordinal, ManifestPart entry, PartSource source, FileMetaData meta, PartSchema schema, int keyLeaf, boolean utf8Key,
-            int[] groups, long[] groupRows, Map<String, ColumnSpec> projectable) {
+            int[] groups, long[] groupRows, Map<String, ColumnSpec> projectable, boolean unique) {
         this.ordinal = ordinal;
         this.entry = entry;
         this.name = entry.path();
@@ -81,7 +84,8 @@ final class PartFile implements AutoCloseable {
         this.schema = schema;
         this.keyLeaf = keyLeaf;
         this.utf8Key = utf8Key;
-        this.keySpec = projectable.get(Dataset.KEY_COLUMN);
+        this.keySpec = projectable.values().stream().filter(c -> c.leaf() == keyLeaf).findFirst().orElseThrow();
+        this.unique = unique;
         this.groups = groups;
         this.groupRows = groupRows;
         this.projectable = projectable;
@@ -147,7 +151,7 @@ final class PartFile implements AutoCloseable {
                 throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has no column list");
             }
             for (ColumnChunk cc : chunks) {
-                if (cc.isSetFile_path() && !cc.getFile_path().isEmpty()) {
+                if (cc.isSetFile_path()) {
                     throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has a column chunk in another file (file_path "
                             + cc.getFile_path() + ")");
                 }
@@ -174,7 +178,7 @@ final class PartFile implements AutoCloseable {
                         + " column chunks for " + leaves + " leaf columns");
             }
             for (int c = 0; c < leaves; c++) {
-                checkChunk(rg.getColumns().get(c), schema.leaves.get(c), size, name, g);
+                checkChunk(rg.getColumns().get(c), schema.leaves.get(c), schema.leafPaths.get(c), size, name, g);
             }
             long rows = rg.getNum_rows();
             if (rows < 0 || total + rows < total) {
@@ -196,9 +200,9 @@ final class PartFile implements AutoCloseable {
         checkStamps(meta, manifest, name);
 
         // KEY-1, KEY-5, KEY-6.
-        PartSchema.Field key = schema.byName.get(Dataset.KEY_COLUMN);
-        if (key == null || schema.duplicates.contains(Dataset.KEY_COLUMN)) {
-            throw refuse(RefusalCode.INVALID_KEY_COLUMN, name, "there is no single top-level column named key");
+        PartSchema.Field key = schema.byName.get(manifest.key().column());
+        if (key == null || schema.duplicates.contains(manifest.key().column())) {
+            throw refuse(RefusalCode.INVALID_KEY_COLUMN, name, "there is no single top-level column named " + manifest.key().column());
         }
         if (key.leaf() < 0) {
             throw refuse(RefusalCode.INVALID_KEY_COLUMN, name, "the key column is nested");
@@ -258,7 +262,7 @@ final class PartFile implements AutoCloseable {
             }
             projectable.put(f.name(), ColumnSpec.of(f.name(), f.leaf(), f.type(), f.typeLength(), f.repetition() == Column.Repetition.OPTIONAL));
         }
-        return new PartFile(ordinal, entry, source, meta, schema, key.leaf(), utf8Key, groups, groupRows, Map.copyOf(projectable));
+        return new PartFile(ordinal, entry, source, meta, schema, key.leaf(), utf8Key, groups, groupRows, Map.copyOf(projectable), manifest.key().unique());
     }
 
     private static FileMetaData readFooter(PartSource source, String name, long size, ReadContext ctx) {
@@ -298,10 +302,13 @@ final class PartFile implements AutoCloseable {
     }
 
     /** Checks a column chunk's metadata against its schema leaf, and its byte range against the file. */
-    private static void checkChunk(ColumnChunk cc, SchemaElement leaf, long size, String name, int g) {
+    private static void checkChunk(ColumnChunk cc, SchemaElement leaf, List<String> path, long size, String name, int g) {
         ColumnMetaData md = cc.getMeta_data();
         if (md == null) {
             throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has a column chunk without metadata");
+        }
+        if (!path.equals(md.getPath_in_schema()) || md.getNum_values() < 0 || md.getTotal_uncompressed_size() < 0) {
+            throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has inconsistent column metadata for " + path);
         }
         if (md.getType() != leaf.getType()) {
             throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has a column chunk of type " + md.getType() + " for a "
@@ -333,7 +340,7 @@ final class PartFile implements AutoCloseable {
         if (kvs != null) {
             for (KeyValue kv : kvs) {
                 String k = kv.getKey();
-                if (STAMP_VERSION.equals(k) || STAMP_DRAFT.equals(k) || STAMP_SCHEMA.equals(k)) {
+                if (STAMP_VERSION.equals(k) || STAMP_DRAFT.equals(k) || STAMP_SCHEMA.equals(k) || STAMP_KEY_COLUMN.equals(k) || STAMP_KEY_UNIQUE.equals(k)) {
                     if (found.containsKey(k)) {
                         throw refuse(RefusalCode.STAMP_MISMATCH, name, "the stamp " + k + " appears more than once");
                     }
@@ -352,6 +359,8 @@ final class PartFile implements AutoCloseable {
             throw refuse(RefusalCode.STAMP_MISMATCH, name, "the part carries a draft_revision stamp on a non-draft format version");
         }
         expectStamp(found, STAMP_SCHEMA, manifest.schemaId(), name);
+        expectStamp(found, STAMP_KEY_COLUMN, manifest.key().column(), name);
+        expectStamp(found, STAMP_KEY_UNIQUE, Boolean.toString(manifest.key().unique()), name);
     }
 
     private static void expectStamp(Map<String, String> found, String key, String want, String name) {
@@ -463,7 +472,7 @@ final class PartFile implements AutoCloseable {
         }
         long from = Math.min(aOff, bOff);
         long to = Math.max(aOff + aLen, bOff + bLen);
-        if (to - from <= (long) aLen + bLen + 64 * 1024) {
+        if (to - from <= Integer.MAX_VALUE && to - from <= (long) aLen + bLen + 64 * 1024) {
             byte[] span = readBytes(from, (int) (to - from), ctx);
             return new byte[][] {
                 Arrays.copyOfRange(span, (int) (aOff - from), (int) (aOff - from) + aLen),
@@ -479,7 +488,7 @@ final class PartFile implements AutoCloseable {
     /**
      * Reads, decodes and checks key page {@code page} of a physical row group: its header locates
      * exactly one data page holding the rows its OffsetIndex entry gives it (RG-3), and it holds one
-     * non-empty key per row (KEY-2), valid UTF-8 for a string key (KEY-6), strictly ascending (KEY-3),
+     * non-empty key per row (KEY-2), valid UTF-8 for a string key (KEY-6), ordered according to the manifest (KEY-3),
      * within the page's bounds (RG-5). Order against other pages is the caller's check.
      */
     byte[][] keyPage(int physical, KeyIndex index, int page, ReadContext ctx) {
@@ -522,7 +531,8 @@ final class PartFile implements AutoCloseable {
             if (key.length == 0 || (utf8Key && !Utf8.isValid(key))) {
                 throw refuse(RefusalCode.INVALID_KEY, where + "row " + (index.firstRow[page] + i) + " holds an empty key or a string key that is not UTF-8");
             }
-            if (i > 0 && Arrays.compareUnsigned(keys[i - 1], key) >= 0) {
+            if (i > 0 && (Arrays.compareUnsigned(keys[i - 1], key) > 0
+                    || (unique && Arrays.equals(keys[i - 1], key)))) {
                 throw refuse(RefusalCode.KEY_ORDER, where + "row " + (index.firstRow[page] + i) + " does not sort after the row before it");
             }
         }

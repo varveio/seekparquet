@@ -428,11 +428,12 @@ final class PageDecoder {
                 throw new DataException("a DELTA_BYTE_ARRAY prefix of " + prefix + " bytes after a value of " + previous.length);
             }
             Binary suffix = suffixes.readBytes();
-            int length = prefix + suffix.length();
-            total += length;
+            long decodedLength = (long) prefix + suffix.length();
+            total += decodedLength;
             if (total > limits.maxPageBytes()) {
                 throw new LimitExceededException("maxPageBytes", total, limits.maxPageBytes(), where + " (decoded DELTA_BYTE_ARRAY values)");
             }
+            int length = (int) decodedLength; // bounded by maxPageBytes before narrowing
             byte[] v = new byte[length];
             System.arraycopy(previous, 0, v, 0, prefix);
             suffix.toByteBuffer().get(v, prefix, suffix.length());

@@ -9,7 +9,7 @@ and a few pages, with no query engine and no catalog.
 - **JDK:** 21 or later.
 - **Coordinates:** `io.varve:seekparquet` (not yet published), package `io.varve.seekparquet`.
 - **Parquet library:** Apache parquet-java 1.18.1 (`parquet-format-structures` and
-  `parquet-column`) without Hadoop. See [QUALIFICATION.md](QUALIFICATION.md) for why, and for the
+  `parquet-column`), plus `parquet-common` for the public `InputFile` interface, without Hadoop. See [QUALIFICATION.md](QUALIFICATION.md) for why, and for the
   full dependency tree (about 6.7 MB, no native code).
 - **Status:** passes every case of the shared conformance suite's `reader` target. It does not
   implement validation (§8); see [What it does not do](#what-it-does-not-do).
@@ -63,13 +63,36 @@ try (Dataset dataset = Dataset.open(Path.of("/data/listing"))) {
 Keys, bounds and binary values are `Bytes`: immutable byte strings compared in unsigned
 lexicographic order. They need not be UTF-8. Values are physical Parquet values (`Bool`, `Int32`,
 `Int64`, `Float32`, `Float64`, `ByteArray`, `FixedLenByteArray`), with `Null` and `Absent` kept
-apart. Floating-point values carry their exact bits. Projecting `key` returns the key's bytes.
+apart. Floating-point values carry their exact bits. The manifest's `key` declaration names the
+key column; projecting that exact name returns the key's bytes, including literal dots in its name.
+
+When `manifest().key().unique()` is false, equal keys form a group in file order. Groups can cross
+pages and row groups, but never parts. Each `Row` includes its zero-based `offset()` within its
+group (zero in unique mode). Tagged continuations preserve that position:
+
+```java
+RangeQuery query = RangeQuery.lookup(Bytes.utf8("photos/item"), 100)
+        .toBuilder().columns("size").build();
+List<Row> page = dataset.range(query);
+if (!page.isEmpty()) {
+    List<Row> nextPage = dataset.range(query.next(page.getLast()));
+}
+// A convenient first-page lookup:
+List<Row> group = dataset.lookup(Bytes.utf8("photos/item"), 100, "size");
+```
+
+`RangeQuery.next(Row)` and `ListQuery.next(ListEntry)` keep the original bounds and use the sealed
+`Continuation` alternatives: `RowPosition(key, offset)` and `CommonPrefix(bytes)`. A result limit
+can split a group. Resuming a row continues inside that group before later keys; resuming a common
+prefix skips its subtree. `ListQuery.Builder.after(Bytes)` remains an exclusive byte floor;
+`continuation(true)` suppresses previously listed prefixes for that legacy form. It cannot be
+combined with a tagged cursor.
 
 ### Options, limits and cancellation
 
 ```java
 OpenOptions options = OpenOptions.DEFAULT
-        .withLimits(new Limits(16 << 20, 100_000, 16 << 20, 4 << 20, 64 << 20, 1 << 22))
+        .withLimits(new Limits(16 << 20, 100_000, 16 << 20, 4 << 20, 64 << 20, 1 << 22, 100_000))
         .withOpenConcurrency(32)        // read footers concurrently, on virtual threads
         .withVerifyPartBounds(false);   // true also decodes each part's first and last key on open
 
@@ -86,7 +109,9 @@ ends with `java.util.concurrent.CancellationException`. `Dataset#close()` cancel
 progress, waits for them to return, then closes the part sources.
 
 `Limits` bound what the data may make the reader allocate (spec §11): the manifest size, the number
-of parts, and footer, page index and page sizes and value counts. A size above a limit fails with
+of parts, footer, page index and page sizes, page value counts, and the maximum requested result
+entries (1,000,000 by default). Per-request dictionaries and value pages are retained only for the
+current row group. A size above a limit fails with
 `LimitExceededException`, which is not a refusal.
 
 ### Errors
@@ -113,13 +138,18 @@ shared and immutable once loaded. Each request decodes its own pages. Queries, r
 
 ## Storage
 
-The core is storage-agnostic. It reads through two small interfaces in
+The core is storage-agnostic. `parquet-common` is an API dependency so consumers can use the
+standard Parquet I/O types directly. The small `PartSource` extension adds concurrent positioned
+reads, explicit cancellation and optional identity pinning to that contract. It reads through two small interfaces in
 `io.varve.seekparquet.storage`:
 
 - `DatasetStorage` reads `manifest.json` and opens parts by their manifest path. The reader never
   closes it; it belongs to the caller.
-- `PartSource` is one opened part: its actual `size()`, an optional pinned `version()`, and
+- `PartSource` extends parquet-java’s `InputFile` and is one opened part: its actual `size()`, an optional pinned `version()`, and
   positioned `read(position, length, cancellation)` calls. It must be safe for concurrent reads.
+  Its `newStream()` supplies an independent parquet-java `SeekableInputStream` without closing the
+  source when that stream closes. `PartSource.of(path, inputFile, version)` adapts an existing
+  `InputFile`, with a fresh stream for each positioned read and cancellation that closes that stream.
   Every read must return bytes of the object version that was opened, or fail with
   `PartChangedException`. The reader closes every source it opened, including on a failed open.
 
@@ -149,15 +179,17 @@ part file that changes size or is replaced. Object-store adapters belong in sepa
 
 It does not load page indexes or decode keys unless `verifyPartBounds` is set.
 
-**Reads (CHECK-2).** Requests route through the manifest's exact part bounds, then binary-search row
-groups and pages by their ColumnIndex maxima. Bounds may be shortened, so the search may land early
-but never late. A request checks what it reads:
+**Reads (CHECK-2).** Requests binary-search the manifest's exact part bounds, then examine row-group
+upper bounds and page maxima in order to find the earliest candidate. Bounds may be shortened and
+non-monotone, so they are not binary-searched. This conservative route preserves groups split across
+row groups or pages; it can land early, but never skips a matching row. A request checks what it reads:
 
 - each row group's key ColumnIndex and OffsetIndex before first use (RG-2 to RG-4); the result is
   cached for the dataset;
 - each key page it decodes: the page header matches its OffsetIndex entry; the page holds one
-  non-empty key per row (valid UTF-8 for string keys); keys are strictly ascending, within the
-  page's bounds, and after every key page the request decoded before it.
+  non-empty key per row (valid UTF-8 for string keys); keys obey the manifest's unique or grouped order, within the
+  page's bounds, and ordered consistently with every key page the request decoded before it. Equal
+  keys are accepted only in grouped mode.
 
 Overlapping or non-monotone bounds are valid, and `boundary_order` is never read (RG-6). Corrupt
 data in the pages a request decodes is `invalid_parquet` (CHECK-5).
@@ -181,6 +213,7 @@ data in the pages a request decodes is `invalid_parquet` (CHECK-5).
 ## Building and running the conformance suite
 
 ```sh
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 cd java
 ./gradlew build                       # compile, javadoc, unit tests
 ./gradlew :conformance:installDist    # build the adapter launcher
@@ -188,6 +221,12 @@ cd ..
 python3 conformance/harness/run.py \
     --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
 ```
+
+The complete reader qualification run passes **1,379 cases**: **157 core** and **1,222 generated**,
+including **432 repeated-key cases**, with **zero failures** and no skipped reader cases. The
+**207 skipped cases** belong to unclaimed validator targets. See [QUALIFICATION.md](QUALIFICATION.md).
+
+The Java build passes **89 JUnit 5 tests**, with no failures or skipped tests.
 
 The build uses the checked-in Gradle wrapper (Gradle 8.14.3) and a Java 21 toolchain. The unit
 tests write their Parquet files to temporary directories, using a small test-only writer. They also

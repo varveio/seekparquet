@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 final class ManifestParser {
 
     private static final Set<String> TOP_MEMBERS =
-            Set.of("format", "format_version", "draft_revision", "schema_id", "parts", "extensions");
+            Set.of("format", "format_version", "draft_revision", "schema_id", "key", "parts", "extensions");
     private static final Set<String> PART_MEMBERS =
             Set.of("path", "rows", "bytes", "min_key_base64", "max_key_base64", "sha256");
     private static final Pattern INTEGER = Pattern.compile("0|[1-9][0-9]*");
@@ -90,6 +90,14 @@ final class ManifestParser {
         if (schemaId.value().isEmpty() || hasControl(schemaId.value())) {
             throw invalid("schema_id is empty or holds a control character");
         }
+        if (!(m.get("key") instanceof Json.Obj keyObject)
+                || !keyObject.members().keySet().equals(Set.of("column", "unique"))
+                || !(keyObject.members().get("column") instanceof Json.Str keyColumn)
+                || keyColumn.value().isEmpty() || hasControl(keyColumn.value())
+                || !(keyObject.members().get("unique") instanceof Json.Bool unique)) {
+            throw invalid("key must contain exactly a non-empty column name and a boolean unique");
+        }
+        KeyDefinition key = new KeyDefinition(keyColumn.value(), unique.value());
         Map<String, String> extensions = new LinkedHashMap<>();
         Json.Node ext = m.get("extensions");
         if (ext != null) {
@@ -131,7 +139,7 @@ final class ManifestParser {
                 throw invalid("part " + i + " (" + p.path() + ") does not start after part " + (i - 1) + " ends");
             }
         }
-        return new Manifest(version, schemaId.value(), parts, extensions);
+        return new Manifest(version, schemaId.value(), key, parts, extensions);
     }
 
     private static ManifestPart part(Json.Node node, int i) {

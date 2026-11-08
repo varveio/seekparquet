@@ -50,7 +50,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *
  * Every request checks what it reads (CHECK-2): each row group's key page index before its first use
  * (RG-2 to RG-4), and each key page it decodes (row counts, non-empty and, for string keys, UTF-8
- * keys, strict order within the page and against every other page the request decoded, page
+ * keys, order according to the manifest within the page and against every other page the request decoded, page
  * bounds). A failure ends the request with a {@link RefusalException}. A successful request does not
  * certify rows it did not decode (CHECK-4): that is validation's job.
  *
@@ -63,9 +63,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * DatasetStorage} is not closed: it belongs to the caller.
  */
 public final class Dataset implements AutoCloseable {
-
-    /** The name of the column every part is sorted by (KEY-1). */
-    public static final String KEY_COLUMN = "key";
 
     private final Manifest manifest;
     private final PartFile[] parts;
@@ -270,7 +267,14 @@ public final class Dataset implements AutoCloseable {
         }
         int lastGroup = part.groups[part.groups.length - 1];
         KeyIndex last = part.keyIndex(lastGroup, ctx);
-        keys = part.keyPage(lastGroup, last, last.pages() - 1, ctx);
+        if (lastGroup != firstGroup || last.pages() > 1) {
+            byte[][] lastKeys = part.keyPage(lastGroup, last, last.pages() - 1, ctx);
+            int order = Arrays.compareUnsigned(keys[keys.length - 1], lastKeys[0]);
+            if (order > 0 || (part.unique && order == 0)) {
+                throw new RefusalException(RefusalCode.KEY_ORDER, part.name, "the last key page does not follow the first key page");
+            }
+            keys = lastKeys;
+        }
         if (!Arrays.equals(keys[keys.length - 1], part.entry.maxKey().unsafeArray())) {
             throw new RefusalException(RefusalCode.BOUNDS_MISMATCH, part.name, "the last key differs from the manifest's max_key");
         }
@@ -355,6 +359,7 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<Row> range(RangeQuery query, Cancellation cancellation) {
+        checkResultLimit(query.limit());
         checkProjection(query.columns());
         try (Request request = begin(cancellation)) {
             return Queries.range(parts, query, request.ctx);
@@ -393,10 +398,28 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<ListEntry> list(ListQuery query, Cancellation cancellation) {
+        checkResultLimit(query.limit());
         checkProjection(query.columns());
         try (Request request = begin(cancellation)) {
             return Queries.list(parts, query, request.ctx);
         }
+    }
+
+    private void checkResultLimit(int limit) {
+        if (limit > limits.maxResultEntries()) {
+            throw new LimitExceededException("maxResultEntries", limit, limits.maxResultEntries(), "query");
+        }
+    }
+
+    /** Looks up the equal-key group, returning at most {@code limit} rows in file order.
+     * Use {@link RangeQuery#next(Row)} to continue a lookup range after a page.
+     * @param key the exact key
+     * @param limit the maximum rows returned
+     * @param columns the columns to project
+     * @return the group's rows, possibly limited
+     */
+    public List<Row> lookup(Bytes key, int limit, String... columns) {
+        return range(RangeQuery.lookup(key, limit).toBuilder().columns(columns).build());
     }
 
     /** COL-3: a nested, repeated or INT96 column is rejected, never answered as absent. */

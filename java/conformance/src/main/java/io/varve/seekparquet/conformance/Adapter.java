@@ -4,6 +4,7 @@
 package io.varve.seekparquet.conformance;
 
 import io.varve.seekparquet.Bytes;
+import io.varve.seekparquet.Continuation;
 import io.varve.seekparquet.Dataset;
 import io.varve.seekparquet.FormatVersion;
 import io.varve.seekparquet.ListEntry;
@@ -196,6 +197,10 @@ public final class Adapter {
         if (end != null) {
             b.end(end);
         }
+        Continuation after = cursor(req);
+        if (after != null) {
+            b.after(after);
+        }
         return b.columns(columns(req)).build();
     }
 
@@ -218,7 +223,46 @@ public final class Adapter {
         if (end != null) {
             b.end(end);
         }
+        Continuation tagged = cursor(req);
+        if (tagged != null) {
+            if (after != null) {
+                throw new BadRequest("after and after_base64 cannot be combined");
+            }
+            b.after(tagged);
+        }
         return b.columns(columns(req)).build();
+    }
+
+    private static Continuation cursor(Map<String, Object> req) throws BadRequest {
+        Object value = req.get("after");
+        if (value == null || value == MiniJson.NULL) {
+            return null;
+        }
+        if (!(value instanceof Map<?, ?> raw)) {
+            throw new BadRequest("after must be a tagged cursor");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> m = (Map<String, Object>) raw;
+        if (m.keySet().equals(java.util.Set.of("prefix_base64"))) {
+            Bytes prefix = bytes(m, "prefix_base64");
+            if (prefix == null) {
+                throw new BadRequest("cursor prefix must be base64");
+            }
+            return new Continuation.CommonPrefix(prefix);
+        }
+        if (!m.keySet().equals(java.util.Set.of("key_base64", "offset"))) {
+            throw new BadRequest("cursor has undefined or missing members");
+        }
+        Bytes key = bytes(m, "key_base64");
+        if (key == null || !(m.get("offset") instanceof MiniJson.Number n)
+                || !n.text().matches("0|[1-9][0-9]*")) {
+            throw new BadRequest("cursor requires a key and a non-negative integer offset");
+        }
+        try {
+            return new Continuation.RowPosition(key, Long.parseLong(n.text()));
+        } catch (NumberFormatException e) {
+            throw new BadRequest("cursor offset exceeds 2^63-1");
+        }
     }
 
     private static int limit(Map<String, Object> req) throws BadRequest {
@@ -278,7 +322,7 @@ public final class Adapter {
     }
 
     private static void row(StringBuilder out, Row row) {
-        out.append("{\"kind\":\"row\",\"key_base64\":\"").append(row.key().toBase64()).append("\",\"values\":[");
+        out.append("{\"kind\":\"row\",\"key_base64\":\"").append(row.key().toBase64()).append("\",\"offset\":").append(row.offset()).append(",\"values\":[");
         List<Value> values = row.values();
         for (int i = 0; i < values.size(); i++) {
             if (i > 0) {

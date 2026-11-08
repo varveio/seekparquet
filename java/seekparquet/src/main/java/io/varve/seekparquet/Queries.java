@@ -31,6 +31,21 @@ final class Queries {
             }
             end = min(end, q.prefix().successor());
         }
+        Continuation after = q.cursor().orElse(null);
+        if (after instanceof Continuation.CommonPrefix c) {
+            Optional<Bytes> successor = c.bytes().successor();
+            if (successor.isEmpty()) {
+                return List.of();
+            }
+            byte[] floor = successor.get().unsafeArray();
+            if (start == null || Arrays.compareUnsigned(start, floor) < 0) {
+                start = floor;
+                exclusive = false;
+            }
+        } else if (after != null && (start == null || Arrays.compareUnsigned(start, after.bytes().unsafeArray()) < 0)) {
+            start = after.bytes().unsafeArray();
+            exclusive = false;
+        }
         if (parts.length == 0 || (end != null && start != null && Arrays.compareUnsigned(start, end) >= 0) || (end != null && end.length == 0)) {
             return List.of();
         }
@@ -42,6 +57,11 @@ final class Queries {
             byte[] key = cursor.key();
             if ((end != null && Arrays.compareUnsigned(key, end) >= 0) || !startsWith(key, prefix)) {
                 break;
+            }
+            if (after instanceof Continuation.RowPosition r
+                    && Arrays.equals(key, r.bytes().unsafeArray()) && cursor.offset() <= r.offset()) {
+                ok = cursor.next();
+                continue;
             }
             rows.add(row(cursor, columns, ctx));
             if (rows.size() >= q.limit()) {
@@ -69,6 +89,21 @@ final class Queries {
             exclusive = true;
             suppress = q.continuation();
         }
+        Continuation tagged = q.cursor().orElse(null);
+        if (tagged instanceof Continuation.CommonPrefix c) {
+            Optional<Bytes> successor = c.bytes().successor();
+            if (successor.isEmpty()) {
+                return List.of();
+            }
+            byte[] floor = successor.get().unsafeArray();
+            if (from == null || Arrays.compareUnsigned(from, floor) < 0) {
+                from = floor;
+                exclusive = false;
+            }
+        } else if (tagged != null && (from == null || Arrays.compareUnsigned(from, tagged.bytes().unsafeArray()) < 0)) {
+            from = tagged.bytes().unsafeArray();
+            exclusive = false;
+        }
         byte[] to = min(q.end().map(Bytes::unsafeArray).orElse(null), q.prefix().successor());
         if (parts.length == 0 || (to != null && to.length == 0) || (to != null && from != null && Arrays.compareUnsigned(from, to) >= 0)) {
             return List.of();
@@ -82,15 +117,26 @@ final class Queries {
             if ((to != null && Arrays.compareUnsigned(key, to) >= 0) || !startsWith(key, prefix)) {
                 break;
             }
+            if (tagged instanceof Continuation.RowPosition r
+                    && Arrays.equals(key, r.bytes().unsafeArray()) && cursor.offset() <= r.offset()) {
+                ok = cursor.next();
+                continue;
+            }
             int at = indexOf(key, delimiter, prefix.length);
             if (at < 0) {
                 out.add(new ListEntry.RowEntry(row(cursor, columns, ctx)));
+                if (out.size() == q.limit()) {
+                    break;
+                }
                 ok = cursor.next();
                 continue;
             }
             byte[] common = Arrays.copyOf(key, at + 1);
             if (!(suppress && Arrays.compareUnsigned(common, after) <= 0)) {
                 out.add(new ListEntry.CommonPrefix(Bytes.wrap(common)));
+            }
+            if (out.size() == q.limit()) {
+                break;
             }
             Optional<Bytes> next = Bytes.wrap(common).successor();
             if (next.isEmpty()) {
@@ -104,7 +150,7 @@ final class Queries {
     private static Row row(KeyCursor cursor, List<String> columns, ReadContext ctx) {
         Bytes key = Bytes.wrap(cursor.key());
         if (columns.isEmpty()) {
-            return new Row(key, columns, List.of());
+            return new Row(key, cursor.offset(), columns, List.of());
         }
         PartFile part = cursor.partFile();
         Value[] values = new Value[columns.size()];
@@ -119,7 +165,7 @@ final class Queries {
                 values[i] = part.value(cursor.physical(), spec, cursor.row(), ctx);
             }
         }
-        return new Row(key, columns, Arrays.asList(values));
+        return new Row(key, cursor.offset(), columns, Arrays.asList(values));
     }
 
     private static byte[] min(byte[] end, Optional<Bytes> successor) {

@@ -19,7 +19,7 @@ class ManifestTest {
     private static final String PART = "{\"path\":\"data/p.parquet\",\"rows\":3,\"bytes\":100,\"min_key_base64\":\"YQ==\",\"max_key_base64\":\"Yw==\"}";
 
     private static String manifest(String parts, String extra) {
-        return "{\"format\":\"seekparquet\",\"format_version\":0,\"draft_revision\":1,\"schema_id\":\"s/v1\",\"parts\":[" + parts + "]" + extra + "}";
+        return "{\"format\":\"seekparquet\",\"format_version\":0,\"draft_revision\":1,\"schema_id\":\"s/v1\",\"key\":{\"column\":\"key\",\"unique\":true},\"parts\":[" + parts + "]" + extra + "}";
     }
 
     private static Manifest parse(String json) {
@@ -94,6 +94,15 @@ class ManifestTest {
         assertEquals(2, parse(manifest(PART + "," + later, "")).parts().size());
         assertEquals(RefusalCode.INVALID_MANIFEST, refusal(manifest(PART.replace("YQ==", "ZA=="), "")));
         assertEquals(RefusalCode.INVALID_MANIFEST, refusal(manifest(PART + "," + PART, "")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "{}", "{\"column\":\"key\"}", "{\"column\":\"\",\"unique\":false}",
+            "{\"column\":\"key\",\"unique\":1}", "{\"column\":\"key\",\"unique\":true,\"extra\":0}",
+            "{\"column\":\"a\\u007fb\",\"unique\":true}"})
+    void keyDeclarationIsRequiredAndStrict(String key) {
+        String json = manifest(PART, "").replace("{\"column\":\"key\",\"unique\":true}", key);
+        assertEquals(RefusalCode.INVALID_MANIFEST, refusal(json));
     }
 
     @Test

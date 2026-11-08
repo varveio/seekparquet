@@ -6,8 +6,8 @@ OffsetIndex of a column chunk, individual page headers, and page-level value dec
 versions 1 and 2. It must also run without Hadoop, and its dependencies must stay small enough for
 a JVM service that reads datasets from object storage.
 
-**Decision: Apache parquet-java 1.18.1, the latest release on Maven Central (checked 2026-11-08),
-through its Hadoop-free modules `parquet-format-structures` and `parquet-column`.** The
+**Decision: Apache parquet-java 1.18.1 through its Hadoop-free modules
+`parquet-format-structures`, `parquet-column` and `parquet-common`.** The
 maintainers chose parquet-java before qualification began. Hardwood was not evaluated for this
 release.
 
@@ -46,7 +46,18 @@ These modules have no Hadoop dependency. Between them they cover everything the 
 | Page headers | `org.apache.parquet.format.PageHeader`, `DataPageHeader`, `DataPageHeaderV2`, `DictionaryPageHeader` |
 | Value decoding | `org.apache.parquet.column.Encoding#getValuesReader`, `getDictionaryBasedValuesReader` and `initDictionary`, `DeltaBinaryPackingValuesReader`, `DeltaLengthByteArrayValuesReader`, `RunLengthBitPackingHybridDecoder` |
 
-The reader does its own I/O through its storage interface. It locates pages from the OffsetIndex,
+The public storage boundary reuses `parquet-common`'s `InputFile` and `SeekableInputStream`:
+`PartSource` extends `InputFile` with positioned, cancellable reads and optional pinned identity.
+Independent streams do not share seek positions. `PartSource.of` accepts an existing `InputFile`;
+its reads each own a fresh stream. `LocalStorage` uses positioned `FileChannel` reads. No cloud
+implementation or SDK is included.
+
+Footer Thrift structures are decoded with bounded reads, preserving duplicate stamps. The reader
+checks self-containment, schema shape and column paths, chunk geometry, row counts, stamps, key
+column orders and sorting metadata before constructing parquet-java value descriptors or decoders.
+Opening never loads indexes or data pages unless eager bound verification is requested.
+
+The reader performs I/O through this storage interface. It locates pages from the OffsetIndex,
 decompresses them, and hands the decoded streams to parquet-java's value readers. This is the level
 the profile works at: a seek reads one page of one row group.
 
@@ -74,12 +85,13 @@ version `parquet-hadoop` 1.18.1 depends on. BROTLI, LZO and Hadoop-framed LZ4 ar
 `./gradlew :seekparquet:dependencies --configuration runtimeClasspath`:
 
 ```text
-+--- org.apache.parquet:parquet-format-structures:1.18.1
-|    \--- javax.annotation:javax.annotation-api:1.3.2
++--- org.apache.parquet:parquet-common:1.18.1
+|    +--- org.apache.parquet:parquet-format-structures:1.18.1
+|    |    \--- javax.annotation:javax.annotation-api:1.3.2
+|    \--- org.slf4j:slf4j-api:1.7.33
++--- org.apache.parquet:parquet-format-structures:1.18.1 (*)
 +--- org.apache.parquet:parquet-column:1.18.1
-|    +--- org.apache.parquet:parquet-common:1.18.1
-|    |    +--- org.apache.parquet:parquet-format-structures:1.18.1 (*)
-|    |    \--- org.slf4j:slf4j-api:1.7.33
+|    +--- org.apache.parquet:parquet-common:1.18.1 (*)
 |    +--- org.apache.parquet:parquet-encoding:1.18.1
 |    |    +--- org.apache.parquet:parquet-common:1.18.1 (*)
 |    |    \--- org.slf4j:slf4j-api:1.7.33
@@ -104,6 +116,48 @@ used by parquet-column's geospatial statistics) is a real transitive dependency 
 reader never loads it. It could be excluded, but that is not done here: excluding it would rely on
 an internal detail of parquet-column. parquet-java logs through SLF4J 1.7; the library binds no
 logger.
+
+## Reader qualification (2026-11-08)
+
+JDK 21 at `/usr/lib/jvm/java-21-openjdk-amd64`; Gradle wrapper 8.14.3. The complete,
+unfiltered semantic conformance run used suite `0.1.0-draft.4`, SHA-256
+`2fb739de436d2d50e49137708642e65c6778e3c4153854102343c7898934bed5`:
+
+```sh
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+cd java
+./gradlew build :conformance:installDist
+cd ..
+python3 conformance/harness/run.py \
+  --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
+```
+
+| Selection | Passed | Failed | Skipped |
+|---|---:|---:|---:|
+| Reader, core | 157 | 0 | 0 |
+| Reader, generated | 1,222 | 0 | 0 |
+| Reader total | **1,379** | **0** | **0** |
+| Unclaimed validator cases | 0 | 0 | 207 |
+
+The harness reports `qualified_targets: ["reader"]`, no run errors, and a complete selection.
+All **432 repeated-key cases** pass, including groups split across pages and row groups, named key
+columns, `(key, offset)` continuation and lookup. No reader case is filtered or skipped.
+This qualifies semantic reading; the planned indexed-access target is not claimed.
+
+The build passes compilation with warnings as errors, strict Javadoc, JUnit 5 tests and adapter
+installation. Unit tests include independent fixture reads, deterministic corruption trials,
+concurrent requests, cancellation and resource cleanup, early footer refusals, and grouped pagination.
+JUnit 5 reports **89 tests, zero failures, zero errors and zero skipped tests**.
+The focused indexed-read unit test passes; this is not a separate indexed-access qualification.
+
+`parquet-common` is an API dependency because the public storage interface extends `InputFile`.
+The other direct library dependencies are implementation dependencies. The adapter alone binds SLF4J
+with `slf4j-nop` 1.7.36; this also resolves its SLF4J API to 1.7.36. The library binds no logger.
+
+Scope limits: validation and SHA-256 verification are not implemented; no validator target is
+claimed. Nested/repeated value projection and INT96 are unsupported, as permitted by COL-3.
+BROTLI, LZO, framed LZ4 and modular encryption are unsupported. LZ4_RAW is supported in addition
+to the mandatory codecs. No format requirement for the reader target is intentionally omitted.
 
 ## Notes for maintenance
 
