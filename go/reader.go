@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,9 @@ type reader struct {
 	// routed to a part by its bounds.
 	bounded     bool
 	indexMemory atomic.Int64
+	// indexMu serializes retained-index admission and publication, including
+	// first keys. No file I/O or page decoding runs under this lock.
+	indexMu sync.Mutex
 
 	mu        sync.RWMutex
 	closed    bool
@@ -150,6 +154,11 @@ func openParts(ctx context.Context, inputs []partInput, key Key, opt Options) (_
 			}
 			if err := checkSorted(p, physical, rg); err != nil {
 				return nil, err
+			}
+			// Row-group positions and cursor arithmetic use signed dataset
+			// ordinals. Per-part checks do not bound this cross-part sum.
+			if rg.NumRows > math.MaxInt64-r.rows {
+				return nil, exceeded("dataset row count exceeds %d at part %s row group %d", math.MaxInt64, in.name, physical)
 			}
 			r.groups = append(r.groups, &group{part: i, physical: physical, rows: rg.NumRows, start: r.rows})
 			r.rows += rg.NumRows
@@ -280,6 +289,8 @@ func (r *reader) first(ctx context.Context, g int, log *pageLog, st *stats) ([]b
 // it against the first keys already known of the groups around it: in the
 // declared order, and equal only within one part (PART-4).
 func (r *reader) noteFirst(g int, key []byte) error {
+	r.indexMu.Lock()
+	defer r.indexMu.Unlock()
 	if r.groups[g].first.Load() != nil {
 		return nil
 	}
@@ -306,8 +317,22 @@ func (r *reader) noteFirst(g int, key []byte) error {
 			}
 		}
 	}
+	if err := r.reserveIndex(int64(len(key))); err != nil {
+		return err
+	}
 	k := bytes.Clone(key)
-	r.groups[g].first.CompareAndSwap(nil, &k)
+	r.groups[g].first.Store(&k)
+	return nil
+}
+
+// reserveIndex charges retained index data before publication. The caller
+// holds indexMu, so a duplicate load must check for publication first.
+func (r *reader) reserveIndex(size int64) error {
+	used := r.indexMemory.Load()
+	if size > r.limits.IndexMemory-used {
+		return exceeded("key page indexes and first keys need more than %d bytes (Limits.IndexMemory)", r.limits.IndexMemory)
+	}
+	r.indexMemory.Store(used + size)
 	return nil
 }
 

@@ -189,6 +189,8 @@ type Dataset struct {
 //
 // A dataset that breaks the specification is refused with a *RefusalError
 // (see CodeOf). Other errors report I/O, a limit or the context.
+// The reader uses signed 64-bit dataset ordinals: a total row count above
+// 2^63-1 fails with ErrLimitExceeded, even when each part's count fits.
 //
 // OpenDataset closes every file it opened when it fails; on success,
 // Dataset.Close closes them.

@@ -100,6 +100,7 @@ jobs:
         run: |
           (cd go && go build -o "$RUNNER_TEMP/seekparquet-conformance" ./internal/cmd/conformance)
           python conformance/harness/run.py --adapter "$RUNNER_TEMP/seekparquet-conformance"
+          python conformance/generators/check_boolean.py --adapter "$RUNNER_TEMP/seekparquet-conformance"
 
   java:
     needs: changes
@@ -119,6 +120,10 @@ jobs:
         run: ./gradlew build :conformance:installDist
       - name: conformance (reader target)
         run: python conformance/harness/run.py --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
+      - name: independent generated Boolean regression
+        run: |
+          python -m pip install -r conformance/generators/requirements.txt
+          python conformance/generators/check_boolean.py --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
 
   ci-ok:
     if: always()
