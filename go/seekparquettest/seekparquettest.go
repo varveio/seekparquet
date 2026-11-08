@@ -190,7 +190,7 @@ func writePart(path string, part Part, stamps map[string]string, keyColumn strin
 	if !ok {
 		return nil, nil, 0, errors.New("the rows have no key column")
 	}
-	schema := parquet.NewSchema("seekparquettest", boundsNode{Node: base, keep: part.KeepShortenedMax})
+	schema := parquet.NewSchema("seekparquettest", boundsNode{Node: base, keep: part.KeepShortenedMax, keyColumn: keyColumn})
 	pageBytes := part.PageBytes
 	if pageBytes <= 0 {
 		pageBytes = 512
@@ -342,6 +342,7 @@ func dropPageIndex(path string, column int) error {
 // boundsNode wraps a schema so that its top-level byte-array leaves are
 // indexed by boundsIndexer.
 type boundsNode struct {
+	keyColumn string
 	parquet.Node
 	keep bool
 }
@@ -354,7 +355,7 @@ func (n boundsNode) Fields() []parquet.Field {
 			if lt := f.Type().LogicalType(); lt != nil {
 				_, isString = lt.Value.(*format.StringType)
 			}
-			fields[i] = boundsField{Field: f, keep: n.keep, key: f.Name() == "key", utf8: isString}
+			fields[i] = boundsField{Field: f, keep: n.keep, key: f.Name() == n.keyColumn, utf8: isString}
 		}
 	}
 	return fields

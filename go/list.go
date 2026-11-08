@@ -298,6 +298,7 @@ func (r *Reader) listRepeated(ctx context.Context, req List, stats *Stats) ([]En
 	var out []Entry
 	var lastPrefix []byte
 	columns := slices.Clone(req.Columns)
+	values := listScan{r: r, columns: columns, stats: stats}
 	for ; g < len(r.groups) && len(out) < req.Limit; g++ {
 		if end != nil && r.startsAtOrAfter(g, end) {
 			break
@@ -324,12 +325,11 @@ func (r *Reader) listRepeated(ctx context.Context, req List, stats *Stats) ([]En
 							out = append(out, Entry{CommonPrefix: lastPrefix})
 						}
 					} else {
-						grp := r.groups[g]
-						values, err := r.parts[grp.part].readValues(ctx, grp.physical, row, 1, columns, stats)
+						run, at, err := values.valuesAt(ctx, g, row, req.Limit-len(out))
 						if err != nil {
 							return err
 						}
-						out = append(out, Entry{Row: &Row{Key: bytes.Clone(key), Offset: offset, Columns: columns, Values: rowValues(values, 0)}})
+						out = append(out, Entry{Row: &Row{Key: bytes.Clone(key), Offset: offset, Columns: columns, Values: rowValues(run, at)}})
 					}
 				}
 				key, row, ok, err = c.advance()
@@ -339,7 +339,6 @@ func (r *Reader) listRepeated(ctx context.Context, req List, stats *Stats) ([]En
 		if err != nil {
 			return nil, err
 		}
-		from, exclusive = nil, false
 	}
 	return out, nil
 }

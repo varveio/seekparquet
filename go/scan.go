@@ -80,6 +80,12 @@ func PrefixRange(prefix []byte, limit int, columns ...string) Range {
 	return Range{Prefix: bytes.Clone(prefix), Limit: limit, Columns: columns}
 }
 
+// KeyRange returns a lookup of exactly key's group. Its limit may split
+// the group; resume with the last row's Cursor as with any range.
+func KeyRange(key []byte, limit int, columns ...string) Range {
+	return Range{Start: bytes.Clone(key), End: append(bytes.Clone(key), 0), Limit: limit, Columns: columns}
+}
+
 // bounds returns the range's effective lower bound (inclusive unless
 // exclusive) and upper bound: Start and End intersected with the keys
 // that begin with Prefix.
@@ -233,7 +239,9 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 			break
 		}
 		// Later groups are read from their first row.
-		from, inclusive = nil, true
+		if r.key.Unique {
+			from, inclusive = nil, true
+		}
 	}
 	return nil
 }
