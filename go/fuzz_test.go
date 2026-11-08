@@ -55,11 +55,14 @@ func seedParts(f *testing.F) [][]byte {
 // the limits is not.
 func exercise(raw []byte) {
 	r, err := openParts(ctx, []partInput{{name: "fuzz", file: bytes.NewReader(raw), size: int64(len(raw))}}, unique,
-		Options{Limits: fuzzLimits, VerifyOnOpen: true})
+		Options{Limits: fuzzLimits})
 	if err != nil {
 		return
 	}
 	defer r.close()
+	if r.verify(ctx) != nil {
+		return
+	}
 	var columns []string
 	for name := range r.parts[0].leaves {
 		columns = append(columns, name)

@@ -18,8 +18,9 @@ the profile can also:
 - page through results and resume exactly where a page ended;
 
 using the manifest, part footers and page indexes, with no query engine and no catalog. Selective reads
-can touch only a few data pages, but having an index alone does not guarantee that cost: opening checks
-every part, and coarse key bounds can require much more decoding. See [read costs and writer guidance](docs/read-costs.md).
+can touch only a few data pages, but having an index alone does not guarantee that cost: each part a query
+touches is checked first (its footer), and coarse key bounds can require much more decoding. See [read costs
+and writer guidance](docs/read-costs.md).
 
 SeekParquet is for immutable, listing-shaped snapshots: point-in-time inventories, and derived or cross-store
 listings that carry extra columns, read as ordinary tables and listed by prefix with a delimiter. It is not

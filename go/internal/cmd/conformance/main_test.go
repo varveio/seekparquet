@@ -69,11 +69,13 @@ func TestAdapter(t *testing.T) {
 		`{"id":"14","op":"validate",`+ds+`,"level":"digest"}`,
 		`{"id":"15","op":"validate",`+ds+`,"level":"deep"}`,
 		`not json`,
+		`{"id":"17","op":"verify",`+ds+`}`,
+		`{"id":"18","op":"verify","dataset":`+quote(refused)+`}`,
 	)
 	hello := resps[0]
 	if hello["id"] != "1" || hello["status"] != "ok" || hello["implementation"] != "seekparquet-go" ||
 		jsonString(hello["targets"]) != `["reader","validator-structural","validator-profile","validator-full","validator-digest"]` ||
-		jsonString(hello["capabilities"]) != `["open","range","list","projection","validate:structural","validate:profile","validate:full","validate:digest"]` ||
+		jsonString(hello["capabilities"]) != `["open","range","list","projection","verify","validate:structural","validate:profile","validate:full","validate:digest"]` ||
 		jsonString(hello["supports"]) != `[{"draft_revision":1,"format_version":0}]` {
 		t.Fatalf("hello %v", hello)
 	}
@@ -96,6 +98,9 @@ func TestAdapter(t *testing.T) {
 		if resps[i]["status"] != "invalid_request" {
 			t.Fatalf("request %d: %v", i+1, resps[i])
 		}
+	}
+	if resps[16]["status"] != "ok" || resps[17]["status"] != "refused" || resps[17]["code"] != "invalid_manifest" {
+		t.Fatalf("verify: %v, %v", resps[16], resps[17])
 	}
 	if resps[9]["status"] != "refused" || resps[9]["code"] != "invalid_manifest" {
 		t.Fatalf("refused open: %v", resps[9])

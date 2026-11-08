@@ -128,7 +128,7 @@
     },
     {
       "id": "refusals-read/inconsistent-column-width",
-      "description": "Column h is FIXED_LEN_BYTE_ARRAY(4) in part 0 and FIXED_LEN_BYTE_ARRAY(8) in part 1. open may succeed; an unbounded range that decodes the faulty data must be refused with inconsistent_column (an earlier refusal with that code also passes).",
+      "description": "Column h is FIXED_LEN_BYTE_ARRAY(4) in part 0 and FIXED_LEN_BYTE_ARRAY(8) in part 1. open may succeed; an unbounded range, which routes to both parts, must be refused with inconsistent_column (an earlier refusal with that code also passes).",
       "fault_id": "inconsistent-column-width",
       "requirements": [
         "COL-5",

@@ -22,7 +22,7 @@ type scan struct {
 	log   pageLog
 	stats *ReadStats
 	kp    *keyPages // the walker on row group g, nil before the first seek
-	g     int
+	g     groupRef
 	// key is the current row's key, nil once the scan is exhausted; row
 	// is its position in row group g.
 	key []byte
@@ -40,14 +40,14 @@ func (r *reader) newScan(ctx context.Context, end []byte, st *ReadStats) *scan {
 // offset returns the current row's offset in its group.
 func (s *scan) offset() int64 { return s.ordinal() - s.groupStart }
 
-func (s *scan) ordinal() int64 { return s.r.groups[s.g].start + s.row }
+func (s *scan) ordinal() int64 { return s.r.group(s.g).start + s.row }
 
 // at returns the current row's position, for reading its values.
 func (s *scan) at() position { return position{s.g, s.row} }
 
 // position is a row's row group and its row within it.
 type position struct {
-	g   int
+	g   groupRef
 	row int64
 }
 
@@ -72,7 +72,7 @@ func (s *scan) seek(from []byte, inclusive bool) error {
 		return err
 	}
 	switch {
-	case s.kp == nil || g > s.g:
+	case s.kp == nil || s.g.less(g):
 	case s.key != nil && before(s.key, from, inclusive):
 		g = s.g // continue from the current row
 	case g == s.g:
@@ -93,7 +93,7 @@ func (s *scan) seek(from []byte, inclusive bool) error {
 			}
 			return nil
 		}
-		if ok, err := s.open(s.g + 1); !ok || err != nil {
+		if ok, err := s.open(s.g.next()); !ok || err != nil {
 			return err
 		}
 	}
@@ -117,7 +117,12 @@ func (s *scan) resume(k []byte, n int64) error {
 		return err
 	}
 	start := s.groupStart
-	if n < s.r.rows-start-1 { // the row after the cursor is in the dataset
+	limit := s.r.rows
+	if s.r.bounded { // a group never crosses parts (PART-4)
+		p := s.r.parts[s.g.part]
+		limit = p.start + p.rows
+	}
+	if n < limit-start-1 { // the row after the cursor can be in the group
 		if err := s.seekOrdinal(start + n + 1); err != nil {
 			return err
 		}
@@ -133,11 +138,14 @@ func (s *scan) resume(k []byte, n int64) error {
 // seekOrdinal positions the scan at a dataset row ordinal below the
 // dataset's row count.
 func (s *scan) seekOrdinal(ordinal int64) error {
-	g := s.r.groupAt(ordinal)
+	g, err := s.r.groupAt(s.ctx, ordinal, s.stats)
+	if err != nil {
+		return err
+	}
 	if ok, err := s.open(g); !ok || err != nil {
 		return err
 	}
-	row := ordinal - s.r.groups[g].start
+	row := ordinal - s.r.group(s.g).start
 	key, err := s.kp.seekRow(row)
 	if err != nil {
 		return err
@@ -150,7 +158,7 @@ func (s *scan) seekOrdinal(ordinal int64) error {
 func (s *scan) next() error {
 	key, row, ok, err := s.kp.advance()
 	for err == nil && !ok {
-		if ok, err := s.open(s.g + 1); !ok || err != nil {
+		if ok, err := s.open(s.g.next()); !ok || err != nil {
 			return err
 		}
 		key, row, ok, err = s.kp.seek(nil, true)
@@ -174,19 +182,31 @@ func (s *scan) land(key []byte, row int64) {
 	}
 }
 
-// open moves the scan to row group g, and reports false, exhausting the
-// scan, when there is no such group or it is known to begin at or after
-// the upper bound.
-func (s *scan) open(g int) (bool, error) {
+// open moves the scan to row group g, or to the next part's first when g
+// is past its part's last, checking the part the first time a read
+// touches it. It reports false, exhausting the scan, when there is no such
+// group or it is known to begin at or after the upper bound; a part known
+// from its bounds to begin there is not touched.
+func (s *scan) open(g groupRef) (bool, error) {
 	if s.kp != nil && s.g == g {
 		return true, nil
 	}
-	if g >= len(s.r.groups) || s.end != nil && s.r.startsAtOrAfter(g, s.end) {
-		s.key = nil
-		return false, nil
-	}
-	if err := s.ctx.Err(); err != nil {
-		return false, err
+	for {
+		if g.part >= len(s.r.parts) || s.end != nil && s.r.startsAtOrAfter(g, s.end) {
+			s.key = nil
+			return false, nil
+		}
+		if err := s.ctx.Err(); err != nil {
+			return false, err
+		}
+		p, err := s.r.part(s.ctx, g.part, s.stats)
+		if err != nil {
+			return false, err
+		}
+		if g.index < len(p.groups) {
+			break
+		}
+		g = groupRef{g.part + 1, 0}
 	}
 	kp, err := s.r.keyPages(s.ctx, g, &s.log, s.stats)
 	if err != nil {
@@ -204,13 +224,17 @@ func (s *scan) open(g int) (bool, error) {
 // is a candidate witness for it below the upper bound. The listing then
 // emits the prefix without reading the group. It is taken once the
 // group's first key is known (decoded by an earlier read, a routing probe,
-// or VerifyOnOpen).
+// or Verify). A group, or a next group, in a part known from its bounds to
+// begin at or after the upper bound is not touched.
 func (s *scan) shortcut(from, prefix []byte, delim byte) ([]byte, error) {
 	g, err := s.r.groupFor(s.ctx, from, true, &s.log, s.stats)
-	if err != nil || g+1 >= len(s.r.groups) {
+	if err != nil || g.part >= len(s.r.parts) || s.end != nil && s.r.startsAtOrAfter(g, s.end) {
+		return nil, err // the seek after it applies the upper bound without touching the part
+	}
+	if _, err := s.r.part(s.ctx, g.part, s.stats); err != nil || g.index >= len(s.r.parts[g.part].groups) {
 		return nil, err
 	}
-	first := s.r.groups[g].first.Load()
+	first := s.r.group(g).first.Load()
 	if first == nil {
 		return nil, nil
 	}
@@ -218,7 +242,14 @@ func (s *scan) shortcut(from, prefix []byte, delim byte) ([]byte, error) {
 	if whole == nil {
 		return nil, nil
 	}
-	next, err := s.r.first(s.ctx, g+1, &s.log, s.stats)
+	after, ok := s.r.adjacent(g, 1)
+	if !ok { // the last group of its part, or of the dataset
+		if g.part+1 >= len(s.r.parts) || s.end != nil && s.r.startsAtOrAfter(groupRef{g.part + 1, 0}, s.end) {
+			return nil, nil
+		}
+		after = groupRef{g.part + 1, 0}
+	}
+	next, err := s.r.first(s.ctx, after, &s.log, s.stats)
 	if err != nil {
 		return nil, err
 	}

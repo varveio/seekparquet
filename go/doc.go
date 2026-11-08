@@ -16,12 +16,14 @@
 //
 // OpenDataset opens a dataset through a Source, a small interface any
 // storage can implement; OpenDir opens a local directory through an
-// os.Root. Opening checks what the specification requires (CHECK-1): the
-// manifest, every part's existence, size, footer, stamps, row count, key
-// column, column consistency (COL-5) and sorting_columns. It reads the
-// manifest and the footers and nothing else, unless Options.VerifyOnOpen
-// asks it also to check every row group's first key page and each part's
-// last (CHECK-3).
+// os.Root. Opening reads and checks the manifest and nothing else
+// (CHECK-1): the manifest carries each part's exact key bounds, row count
+// and size, which is all a read needs to be routed. A part is checked the
+// first time a read routes to it: its existence, size, footer, stamps, row
+// count, key column, sorting_columns, and column consistency with the
+// parts already checked (COL-5). A part that fails is refused by every
+// read that touches it. Dataset.Verify checks every part at once, and
+// also every row group's first key page and each part's last (CHECK-3).
 //
 // Every size a file declares is checked against Options.Limits before
 // anything is allocated for it, and so are the value counts and decoded

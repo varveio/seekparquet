@@ -88,7 +88,7 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `Metadata` and `Close`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `Verify`, `Metadata` and `Close`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
 | `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
 | `cmd/seekparquet` | the `seekparquet validate` command |
@@ -115,18 +115,22 @@ The adapter claims the `reader` target and the four validator targets, so one ru
 
 ## What opening and reading check, and what they do not certify
 
-Opening checks what the specification's CHECK-1 requires, and by default nothing more: the manifest
-(strictly: duplicate member names, undefined members, exact integers, canonical base64, part paths, bound
-order), that every part exists with the manifest's size and row count, that its footer is readable,
-self-contained and unencrypted, its `seekparquet.*` stamps, the manifest-named key column (type, repetition,
-annotation, `column_orders`), that columns agree across parts (COL-5), and `sorting_columns` on every
-non-empty row group.
+Opening checks the manifest and nothing else (CHECK-1): duplicate member names, undefined members, exact
+integers, canonical base64, part paths, bound order. It opens no part. The manifest carries each part's
+exact key bounds, row count and size, which is all a read needs to be routed.
 
-`Options.VerifyOnOpen` also checks, on open, every non-empty row group's key page index and first key page,
+A part is checked the first time a read routes to it: it exists with the manifest's size and row count, its
+footer is readable, self-contained and unencrypted, its `seekparquet.*` stamps match, the manifest-named key
+column is valid (type, repetition, annotation, `column_orders`), its columns agree with those of every part
+already checked (COL-5), and every non-empty row group declares `sorting_columns`. A part that fails is
+refused by the `Range` or `List` that touched it, with the same codes, and by every later read that touches
+it; a part known from its bounds to lie outside a read is not touched. Concurrent reads wait for one check.
+
+`Dataset.Verify` checks every part now, then every non-empty row group's key page index and first key page,
 and each part's last key page (CHECK-3): row-group first keys must be in the declared order and each part's
-first and last keys must equal its manifest bounds. That suits a long-lived reader of local files; it costs
-reads across the whole dataset, so it is off by default. Without it the same checks happen when a read
-reaches those pages.
+first and last keys must equal its manifest bounds. That suits a long-lived reader of local files, or a
+caller that wants every part's fault before its first query; it costs reads across the whole dataset.
+Without it the same checks happen when a read reaches those parts and pages.
 
 Every read checks each row group's key page index before it uses the group, and each key page it decodes
 (CHECK-2): the page header matches its OffsetIndex entry, one non-empty key per row, valid UTF-8 for a
@@ -159,7 +163,7 @@ level failed, and 2 when a level is incomplete, validation could not run, or the
 
 | Level | What this implementation checks |
 |---|---|
-| `structural` | everything opening checks (CHECK-1, which includes COL-5 for every column); for every non-empty row group, the key column's ColumnIndex and OffsetIndex (RG-2 to RG-4), and the page header at every OffsetIndex entry, which must begin one data page of exactly the entry's size and rows (RG-3). Page data is not read. |
+| `structural` | the manifest and every part, as the first read to touch each would (CHECK-1; with every part checked, COL-5 covers every column); for every non-empty row group, the key column's ColumnIndex and OffsetIndex (RG-2 to RG-4), and the page header at every OffsetIndex entry, which must begin one data page of exactly the entry's size and rows (RG-3). Page data is not read. |
 | `profile` | every key column chunk walked page header by page header from its start, without the OffsetIndex, which must then list exactly the data pages found (offsets, sizes, row positions, count); every key page decoded and every key checked: non-empty, valid UTF-8 for a `STRING` key, bounds valid UTF-8 too (KEY-2, KEY-6), in the declared order across pages, row groups and parts (KEY-3, PART-4), inside its page's ColumnIndex bounds (RG-5); each part's first and last keys equal to its manifest bounds (PART-3); the key chunk's metadata value count |
 | `full` | every other column chunk walked the same way and decoded: a dictionary page is checked and decoded when found, whether or not a page uses it; each page passes its CRC when it has one, decompresses to its declared size, its levels (RLE; `BIT_PACKED` is unsupported, anything else corrupt) and values agree with its header, V2 null counts included (nested and repeated columns too; a chunk, and every V2 page, begins a row), the chunk holds exactly the row group's rows and the value count its metadata declares; an OffsetIndex, when present, lists exactly the pages found; a ColumnIndex, when present, has one entry per page and, for a column that is neither nested nor repeated, marks a page null only if every value is null and counts nulls exactly |
 | `digest` | the SHA-256 of every part that declares `sha256`, streamed from the file, whether or not it is valid Parquet (PART-5); with no declared digest it completes with nothing checked and says so (VAL-2) |
@@ -191,7 +195,7 @@ files; set them lower for untrusted remote data. A panic inside parquet-go on a 
 reported as `invalid_footer` or `invalid_parquet` as a last line of defence.
 
 Dataset-wide row positions use signed 64-bit ordinals. Opening fails with `ErrLimitExceeded` if the
-sum of the parts' row counts exceeds 2^63-1, before any ordinal can wrap. This fixed implementation
+sum of the manifest's part row counts exceeds 2^63-1, before any ordinal can wrap. This fixed implementation
 limit is separate from the configurable allocation limits and does not make the manifest invalid.
 
 ## Errors
@@ -207,8 +211,10 @@ limit is separate from the configurable allocation limits and does not make the 
 
 A `Source` opens the files of a dataset root (the manifest and the parts) by relative path, as `SourceFile`s.
 `OpenDir` uses one over an `os.Root`, so no path or symbolic link reads outside the directory, and opens
-files without blocking on a FIFO or device, which it reports as missing. Each part keeps its file open until
-the dataset closes. A remote store would be another `Source`; its file must read the same bytes for as long
+files without blocking on a FIFO or device, which it reports as missing; it keeps the directory open until
+the dataset closes. A part is opened the first time a read touches it, so the `Source` must stay usable
+until `Dataset.Close`. Each part keeps its file open until the dataset closes; a part refused by its check
+is closed at once. A remote store would be another `Source`; its file must read the same bytes for as long
 as it is open, bound to one stored object (one version or generation) across its range requests and retries.
 
 A file that implements `ContextBinder` has every read (manifest, footers, page indexes, pages) bound to the
@@ -216,13 +222,15 @@ operation's context, so a cancelled request or `Close` ends a read that waits on
 may be called concurrently and must return independent views. A plain `io.ReaderAt` cannot be interrupted
 mid-call; the reader checks the context between pages.
 
-`OpenDataset` closes every file it opened when it fails; on success `Dataset.Close` closes them, after the
-reads in progress end.
+`OpenDataset` opens and closes only the manifest. `Dataset.Close` closes every part file the dataset opened,
+after the reads in progress end.
 
 ## Cost model
 
-Opening reads the manifest and every part's footer: a few reads per part, whatever its size. A read is
-routed to a part by its manifest bounds, and within the part by a binary search over its row groups' first
+Opening reads the manifest: one read, whatever the number of parts. A read is routed to a part by its
+manifest bounds; the first read to touch a part opens it and reads its footer (a few reads, counted in
+`ReadStats.PartsOpened` and `SourceReads`), so a cold query costs the manifest plus one footer per part it
+touches, independent of the part count. Within the part, a read is routed by a binary search over its row groups' first
 keys; the first time a row group is needed, its key page index is loaded and its first key page decoded, and
 both are kept (`Limits.IndexMemory` accounts for key-page entries, their bound bytes,
 and decoded row-group first-key bytes). This budget does not include allocator overhead,

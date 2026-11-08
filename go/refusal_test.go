@@ -156,11 +156,10 @@ func TestOpenRefusals(t *testing.T) {
 	open(t, write(t, twoParts()), Options{})
 }
 
-// TestVerifyOnOpen produces faults in the first and last key pages and the
-// key page index, which only VerifyOnOpen checks on open (CHECK-3): opened
-// without it the dataset opens, and a full read refuses it with the same
-// code.
-func TestVerifyOnOpen(t *testing.T) {
+// TestVerify produces faults in the first and last key pages and the key
+// page index, which Verify checks without a read (CHECK-3): the dataset
+// opens, and Verify or a full read refuses it with the same code.
+func TestVerify(t *testing.T) {
 	cases := []struct {
 		name    string
 		code    Code
@@ -185,8 +184,8 @@ func TestVerifyOnOpen(t *testing.T) {
 			if c.mutate != nil {
 				c.mutate(t, dir)
 			}
-			if err := openErr(dir, Options{VerifyOnOpen: true}); CodeOf(err) != c.code {
-				t.Fatalf("VerifyOnOpen: %v, want %s", err, c.code)
+			if err := verifyErr(dir, Options{}); CodeOf(err) != c.code {
+				t.Fatalf("Verify: %v, want %s", err, c.code)
 			}
 			d := open(t, dir, Options{})
 			if _, err := d.Range(ctx, Range{Limit: 100}); CodeOf(err) != c.code {
@@ -375,9 +374,9 @@ func (s *countingSource) Open(c context.Context, path string) (SourceFile, error
 	return countedFile{f, s}, nil
 }
 
-// TestFailedOpenClosesParts requires every file a failed open opened, the
-// manifest included, to be closed, whichever check failed; and a closed
-// dataset to close them all once.
+// TestFailedOpenClosesParts requires a part that fails its check to be
+// closed at once, whichever check failed; open to close the manifest and
+// open nothing else; and a closed dataset to close every file once.
 func TestFailedOpenClosesParts(t *testing.T) {
 	for name, mutate := range map[string]func(dir string){
 		"bounds": func(dir string) {
@@ -393,9 +392,21 @@ func TestFailedOpenClosesParts(t *testing.T) {
 			dir := write(t, twoParts())
 			mutate(dir)
 			src := &countingSource{Source: dirOf(t, dir)}
-			if _, err := OpenDataset(ctx, src, Options{VerifyOnOpen: true}); err == nil {
-				t.Fatal("opened")
+			d, err := OpenDataset(ctx, src, Options{})
+			must(t, err)
+			if err := d.Verify(ctx); err == nil {
+				t.Fatal("verified")
 			}
+			// Part 0 stays open; part 1 is closed when its check refuses it,
+			// and kept open when only its key pages are refused (bounds).
+			stillOpen := int64(1)
+			if name == "bounds" {
+				stillOpen = 2
+			}
+			if src.opened.Load() != src.closed.Load()+stillOpen {
+				t.Fatalf("after Verify: opened %d, closed %d", src.opened.Load(), src.closed.Load())
+			}
+			must(t, d.Close())
 			if src.opened.Load() == 0 || src.opened.Load() != src.closed.Load() {
 				t.Fatalf("opened %d, closed %d", src.opened.Load(), src.closed.Load())
 			}
@@ -404,8 +415,12 @@ func TestFailedOpenClosesParts(t *testing.T) {
 	src := &countingSource{Source: dirOf(t, write(t, twoParts()))}
 	d, err := OpenDataset(ctx, src, Options{})
 	must(t, err)
-	if src.opened.Load() != 3 || src.closed.Load() != 1 {
+	if src.opened.Load() != 1 || src.closed.Load() != 1 {
 		t.Fatalf("after open: opened %d, closed %d (the manifest only)", src.opened.Load(), src.closed.Load())
+	}
+	must(t, d.Verify(ctx))
+	if src.opened.Load() != 3 || src.closed.Load() != 1 {
+		t.Fatalf("after Verify: opened %d, closed %d", src.opened.Load(), src.closed.Load())
 	}
 	must(t, d.Close())
 	must(t, d.Close())

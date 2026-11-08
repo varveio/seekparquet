@@ -17,7 +17,7 @@ import (
 type keyPages struct {
 	r     *reader
 	part  *part
-	g     int // the row group's position in the dataset
+	g     groupRef // the row group's position in the dataset
 	index *groupIndex
 	chunk *chunk
 	// values are the keys of page at, next the position in them.
@@ -29,9 +29,12 @@ type keyPages struct {
 
 // keyPages opens a walker on row group g, loading the group's key page
 // index (RG-2 to RG-4) first.
-func (r *reader) keyPages(ctx context.Context, g int, log *pageLog, st *ReadStats) (*keyPages, error) {
-	grp := r.groups[g]
-	p := r.parts[grp.part]
+func (r *reader) keyPages(ctx context.Context, g groupRef, log *pageLog, st *ReadStats) (*keyPages, error) {
+	p, err := r.part(ctx, g.part, st)
+	if err != nil {
+		return nil, err
+	}
+	grp := p.groups[g.index]
 	index, err := p.keyIndex(ctx, grp.physical, st)
 	if err != nil {
 		return nil, err
@@ -155,12 +158,12 @@ func (k *keyPages) checkPartBounds(i int, first, last []byte) error {
 		return refusePart(CodeBoundsMismatch, p.name, k.chunk.physical, "key page %d: %s", i, what)
 	}
 	if p.minKey != nil {
-		if cmp := bytes.Compare(first, p.minKey); cmp < 0 || cmp != 0 && i == 0 && k.g == p.firstGroup {
+		if cmp := bytes.Compare(first, p.minKey); cmp < 0 || cmp != 0 && i == 0 && k.g.index == 0 {
 			return bad("the part's first key differs from its minimum key")
 		}
 	}
 	if p.maxKey != nil {
-		if cmp := bytes.Compare(last, p.maxKey); cmp > 0 || cmp != 0 && i == len(k.index.pages)-1 && k.g == p.endGroup-1 {
+		if cmp := bytes.Compare(last, p.maxKey); cmp > 0 || cmp != 0 && i == len(k.index.pages)-1 && k.g.index == len(p.groups)-1 {
 			return bad("the part's last key differs from its maximum key")
 		}
 	}

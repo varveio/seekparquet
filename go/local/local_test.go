@@ -36,18 +36,21 @@ func must(t testing.TB, err error) {
 	}
 }
 
-// checkDataset opens dir with the module's reader, checking every row
-// group's first key page and each part's last on open, reads every row
+// checkDataset opens dir with the module's reader and verifies it (every
+// part, every row group's first key page and each part's last), reads every row
 // with every column, and compares keys and values with the rows written;
 // it validates the dataset at the full and digest levels (ValidateDir);
 // it checks the parts' names, digests and that no temporary file is left.
 func checkDataset(t *testing.T, dir string, s samples.Sample) seekparquet.Metadata {
 	t.Helper()
-	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.Options{VerifyOnOpen: true})
+	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.Options{})
 	if err != nil {
 		t.Fatalf("%s: open: %v", s.Name, err)
 	}
 	defer d.Close()
+	if err := d.Verify(context.Background()); err != nil {
+		t.Fatalf("%s: verify: %v", s.Name, err)
+	}
 	meta := d.Metadata()
 	var columns []string
 	for _, f := range s.Schema.Fields() {
@@ -345,7 +348,7 @@ func TestCommitFaults(t *testing.T) {
 				t.Errorf("%s: commit after the failure: %v, %v", step, ok, err)
 			}
 		}
-		if _, err := seekparquet.OpenDir(context.Background(), root.Name(), seekparquet.Options{VerifyOnOpen: true}); err != nil {
+		if err := verifyDir(root.Name()); err != nil {
 			t.Errorf("%s: the committed dataset does not open: %v", step, err)
 		}
 	}
@@ -484,9 +487,20 @@ func TestWriteDirCrashPoints(t *testing.T) {
 		case i < commit && !errors.Is(statErr, fs.ErrNotExist):
 			t.Errorf("step %d (%v): the unpublished dataset was left: %v", i, e, statErr)
 		case i > commit:
-			if _, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.Options{VerifyOnOpen: true}); err != nil {
+			if err := verifyDir(dir); err != nil {
 				t.Errorf("step %d (%v): the committed dataset is gone: %v", i, e, err)
 			}
 		}
 	}
+}
+
+// verifyDir opens the dataset at dir, verifies every part and its first
+// and last key pages (Dataset.Verify), and closes it.
+func verifyDir(dir string) error {
+	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.Options{})
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Verify(context.Background())
 }

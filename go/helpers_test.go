@@ -58,14 +58,35 @@ func dirOf(t testing.TB, dir string) Source {
 	return dirSource{root}
 }
 
-// openErr opens the dataset at dir and returns the error, closing a dataset
-// that opened.
+// openErr opens the dataset at dir, checks every part as the first read
+// to touch it would (CHECK-1), and returns the first error, closing the
+// dataset.
 func openErr(dir string, opt Options) error {
 	d, err := OpenDir(ctx, dir, opt)
-	if err == nil {
-		_ = d.Close()
+	if err != nil {
+		return err
 	}
-	return err
+	defer d.Close()
+	return d.r.checkParts(ctx, new(ReadStats))
+}
+
+// verifyErr opens the dataset at dir, verifies it (Dataset.Verify) and
+// returns the first error, closing the dataset.
+func verifyErr(dir string, opt Options) error {
+	d, err := OpenDir(ctx, dir, opt)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Verify(ctx)
+}
+
+// verified opens the dataset at dir and verifies it.
+func verified(t testing.TB, dir string, opt Options) *Dataset {
+	t.Helper()
+	d := open(t, dir, opt)
+	must(t, d.Verify(ctx))
+	return d
 }
 
 // openPartsOf opens the n parts of dir directly, without their manifest,
@@ -83,7 +104,7 @@ func openPartsOf(t testing.TB, dir string, n int, key Key, bounded bool, opt Opt
 		must(t, err)
 		in := partInput{name: testutil.PartPath(i), file: bytes.NewReader(raw), size: int64(len(raw))}
 		if bounded {
-			in.minKey, in.maxKey = bounds[i].MinKey, bounds[i].MaxKey
+			in.minKey, in.maxKey, in.rows = bounds[i].MinKey, bounds[i].MaxKey, bounds[i].Rows
 		}
 		inputs = append(inputs, in)
 	}

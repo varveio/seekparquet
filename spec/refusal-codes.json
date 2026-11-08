@@ -1,5 +1,5 @@
 {
-  "description": "Stable refusal codes for SeekParquet format 1, draft revision 1. 'detect' is the latest point at which a reader must detect the fault: 'open' on opening the dataset, 'read' no later than decoding the affected data, 'validate' only by validation at the stated level. A reader may always detect a fault earlier.",
+  "description": "Stable refusal codes for SeekParquet format 1, draft revision 1. 'detect' is the latest point at which a reader must detect the fault: 'open' on opening the dataset (the manifest), 'touch' no later than the first read that routes to the affected part, or an explicit verification of every part, 'read' no later than decoding the affected data, 'validate' only by validation at the stated level. A reader may always detect a fault earlier.",
   "draft_revision": 1,
   "codes": [
     {
@@ -45,7 +45,7 @@
         "LAYOUT-1",
         "CHECK-1"
       ],
-      "detect": "open"
+      "detect": "touch"
     },
     {
       "code": "part_mismatch",
@@ -53,7 +53,7 @@
       "requirements": [
         "CHECK-1"
       ],
-      "detect": "open"
+      "detect": "touch"
     },
     {
       "code": "invalid_footer",
@@ -62,7 +62,7 @@
         "CHECK-1",
         "FILE-1"
       ],
-      "detect": "open"
+      "detect": "touch"
     },
     {
       "code": "stamp_mismatch",
@@ -71,7 +71,7 @@
         "STAMP-1",
         "STAMP-2"
       ],
-      "detect": "open"
+      "detect": "touch"
     },
     {
       "code": "invalid_key_column",
@@ -80,7 +80,7 @@
         "KEY-1",
         "KEY-5"
       ],
-      "detect": "open"
+      "detect": "touch"
     },
     {
       "code": "inconsistent_column",
@@ -88,7 +88,7 @@
       "requirements": [
         "COL-5"
       ],
-      "detect": "read",
+      "detect": "touch",
       "notes": "Must be detected no later than the first request that projects the column; should be detected on open for all columns; structural validation checks all columns."
     },
     {
@@ -97,7 +97,7 @@
       "requirements": [
         "RG-1"
       ],
-      "detect": "open"
+      "detect": "touch"
     },
     {
       "code": "missing_page_index",

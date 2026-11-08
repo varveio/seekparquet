@@ -704,13 +704,16 @@ def failed_level(codes):
 
 def refusal_groups(lock):
     faults = load_faults()
-    g_open = Group("refusals-open", "reader", "Faults a reader must detect when opening the dataset "
-                                              "(reader_detect open in generators/faults.json).")
+    g_open = Group("refusals-open", "reader", "Faults in the manifest, which a reader must detect when opening the "
+                                              "dataset (reader_detect open in generators/faults.json), and faults in a "
+                                              "part, which it must detect no later than the first read that routes to "
+                                              "the part, or on verify (reader_detect touch). Each touch request is an "
+                                              "unbounded range whose limit covers every row, so it routes to every part.")
     g_read = Group("refusals-read", "reader", "Faults a reader must detect no later than decoding the faulty "
                                               "data. Each request is an unbounded range whose limit covers every "
                                               "row (projecting the faulty column where the fault is in values), so "
                                               "it decodes the faulty page under any correct access path.")
-    g_open.fam("fault", "one case per fault that a reader must refuse on open")
+    g_open.fam("fault", "one case per fault that a reader must refuse on open, or when a read first touches its part")
     g_read.fam("fault", "one case per fault that a reader must refuse no later than the read that decodes it")
     gv = {lvl: Group(f"validate-{lvl}", f"validator-{lvl}",
                      f"Validation at the {lvl} level (section 8). validate always answers status ok with levels; "
@@ -750,6 +753,8 @@ def refusal_groups(lock):
         meta = {"fault_id": fid}
         if f["reader_detect"] == "open":
             g_open.add(fid, f["requirements"], ddir, exp, request={"op": "open"}, detect="open", desc=desc, meta=meta)
+        elif f["reader_detect"] == "touch":
+            g_open.add(fid, f["requirements"], ddir, exp, request=rq_range(limit=BIG), detect="touch", desc=desc, meta=meta)
         elif f["reader_detect"] == "read":
             req = rq_range(limit=BIG, columns=f.get("read_columns"))
             g_read.add(fid, f["requirements"], ddir, exp, request=req, detect="read", desc=desc, meta=meta)

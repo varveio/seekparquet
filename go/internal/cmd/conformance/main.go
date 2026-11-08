@@ -103,7 +103,7 @@ func (a *adapter) dispatch(ctx context.Context, req map[string]json.RawMessage) 
 			"version":        version,
 			"supports":       supports(),
 			"targets":        []string{"reader", "validator-structural", "validator-profile", "validator-full", "validator-digest"},
-			"capabilities": []string{"open", "range", "list", "projection",
+			"capabilities": []string{"open", "range", "list", "projection", "verify",
 				"validate:structural", "validate:profile", "validate:full", "validate:digest"},
 		}
 	case "open":
@@ -116,6 +116,19 @@ func (a *adapter) dispatch(ctx context.Context, req map[string]json.RawMessage) 
 			delete(a.open, path)
 		}
 		if _, err := a.dataset(ctx, path); err != nil {
+			return failure(err)
+		}
+		return response{"status": "ok"}
+	case "verify":
+		path, err := datasetPath(req)
+		if err != nil {
+			return invalid(err)
+		}
+		d, err := a.dataset(ctx, path)
+		if err == nil {
+			err = d.Verify(ctx)
+		}
+		if err != nil {
 			return failure(err)
 		}
 		return response{"status": "ok"}

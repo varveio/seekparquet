@@ -69,7 +69,7 @@ itself, as swath does.
 
 ## Checking the output
 
-Open the dataset with `seekparquet.OpenDir` and `Options.VerifyOnOpen` for the open-time checks, and
+Open the dataset with `seekparquet.OpenDir` and call `Dataset.Verify` to check every part now, and
 validate it in full with `seekparquet.ValidateDir` (§8); the module's own tests do both for every dataset
 they write. The conformance job validates the module's sample datasets at the
 `full` and `digest` levels with the reference adapter and with the Python validator oracle

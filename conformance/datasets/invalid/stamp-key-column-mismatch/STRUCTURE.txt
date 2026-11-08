@@ -5,7 +5,7 @@ description: The key_column stamp is other, not key.
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/basic.json
-fault (generators/faults.json): stamp-key-column-mismatch: stamp_mismatch; reader detects on open; lowest validation level structural (STAMP-1, STAMP-2); location: manifest or key column footer/data, as described by the fixture
+fault (generators/faults.json): stamp-key-column-mismatch: stamp_mismatch; reader detects on touch; lowest validation level structural (STAMP-1, STAMP-2); location: manifest or key column footer/data, as described by the fixture
 
 manifest: format_version 0, 1 parts
   part 0: 'data/part-00000.parquet', rows 12, bytes 2830, keys 'a/1.txt' .. 'foxtrot'

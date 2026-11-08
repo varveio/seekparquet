@@ -114,9 +114,10 @@ func decodeBounded(raw []byte, v any, budget int64) (int, error) {
 // reported as invalid_footer rather than crashing the program.
 //
 // A fault in the data is a *RefusalError; an encrypted part an
-// *UnsupportedError; a limit or storage failure an error.
-func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits) (_ *parquet.File, err error) {
-	at := storageReader{r: bind(ctx, file)}
+// *UnsupportedError; a limit or storage failure an error. Its reads are
+// counted in st, which may be nil.
+func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits, st *ReadStats) (_ *parquet.File, err error) {
+	at := storageReader{r: bind(ctx, file), st: st}
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidFooter, name, -1, format, args...)
 	}

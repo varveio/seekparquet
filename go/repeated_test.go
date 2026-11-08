@@ -130,7 +130,10 @@ func TestRepeatedQueriesMatchSequentialOracle(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				doc := parts(geometry, keyParts...)
 				doc.RepeatedKeys = true
-				d := open(t, write(t, doc), Options{VerifyOnOpen: verify})
+				d := open(t, write(t, doc), Options{})
+				if verify {
+					must(t, d.Verify(ctx))
+				}
 				for _, start := range starts {
 					for _, exclusive := range []bool{false, true} {
 						for _, end := range [][]byte{nil, []byte("b"), []byte("d")} {
@@ -279,8 +282,8 @@ func TestNamedRepeatedKeyAndLookup(t *testing.T) {
 		ID    []byte `parquet:"object.id"`
 		Value int64  `parquet:"value"`
 	}
-	d := open(t, write(t, testutil.Dataset{KeyColumn: "object.id", RepeatedKeys: true,
-		Parts: []testutil.Part{{Rows: []namedRow{{[]byte("a"), 9}, {[]byte("a"), 8}, {[]byte("a\x00"), 7}}, GroupRows: 1}}}), Options{VerifyOnOpen: true})
+	d := verified(t, write(t, testutil.Dataset{KeyColumn: "object.id", RepeatedKeys: true,
+		Parts: []testutil.Part{{Rows: []namedRow{{[]byte("a"), 9}, {[]byte("a"), 8}, {[]byte("a\x00"), 7}}, GroupRows: 1}}}), Options{})
 	if got := d.Metadata().Key; got != (Key{Column: "object.id", Unique: false}) {
 		t.Fatal(got)
 	}
@@ -301,8 +304,8 @@ func TestNamedKeyAlongsideOrdinaryKeyColumn(t *testing.T) {
 		Payload string `parquet:"key"`
 		ID      []byte `parquet:"object.id"`
 	}
-	d := open(t, write(t, testutil.Dataset{KeyColumn: "object.id", RepeatedKeys: true,
-		Parts: []testutil.Part{{Rows: []record{{"z", []byte("a")}, {"y", []byte("a")}, {"x", []byte("b")}}, GroupRows: 1}}}), Options{VerifyOnOpen: true})
+	d := verified(t, write(t, testutil.Dataset{KeyColumn: "object.id", RepeatedKeys: true,
+		Parts: []testutil.Part{{Rows: []record{{"z", []byte("a")}, {"y", []byte("a")}, {"x", []byte("b")}}, GroupRows: 1}}}), Options{})
 	rows, err := d.Range(ctx, KeyRange([]byte("a"), 10, "key", "object.id"))
 	if err != nil {
 		t.Fatal(err)
@@ -385,8 +388,10 @@ func TestRepeatedRefusals(t *testing.T) {
 		if _, err := r.readRange(ctx, Range{Limit: 10}, nil); CodeOf(err) != CodeKeyOrder {
 			t.Fatalf("range: got %v, want key_order", err)
 		}
-		if _, err := openPartsOf(t, split, 2, Key{Column: "key"}, false, Options{VerifyOnOpen: true}); CodeOf(err) != CodeKeyOrder {
-			t.Fatalf("verified open: got %v, want key_order", err)
+		r, err = openPartsOf(t, split, 2, Key{Column: "key"}, false, Options{})
+		must(t, err)
+		if err := r.verify(ctx); CodeOf(err) != CodeKeyOrder {
+			t.Fatalf("verify: got %v, want key_order", err)
 		}
 	})
 }

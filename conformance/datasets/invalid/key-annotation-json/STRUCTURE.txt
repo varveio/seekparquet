@@ -5,7 +5,7 @@ description: The key column is annotated JSON.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-fault (generators/faults.json): key-annotation-json: invalid_key_column; reader detects on open; lowest validation level structural (KEY-1, CHECK-1); location: data/part-00000.parquet: footer
+fault (generators/faults.json): key-annotation-json: invalid_key_column; reader detects on touch; lowest validation level structural (KEY-1, CHECK-1); location: data/part-00000.parquet: footer
 changes:
   - data/part-00000.parquet: footer: schema element key: converted_type JSON and logicalType JSON added
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2828 -> 2834

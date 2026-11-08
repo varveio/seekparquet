@@ -40,8 +40,8 @@ type KeyPage struct {
 }
 
 // InspectFooter reads one part file of size bytes through r and returns
-// its footer, checked as opening a dataset checks a part's footer
-// (CHECK-1), but against the part's own stamps instead of a manifest:
+// its footer, checked as a read checks a part's footer the first time it
+// touches the part (CHECK-1), but against the part's own stamps instead of a manifest:
 // readable within the default Limits, self-contained and unencrypted
 // (FILE-1, FILE-2), the five stamps each present once in canonical form
 // (STAMP-2) naming a version this package reads (VER-1), the stamped key
@@ -76,7 +76,7 @@ func InspectKeyPages(r io.ReaderAt, size int64, keyColumn string) ([]KeyPage, er
 	}
 	var pages []KeyPage
 	p := rd.parts[0]
-	for _, g := range rd.groups {
+	for _, g := range p.groups {
 		index, err := p.keyIndex(context.Background(), g.physical, new(ReadStats))
 		if err != nil {
 			return nil, err
@@ -97,7 +97,7 @@ type readerOnly struct{ io.ReaderAt }
 func inspect(r io.ReaderAt, size int64) (*reader, Footer, error) {
 	ctx := context.Background()
 	lim := Limits{}.withDefaults()
-	footer, err := readFooter(ctx, "", r, size, &lim)
+	footer, err := readFooter(ctx, "", r, size, &lim, nil)
 	if err != nil {
 		return nil, Footer{}, err
 	}

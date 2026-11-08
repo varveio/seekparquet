@@ -5,7 +5,7 @@ description: The footer length field exceeds the file size.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-fault (generators/faults.json): invalid-footer-length: invalid_footer; reader detects on open; lowest validation level structural (CHECK-1); location: data/part-00000.parquet: footer length field -> file size + 10; size unchanged; data pages untouched
+fault (generators/faults.json): invalid-footer-length: invalid_footer; reader detects on touch; lowest validation level structural (CHECK-1); location: data/part-00000.parquet: footer length field -> file size + 10; size unchanged; data pages untouched
 changes:
   - data/part-00000.parquet: footer length field -> file size + 10; size unchanged; data pages untouched
 

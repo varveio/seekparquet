@@ -44,7 +44,7 @@
         "requirements": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[A-Z]+-[0-9]+$"}},
         "requires": {"type": "array", "items": {"type": "string"}},
         "dataset": {"type": "string", "description": "Path of the dataset root, relative to the conformance directory."},
-        "detect": {"enum": ["open", "read", "validate:structural", "validate:profile", "validate:full", "validate:digest"]},
+        "detect": {"enum": ["open", "touch", "read", "validate:structural", "validate:profile", "validate:full", "validate:digest"]},
         "request": {"$ref": "#/$defs/request"},
         "raw_request": {"type": "object", "description": "Sent as is (plus id and dataset), for invalid_request cases."},
         "expect": {"$ref": "#/$defs/expect"}

@@ -240,27 +240,29 @@ func (s *readCounter) Open(c context.Context, path string) (SourceFile, error) {
 	return countedReads{f, &s.reads}, nil
 }
 
-// TestOpenReads counts the reads of opening: by default the manifest and
-// each part's footer only, a constant per part whatever its row groups;
-// with VerifyOnOpen also every row group's key page index and first page.
-// Both read the same rows afterwards.
+// TestOpenReads counts the reads of opening: the manifest only, whatever
+// the parts; Verify then reads each part's footer and every row group's
+// key page index and first page. Both read the same rows afterwards.
 func TestOpenReads(t *testing.T) {
 	keys := fixtureKeys(2000)
 	dir := write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 512}, split(keys, 4)...))
 	reads := func(verify bool) (int64, *Dataset) {
 		src := &readCounter{Source: dirOf(t, dir)}
-		d, err := OpenDataset(ctx, src, Options{VerifyOnOpen: verify})
+		d, err := OpenDataset(ctx, src, Options{})
 		must(t, err)
 		t.Cleanup(func() { _ = d.Close() })
+		if verify {
+			must(t, d.Verify(ctx))
+		}
 		return src.reads.Load(), d
 	}
 	lazy, d1 := reads(false)
 	eager, d2 := reads(true)
-	if lazy > 1+4*4 {
-		t.Fatalf("a lazy open of 4 parts made %d reads", lazy)
+	if lazy != 1 {
+		t.Fatalf("a lazy open of 4 parts made %d reads, want the manifest's one", lazy)
 	}
-	if eager < lazy+20*3 {
-		t.Fatalf("VerifyOnOpen made %d reads, the lazy open %d: it did not read every row group", eager, lazy)
+	if eager < lazy+4*3+20*3 {
+		t.Fatalf("Verify made %d reads, the open %d: it did not read every footer and row group", eager, lazy)
 	}
 	r1, err1 := d1.Range(ctx, Range{Start: []byte(keys[1234]), Limit: 50})
 	r2, err2 := d2.Range(ctx, Range{Start: []byte(keys[1234]), Limit: 50})
