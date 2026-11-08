@@ -3,10 +3,10 @@ module github.com/varveio/seekparquet/go
 go 1.26.0
 
 require (
-	github.com/andybalholm/brotli v1.1.1
-	github.com/klauspost/compress v1.17.9
+	github.com/andybalholm/brotli v1.2.8
+	github.com/klauspost/compress v1.20.3
 	github.com/parquet-go/parquet-go v0.32.0
-	github.com/pierrec/lz4/v4 v4.1.21
+	github.com/pierrec/lz4/v4 v4.1.33
 )
 
 require (
