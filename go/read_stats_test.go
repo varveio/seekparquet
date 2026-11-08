@@ -18,8 +18,9 @@ import (
 )
 
 // statsFixture writes keys as one part of 100-row row groups, and opens it
-// through a counting Source (the open is not counted). The group index is
-// checked against the geometry the expected counts are derived from.
+// through a counting Source, with its part checked (neither is counted).
+// The group index is checked against the geometry the expected counts are
+// derived from.
 func statsFixture(t *testing.T, keys []string, pageRows int) (*Dataset, *accessSource) {
 	t.Helper()
 	src := &accessSource{Source: dirOf(t, write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 200}, keys)))}
@@ -27,8 +28,10 @@ func statsFixture(t *testing.T, keys []string, pageRows int) (*Dataset, *accessS
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	probe := new(ReadStats)
-	for g := range d.r.groups {
-		index, err := d.r.parts[0].keyIndex(ctx, d.r.groups[g].physical, probe)
+	must(t, d.r.checkParts(ctx, probe))
+	for _, grp := range d.r.parts[0].groups {
+		g := grp.physical
+		index, err := d.r.parts[0].keyIndex(ctx, grp.physical, probe)
 		must(t, err)
 		for i, page := range index.pages {
 			if page.first != int64(i*pageRows) {
@@ -40,6 +43,7 @@ func statsFixture(t *testing.T, keys []string, pageRows int) (*Dataset, *accessS
 	d, err = OpenDataset(ctx, src, Options{})
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
+	must(t, d.r.checkParts(ctx, probe))
 	src.reset()
 	return d, src
 }
@@ -324,6 +328,7 @@ func TestReadStatsFailedDecodeNotCounted(t *testing.T) {
 func TestReadStatsIndexRefused(t *testing.T) {
 	dir := write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 200}, dirKeys(map[string]int{"k": 100}, "k")))
 	d := open(t, dir, Options{Limits: Limits{IndexMemory: 1}})
+	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	var st ReadStats
 	_, err := d.Range(ctx, Range{Limit: 5, Stats: &st})
 	if !errors.Is(err, ErrLimitExceeded) {

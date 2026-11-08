@@ -126,7 +126,7 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
   `bounds_mismatch` (§8). A group of equal keys MUST NOT be split across parts; its overlapping
   manifest bounds are `invalid_manifest`.
 - [PART-5] When `sha256` is present it MUST match the file's bytes. Checking it reads the whole file, so a
-  reader MUST NOT be required to check it on open; validation at the `digest` level does (§8).
+  reader MUST NOT be required to check it on open or when it first touches the part; validation at the `digest` level does (§8).
 
 ### 3.4 Extensions
 
@@ -159,7 +159,7 @@ ordinary columns whose meaning the producer documents; the format assigns them n
 Each part is a Parquet file that any conforming Parquet reader can read.
 
 - [FILE-1] Every part is self-contained: its column data, dictionaries and indexes are in the part itself.
-  No column chunk may set `file_path`. A reader MUST check this on open, before following any reference
+  No column chunk may set `file_path`. A reader MUST check this when it first touches the part (CHECK-1), before following any reference
   (`invalid_footer`).
 - [FILE-2] Parquet modular encryption is outside this draft. A reader MAY report an encrypted part as
   unsupported (`unsupported_encryption`).
@@ -239,8 +239,10 @@ and are ignored.
   MUST still read a value column that lacks one.
 - [COL-5] A column that appears in several parts has the same physical type (including `type_length` for
   `FIXED_LEN_BYTE_ARRAY`), repetition and nesting in each.
-  A reader MUST check this for a column no later than the first request that projects it, and SHOULD check
-  it for all columns on open (`inconsistent_column`). Structural validation checks it for all columns.
+  A reader checks this incrementally (`inconsistent_column`): when it first touches a part (CHECK-1), it
+  MUST check each of the part's columns against the same column in every part it has already checked, so a
+  read that touches two parts never combines inconsistent columns. Parts a reader has not touched are not
+  compared. Structural validation checks every part, and so every column.
 - [COL-7] Projecting a column that no part has is not an error: the column is absent in every row.
 - [COL-6] Column names are matched exactly against top-level field names; a `.` in a name is a literal
   character, not a path separator.
@@ -369,12 +371,17 @@ keys**. Each candidate row yields one entry:
 
 A reader checks what it reads. It does not certify data it skips.
 
-- [CHECK-1] **On open**, a reader MUST check the manifest (§3); that every part file exists and has the
-  manifest's exact size; that every part's footer is readable and self-contained (FILE-1), and that its
-  row groups' row counts sum to the footer's own row count (`invalid_footer` otherwise), which equals the
-  manifest's `rows` (`part_mismatch` otherwise); that its stamps agree (§5.4); that its `key` column meets
-  KEY-1 and KEY-5; COL-5 as required there; and RG-1 for every non-empty row group. A failure refuses the
-  dataset.
+- [CHECK-1] **On open**, a reader MUST check the manifest (§3). The manifest carries each part's exact key
+  bounds, row count and size, which is all a reader needs to route a query, so opening needs no part file.
+  **When a read first routes to a part**, or the reader verifies every part (CHECK-3), and before using any
+  of the part's data, a reader MUST check that the part file exists and has the manifest's exact size; that
+  its footer is readable and self-contained (FILE-1), and that its row groups' row counts sum to the footer's
+  own row count (`invalid_footer` otherwise), which equals the manifest's `rows` (`part_mismatch`
+  otherwise); that its stamps agree (§5.4); that its `key` column meets KEY-1 and KEY-5; COL-5 against the
+  parts already checked; and RG-1 for every non-empty row group. A failure of the manifest refuses the
+  dataset. A failure of a part ends the request that touched it with its code; the reader keeps the outcome
+  for as long as the dataset is open, so every later request that touches the part is refused with the same
+  code. A reader MAY check every part on open instead.
 - [CHECK-2] **On read**, for every row group a reader reads, whether or not it uses the page index, it MUST
   first check RG-2 to RG-4 (the parts of RG-3 that need page headers, as it reaches each page). For every key
   page it decodes, it MUST check that the page holds exactly the rows its OffsetIndex entry gives it, that
@@ -383,9 +390,10 @@ A reader checks what it reads. It does not certify data it skips.
   dataset order of every other page it has decoded in the same request, whatever order it decoded them in. A
   page read again, or served from a cache of already checked pages, needs no new check. A failure is
   reported with its code and ends the request; the reader MAY also mark the dataset unusable.
-- [CHECK-3] A reader MAY check more on open, for example by decoding the first key of every row group, or
-  each part's first and last key against the manifest. It MUST NOT be required to read every row to open a
-  dataset.
+- [CHECK-3] A reader MAY offer an explicit verification that checks every part now (the part checks of
+  CHECK-1), and MAY check more, for example by decoding the first key of every row group, or each part's
+  first and last key against the manifest. Neither opening nor verification may be required to read every
+  row.
 - [CHECK-4] A successful query does not certify rows the reader did not decode. Full certification is
   validation (§8).
 - [CHECK-5] Corruption in the Parquet data itself (a page that does not decompress or decode, a malformed
@@ -400,7 +408,7 @@ visits: it enumerates pages and rows independently of the seek path.
 
 | Level | Requires | Checks |
 |---|---|---|
-| `structural` | – | CHECK-1, plus RG-2 to RG-4 for every non-empty row group, reading page headers but not page data |
+| `structural` | – | CHECK-1 for the manifest and every part, plus RG-2 to RG-4 for every non-empty row group, reading page headers but not page data |
 | `profile` | `structural` | every page of every `key` column chunk, enumerated from the page headers and compared with the OffsetIndex (offsets, sizes, row positions, count: RG-3); every key (KEY-2, KEY-3, KEY-6), checking non-decreasing order over every row (strictly ascending in unique mode); RG-5 for every page; and each part's exact first and last key and row count against the manifest (PART-3, PART-4) |
 | `full` | `profile` | every stored column decoded in full: every page decompresses and decodes, and every column holds exactly the row group's row count |
 | `digest` | – | `sha256` of every part that declares one (PART-5); independent of the other levels |

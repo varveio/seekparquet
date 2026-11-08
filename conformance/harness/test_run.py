@@ -218,7 +218,7 @@ ORACLE_ADAPTER = textwrap.dedent(r'''
         if req["op"] == "validate":
             return {"status": "ok", "levels": validate(d, req["level"])}
         f = faults.get(d)
-        if f and (f["reader_detect"] == "open" or req["op"] != "open" and f["reader_detect"] == "read"):
+        if f and (f["reader_detect"] == "open" or req["op"] != "open" and f["reader_detect"] in ("touch", "read")):
             return {"status": "refused", "code": f["codes"][0]}
         if req["op"] == "open":
             return {"status": "ok"}

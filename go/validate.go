@@ -18,7 +18,8 @@ type Level string
 // The validation levels. Structural, profile and full each require the
 // level before them; digest stands alone (VAL-1).
 const (
-	// LevelStructural checks what opening checks (CHECK-1), and RG-2 to
+	// LevelStructural checks the manifest and every part, as the first
+	// read to touch each part does (CHECK-1), and RG-2 to
 	// RG-4 for every non-empty row group: the key column's ColumnIndex and
 	// OffsetIndex, and the page header each OffsetIndex entry locates,
 	// reading page headers but not page data.

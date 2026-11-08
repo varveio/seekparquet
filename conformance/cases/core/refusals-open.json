@@ -2,7 +2,7 @@
   "group": "refusals-open",
   "target": "reader",
   "generated": false,
-  "description": "Faults a reader must detect when opening the dataset (reader_detect open in generators/faults.json). Core examples: hand-reviewed; their expectations are authoritative.",
+  "description": "Faults in the manifest, which a reader must detect when opening the dataset (reader_detect open in generators/faults.json), and faults in a part, which it must detect no later than the first read that routes to the part, or on verify (reader_detect touch). Core examples: hand-reviewed; their expectations are authoritative.",
   "cases": [
     {
       "id": "refusals-open/no-manifest",
@@ -316,16 +316,17 @@
     },
     {
       "id": "refusals-open/missing-part",
-      "description": "The manifest lists a second part that does not exist. open must refuse with missing_part.",
+      "description": "The manifest lists a second part that does not exist. The first read that routes to the part, a range over every row, must refuse with missing_part.",
       "fault_id": "missing-part",
       "requirements": [
         "LAYOUT-1",
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/missing-part",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -334,15 +335,16 @@
     },
     {
       "id": "refusals-open/part-size-larger",
-      "description": "The manifest's bytes is one more than the file's size. open must refuse with part_mismatch.",
+      "description": "The manifest's bytes is one more than the file's size. The first read that routes to the part, a range over every row, must refuse with part_mismatch.",
       "fault_id": "part-size-larger",
       "requirements": [
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/part-size-larger",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -351,15 +353,16 @@
     },
     {
       "id": "refusals-open/part-rows-mismatch",
-      "description": "The manifest's rows is 13; the part holds 12. open must refuse with part_mismatch.",
+      "description": "The manifest's rows is 13; the part holds 12. The first read that routes to the part, a range over every row, must refuse with part_mismatch.",
       "fault_id": "part-rows-mismatch",
       "requirements": [
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/part-rows-mismatch",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -386,15 +389,16 @@
     },
     {
       "id": "refusals-open/invalid-footer-magic",
-      "description": "The part's trailing magic is PAR0 instead of PAR1. open must refuse with invalid_footer.",
+      "description": "The part's trailing magic is PAR0 instead of PAR1. The first read that routes to the part, a range over every row, must refuse with invalid_footer.",
       "fault_id": "invalid-footer-magic",
       "requirements": [
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/invalid-footer-magic",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -403,15 +407,16 @@
     },
     {
       "id": "refusals-open/invalid-footer-row-count",
-      "description": "FileMetaData.num_rows is 13 while its row groups hold 12 rows; the manifest says 13, matching the footer's num_rows. open must refuse with invalid_footer.",
+      "description": "FileMetaData.num_rows is 13 while its row groups hold 12 rows; the manifest says 13, matching the footer's num_rows. The first read that routes to the part, a range over every row, must refuse with invalid_footer.",
       "fault_id": "invalid-footer-row-count",
       "requirements": [
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/invalid-footer-row-count",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -420,16 +425,17 @@
     },
     {
       "id": "refusals-open/invalid-footer-file-path",
-      "description": "Row group 0's key column chunk sets file_path (a reference to another file). open must refuse with invalid_footer.",
+      "description": "Row group 0's key column chunk sets file_path (a reference to another file). The first read that routes to the part, a range over every row, must refuse with invalid_footer.",
       "fault_id": "invalid-footer-file-path",
       "requirements": [
         "FILE-1",
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/invalid-footer-file-path",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -438,7 +444,7 @@
     },
     {
       "id": "refusals-open/stamp-wrong-schema-id",
-      "description": "Footer seekparquet.schema_id differs from the manifest's. open must refuse with stamp_mismatch.",
+      "description": "Footer seekparquet.schema_id differs from the manifest's. The first read that routes to the part, a range over every row, must refuse with stamp_mismatch.",
       "fault_id": "stamp-wrong-schema-id",
       "requirements": [
         "STAMP-1",
@@ -446,9 +452,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/stamp-wrong-schema-id",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -457,7 +464,7 @@
     },
     {
       "id": "refusals-open/stamp-noncanonical-revision",
-      "description": "Footer seekparquet.draft_revision is \"01\" (not canonical decimal). open must refuse with stamp_mismatch.",
+      "description": "Footer seekparquet.draft_revision is \"01\" (not canonical decimal). The first read that routes to the part, a range over every row, must refuse with stamp_mismatch.",
       "fault_id": "stamp-noncanonical-revision",
       "requirements": [
         "STAMP-1",
@@ -465,9 +472,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/stamp-noncanonical-revision",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -476,16 +484,17 @@
     },
     {
       "id": "refusals-open/stamp-duplicate",
-      "description": "The footer holds seekparquet.schema_id twice (same value). open must refuse with stamp_mismatch.",
+      "description": "The footer holds seekparquet.schema_id twice (same value). The first read that routes to the part, a range over every row, must refuse with stamp_mismatch.",
       "fault_id": "stamp-duplicate",
       "requirements": [
         "STAMP-2",
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/stamp-duplicate",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -494,16 +503,17 @@
     },
     {
       "id": "refusals-open/key-nullable",
-      "description": "The key column is OPTIONAL (no nulls are stored). open must refuse with invalid_key_column.",
+      "description": "The key column is OPTIONAL (no nulls are stored). The first read that routes to the part, a range over every row, must refuse with invalid_key_column.",
       "fault_id": "key-nullable",
       "requirements": [
         "KEY-1",
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/key-nullable",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -512,16 +522,17 @@
     },
     {
       "id": "refusals-open/key-annotation-json",
-      "description": "The key column is annotated JSON. open must refuse with invalid_key_column.",
+      "description": "The key column is annotated JSON. The first read that routes to the part, a range over every row, must refuse with invalid_key_column.",
       "fault_id": "key-annotation-json",
       "requirements": [
         "KEY-1",
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/key-annotation-json",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -530,16 +541,17 @@
     },
     {
       "id": "refusals-open/column-orders-short",
-      "description": "column_orders holds only the key's TYPE_ORDER entry; the schema has three leaf columns. open must refuse with invalid_key_column.",
+      "description": "column_orders holds only the key's TYPE_ORDER entry; the schema has three leaf columns. The first read that routes to the part, a range over every row, must refuse with invalid_key_column.",
       "fault_id": "column-orders-short",
       "requirements": [
         "KEY-5",
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/column-orders-short",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -548,16 +560,17 @@
     },
     {
       "id": "refusals-open/sorting-columns-descending",
-      "description": "sorting_columns declares key descending. open must refuse with missing_sorting_columns.",
+      "description": "sorting_columns declares key descending. The first read that routes to the part, a range over every row, must refuse with missing_sorting_columns.",
       "fault_id": "sorting-columns-descending",
       "requirements": [
         "RG-1",
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/sorting-columns-descending",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -566,16 +579,17 @@
     },
     {
       "id": "refusals-open/sorting-columns-missing-second-row-group",
-      "description": "Only row group 1 lacks sorting_columns. open must refuse with missing_sorting_columns.",
+      "description": "Only row group 1 lacks sorting_columns. The first read that routes to the part, a range over every row, must refuse with missing_sorting_columns.",
       "fault_id": "sorting-columns-missing-second-row-group",
       "requirements": [
         "RG-1",
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/sorting-columns-missing-second-row-group",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",

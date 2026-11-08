@@ -146,7 +146,8 @@ func checkKeyIndex(columns *format.ColumnIndex, offsets *format.OffsetIndex, row
 
 // pageSpan is one key page a request decoded, at its dataset position.
 type pageSpan struct {
-	g, page     int
+	g           groupRef
+	page        int
 	part        string
 	physical    int
 	firstRow    int64
@@ -176,7 +177,7 @@ func (l *pageLog) ordered(before, after *pageSpan) bool {
 func (l *pageLog) add(s pageSpan) error {
 	i := sort.Search(len(l.spans), func(i int) bool {
 		t := l.spans[i]
-		return t.g > s.g || t.g == s.g && t.page >= s.page
+		return s.g.less(t.g) || t.g == s.g && t.page >= s.page
 	})
 	if i < len(l.spans) && l.spans[i].g == s.g && l.spans[i].page == s.page {
 		return nil // read again

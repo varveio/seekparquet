@@ -17,14 +17,21 @@ import (
 // outside it (PART-1). Files are opened without blocking on a special file
 // and must be regular files; a path that names anything else is reported
 // as not existing, which OpenDataset refuses as no_manifest or
-// missing_part. Each part keeps its file open until the dataset closes.
+// missing_part. The directory stays open, so that parts can be opened when
+// a read first touches them, and each part keeps its file open, until the
+// dataset closes.
 func OpenDir(ctx context.Context, path string, opt Options) (*Dataset, error) {
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = root.Close() }() // the opened files outlive the root
-	return OpenDataset(ctx, dirSource{root}, opt)
+	d, err := OpenDataset(ctx, dirSource{root}, opt)
+	if err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	d.r.release = root
+	return d, nil
 }
 
 // dirSource is a Source over an os.Root.

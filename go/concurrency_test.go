@@ -237,8 +237,8 @@ func TestOpenPartsOwnership(t *testing.T) {
 	var closed atomic.Int64
 	r, err := openParts(ctx, inputs(&closed), unique, Options{})
 	must(t, err)
-	if len(r.groups) != 3 || r.rows != 5 || r.bounded {
-		t.Fatalf("%d groups, %d rows, bounded %v", len(r.groups), r.rows, r.bounded)
+	if len(r.flat) != 3 || r.rows != 5 || r.bounded {
+		t.Fatalf("%d groups, %d rows, bounded %v", len(r.flat), r.rows, r.bounded)
 	}
 	rows, err := r.readRange(ctx, Range{Start: []byte("b"), Limit: 10}, nil)
 	if err != nil || fmt.Sprint(keysOf(rows)) != "[b c x y]" {
@@ -251,8 +251,14 @@ func TestOpenPartsOwnership(t *testing.T) {
 	closed.Store(0)
 	failing := inputs(&closed)
 	failing[0].minKey, failing[0].maxKey = []byte("a"), []byte("d")
-	if _, err := openParts(ctx, failing, unique, Options{VerifyOnOpen: true}); CodeOf(err) != CodeBoundsMismatch || closed.Load() != 2 {
-		t.Fatalf("bounds: %v, closed %d of 2", err, closed.Load())
+	r, err = openParts(ctx, failing, unique, Options{})
+	must(t, err)
+	if err := r.verify(ctx); CodeOf(err) != CodeBoundsMismatch {
+		t.Fatalf("bounds: %v", err)
+	}
+	must(t, r.close())
+	if closed.Load() != 2 {
+		t.Fatalf("closed %d of 2", closed.Load())
 	}
 }
 

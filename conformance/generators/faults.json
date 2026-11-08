@@ -1,5 +1,5 @@
 {
-  "description": "Authored declaration of every invalid fixture's fault: the fault id (the dataset name), when a reader must detect it (open, read, or only by validation), the lowest validation level that detects it, the refusal codes of the fault itself, the requirements it breaks, any unavoidable secondary fault with its justification (its code is also accepted), and where the fault is. Reviewed by hand; make_cases.py and regenerate.py read it and never infer levels from codes.",
+  "description": "Authored declaration of every invalid fixture's fault: the fault id (the dataset name), when a reader must detect it (open, touch: the first read that routes to the faulty part, read, or only by validation), the lowest validation level that detects it, the refusal codes of the fault itself, the requirements it breaks, any unavoidable secondary fault with its justification (its code is also accepted), and where the fault is. Reviewed by hand; make_cases.py and regenerate.py read it and never infer levels from codes.",
   "faults": [
     {
       "id": "key-order-within-page",
@@ -182,7 +182,7 @@
     {
       "id": "stamp-missing",
       "dataset": "datasets/invalid/stamp-missing",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -197,7 +197,7 @@
     {
       "id": "stamp-wrong-schema-id",
       "dataset": "datasets/invalid/stamp-wrong-schema-id",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -212,7 +212,7 @@
     {
       "id": "stamp-wrong-revision",
       "dataset": "datasets/invalid/stamp-wrong-revision",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -227,7 +227,7 @@
     {
       "id": "stamp-noncanonical-revision",
       "dataset": "datasets/invalid/stamp-noncanonical-revision",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -242,7 +242,7 @@
     {
       "id": "stamp-missing-revision",
       "dataset": "datasets/invalid/stamp-missing-revision",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -257,7 +257,7 @@
     {
       "id": "key-nullable",
       "dataset": "datasets/invalid/key-nullable",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_key_column"
@@ -271,7 +271,7 @@
     {
       "id": "key-int64",
       "dataset": "datasets/invalid/key-int64",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_key_column"
@@ -285,7 +285,7 @@
     {
       "id": "key-missing",
       "dataset": "datasets/invalid/key-missing",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_key_column"
@@ -299,7 +299,7 @@
     {
       "id": "key-nested",
       "dataset": "datasets/invalid/key-nested",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_key_column"
@@ -313,7 +313,7 @@
     {
       "id": "sorting-columns-missing",
       "dataset": "datasets/invalid/sorting-columns-missing",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "missing_sorting_columns"
@@ -327,7 +327,7 @@
     {
       "id": "sorting-columns-descending",
       "dataset": "datasets/invalid/sorting-columns-descending",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "missing_sorting_columns"
@@ -341,7 +341,7 @@
     {
       "id": "sorting-columns-other-first",
       "dataset": "datasets/invalid/sorting-columns-other-first",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "missing_sorting_columns"
@@ -937,7 +937,7 @@
     {
       "id": "missing-part",
       "dataset": "datasets/invalid/missing-part",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "missing_part"
@@ -951,7 +951,7 @@
     {
       "id": "part-size-larger",
       "dataset": "datasets/invalid/part-size-larger",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "part_mismatch"
@@ -964,7 +964,7 @@
     {
       "id": "part-size-smaller",
       "dataset": "datasets/invalid/part-size-smaller",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "part_mismatch"
@@ -977,7 +977,7 @@
     {
       "id": "part-rows-mismatch",
       "dataset": "datasets/invalid/part-rows-mismatch",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "part_mismatch"
@@ -1072,7 +1072,7 @@
     {
       "id": "invalid-footer-magic",
       "dataset": "datasets/invalid/invalid-footer-magic",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_footer"
@@ -1085,7 +1085,7 @@
     {
       "id": "invalid-footer-length",
       "dataset": "datasets/invalid/invalid-footer-length",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_footer"
@@ -1098,7 +1098,7 @@
     {
       "id": "invalid-footer-thrift",
       "dataset": "datasets/invalid/invalid-footer-thrift",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_footer"
@@ -1111,7 +1111,7 @@
     {
       "id": "invalid-footer-row-count",
       "dataset": "datasets/invalid/invalid-footer-row-count",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_footer"
@@ -1124,7 +1124,7 @@
     {
       "id": "invalid-footer-file-path",
       "dataset": "datasets/invalid/invalid-footer-file-path",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_footer"
@@ -1138,7 +1138,7 @@
     {
       "id": "stamp-duplicate",
       "dataset": "datasets/invalid/stamp-duplicate",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -1152,7 +1152,7 @@
     {
       "id": "key-annotation-json",
       "dataset": "datasets/invalid/key-annotation-json",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_key_column"
@@ -1166,7 +1166,7 @@
     {
       "id": "column-orders-missing",
       "dataset": "datasets/invalid/column-orders-missing",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_key_column"
@@ -1180,7 +1180,7 @@
     {
       "id": "column-orders-short",
       "dataset": "datasets/invalid/column-orders-short",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_key_column"
@@ -1194,7 +1194,7 @@
     {
       "id": "column-orders-long",
       "dataset": "datasets/invalid/column-orders-long",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_key_column"
@@ -1274,7 +1274,7 @@
     {
       "id": "sorting-columns-missing-second-row-group",
       "dataset": "datasets/invalid/sorting-columns-missing-second-row-group",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "missing_sorting_columns"
@@ -1544,7 +1544,7 @@
     {
       "id": "stamp-key-column-missing",
       "dataset": "datasets/invalid/stamp-key-column-missing",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -1558,7 +1558,7 @@
     {
       "id": "stamp-key-column-mismatch",
       "dataset": "datasets/invalid/stamp-key-column-mismatch",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -1572,7 +1572,7 @@
     {
       "id": "stamp-key-column-noncanonical",
       "dataset": "datasets/invalid/stamp-key-column-noncanonical",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -1586,7 +1586,7 @@
     {
       "id": "stamp-duplicate-key-column",
       "dataset": "datasets/invalid/stamp-duplicate-key-column",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -1599,7 +1599,7 @@
     {
       "id": "stamp-key-unique-missing",
       "dataset": "datasets/invalid/stamp-key-unique-missing",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -1613,7 +1613,7 @@
     {
       "id": "stamp-key-unique-mismatch",
       "dataset": "datasets/invalid/stamp-key-unique-mismatch",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -1627,7 +1627,7 @@
     {
       "id": "stamp-key-unique-noncanonical",
       "dataset": "datasets/invalid/stamp-key-unique-noncanonical",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -1641,7 +1641,7 @@
     {
       "id": "stamp-duplicate-key-unique",
       "dataset": "datasets/invalid/stamp-duplicate-key-unique",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "stamp_mismatch"
@@ -1745,7 +1745,7 @@
     {
       "id": "named-key-absent",
       "dataset": "datasets/invalid/named-key-absent",
-      "reader_detect": "open",
+      "reader_detect": "touch",
       "validation_level": "structural",
       "codes": [
         "invalid_key_column"

@@ -185,6 +185,10 @@ with a storage error; reopening after interruption uses the same pinned parent h
 
 It does not load page indexes or decode keys unless `verifyPartBounds` is set.
 
+The specification now asks only the manifest to be checked on open, and each part when a read first
+routes to it (the Go reader does this); checking every part on open, as this reader still does, remains
+allowed (CHECK-1). Aligning the Java reader with lazy part checks is tracked separately.
+
 **Reads (CHECK-2).** Requests binary-search the manifest's exact part bounds. Within large parts,
 they binary-search checked, decoded row-group first keys, retaining the predecessor so a repeated
 key that starts at the previous group's tail is not skipped. Exact first keys are cached and charged

@@ -249,7 +249,7 @@ func TestDelimiterEdgeCases(t *testing.T) {
 // and [a/9] with prefix a/: no key lies in the range, so neither the scan
 // nor the group shortcut may produce an entry (LIST-7).
 func TestListNarrowUpperBound(t *testing.T) {
-	d := open(t, write(t, parts(testutil.Part{GroupRows: 1}, []string{"a/1", "a/9"})), Options{VerifyOnOpen: true})
+	d := verified(t, write(t, parts(testutil.Part{GroupRows: 1}, []string{"a/1", "a/9"})), Options{})
 	for _, prefix := range []string{"a/", ""} {
 		for _, cur := range []*Cursor{{Key: []byte("a/5")}, {Prefix: []byte("a/4")}} {
 			req := List{Prefix: []byte(prefix), Delimiter: '/', Cursor: cur, End: []byte("a/8"), Limit: 10}
@@ -360,8 +360,9 @@ func TestEmptyGroupsAndOneRowParts(t *testing.T) {
 		t.Fatalf("physical row groups: %v", err)
 	}
 	d := open(t, dir, Options{})
-	if len(d.r.groups) != 3 || d.r.rows != 3 || len(d.r.parts) != 2 {
-		t.Fatalf("%d groups, %d rows", len(d.r.groups), d.r.rows)
+	must(t, d.Verify(ctx))
+	if groups := len(d.r.parts[0].groups) + len(d.r.parts[1].groups); groups != 3 || d.r.rows != 3 || len(d.r.parts) != 2 {
+		t.Fatalf("%d groups, %d rows", groups, d.r.rows)
 	}
 	keys := []string{"a", "m", "z"}
 	points := [][]byte{nil, []byte("\x00"), []byte("a"), []byte("a\x00"), []byte("b"), []byte("m"), []byte("m\x00"), []byte("z"), []byte("z\x00")}

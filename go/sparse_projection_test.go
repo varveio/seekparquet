@@ -81,9 +81,10 @@ func TestSparseProjectionSkipsPages(t *testing.T) {
 	for _, indexed := range []bool{true, false} {
 		t.Run(fmt.Sprint("indexed=", indexed), func(t *testing.T) {
 			dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 200, PageBytes: 64}}})
-			original := open(t, dir, Options{})
+			original := verified(t, dir, Options{})
 			p := original.r.parts[0]
-			selected := []position{{g: 0, row: 0}, {g: 0, row: 2}, {g: 0, row: 198}, {g: 0, row: 199}, {g: 1, row: 0}, {g: 1, row: 2}, {g: 1, row: 198}, {g: 1, row: 199}}
+			g0, g1 := groupRef{0, 0}, groupRef{0, 1}
+			selected := []position{{g: g0, row: 0}, {g: g0, row: 2}, {g: g0, row: 198}, {g: g0, row: 199}, {g: g1, row: 0}, {g: g1, row: 2}, {g: g1, row: 198}, {g: g1, row: 199}}
 			columns := []string{"name", "size", "missing"}
 			var wantPages int64
 			for g := range 2 {
@@ -95,7 +96,7 @@ func TestSparseProjectionSkipsPages(t *testing.T) {
 					}
 					touched := map[int]bool{}
 					for _, at := range selected {
-						if at.g != g {
+						if at.g.index != g {
 							continue
 						}
 						page := 0
@@ -112,6 +113,7 @@ func TestSparseProjectionSkipsPages(t *testing.T) {
 				dropValueOffsets(t, dir)
 			}
 			d := open(t, dir, Options{})
+			must(t, d.r.checkParts(ctx, new(ReadStats)))
 			out := make([]*Row, len(selected))
 			for i := range out {
 				out[i] = &Row{}
@@ -122,7 +124,7 @@ func TestSparseProjectionSkipsPages(t *testing.T) {
 				t.Fatalf("decoded %d pages, want %d distinct selected pages", st.KeyPagesDecoded+st.ValuePagesDecoded, wantPages)
 			}
 			for i, at := range selected {
-				source := records[at.g*200+int(at.row)]
+				source := records[at.g.index*200+int(at.row)]
 				values := out[i].Values
 				if values[1].Int64() != source.Size || !values[2].Absent {
 					t.Fatalf("row %d values: %v", i, values)

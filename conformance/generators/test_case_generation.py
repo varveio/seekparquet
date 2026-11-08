@@ -87,7 +87,7 @@ class Generation(unittest.TestCase):
         allc = {c["id"]: c for c in self.allgen + [c for _d, c in self.core.values()]}
         for fid, f in faults.items():
             o, r = allc.get(f"refusals-open/{fid}"), allc.get(f"refusals-read/{fid}")
-            self.assertEqual(o is not None, f["reader_detect"] == "open", fid)
+            self.assertEqual(o is not None, f["reader_detect"] in ("open", "touch"), fid)
             self.assertEqual(r is not None, f["reader_detect"] == "read", fid)
 
     def test_incomplete_never_broadly_accepted(self):

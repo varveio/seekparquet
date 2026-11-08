@@ -81,8 +81,21 @@ reports a target as qualified. The harness records the selection in its report.
 {"id": "2", "op": "open", "dataset": "/abs/path/datasets/basic"}
 ```
 
-Opens the dataset as a reader would (CHECK-1). The adapter may keep it open for later requests on the same
-path.
+Opens the dataset as a reader would (CHECK-1: the manifest; a reader may also check every part). The
+adapter may keep it open for later requests on the same path; an `open` of a path it holds open opens it
+afresh, so that part checks kept by the earlier handle do not carry over.
+
+### `verify`
+
+```json
+{"id": "6", "op": "verify", "dataset": "/abs/path/datasets/basic"}
+```
+
+Checks every part of the dataset now, as the first read to touch each part would (the part checks of
+CHECK-1), and may check more (CHECK-3). It answers `ok`, or `refused` with the code of the first fault it
+found. The adapter opens the dataset first if it has not. `verify` is an optional capability: an adapter
+whose `open` already checks every part has nothing more to do, and claiming it adds a step to every `touch`
+case (see below).
 
 ### `range`
 
@@ -155,8 +168,12 @@ stages in order and stops at the first refusal:
 
 1. **open.** It sends `open`. A refusal with an acceptable code completes the case (whatever its `detect`). A
    refusal with another code fails it. If `detect` is `open` and `open` succeeds, the case fails.
-2. **read.** If `detect` is `read`, it sends the case's request, which must be refused with an acceptable
-   code.
+2. **read.** If `detect` is `read` or `touch`, it sends the case's request, which must be refused with an
+   acceptable code. For `touch` (a fault in a part, which a reader must detect no later than the first read
+   that routes to the part) the request is an unbounded range, which routes to every part. If the adapter
+   claims `verify`, the harness then sends `open` again (an acceptable refusal completes the case) and
+   `verify`, which must be refused with an acceptable code: verification of a fresh handle finds the fault
+   without a read.
 3. **validate.** If `detect` is `validate:<level>`, it sends the case's request if it has one (success, or
    a refusal with an acceptable code, which completes the case), then `validate` at that level, whose
    report must show that level `failed` with an acceptable code.

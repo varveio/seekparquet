@@ -12,11 +12,16 @@ package seekparquet
 // one, may do the same read with different counts. All fields are plain
 // integers; a ReadStats must not be shared between concurrent requests.
 //
-// Reads made when the Dataset was opened (the manifest and the footers) are
-// not counted. Work shared with earlier requests is counted only where a
-// field says so: a key page index loaded by an earlier request is reused,
-// not loaded, and a decoded first key is reused without decoding.
+// The manifest read when the Dataset was opened is not counted. Work shared
+// with earlier requests is counted only where a field says so: a part
+// checked by an earlier request, or by Verify, is not checked again, a key
+// page index loaded by an earlier request is reused, not loaded, and a
+// decoded first key is reused without decoding.
 type ReadStats struct {
+	// PartsOpened is the number of parts the request was the first to
+	// touch: it opened each from the Source and checked its footer
+	// (CHECK-1). The footer reads are in SourceReads.
+	PartsOpened int64
 	// KeyPagesDecoded is the number of key column data pages the request
 	// decoded successfully (a page whose values do not decode is not
 	// counted, one that then fails a key check is): pages walked, probed for a row group's first key, or
@@ -51,8 +56,8 @@ type ReadStats struct {
 	GroupsSkipped int64
 	// SourceReads is the number of ReadAt calls the request made on part
 	// files, and SourceBytes the total of their lengths, the bytes
-	// requested. They include the page index and page header reads made on
-	// behalf of the request.
+	// requested. They include the footer, page index and page header reads
+	// made on behalf of the request.
 	SourceReads, SourceBytes int64
 }
 

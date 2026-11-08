@@ -245,9 +245,10 @@ def acceptable(exp):
 # --------------------------------------------------------------------------
 
 class Runner:
-    def __init__(self, adapter, suite_dir):
+    def __init__(self, adapter, suite_dir, verify=False):
         self.a = adapter
         self.dir = suite_dir
+        self.verify = verify  # the adapter claims the optional verify capability
 
     def full(self, case, req):
         r = dict(req)
@@ -321,12 +322,21 @@ class Runner:
             return
         if detect == "open":
             raise CaseFail(f"open succeeded; expected refusal with {' or '.join(ok_codes)}")
-        # 2. read
-        if detect == "read":
+        # 2. read (touch: the read routes to the faulty part)
+        if detect in ("read", "touch"):
             resp = self.a.call(self.full(case, req))
+            if not (resp["status"] == "refused" and resp["code"] in ok_codes):
+                raise CaseFail(f"request: expected refusal with {' or '.join(ok_codes)}, got status {resp['status']}"
+                               f"{' code ' + resp['code'] if resp.get('code') else ''}")
+            if detect == "read" or not self.verify:
+                return
+            # A freshly opened dataset must refuse verify, which checks every part.
+            if refused_ok(self.a.call(self.full(case, {"op": "open"})), "reopen"):
+                return
+            resp = self.a.call(self.full(case, {"op": "verify"}))
             if resp["status"] == "refused" and resp["code"] in ok_codes:
                 return
-            raise CaseFail(f"request: expected refusal with {' or '.join(ok_codes)}, got status {resp['status']}"
+            raise CaseFail(f"verify: expected refusal with {' or '.join(ok_codes)}, got status {resp['status']}"
                            f"{' code ' + resp['code'] if resp.get('code') else ''}")
         # 3. validate
         level = detect.split(":", 1)[1]
@@ -441,7 +451,7 @@ def main(argv=None):
                                       f"(use --targets to run a subset deliberately)")
         if run_errors:
             raise Fatal("; ".join(run_errors))
-        runner = Runner(adapter, sdir)
+        runner = Runner(adapter, sdir, verify="verify" in caps)
         for fname, doc in files:
             for case in doc["cases"]:
                 if pattern and not pattern.search(case["id"]):

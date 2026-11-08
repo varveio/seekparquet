@@ -167,6 +167,7 @@ func TestIndexedAccessNonMonotoneScaling(t *testing.T) {
 			d, err := OpenDataset(ctx, src, Options{})
 			must(t, err)
 			defer d.Close()
+			must(t, d.r.checkParts(ctx, new(ReadStats))) // the footer read is not routing
 			target := len(keys) - 8
 			for _, warm := range []bool{false, true} {
 				src.reset()

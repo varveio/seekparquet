@@ -905,16 +905,17 @@
     },
     {
       "id": "refusals-open/stamp-key-column-missing",
-      "description": "The stamp-key-column-missing fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "description": "The stamp-key-column-missing fixture must report stamp_mismatch no later than the first read that routes to the part; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
       "requirements": [
         "STAMP-1",
         "STAMP-2"
       ],
       "dataset": "datasets/invalid/stamp-key-column-missing",
-      "detect": "open",
+      "detect": "touch",
       "fault_id": "stamp-key-column-missing",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -923,16 +924,17 @@
     },
     {
       "id": "refusals-open/stamp-key-column-mismatch",
-      "description": "The stamp-key-column-mismatch fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "description": "The stamp-key-column-mismatch fixture must report stamp_mismatch no later than the first read that routes to the part; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
       "requirements": [
         "STAMP-1",
         "STAMP-2"
       ],
       "dataset": "datasets/invalid/stamp-key-column-mismatch",
-      "detect": "open",
+      "detect": "touch",
       "fault_id": "stamp-key-column-mismatch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -941,16 +943,17 @@
     },
     {
       "id": "refusals-open/stamp-key-column-noncanonical",
-      "description": "The stamp-key-column-noncanonical fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "description": "The stamp-key-column-noncanonical fixture must report stamp_mismatch no later than the first read that routes to the part; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
       "requirements": [
         "STAMP-1",
         "STAMP-2"
       ],
       "dataset": "datasets/invalid/stamp-key-column-noncanonical",
-      "detect": "open",
+      "detect": "touch",
       "fault_id": "stamp-key-column-noncanonical",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -959,15 +962,16 @@
     },
     {
       "id": "refusals-open/stamp-duplicate-key-column",
-      "description": "The stamp-duplicate-key-column fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "description": "The stamp-duplicate-key-column fixture must report stamp_mismatch no later than the first read that routes to the part; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
       "requirements": [
         "STAMP-2"
       ],
       "dataset": "datasets/invalid/stamp-duplicate-key-column",
-      "detect": "open",
+      "detect": "touch",
       "fault_id": "stamp-duplicate-key-column",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -976,16 +980,17 @@
     },
     {
       "id": "refusals-open/stamp-key-unique-missing",
-      "description": "The stamp-key-unique-missing fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "description": "The stamp-key-unique-missing fixture must report stamp_mismatch no later than the first read that routes to the part; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
       "requirements": [
         "STAMP-1",
         "STAMP-2"
       ],
       "dataset": "datasets/invalid/stamp-key-unique-missing",
-      "detect": "open",
+      "detect": "touch",
       "fault_id": "stamp-key-unique-missing",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -994,16 +999,17 @@
     },
     {
       "id": "refusals-open/stamp-key-unique-mismatch",
-      "description": "The stamp-key-unique-mismatch fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "description": "The stamp-key-unique-mismatch fixture must report stamp_mismatch no later than the first read that routes to the part; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
       "requirements": [
         "STAMP-1",
         "STAMP-2"
       ],
       "dataset": "datasets/invalid/stamp-key-unique-mismatch",
-      "detect": "open",
+      "detect": "touch",
       "fault_id": "stamp-key-unique-mismatch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -1012,16 +1018,17 @@
     },
     {
       "id": "refusals-open/stamp-key-unique-noncanonical",
-      "description": "The stamp-key-unique-noncanonical fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "description": "The stamp-key-unique-noncanonical fixture must report stamp_mismatch no later than the first read that routes to the part; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
       "requirements": [
         "STAMP-1",
         "STAMP-2"
       ],
       "dataset": "datasets/invalid/stamp-key-unique-noncanonical",
-      "detect": "open",
+      "detect": "touch",
       "fault_id": "stamp-key-unique-noncanonical",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -1030,15 +1037,16 @@
     },
     {
       "id": "refusals-open/stamp-duplicate-key-unique",
-      "description": "The stamp-duplicate-key-unique fixture must report stamp_mismatch at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "description": "The stamp-duplicate-key-unique fixture must report stamp_mismatch no later than the first read that routes to the part; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
       "requirements": [
         "STAMP-2"
       ],
       "dataset": "datasets/invalid/stamp-duplicate-key-unique",
-      "detect": "open",
+      "detect": "touch",
       "fault_id": "stamp-duplicate-key-unique",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -1166,16 +1174,17 @@
     },
     {
       "id": "refusals-open/named-key-absent",
-      "description": "The named-key-absent fixture must report invalid_key_column at open; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
+      "description": "The named-key-absent fixture must report invalid_key_column no later than the first read that routes to the part; this distinguishes the declared key rules from a reader that assumes a fixed unique key.",
       "requirements": [
         "KEY-1",
         "MAN-8"
       ],
       "dataset": "datasets/invalid/named-key-absent",
-      "detect": "open",
+      "detect": "touch",
       "fault_id": "named-key-absent",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",

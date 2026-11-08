@@ -76,10 +76,12 @@ type SourceFile interface {
 }
 
 // Source is a dataset root: it opens files by their slash-separated paths
-// relative to the root. OpenDataset opens the root's manifest.json and
-// each part path the manifest lists, after checking that path against
-// PART-1, so a Source is never asked for an absolute path or one with a
-// "." or ".." segment; it must still confine reads to the root.
+// relative to the root. OpenDataset opens the root's manifest.json; the
+// Dataset opens each part path the manifest lists the first time a read,
+// or Verify, touches the part, after checking every path against PART-1
+// on open, so a Source is never asked for an absolute path or one with a
+// "." or ".." segment; it must still confine reads to the root. The Source
+// must stay usable until the Dataset is closed.
 //
 // Open returns an error that wraps fs.ErrNotExist when the file does not
 // exist, and should honour ctx. The returned file must be safe for
@@ -96,15 +98,6 @@ type Source interface {
 type Options struct {
 	// Limits bounds the resources the dataset can make the reader use.
 	Limits Limits
-	// VerifyOnOpen makes OpenDataset check every non-empty row group's key
-	// page index and decode its first key page, and decode each part's
-	// last key page, before it returns (CHECK-3): row-group first keys must
-	// then be in the declared order and each part's first and last keys
-	// equal its manifest bounds. It suits a long-lived reader of local
-	// files. Without it, opening reads only the manifest and the footers
-	// (CHECK-1), and the rest is loaded, and checked, when a read first
-	// needs it.
-	VerifyOnOpen bool
 }
 
 // Key declares the exact key column and whether keys must be unique.
@@ -134,8 +127,8 @@ type PartInfo struct {
 	Bytes  int64
 	MinKey []byte
 	MaxKey []byte
-	// SHA256 is the declared lowercase hex digest, "" when none. Opening
-	// does not check it (PART-5).
+	// SHA256 is the declared lowercase hex digest, "" when none. Neither
+	// opening nor Verify checks it (PART-5).
 	SHA256 string
 }
 
@@ -167,33 +160,37 @@ func (m Metadata) clone() Metadata {
 
 // Dataset is an opened SeekParquet dataset: its manifest's metadata, and
 // bounded, ordered reads over its parts. It is safe for concurrent use:
-// footers and page indexes are shared, and immutable once loaded.
+// part checks, footers and page indexes are shared, and immutable once
+// loaded.
 type Dataset struct {
 	meta Metadata
 	r    *reader
 }
 
 // OpenDataset opens the dataset at src (CHECK-1). It reads and validates
-// the manifest (§3); opens every part, requiring it to exist and have the
-// manifest's size; reads every footer, requiring it to be self-contained
-// and unencrypted (FILE-1, FILE-2), the seekparquet.* stamps to agree with
-// the manifest (STAMP-2), the row count to equal the manifest's, a valid
-// key column (KEY-1, KEY-5), consistent columns across parts (COL-5), and
-// the key column ascending as the first sorting column of every non-empty
-// row group (RG-1). It reads the manifest and every part's footer, and
-// nothing more unless Options.VerifyOnOpen asks for the first and last key
-// pages too. Reads are routed to a part by its manifest bounds, and within
-// a part by row groups' first keys, decoded when a read first needs them.
-// Opening does not read every row: rows a read does not decode are not
-// certified (CHECK-4).
+// the manifest (§3), and nothing else: no part is opened. The manifest
+// carries each part's exact key bounds, row count and size, so reads are
+// routed to a part by its bounds, and within a part by row groups' first
+// keys, decoded when a read first needs them.
 //
-// A dataset that breaks the specification is refused with a *RefusalError
-// (see CodeOf). Other errors report I/O, a limit or the context.
-// The reader uses signed 64-bit dataset ordinals: a total row count above
-// 2^63-1 fails with ErrLimitExceeded, even when each part's count fits.
+// A part is checked the first time a read routes to it: it must exist and
+// have the manifest's size; its footer must be readable, self-contained and
+// unencrypted (FILE-1, FILE-2), with the seekparquet.* stamps agreeing with
+// the manifest (STAMP-2), the manifest's row count, a valid key column
+// (KEY-1, KEY-5), the key column ascending as the first sorting column of
+// every non-empty row group (RG-1), and columns consistent with every part
+// checked before it (COL-5). A part that fails is refused by the Range or
+// List that touched it, and by every later read that touches it. Verify
+// checks every part at once. Rows a read does not decode are not certified
+// (CHECK-4).
 //
-// OpenDataset closes every file it opened when it fails; on success,
-// Dataset.Close closes them.
+// A dataset whose manifest breaks the specification is refused with a
+// *RefusalError (see CodeOf). Other errors report I/O, a limit or the
+// context. The reader uses signed 64-bit dataset ordinals: a total row
+// count above 2^63-1 fails with ErrLimitExceeded, even when each part's
+// count fits.
+//
+// Dataset.Close closes every part file the dataset opened.
 func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error) {
 	opt.Limits = opt.Limits.withDefaults()
 	raw, err := readManifest(ctx, src, opt.Limits.ManifestBytes)
@@ -216,20 +213,14 @@ func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error)
 	inputs := make([]partInput, 0, len(m.Parts))
 	for _, entry := range m.Parts {
 		meta.Parts = append(meta.Parts, PartInfo(entry))
-		in, err := openDatasetPart(ctx, src, m, entry, &opt.Limits)
-		if in.file != nil {
-			inputs = append(inputs, in)
-		}
-		if err != nil {
-			for _, in := range inputs {
-				closeFile(in.file)
-			}
-			return nil, err
-		}
+		inputs = append(inputs, partInput{name: entry.Path, minKey: entry.MinKey, maxKey: entry.MaxKey, rows: entry.Rows})
 	}
 	r, err := openParts(ctx, inputs, meta.Key, opt)
 	if err != nil {
 		return nil, err
+	}
+	r.fetch = func(ctx context.Context, i int, st *ReadStats) (partInput, error) {
+		return openDatasetPart(ctx, src, m, m.Parts[i], &r.limits, st)
 	}
 	return &Dataset{meta: meta, r: r}, nil
 }
@@ -255,9 +246,9 @@ func readManifest(ctx context.Context, src Source, limit int64) ([]byte, error) 
 }
 
 // openDatasetPart opens one part, checks its size, footer, stamps and row
-// count, and returns it with its footer. The returned file is set whenever
-// the part was opened, even with an error, so that the caller closes it.
-func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, lim *Limits) (partInput, error) {
+// count against its manifest entry, and returns it with its footer. It
+// closes the file when it fails.
+func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, lim *Limits, st *ReadStats) (_ partInput, err error) {
 	f, err := src.Open(ctx, entry.Path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -265,19 +256,24 @@ func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entr
 		}
 		return partInput{}, err
 	}
-	in := partInput{name: entry.Path, file: f, size: f.Size(), minKey: entry.MinKey, maxKey: entry.MaxKey}
+	defer func() {
+		if err != nil {
+			_ = f.Close()
+		}
+	}()
+	in := partInput{name: entry.Path, file: f, size: f.Size(), minKey: entry.MinKey, maxKey: entry.MaxKey, rows: entry.Rows}
 	if in.size != entry.Bytes {
-		return in, refusePart(CodePartMismatch, entry.Path, -1, "the file is %d bytes, its manifest entry %d", in.size, entry.Bytes)
+		return partInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the file is %d bytes, its manifest entry %d", in.size, entry.Bytes)
 	}
-	footer, err := readFooter(ctx, entry.Path, f, in.size, lim)
+	footer, err := readFooter(ctx, entry.Path, f, in.size, lim, st)
 	if err != nil {
-		return in, err
+		return partInput{}, err
 	}
 	if err := checkStamps(entry.Path, footer, m); err != nil {
-		return in, err
+		return partInput{}, err
 	}
 	if footer.NumRows() != entry.Rows {
-		return in, refusePart(CodePartMismatch, entry.Path, -1, "the part holds %d rows, its manifest entry %d", footer.NumRows(), entry.Rows)
+		return partInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the part holds %d rows, its manifest entry %d", footer.NumRows(), entry.Rows)
 	}
 	in.footer = footer
 	return in, nil
@@ -332,6 +328,24 @@ func checkSorted(p *part, physical int, group *format.RowGroup) error {
 
 // Metadata returns a copy of the dataset's manifest metadata.
 func (d *Dataset) Metadata() Metadata { return d.meta.clone() }
+
+// Verify checks every part now, as the first read to touch each would
+// (CHECK-1), then checks every non-empty row group's key page index and
+// decodes its first key page, and decodes each part's last key page
+// (CHECK-3): row-group first keys must be in the declared order and each
+// part's first and last keys equal its manifest bounds. It reads one
+// footer per part not yet checked and a few pages per row group, and suits
+// a long-lived reader of local files, or a caller that wants every part's
+// fault before its first query. A part it refuses stays refused for later
+// reads. It does not read every row (CHECK-4) or check digests (PART-5).
+func (d *Dataset) Verify(ctx context.Context) (err error) {
+	rctx, end, err := d.r.begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer end()
+	return finish(ctx, rctx, d.r.verify(rctx))
+}
 
 // Range returns the rows of rng. It decodes key pages only from the page
 // that can hold its start, or the cursor's row, and value pages only for

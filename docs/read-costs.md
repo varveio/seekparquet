@@ -8,19 +8,21 @@ evidence and the remaining qualification gaps.
 
 ## Measure three phases separately
 
-1. **Cold open:** the manifest and every part's footer must be checked, even if the next query
-   returns one row. Part count therefore matters independently of page size. Optional verification
-   reads more key pages on open. Opening a fresh handle for every request repeats startup work.
-2. **Cold query:** routing information and page indexes needed by the query must be loaded and
-   checked, followed by relevant key and projected value pages. Row-group geometry, index placement
+1. **Cold open:** the manifest is read and checked. It carries each part's exact key bounds, row
+   count and size, so no part needs to be opened to route a query. A reader may check every part
+   on open, or on request (an explicit verification, which may also read key pages); that costs a
+   footer per part, so part count then matters independently of page size.
+2. **Cold query:** each part the query touches is checked the first time (its footer), then the
+   routing information and page indexes needed by the query are loaded and checked, followed by
+   relevant key and projected value pages. Opening a fresh handle for every request repeats this. Row-group geometry, index placement
    and bound quality matter here.
 3. **Warm query:** a reused handle can retain routing information and checked indexes, subject to
    the reader's limits. Data pages may still need reading and decoding. Do not assume that caching
    indexes means caching all data pages or results.
 
-The all-part open checks are [CHECK-1](../spec/format-1.md#7-what-readers-check-and-when), not merely
-a tuning choice. Reusing long-lived handles can amortize them, but also retains file handles and
-metadata. A query that succeeds does not validate skipped data (CHECK-4).
+The per-part checks are [CHECK-1](../spec/format-1.md#7-what-readers-check-and-when), not merely
+a tuning choice: every part a query touches is checked before its data is used, and a reader keeps
+the outcome. Reusing long-lived handles amortizes them, but also retains file handles and metadata. A query that succeeds does not validate skipped data (CHECK-4).
 
 ## Keep key bounds useful
 
@@ -47,7 +49,7 @@ These recommendations do not make a slower, correctly bounded file invalid.
 
 - The [geometry guidance](../spec/format-1.md#55-geometry-and-encoding) recommends at most 1,024
   rows per key page. More/smaller pages also mean larger indexes, headers and potentially more reads.
-- More parts increase open work. More row groups increase footer and routing metadata. Larger
+- More parts increase the work of verifying every part, not of opening. More row groups increase footer and routing metadata. Larger
   groups can increase index-loading and page-decoding costs. Test the combination, not just one knob.
 - Include OffsetIndexes for value columns where the writer supports them (COL-4). Readers must
   accept their absence, but locating sparse projected rows may then require walking page headers.

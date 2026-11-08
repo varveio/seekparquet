@@ -49,17 +49,24 @@ func (v *validator) close() {
 	}
 }
 
-// structural opens the dataset (CHECK-1, which includes COL-5 for every
-// column) and checks RG-2 to RG-4 for every non-empty row group: the key
-// column's indexes, and the page header at every OffsetIndex entry, which
-// must begin one data page of exactly the entry's size and rows (RG-3).
-// Page data is not read.
+// structural opens the dataset (the manifest) and checks every part as
+// Dataset.Verify does, without its key pages (CHECK-1, which with every
+// part checked includes COL-5 for every column); then it checks RG-2 to
+// RG-4 for every non-empty row group: the key column's indexes, and the
+// page header at every OffsetIndex entry, which must begin one data page
+// of exactly the entry's size and rows (RG-3). Page data is not read.
 func (v *validator) structural(lr *LevelReport) error {
 	d, err := OpenDataset(v.ctx, v.src, Options{Limits: v.limits})
 	if err != nil {
 		return err
 	}
 	v.d = d
+	for i, p := range d.r.parts {
+		lr.At = Location{Part: p.name, RowGroup: -1, Page: -1}
+		if _, err := d.r.part(v.ctx, i, &v.st); err != nil {
+			return err
+		}
+	}
 	for _, p := range d.r.parts {
 		lr.At = Location{Part: p.name, RowGroup: -1, Page: -1}
 		for physical := range p.footer.Metadata().RowGroups {

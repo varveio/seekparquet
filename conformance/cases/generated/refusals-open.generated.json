@@ -3,9 +3,9 @@
   "target": "reader",
   "generated": true,
   "generator": "generators/make_cases.py",
-  "description": "Faults a reader must detect when opening the dataset (reader_detect open in generators/faults.json).",
+  "description": "Faults in the manifest, which a reader must detect when opening the dataset (reader_detect open in generators/faults.json), and faults in a part, which it must detect no later than the first read that routes to the part, or on verify (reader_detect touch). Each touch request is an unbounded range whose limit covers every row, so it routes to every part.",
   "families": {
-    "refusals-open/fault": "one case per fault that a reader must refuse on open"
+    "refusals-open/fault": "one case per fault that a reader must refuse on open, or when a read first touches its part"
   },
   "cases": [
     {
@@ -19,9 +19,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/stamp-missing",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -39,9 +40,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/stamp-wrong-revision",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -59,9 +61,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/stamp-missing-revision",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -78,9 +81,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/key-int64",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -97,9 +101,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/key-missing",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -116,9 +121,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/key-nested",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -135,9 +141,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/sorting-columns-missing",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -154,9 +161,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/sorting-columns-other-first",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -632,9 +640,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/part-size-smaller",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -688,9 +697,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/invalid-footer-length",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -706,9 +716,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/invalid-footer-thrift",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -725,9 +736,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/column-orders-missing",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",
@@ -744,9 +756,10 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/column-orders-long",
-      "detect": "open",
+      "detect": "touch",
       "request": {
-        "op": "open"
+        "op": "range",
+        "limit": 100000
       },
       "expect": {
         "status": "refused",

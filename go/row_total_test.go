@@ -58,8 +58,12 @@ func TestDatasetRowTotalLimit(t *testing.T) {
 				return
 			}
 			must(t, err)
-			if d.r.rows != math.MaxInt64 || d.r.groups[1].start != tc.first {
-				t.Fatalf("total %d, second group starts at %d", d.r.rows, d.r.groups[1].start)
+			if src.opened.Load() != 1 {
+				t.Fatalf("open opened %d files, want the manifest only", src.opened.Load())
+			}
+			must(t, d.r.checkParts(ctx, new(ReadStats)))
+			if second := d.r.parts[1].groups[0].start; d.r.rows != math.MaxInt64 || second != tc.first {
+				t.Fatalf("total %d, second group starts at %d", d.r.rows, second)
 			}
 		})
 	}

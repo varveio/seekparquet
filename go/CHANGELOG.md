@@ -5,6 +5,16 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Lazy open (spec CHECK-1 as now written): `OpenDataset` and `OpenDir` read and check the manifest only,
+  and open no part. A part is opened and checked (size, footer, stamps, row count, key column, RG-1, and
+  COL-5 against the parts already checked) the first time a read routes to it; a refusal surfaces from
+  that `Range` or `List` with the same codes as before, and the part stays refused. `OpenDir` keeps the
+  directory open until `Close`; a custom `Source` must stay usable until `Close`.
+- `Dataset.Verify` checks every part now, then every row group's first key page and each part's last
+  (CHECK-3). It replaces `Options.VerifyOnOpen`, which is removed: call `Verify` after opening.
+- `ReadStats.PartsOpened` counts the parts a request was the first to touch; their footer reads are in
+  `SourceReads` and `SourceBytes`.
+- The structural validation level checks every part explicitly, as `Verify` does without key pages.
 - `Range.Stats` and `List.Stats` take a `*ReadStats` that the reader fills with the request's exact
   counts: key and value pages decoded, keys decoded, row groups opened, key page index loads, page-index
   seeks, prefix resumes, row groups skipped whole, and `Source` reads and requested bytes.

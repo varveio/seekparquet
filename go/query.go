@@ -219,15 +219,27 @@ func (r *reader) request(ctx context.Context, cur *Cursor, prefixes bool, limit 
 	}, nil
 }
 
-// checkProjection rejects a request for a column that some part holds as
-// a nested or repeated column (COL-3).
+// checkProjection rejects a request for a column that a checked part
+// holds as a nested or repeated column (COL-3). A part checked later is
+// held to the same rule when a projection reaches it (project).
 func (r *reader) checkProjection(columns []string) error {
-	for _, name := range columns {
-		for _, p := range r.parts {
-			if p.unsupported[name] {
-				return &UnsupportedError{Code: UnsupportedProjection,
-					Detail: "column " + name + " is nested or repeated in part " + p.name}
+	for _, p := range r.parts {
+		if p.ready.Load() {
+			if err := p.checkProjection(columns); err != nil {
+				return err
 			}
+		}
+	}
+	return nil
+}
+
+// checkProjection rejects projecting a column the part holds as a nested
+// or repeated column (COL-3).
+func (p *part) checkProjection(columns []string) error {
+	for _, name := range columns {
+		if p.unsupported[name] {
+			return &UnsupportedError{Code: UnsupportedProjection,
+				Detail: "column " + name + " is nested or repeated in part " + p.name}
 		}
 	}
 	return nil
@@ -242,7 +254,7 @@ func (r *reader) readRange(ctx context.Context, rng Range, st *ReadStats) (_ []R
 	}
 	defer done(&err)
 	from, exclusive, end := rng.bounds()
-	if len(r.groups) == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
+	if r.rows == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
 		return nil, nil
 	}
 	s := r.newScan(ctx, end, st)
@@ -294,7 +306,7 @@ func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Ent
 			from = after
 		}
 	}
-	if len(r.groups) == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
+	if r.rows == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
 		return nil, nil
 	}
 	s := r.newScan(ctx, end, st)
@@ -375,8 +387,11 @@ func (r *reader) project(ctx context.Context, rows []*Row, at []position, column
 		for j < len(rows) && at[j].g == at[i].g {
 			j++
 		}
-		grp := r.groups[at[i].g]
-		p := r.parts[grp.part]
+		p := r.parts[at[i].g.part]
+		grp := p.groups[at[i].g.index]
+		if err := p.checkProjection(columns); err != nil {
+			return err
+		}
 		for c, name := range columns {
 			col, ok := p.leaves[name]
 			if !ok {

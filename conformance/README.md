@@ -57,7 +57,9 @@ target name, or an unsupported format version. The exit status is 0 only when ev
 
 Refusal cases follow the state machine in protocol.md: the harness sends `open`; an acceptable refusal
 there completes the case; for `detect: read` it then sends the case's request (an unbounded range whose limit
-covers every row, so every correct access path decodes the faulty data); for `detect: validate:<level>` it
+covers every row, so every correct access path decodes the faulty data); for `detect: touch` (a fault in a
+part, which a reader need not detect before a read routes to the part) it sends the same kind of range, and
+then, if the adapter claims the optional `verify` capability, `verify` on a freshly opened dataset; for `detect: validate:<level>` it
 sends `validate` and expects that level to fail with an acceptable code.
 
 **Qualification.** A target qualifies only on a complete run: it has cases of its own, and every case of
@@ -87,7 +89,7 @@ python3 generators/check_reproducible.py                           # regenerate 
 ## Where expected results come from
 
 Invalid fixtures' faults are declared by hand in [generators/faults.json](generators/faults.json): the
-fault id (the dataset name), when a reader must detect it (`open`, `read`, or only by validation), its
+fault id (the dataset name), when a reader must detect it (`open`, `touch`, `read`, or only by validation), its
 lowest validation level, its codes, the requirements it breaks, its location, and any unavoidable secondary
 fault with a justification. Refusal and validation cases are built from that file; nothing is inferred
 from codes. Validation is one case per fault at its lowest detecting level, plus 15 prerequisite cases

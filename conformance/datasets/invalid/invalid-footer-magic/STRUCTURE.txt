@@ -5,7 +5,7 @@ description: The part's trailing magic is PAR0 instead of PAR1.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-fault (generators/faults.json): invalid-footer-magic: invalid_footer; reader detects on open; lowest validation level structural (CHECK-1); location: data/part-00000.parquet: trailing magic PAR1 -> PAR0; size unchanged; data pages untouched
+fault (generators/faults.json): invalid-footer-magic: invalid_footer; reader detects on touch; lowest validation level structural (CHECK-1); location: data/part-00000.parquet: trailing magic PAR1 -> PAR0; size unchanged; data pages untouched
 changes:
   - data/part-00000.parquet: trailing magic PAR1 -> PAR0; size unchanged; data pages untouched
 

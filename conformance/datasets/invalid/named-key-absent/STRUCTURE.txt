@@ -5,7 +5,7 @@ description: The declared key column is absent from the part.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-fault (generators/faults.json): named-key-absent: invalid_key_column; reader detects on open; lowest validation level structural (KEY-1, MAN-8); location: manifest or key column footer/data, as described by the fixture
+fault (generators/faults.json): named-key-absent: invalid_key_column; reader detects on touch; lowest validation level structural (KEY-1, MAN-8); location: manifest or key column footer/data, as described by the fixture
 changes:
   - data/part-00000.parquet: footer: seekparquet.key_column changed
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2828 -> 2831

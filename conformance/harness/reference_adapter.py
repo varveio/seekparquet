@@ -6,7 +6,7 @@
 THIS IS NOT A SEEKPARQUET READER AND MAKES NO READER CLAIM. It exists to test
 the suite itself: it answers the runner protocol (protocol.md) by decoding every
 row of every part with pyarrow and filtering in memory, never using the page
-index to choose what to read. It performs the open-time checks it can (manifest
+index to choose what to read. It performs the part checks eagerly, on open (manifest
 rules, sizes, footers, stamps, key column shape, column consistency,
 sorting_columns) and, on the first read or validation of a dataset, the
 read-time checks over the whole dataset (page index consistency with the
@@ -722,13 +722,13 @@ def handle(req):
                 "version": "0.1.0", "supports": [{"format_version": f, "draft_revision": d} for f, d in SUPPORTED],
                 "targets": ["reader", "validator-structural", "validator-profile", "validator-full",
                             "validator-digest"],
-                "capabilities": ["open", "range", "list", "projection", "validate:structural", "validate:profile",
-                                 "validate:full", "validate:digest"]}
+                "capabilities": ["open", "range", "list", "projection", "verify", "validate:structural",
+                                 "validate:profile", "validate:full", "validate:digest"]}
     path = req.get("dataset")
     if not isinstance(path, str):
         return {"status": "invalid_request", "message": "dataset is required"}
     try:
-        if op == "open":
+        if op in ("open", "verify"):  # open already checks every part (CHECK-1), so verify adds nothing
             get_dataset(path)
             return {"status": "ok"}
         if op == "range":

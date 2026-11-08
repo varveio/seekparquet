@@ -5,7 +5,7 @@ description: The manifest's bytes is one less than the file's size.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-fault (generators/faults.json): part-size-smaller: part_mismatch; reader detects on open; lowest validation level structural (CHECK-1); location: manifest.json
+fault (generators/faults.json): part-size-smaller: part_mismatch; reader detects on touch; lowest validation level structural (CHECK-1); location: manifest.json
 changes:
   - manifest: parts.0.bytes 2828 -> 2827
 

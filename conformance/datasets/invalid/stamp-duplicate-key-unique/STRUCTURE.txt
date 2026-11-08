@@ -5,7 +5,7 @@ description: The key declaration footer stamp appears twice.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-fault (generators/faults.json): stamp-duplicate-key-unique: stamp_mismatch; reader detects on open; lowest validation level structural (STAMP-2); location: manifest or key column footer/data, as described by the fixture
+fault (generators/faults.json): stamp-duplicate-key-unique: stamp_mismatch; reader detects on touch; lowest validation level structural (STAMP-2); location: manifest or key column footer/data, as described by the fixture
 changes:
   - data/part-00000.parquet: footer: key-value entry 'seekparquet.key_unique' appended a second time (same value)
   - data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2828 -> 2859
