@@ -1,0 +1,945 @@
+{
+  "dataset": "projection",
+  "description": "Projected values of every mandatory physical type with nulls and special floats; the key column carries the STRING annotation; part 1 lacks columns f64 and req, only part 2 has column extra; meta (struct) and tags (list) are nested.",
+  "schema_id": "conformance/projection/v1",
+  "key_type": "string",
+  "columns": [
+    {
+      "name": "flag",
+      "type": "bool",
+      "nullable": true
+    },
+    {
+      "name": "i32",
+      "type": "int32",
+      "nullable": true
+    },
+    {
+      "name": "i64",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "f32",
+      "type": "float32",
+      "nullable": true
+    },
+    {
+      "name": "f64",
+      "type": "float64",
+      "nullable": true
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "blob",
+      "type": "binary",
+      "nullable": true
+    },
+    {
+      "name": "fx",
+      "type": "fixed:4",
+      "nullable": true
+    },
+    {
+      "name": "req",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "name": "extra",
+      "type": "int32",
+      "nullable": false
+    },
+    {
+      "name": "meta",
+      "type": "struct<a:int32>",
+      "nullable": true
+    },
+    {
+      "name": "tags",
+      "type": "list<string>",
+      "nullable": true
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "columns": [
+        "flag",
+        "i32",
+        "i64",
+        "f32",
+        "f64",
+        "name",
+        "blob",
+        "fx",
+        "req",
+        "meta",
+        "tags"
+      ],
+      "row_groups": [
+        3,
+        3
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "gzip",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "cm93LTAw",
+          "values": {
+            "flag": {
+              "bool": true
+            },
+            "i32": {
+              "int": "0"
+            },
+            "i64": {
+              "int": "0"
+            },
+            "f32": {
+              "float32": "3fc00000"
+            },
+            "f64": {
+              "float64": "3ff8000000000000"
+            },
+            "name": {
+              "bytes_base64": ""
+            },
+            "blob": {
+              "bytes_base64": "AA=="
+            },
+            "fx": {
+              "bytes_base64": "AAD/fw=="
+            },
+            "req": {
+              "int": "1000"
+            },
+            "extra": {
+              "int": "0"
+            },
+            "meta": {
+              "json": {
+                "a": 0
+              }
+            },
+            "tags": {
+              "json": []
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTAx",
+          "values": {
+            "flag": {
+              "bool": false
+            },
+            "i32": {
+              "int": "-1"
+            },
+            "i64": {
+              "int": "-1"
+            },
+            "f32": {
+              "float32": "80000000"
+            },
+            "f64": {
+              "float64": "8000000000000000"
+            },
+            "name": {
+              "bytes_base64": "cGxhaW4="
+            },
+            "blob": {
+              "bytes_base64": "AP8="
+            },
+            "fx": {
+              "bytes_base64": "AQD/fw=="
+            },
+            "req": {
+              "int": "999"
+            },
+            "extra": {
+              "int": "-1"
+            },
+            "meta": {
+              "json": {
+                "a": 1
+              }
+            },
+            "tags": {
+              "json": [
+                "t0"
+              ]
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTAy",
+          "values": {
+            "flag": {
+              "bool": false
+            },
+            "i32": {
+              "int": "2147483647"
+            },
+            "i64": {
+              "int": "9223372036854775807"
+            },
+            "f32": {
+              "float32": "7f800000"
+            },
+            "f64": {
+              "float64": "7ff0000000000000"
+            },
+            "name": {
+              "bytes_base64": "Y2Fmw6k="
+            },
+            "blob": {
+              "null": true
+            },
+            "fx": {
+              "bytes_base64": "AgD/fw=="
+            },
+            "req": {
+              "int": "998"
+            },
+            "extra": {
+              "int": "-2"
+            },
+            "meta": {
+              "json": {
+                "a": 2
+              }
+            },
+            "tags": {
+              "json": [
+                "t0",
+                "t1"
+              ]
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTAz",
+          "values": {
+            "flag": {
+              "bool": true
+            },
+            "i32": {
+              "int": "-2147483648"
+            },
+            "i64": {
+              "int": "-9223372036854775808"
+            },
+            "f32": {
+              "float32": "ff800000"
+            },
+            "f64": {
+              "float64": "7ff8000000000000"
+            },
+            "name": {
+              "bytes_base64": "5pel5pys"
+            },
+            "blob": {
+              "bytes_base64": "AP8DgA=="
+            },
+            "fx": {
+              "bytes_base64": "AwD/fw=="
+            },
+            "req": {
+              "int": "997"
+            },
+            "extra": {
+              "int": "-3"
+            },
+            "meta": {
+              "json": {
+                "a": 3
+              }
+            },
+            "tags": {
+              "json": []
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTA0",
+          "values": {
+            "flag": {
+              "null": true
+            },
+            "i32": {
+              "null": true
+            },
+            "i64": {
+              "int": "1099511627776"
+            },
+            "f32": {
+              "null": true
+            },
+            "f64": {
+              "float64": "7fefffffffffffff"
+            },
+            "name": {
+              "null": true
+            },
+            "blob": {
+              "bytes_base64": "AA=="
+            },
+            "fx": {
+              "null": true
+            },
+            "req": {
+              "int": "996"
+            },
+            "extra": {
+              "int": "-4"
+            },
+            "meta": {
+              "null": true
+            },
+            "tags": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTA1",
+          "values": {
+            "flag": {
+              "bool": false
+            },
+            "i32": {
+              "int": "0"
+            },
+            "i64": {
+              "int": "0"
+            },
+            "f32": {
+              "float32": "7f7fffff"
+            },
+            "f64": {
+              "null": true
+            },
+            "name": {
+              "bytes_base64": ""
+            },
+            "blob": {
+              "bytes_base64": "AP8="
+            },
+            "fx": {
+              "bytes_base64": "BQD/fw=="
+            },
+            "req": {
+              "int": "995"
+            },
+            "extra": {
+              "int": "-5"
+            },
+            "meta": {
+              "json": {
+                "a": 5
+              }
+            },
+            "tags": {
+              "json": [
+                "t0",
+                "t1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "data/part-00001.parquet",
+      "columns": [
+        "flag",
+        "i32",
+        "i64",
+        "f32",
+        "name",
+        "blob",
+        "fx",
+        "meta",
+        "tags"
+      ],
+      "row_groups": [
+        3,
+        3
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "snappy",
+        "use_dictionary": true,
+        "data_page_version": "2.0"
+      },
+      "rows": [
+        {
+          "key_base64": "cm93LTA2",
+          "values": {
+            "flag": {
+              "bool": true
+            },
+            "i32": {
+              "int": "-1"
+            },
+            "i64": {
+              "null": true
+            },
+            "f32": {
+              "float32": "00000001"
+            },
+            "f64": {
+              "float64": "3fb999999999999a"
+            },
+            "name": {
+              "bytes_base64": "cGxhaW4="
+            },
+            "blob": {
+              "null": true
+            },
+            "fx": {
+              "bytes_base64": "BgD/fw=="
+            },
+            "req": {
+              "int": "994"
+            },
+            "extra": {
+              "int": "-6"
+            },
+            "meta": {
+              "json": {
+                "a": 6
+              }
+            },
+            "tags": {
+              "json": []
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTA3",
+          "values": {
+            "flag": {
+              "bool": false
+            },
+            "i32": {
+              "int": "2147483647"
+            },
+            "i64": {
+              "int": "9223372036854775807"
+            },
+            "f32": {
+              "float32": "3fc00000"
+            },
+            "f64": {
+              "float64": "3ff8000000000000"
+            },
+            "name": {
+              "bytes_base64": "Y2Fmw6k="
+            },
+            "blob": {
+              "bytes_base64": "AP8HgA=="
+            },
+            "fx": {
+              "bytes_base64": "BwD/fw=="
+            },
+            "req": {
+              "int": "993"
+            },
+            "extra": {
+              "int": "-7"
+            },
+            "meta": {
+              "json": {
+                "a": 7
+              }
+            },
+            "tags": {
+              "json": [
+                "t0"
+              ]
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTA4",
+          "values": {
+            "flag": {
+              "bool": false
+            },
+            "i32": {
+              "int": "-2147483648"
+            },
+            "i64": {
+              "int": "-9223372036854775808"
+            },
+            "f32": {
+              "float32": "80000000"
+            },
+            "f64": {
+              "float64": "8000000000000000"
+            },
+            "name": {
+              "bytes_base64": "5pel5pys"
+            },
+            "blob": {
+              "bytes_base64": "AA=="
+            },
+            "fx": {
+              "bytes_base64": "CAD/fw=="
+            },
+            "req": {
+              "int": "992"
+            },
+            "extra": {
+              "int": "-8"
+            },
+            "meta": {
+              "json": {
+                "a": 8
+              }
+            },
+            "tags": {
+              "json": [
+                "t0",
+                "t1"
+              ]
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTA5",
+          "values": {
+            "flag": {
+              "null": true
+            },
+            "i32": {
+              "null": true
+            },
+            "i64": {
+              "null": true
+            },
+            "f32": {
+              "null": true
+            },
+            "f64": {
+              "null": true
+            },
+            "name": {
+              "null": true
+            },
+            "blob": {
+              "null": true
+            },
+            "fx": {
+              "null": true
+            },
+            "req": {
+              "int": "991"
+            },
+            "extra": {
+              "int": "-9"
+            },
+            "meta": {
+              "null": true
+            },
+            "tags": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTEw",
+          "values": {
+            "flag": {
+              "bool": false
+            },
+            "i32": {
+              "int": "0"
+            },
+            "i64": {
+              "int": "0"
+            },
+            "f32": {
+              "float32": "ff800000"
+            },
+            "f64": {
+              "float64": "7ff8000000000000"
+            },
+            "name": {
+              "bytes_base64": ""
+            },
+            "blob": {
+              "null": true
+            },
+            "fx": {
+              "bytes_base64": "CgD/fw=="
+            },
+            "req": {
+              "int": "990"
+            },
+            "extra": {
+              "int": "-10"
+            },
+            "meta": {
+              "json": {
+                "a": 10
+              }
+            },
+            "tags": {
+              "json": [
+                "t0"
+              ]
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTEx",
+          "values": {
+            "flag": {
+              "bool": false
+            },
+            "i32": {
+              "int": "-1"
+            },
+            "i64": {
+              "int": "-1"
+            },
+            "f32": {
+              "float32": "7fc00000"
+            },
+            "f64": {
+              "null": true
+            },
+            "name": {
+              "bytes_base64": "cGxhaW4="
+            },
+            "blob": {
+              "bytes_base64": "AP8LgA=="
+            },
+            "fx": {
+              "bytes_base64": "CwD/fw=="
+            },
+            "req": {
+              "int": "989"
+            },
+            "extra": {
+              "int": "-11"
+            },
+            "meta": {
+              "json": {
+                "a": 11
+              }
+            },
+            "tags": {
+              "json": [
+                "t0",
+                "t1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "data/part-00002.parquet",
+      "columns": [
+        "flag",
+        "i32",
+        "i64",
+        "f32",
+        "f64",
+        "name",
+        "blob",
+        "fx",
+        "req",
+        "meta",
+        "tags",
+        "extra"
+      ],
+      "row_groups": [
+        6
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "cm93LTEy",
+          "values": {
+            "flag": {
+              "bool": true
+            },
+            "i32": {
+              "int": "2147483647"
+            },
+            "i64": {
+              "int": "9223372036854775807"
+            },
+            "f32": {
+              "float32": "7f7fffff"
+            },
+            "f64": {
+              "float64": "0000000000000001"
+            },
+            "name": {
+              "bytes_base64": "Y2Fmw6k="
+            },
+            "blob": {
+              "bytes_base64": "AA=="
+            },
+            "fx": {
+              "bytes_base64": "DAD/fw=="
+            },
+            "req": {
+              "int": "988"
+            },
+            "extra": {
+              "int": "-12"
+            },
+            "meta": {
+              "json": {
+                "a": 12
+              }
+            },
+            "tags": {
+              "json": []
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTEz",
+          "values": {
+            "flag": {
+              "bool": false
+            },
+            "i32": {
+              "int": "-2147483648"
+            },
+            "i64": {
+              "null": true
+            },
+            "f32": {
+              "float32": "00000001"
+            },
+            "f64": {
+              "float64": "3fb999999999999a"
+            },
+            "name": {
+              "bytes_base64": "5pel5pys"
+            },
+            "blob": {
+              "bytes_base64": "AP8="
+            },
+            "fx": {
+              "bytes_base64": "DQD/fw=="
+            },
+            "req": {
+              "int": "987"
+            },
+            "extra": {
+              "int": "-13"
+            },
+            "meta": {
+              "json": {
+                "a": 13
+              }
+            },
+            "tags": {
+              "json": [
+                "t0"
+              ]
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTE0",
+          "values": {
+            "flag": {
+              "null": true
+            },
+            "i32": {
+              "null": true
+            },
+            "i64": {
+              "int": "1099511627776"
+            },
+            "f32": {
+              "null": true
+            },
+            "f64": {
+              "float64": "3ff8000000000000"
+            },
+            "name": {
+              "null": true
+            },
+            "blob": {
+              "null": true
+            },
+            "fx": {
+              "null": true
+            },
+            "req": {
+              "int": "986"
+            },
+            "extra": {
+              "int": "-14"
+            },
+            "meta": {
+              "null": true
+            },
+            "tags": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTE1",
+          "values": {
+            "flag": {
+              "bool": true
+            },
+            "i32": {
+              "int": "0"
+            },
+            "i64": {
+              "int": "0"
+            },
+            "f32": {
+              "float32": "80000000"
+            },
+            "f64": {
+              "float64": "8000000000000000"
+            },
+            "name": {
+              "bytes_base64": ""
+            },
+            "blob": {
+              "bytes_base64": "AP8PgA=="
+            },
+            "fx": {
+              "bytes_base64": "DwD/fw=="
+            },
+            "req": {
+              "int": "985"
+            },
+            "extra": {
+              "int": "-15"
+            },
+            "meta": {
+              "json": {
+                "a": 15
+              }
+            },
+            "tags": {
+              "json": []
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTE2",
+          "values": {
+            "flag": {
+              "bool": false
+            },
+            "i32": {
+              "int": "-1"
+            },
+            "i64": {
+              "int": "-1"
+            },
+            "f32": {
+              "float32": "7f800000"
+            },
+            "f64": {
+              "float64": "7ff0000000000000"
+            },
+            "name": {
+              "bytes_base64": "cGxhaW4="
+            },
+            "blob": {
+              "bytes_base64": "AA=="
+            },
+            "fx": {
+              "bytes_base64": "EAD/fw=="
+            },
+            "req": {
+              "int": "984"
+            },
+            "extra": {
+              "int": "-16"
+            },
+            "meta": {
+              "json": {
+                "a": 16
+              }
+            },
+            "tags": {
+              "json": [
+                "t0"
+              ]
+            }
+          }
+        },
+        {
+          "key_base64": "cm93LTE3",
+          "values": {
+            "flag": {
+              "bool": false
+            },
+            "i32": {
+              "int": "2147483647"
+            },
+            "i64": {
+              "int": "9223372036854775807"
+            },
+            "f32": {
+              "float32": "ff800000"
+            },
+            "f64": {
+              "null": true
+            },
+            "name": {
+              "bytes_base64": "Y2Fmw6k="
+            },
+            "blob": {
+              "bytes_base64": "AP8="
+            },
+            "fx": {
+              "bytes_base64": "EQD/fw=="
+            },
+            "req": {
+              "int": "983"
+            },
+            "extra": {
+              "int": "-17"
+            },
+            "meta": {
+              "json": {
+                "a": 17
+              }
+            },
+            "tags": {
+              "json": [
+                "t0",
+                "t1"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

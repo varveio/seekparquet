@@ -1,0 +1,29 @@
+{
+  "format": "seekparquet",
+  "format_version": 0,
+  "draft_revision": 1,
+  "schema_id": "conformance/objects/v1",
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "rows": 13,
+      "bytes": 1721,
+      "min_key_base64": "Lw==",
+      "max_key_base64": "YS9iL2M="
+    },
+    {
+      "path": "data/part-00001.parquet",
+      "rows": 13,
+      "bytes": 2011,
+      "min_key_base64": "YS9iL2Mv",
+      "max_key_base64": "Y2Fmw6nDqQ=="
+    },
+    {
+      "path": "data/part-00002.parquet",
+      "rows": 11,
+      "bytes": 1637,
+      "min_key_base64": "Y2Fmw6nDqXo=",
+      "max_key_base64": "////L3g="
+    }
+  ]
+}

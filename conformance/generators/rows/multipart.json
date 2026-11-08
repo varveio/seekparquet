@@ -1,0 +1,1961 @@
+{
+  "dataset": "multipart",
+  "description": "Three parts listed out of file-name order, several row groups and pages each, leading/interior/trailing empty row groups, SNAPPY/ZSTD/GZIP, dictionary and DELTA_BYTE_ARRAY keys, data page v1 and v2, sha256 in the manifest, an extension, and a stray Parquet file under the root that is not part of the dataset.",
+  "schema_id": "conformance/objects/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "size",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "name": "storage_class",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "mtime",
+      "type": "int64",
+      "nullable": true
+    }
+  ],
+  "manifest": {
+    "sha256": true,
+    "extensions": {
+      "conformance": {
+        "synthetic": true,
+        "note": "ignored by readers"
+      }
+    }
+  },
+  "parts": [
+    {
+      "path": "shards/c.parquet",
+      "row_groups": [
+        0,
+        16,
+        16,
+        0,
+        13
+      ],
+      "writer": {
+        "max_rows_per_page": 4,
+        "compression": "snappy",
+        "use_dictionary": true,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "UkVBRE1F",
+          "values": {
+            "size": {
+              "int": "2052263231"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "YXBwL3YxL29iai0wMDA=",
+          "values": {
+            "size": {
+              "int": "572045545"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1772415464"
+            }
+          }
+        },
+        {
+          "key_base64": "YXBwL3YxL29iai0wMDE=",
+          "values": {
+            "size": {
+              "int": "2107371739"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1770337795"
+            }
+          }
+        },
+        {
+          "key_base64": "YXBwL3YxL29iai0wMDI=",
+          "values": {
+            "size": {
+              "int": "416493632"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1774371549"
+            }
+          }
+        },
+        {
+          "key_base64": "YXBwL3YxL29iai0wMDM=",
+          "values": {
+            "size": {
+              "int": "1916433405"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1771252396"
+            }
+          }
+        },
+        {
+          "key_base64": "YXBwL3YxL29iai0wMDQ=",
+          "values": {
+            "size": {
+              "int": "2061790936"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1774131254"
+            }
+          }
+        },
+        {
+          "key_base64": "YXBwL3YxL29iai0wMDU=",
+          "values": {
+            "size": {
+              "int": "1722498653"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1775927640"
+            }
+          }
+        },
+        {
+          "key_base64": "YXBwL3YxL29iai0wMDY=",
+          "values": {
+            "size": {
+              "int": "642109893"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1775477352"
+            }
+          }
+        },
+        {
+          "key_base64": "YXBwL3YxL29iai0wMDc=",
+          "values": {
+            "size": {
+              "int": "613053350"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1770575773"
+            }
+          }
+        },
+        {
+          "key_base64": "YXBwL3YxL29iai0wMDg=",
+          "values": {
+            "size": {
+              "int": "947389209"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1775257572"
+            }
+          }
+        },
+        {
+          "key_base64": "YXBwL3YxL29iai0wMDk=",
+          "values": {
+            "size": {
+              "int": "198072445"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1776681888"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMDAuZ3o=",
+          "values": {
+            "size": {
+              "int": "2131508780"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1775310304"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMDEuZ3o=",
+          "values": {
+            "size": {
+              "int": "1611710546"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1770403572"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMDIuZ3o=",
+          "values": {
+            "size": {
+              "int": "1423097357"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1774883674"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMDMuZ3o=",
+          "values": {
+            "size": {
+              "int": "123567808"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1775552306"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMDQuZ3o=",
+          "values": {
+            "size": {
+              "int": "1966451359"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1775446963"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMDUuZ3o=",
+          "values": {
+            "size": {
+              "int": "920731355"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1772914900"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMDYuZ3o=",
+          "values": {
+            "size": {
+              "int": "185676152"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1776068521"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMDcuZ3o=",
+          "values": {
+            "size": {
+              "int": "691651910"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1775574408"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMDguZ3o=",
+          "values": {
+            "size": {
+              "int": "1879835718"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1774416850"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMDkuZ3o=",
+          "values": {
+            "size": {
+              "int": "144881832"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1771582176"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMTAuZ3o=",
+          "values": {
+            "size": {
+              "int": "2006562577"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1772895778"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMTEuZ3o=",
+          "values": {
+            "size": {
+              "int": "1794840239"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1772699325"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMTIuZ3o=",
+          "values": {
+            "size": {
+              "int": "1371860317"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1771247448"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMTMuZ3o=",
+          "values": {
+            "size": {
+              "int": "464124515"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1774045725"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMTQuZ3o=",
+          "values": {
+            "size": {
+              "int": "1036807616"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1776802085"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMTUuZ3o=",
+          "values": {
+            "size": {
+              "int": "898616131"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1774695155"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMTYuZ3o=",
+          "values": {
+            "size": {
+              "int": "1098813494"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1775608481"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMTcuZ3o=",
+          "values": {
+            "size": {
+              "int": "1578488628"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1769421805"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMTguZ3o=",
+          "values": {
+            "size": {
+              "int": "769428482"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1768012710"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMTkuZ3o=",
+          "values": {
+            "size": {
+              "int": "931402727"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1771407498"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMjAuZ3o=",
+          "values": {
+            "size": {
+              "int": "595947170"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMjEuZ3o=",
+          "values": {
+            "size": {
+              "int": "289243514"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1768233873"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMjIuZ3o=",
+          "values": {
+            "size": {
+              "int": "1038422309"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1774332961"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMjMuZ3o=",
+          "values": {
+            "size": {
+              "int": "520797255"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1769951443"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMjQuZ3o=",
+          "values": {
+            "size": {
+              "int": "517393754"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1770158020"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMjUuZ3o=",
+          "values": {
+            "size": {
+              "int": "1552810155"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1770546813"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMjYuZ3o=",
+          "values": {
+            "size": {
+              "int": "1874479734"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1775299983"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMjcuZ3o=",
+          "values": {
+            "size": {
+              "int": "833453698"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1775184813"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMjguZ3o=",
+          "values": {
+            "size": {
+              "int": "1138134769"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAxL2YwMjkuZ3o=",
+          "values": {
+            "size": {
+              "int": "152387997"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1771422127"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+          "values": {
+            "size": {
+              "int": "882854000"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+          "values": {
+            "size": {
+              "int": "936166262"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1768899794"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+          "values": {
+            "size": {
+              "int": "1989090778"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1770132074"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+          "values": {
+            "size": {
+              "int": "232002150"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "shards/a.parquet",
+      "row_groups": [
+        15,
+        15,
+        15
+      ],
+      "writer": {
+        "max_rows_per_page": 5,
+        "compression": "zstd",
+        "use_dictionary": false,
+        "data_page_version": "2.0",
+        "key_encoding": "DELTA_BYTE_ARRAY"
+      },
+      "rows": [
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+          "values": {
+            "size": {
+              "int": "1685066606"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1775418049"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+          "values": {
+            "size": {
+              "int": "1207775224"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1771860611"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+          "values": {
+            "size": {
+              "int": "175160838"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1776162286"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMDcuZ3o=",
+          "values": {
+            "size": {
+              "int": "1189262629"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1773917107"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMDguZ3o=",
+          "values": {
+            "size": {
+              "int": "1536265996"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMDkuZ3o=",
+          "values": {
+            "size": {
+              "int": "283147767"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1773320231"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+          "values": {
+            "size": {
+              "int": "1428079770"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1774168261"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+          "values": {
+            "size": {
+              "int": "219617200"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1773035602"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+          "values": {
+            "size": {
+              "int": "1680509420"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1776949909"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+          "values": {
+            "size": {
+              "int": "865546578"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1772958125"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMTQuZ3o=",
+          "values": {
+            "size": {
+              "int": "570222112"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1770811813"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMTUuZ3o=",
+          "values": {
+            "size": {
+              "int": "196094001"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1767963104"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMTYuZ3o=",
+          "values": {
+            "size": {
+              "int": "438733841"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1776261333"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMTcuZ3o=",
+          "values": {
+            "size": {
+              "int": "1318442420"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1772288161"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMTguZ3o=",
+          "values": {
+            "size": {
+              "int": "1856824044"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1775539284"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMTkuZ3o=",
+          "values": {
+            "size": {
+              "int": "1264208374"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1768064381"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+          "values": {
+            "size": {
+              "int": "1350654560"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1770785198"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjEuZ3o=",
+          "values": {
+            "size": {
+              "int": "697701077"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjIuZ3o=",
+          "values": {
+            "size": {
+              "int": "2016265940"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1771819412"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjMuZ3o=",
+          "values": {
+            "size": {
+              "int": "1676122187"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1768073096"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjQuZ3o=",
+          "values": {
+            "size": {
+              "int": "822573084"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjUuZ3o=",
+          "values": {
+            "size": {
+              "int": "827309862"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1769640014"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjYuZ3o=",
+          "values": {
+            "size": {
+              "int": "510752354"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1771254856"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+          "values": {
+            "size": {
+              "int": "334315265"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1774592315"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjguZ3o=",
+          "values": {
+            "size": {
+              "int": "1500041918"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1773253162"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjkuZ3o=",
+          "values": {
+            "size": {
+              "int": "905890783"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1772770242"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMzAuZ3o=",
+          "values": {
+            "size": {
+              "int": "1814310535"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1770548250"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMzEuZ3o=",
+          "values": {
+            "size": {
+              "int": "1922162610"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1774011753"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMzIuZ3o=",
+          "values": {
+            "size": {
+              "int": "1361819783"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1773327670"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+          "values": {
+            "size": {
+              "int": "2049076646"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1771302670"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+          "values": {
+            "size": {
+              "int": "400105941"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1773892065"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMzUuZ3o=",
+          "values": {
+            "size": {
+              "int": "1680692067"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1774724288"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMzYuZ3o=",
+          "values": {
+            "size": {
+              "int": "1444407357"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1775229449"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMzcuZ3o=",
+          "values": {
+            "size": {
+              "int": "411071564"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1773471760"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+          "values": {
+            "size": {
+              "int": "622630868"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1772753692"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+          "values": {
+            "size": {
+              "int": "976415507"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1776664949"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMDAuZ3o=",
+          "values": {
+            "size": {
+              "int": "383526057"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1771715393"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMDEuZ3o=",
+          "values": {
+            "size": {
+              "int": "1442533434"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1773601793"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMDIuZ3o=",
+          "values": {
+            "size": {
+              "int": "256176553"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1776628254"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMDMuZ3o=",
+          "values": {
+            "size": {
+              "int": "1120504347"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1768332575"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMDQuZ3o=",
+          "values": {
+            "size": {
+              "int": "5091828"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1771815427"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMDUuZ3o=",
+          "values": {
+            "size": {
+              "int": "1139635534"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1776840159"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMDYuZ3o=",
+          "values": {
+            "size": {
+              "int": "749964795"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1768954125"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMDcuZ3o=",
+          "values": {
+            "size": {
+              "int": "1443656273"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1770948702"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMDguZ3o=",
+          "values": {
+            "size": {
+              "int": "371283422"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1770288069"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "shards/b.parquet",
+      "row_groups": [
+        20,
+        24,
+        0
+      ],
+      "writer": {
+        "max_rows_per_page": 3,
+        "compression": "gzip",
+        "use_dictionary": true,
+        "data_page_version": "2.0"
+      },
+      "rows": [
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMDkuZ3o=",
+          "values": {
+            "size": {
+              "int": "883296115"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMTAuZ3o=",
+          "values": {
+            "size": {
+              "int": "2018818075"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMTEuZ3o=",
+          "values": {
+            "size": {
+              "int": "1642512923"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1776280122"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMTIuZ3o=",
+          "values": {
+            "size": {
+              "int": "206816212"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1769813028"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMTMuZ3o=",
+          "values": {
+            "size": {
+              "int": "1070477579"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1772862976"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMTQuZ3o=",
+          "values": {
+            "size": {
+              "int": "736606516"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1770514046"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMTUuZ3o=",
+          "values": {
+            "size": {
+              "int": "1295445100"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1771044406"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMTYuZ3o=",
+          "values": {
+            "size": {
+              "int": "1790225508"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1767390975"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMTcuZ3o=",
+          "values": {
+            "size": {
+              "int": "772258715"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1773217239"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMTguZ3o=",
+          "values": {
+            "size": {
+              "int": "322304825"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1772513948"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMTkuZ3o=",
+          "values": {
+            "size": {
+              "int": "1551941165"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1774844975"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMjAuZ3o=",
+          "values": {
+            "size": {
+              "int": "425933270"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1768282702"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMjEuZ3o=",
+          "values": {
+            "size": {
+              "int": "560405147"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1775711173"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMjIuZ3o=",
+          "values": {
+            "size": {
+              "int": "987889821"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1774218871"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMjMuZ3o=",
+          "values": {
+            "size": {
+              "int": "2080209633"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1772953804"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMjQuZ3o=",
+          "values": {
+            "size": {
+              "int": "592143799"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1767326676"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMjUuZ3o=",
+          "values": {
+            "size": {
+              "int": "387707945"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1770437672"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMjYuZ3o=",
+          "values": {
+            "size": {
+              "int": "575803244"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1770885008"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMjcuZ3o=",
+          "values": {
+            "size": {
+              "int": "1608480733"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1773707433"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMjguZ3o=",
+          "values": {
+            "size": {
+              "int": "19472290"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1774715692"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI2LzAzL2YwMjkuZ3o=",
+          "values": {
+            "size": {
+              "int": "1730359644"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1772846545"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMDAuZ3o=",
+          "values": {
+            "size": {
+              "int": "746098670"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1770375079"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMDEuZ3o=",
+          "values": {
+            "size": {
+              "int": "1385282808"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMDIuZ3o=",
+          "values": {
+            "size": {
+              "int": "1366730078"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1769859021"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMDMuZ3o=",
+          "values": {
+            "size": {
+              "int": "723957133"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1769327279"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMDQuZ3o=",
+          "values": {
+            "size": {
+              "int": "2116288221"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMDUuZ3o=",
+          "values": {
+            "size": {
+              "int": "2036001730"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1772406509"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMDYuZ3o=",
+          "values": {
+            "size": {
+              "int": "57934981"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1768724818"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMDcuZ3o=",
+          "values": {
+            "size": {
+              "int": "132011694"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1768331329"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMDguZ3o=",
+          "values": {
+            "size": {
+              "int": "873073589"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1775428202"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMDkuZ3o=",
+          "values": {
+            "size": {
+              "int": "1988938649"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1773093227"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMTAuZ3o=",
+          "values": {
+            "size": {
+              "int": "2146170724"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1776480280"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMTEuZ3o=",
+          "values": {
+            "size": {
+              "int": "2020833071"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1775977473"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMTIuZ3o=",
+          "values": {
+            "size": {
+              "int": "702157958"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1776966451"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMTMuZ3o=",
+          "values": {
+            "size": {
+              "int": "890658541"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1774651355"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMTQuZ3o=",
+          "values": {
+            "size": {
+              "int": "1536617398"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1772373798"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMTUuZ3o=",
+          "values": {
+            "size": {
+              "int": "1393805421"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1769553580"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMTYuZ3o=",
+          "values": {
+            "size": {
+              "int": "256939491"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1772203384"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMTcuZ3o=",
+          "values": {
+            "size": {
+              "int": "118784434"
+            },
+            "storage_class": {
+              "null": true
+            },
+            "mtime": {
+              "int": "1774278361"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMTguZ3o=",
+          "values": {
+            "size": {
+              "int": "522518181"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1774263695"
+            }
+          }
+        },
+        {
+          "key_base64": "bG9ncy8yMDI3LzAxL2YwMTkuZ3o=",
+          "values": {
+            "size": {
+              "int": "1478483558"
+            },
+            "storage_class": {
+              "bytes_base64": "U1RBTkRBUkQ="
+            },
+            "mtime": {
+              "int": "1774373302"
+            }
+          }
+        },
+        {
+          "key_base64": "dG1wLw==",
+          "values": {
+            "size": {
+              "int": "360314332"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1771513536"
+            }
+          }
+        },
+        {
+          "key_base64": "dG1wL3g=",
+          "values": {
+            "size": {
+              "int": "671093289"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "int": "1771330012"
+            }
+          }
+        },
+        {
+          "key_base64": "enotbGFzdA==",
+          "values": {
+            "size": {
+              "int": "2038745134"
+            },
+            "storage_class": {
+              "bytes_base64": "R0xBQ0lFUg=="
+            },
+            "mtime": {
+              "null": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

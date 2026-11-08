@@ -1,0 +1,414 @@
+{
+  "dataset": "binary-keys",
+  "description": "Keys exercising unsigned byte order: NUL, 0x7F/0x80, 0xFF, invalid UTF-8, UTF-8 whose UTF-16 order differs, prefix chains, keys longer than 64 bytes (pyarrow does not shorten bounds), and long keys of 0xFF bytes. Pages of 3 rows.",
+  "schema_id": "conformance/binary/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "v",
+      "type": "int32",
+      "nullable": false
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        12,
+        12
+      ],
+      "writer": {
+        "max_rows_per_page": 3,
+        "compression": "zstd",
+        "use_dictionary": false,
+        "data_page_version": "1.0",
+        "key_encoding": "DELTA_BYTE_ARRAY"
+      },
+      "rows": [
+        {
+          "key_base64": "AA==",
+          "values": {
+            "v": {
+              "int": "0"
+            }
+          }
+        },
+        {
+          "key_base64": "AAA=",
+          "values": {
+            "v": {
+              "int": "1"
+            }
+          }
+        },
+        {
+          "key_base64": "AAE=",
+          "values": {
+            "v": {
+              "int": "2"
+            }
+          }
+        },
+        {
+          "key_base64": "AQ==",
+          "values": {
+            "v": {
+              "int": "3"
+            }
+          }
+        },
+        {
+          "key_base64": "Hw==",
+          "values": {
+            "v": {
+              "int": "4"
+            }
+          }
+        },
+        {
+          "key_base64": "IA==",
+          "values": {
+            "v": {
+              "int": "5"
+            }
+          }
+        },
+        {
+          "key_base64": "QQ==",
+          "values": {
+            "v": {
+              "int": "6"
+            }
+          }
+        },
+        {
+          "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDA=",
+          "values": {
+            "v": {
+              "int": "7"
+            }
+          }
+        },
+        {
+          "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDE=",
+          "values": {
+            "v": {
+              "int": "8"
+            }
+          }
+        },
+        {
+          "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDI=",
+          "values": {
+            "v": {
+              "int": "9"
+            }
+          }
+        },
+        {
+          "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDM=",
+          "values": {
+            "v": {
+              "int": "10"
+            }
+          }
+        },
+        {
+          "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDQ=",
+          "values": {
+            "v": {
+              "int": "11"
+            }
+          }
+        },
+        {
+          "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDU=",
+          "values": {
+            "v": {
+              "int": "12"
+            }
+          }
+        },
+        {
+          "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDY=",
+          "values": {
+            "v": {
+              "int": "13"
+            }
+          }
+        },
+        {
+          "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8B",
+          "values": {
+            "v": {
+              "int": "14"
+            }
+          }
+        },
+        {
+          "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8C",
+          "values": {
+            "v": {
+              "int": "15"
+            }
+          }
+        },
+        {
+          "key_base64": "YQ==",
+          "values": {
+            "v": {
+              "int": "16"
+            }
+          }
+        },
+        {
+          "key_base64": "YQA=",
+          "values": {
+            "v": {
+              "int": "17"
+            }
+          }
+        },
+        {
+          "key_base64": "YQAA",
+          "values": {
+            "v": {
+              "int": "18"
+            }
+          }
+        },
+        {
+          "key_base64": "YQE=",
+          "values": {
+            "v": {
+              "int": "19"
+            }
+          }
+        },
+        {
+          "key_base64": "YWI=",
+          "values": {
+            "v": {
+              "int": "20"
+            }
+          }
+        },
+        {
+          "key_base64": "YWJj",
+          "values": {
+            "v": {
+              "int": "21"
+            }
+          }
+        },
+        {
+          "key_base64": "YWJk",
+          "values": {
+            "v": {
+              "int": "22"
+            }
+          }
+        },
+        {
+          "key_base64": "cA==",
+          "values": {
+            "v": {
+              "int": "23"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "data/part-00001.parquet",
+      "row_groups": [
+        9,
+        13
+      ],
+      "writer": {
+        "max_rows_per_page": 3,
+        "compression": "snappy",
+        "use_dictionary": true,
+        "data_page_version": "2.0"
+      },
+      "rows": [
+        {
+          "key_base64": "cHE=",
+          "values": {
+            "v": {
+              "int": "24"
+            }
+          }
+        },
+        {
+          "key_base64": "cHFy",
+          "values": {
+            "v": {
+              "int": "25"
+            }
+          }
+        },
+        {
+          "key_base64": "cHFycw==",
+          "values": {
+            "v": {
+              "int": "26"
+            }
+          }
+        },
+        {
+          "key_base64": "fg==",
+          "values": {
+            "v": {
+              "int": "27"
+            }
+          }
+        },
+        {
+          "key_base64": "fw==",
+          "values": {
+            "v": {
+              "int": "28"
+            }
+          }
+        },
+        {
+          "key_base64": "f/8=",
+          "values": {
+            "v": {
+              "int": "29"
+            }
+          }
+        },
+        {
+          "key_base64": "gA==",
+          "values": {
+            "v": {
+              "int": "30"
+            }
+          }
+        },
+        {
+          "key_base64": "gAA=",
+          "values": {
+            "v": {
+              "int": "31"
+            }
+          }
+        },
+        {
+          "key_base64": "wyg=",
+          "values": {
+            "v": {
+              "int": "32"
+            }
+          }
+        },
+        {
+          "key_base64": "w6k=",
+          "values": {
+            "v": {
+              "int": "33"
+            }
+          }
+        },
+        {
+          "key_base64": "4oI=",
+          "values": {
+            "v": {
+              "int": "34"
+            }
+          }
+        },
+        {
+          "key_base64": "772e",
+          "values": {
+            "v": {
+              "int": "35"
+            }
+          }
+        },
+        {
+          "key_base64": "8J+YgA==",
+          "values": {
+            "v": {
+              "int": "36"
+            }
+          }
+        },
+        {
+          "key_base64": "/g==",
+          "values": {
+            "v": {
+              "int": "37"
+            }
+          }
+        },
+        {
+          "key_base64": "/w==",
+          "values": {
+            "v": {
+              "int": "38"
+            }
+          }
+        },
+        {
+          "key_base64": "/wA=",
+          "values": {
+            "v": {
+              "int": "39"
+            }
+          }
+        },
+        {
+          "key_base64": "//4=",
+          "values": {
+            "v": {
+              "int": "40"
+            }
+          }
+        },
+        {
+          "key_base64": "//8=",
+          "values": {
+            "v": {
+              "int": "41"
+            }
+          }
+        },
+        {
+          "key_base64": "////",
+          "values": {
+            "v": {
+              "int": "42"
+            }
+          }
+        },
+        {
+          "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",
+          "values": {
+            "v": {
+              "int": "43"
+            }
+          }
+        },
+        {
+          "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+          "values": {
+            "v": {
+              "int": "44"
+            }
+          }
+        },
+        {
+          "key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+          "values": {
+            "v": {
+              "int": "45"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+{
+  "dataset": "basic",
+  "description": "One part, two row groups of six rows, key pages of two rows; uncompressed PLAIN v1 pages.",
+  "schema_id": "conformance/objects/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "size",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "name": "etag",
+      "type": "string",
+      "nullable": true
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        6,
+        6
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "YS8xLnR4dA==",
+          "values": {
+            "size": {
+              "int": "100"
+            },
+            "etag": {
+              "bytes_base64": "ZXRhZy0wMA=="
+            }
+          }
+        },
+        {
+          "key_base64": "YS8yLnR4dA==",
+          "values": {
+            "size": {
+              "int": "107"
+            },
+            "etag": {
+              "bytes_base64": "ZXRhZy0wMQ=="
+            }
+          }
+        },
+        {
+          "key_base64": "YS9iLzMudHh0",
+          "values": {
+            "size": {
+              "int": "114"
+            },
+            "etag": {
+              "bytes_base64": "ZXRhZy0wMg=="
+            }
+          }
+        },
+        {
+          "key_base64": "YWxwaGE=",
+          "values": {
+            "size": {
+              "int": "121"
+            },
+            "etag": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "size": {
+              "int": "128"
+            },
+            "etag": {
+              "bytes_base64": "ZXRhZy0wNA=="
+            }
+          }
+        },
+        {
+          "key_base64": "YnJhdm8=",
+          "values": {
+            "size": {
+              "int": "135"
+            },
+            "etag": {
+              "bytes_base64": "ZXRhZy0wNQ=="
+            }
+          }
+        },
+        {
+          "key_base64": "Yy8=",
+          "values": {
+            "size": {
+              "int": "142"
+            },
+            "etag": {
+              "bytes_base64": "ZXRhZy0wNg=="
+            }
+          }
+        },
+        {
+          "key_base64": "Yy9k",
+          "values": {
+            "size": {
+              "int": "149"
+            },
+            "etag": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "Y2hhcmxpZQ==",
+          "values": {
+            "size": {
+              "int": "156"
+            },
+            "etag": {
+              "bytes_base64": "ZXRhZy0wOA=="
+            }
+          }
+        },
+        {
+          "key_base64": "ZGVsdGE=",
+          "values": {
+            "size": {
+              "int": "163"
+            },
+            "etag": {
+              "bytes_base64": "ZXRhZy0wOQ=="
+            }
+          }
+        },
+        {
+          "key_base64": "ZWNobw==",
+          "values": {
+            "size": {
+              "int": "170"
+            },
+            "etag": {
+              "bytes_base64": "ZXRhZy0xMA=="
+            }
+          }
+        },
+        {
+          "key_base64": "Zm94dHJvdA==",
+          "values": {
+            "size": {
+              "int": "177"
+            },
+            "etag": {
+              "null": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
