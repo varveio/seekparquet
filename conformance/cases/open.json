@@ -131,6 +131,56 @@
       }
     },
     {
+      "id": "open/annotated",
+      "description": "Columns with logical annotations whose physical values the protocol reports: DATE (INT32 days), TIMESTAMP millis and micros/UTC (INT64), DECIMAL stored as INT32, INT64 and FIXED_LEN_BYTE_ARRAY(13) (unscaled two's complement), STRING (BYTE_ARRAY).",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/encodings",
+      "description": "Data pages that use the remaining mandatory encodings: part 0 is written as Parquet format 1.0 with dictionaries, so key and value data pages are PLAIN_DICTIONARY; part 1 uses DELTA_BINARY_PACKED for INT32 and INT64 and DELTA_LENGTH_BYTE_ARRAY for BYTE_ARRAY columns (including the key), with data page v2. Asserted from the page headers.",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "ENC-1"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/optional-codecs",
+      "description": "Valid, but two value columns use codecs outside the ENC-1 baseline: lz4col is LZ4_RAW and brcol is BROTLI. The key and size columns are SNAPPY. A reader or validator may support these codecs or report them unsupported.",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "ENC-1"
+      ],
+      "dataset": "datasets/optional-codecs",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok",
+        "accept_unsupported": [
+          "unsupported_encoding"
+        ]
+      }
+    },
+    {
       "id": "open/truncated-bounds",
       "description": "binary-keys with every key-page bound longer than 16 bytes shortened conservatively (lower bounds to a 16-byte prefix, upper bounds to an incremented prefix, except that an upper bound whose first 16 bytes are all 0xFF is kept full). Adjacent page bounds overlap. Row group 1 of part 0 is marked UNORDERED.",
       "requirements": [
@@ -185,6 +235,23 @@
         "KEY-6"
       ],
       "dataset": "datasets/key-legacy-utf8",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/extensions-numbers",
+      "description": "basic with an extension holding fractional, exponent, negative, very large, null, boolean, array and nested values, and an escaped surrogate pair: ordinary JSON inside extensions (EXT-1; MAN-6 constrains only the defined integer members).",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "EXT-1",
+        "MAN-6"
+      ],
+      "dataset": "datasets/extensions-numbers",
       "request": {
         "op": "open"
       },

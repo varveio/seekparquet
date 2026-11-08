@@ -180,6 +180,72 @@
       }
     },
     {
+      "id": "validate-structural/annotated",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encodings",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/optional-codecs",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/optional-codecs",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-structural/missing-column-index-native",
       "description": "Row group 1 holds a 5002-byte key; pyarrow omits the whole ColumnIndex of that key chunk (statistics larger than its 4096-byte limit) but keeps the OffsetIndex.",
       "requirements": [
@@ -218,6 +284,32 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/inconsistent-column-type",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "inconsistent_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/inconsistent-column-width",
+      "description": "Column h is FIXED_LEN_BYTE_ARRAY(4) in part 0 and FIXED_LEN_BYTE_ARRAY(8) in part 1.",
+      "requirements": [
+        "COL-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/inconsistent-column-width",
       "request": {
         "op": "validate",
         "level": "structural"
@@ -704,6 +796,28 @@
         "validate:structural"
       ],
       "dataset": "datasets/key-legacy-utf8",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/extensions-numbers",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/extensions-numbers",
       "request": {
         "op": "validate",
         "level": "structural"
@@ -1601,6 +1715,112 @@
       }
     },
     {
+      "id": "validate-structural/manifest-draft-revision-zero",
+      "description": "draft_revision is 0.",
+      "requirements": [
+        "MAN-7",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-draft-revision-zero",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-format-1-with-draft-revision",
+      "description": "format_version 1 with a draft_revision (only format_version 0 may carry one).",
+      "requirements": [
+        "MAN-7",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-format-1-with-draft-revision",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-format-version-overflow",
+      "description": "format_version is 2^63, beyond the integer range of MAN-6 (it must not wrap or be read as unsupported).",
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-format-version-overflow",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-format-version-negative",
+      "description": "format_version is -1.",
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-format-version-negative",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-structural/unsupported-version-2",
       "description": "format_version is 2 (well formed, not defined by this draft).",
       "requirements": [
@@ -2022,6 +2242,58 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/column-orders-missing",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/column-orders-short",
+      "description": "column_orders holds only the key's TYPE_ORDER entry; the schema has three leaf columns.",
+      "requirements": [
+        "KEY-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/column-orders-short",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/column-orders-long",
+      "description": "column_orders has one entry more than there are leaf columns.",
+      "requirements": [
+        "KEY-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/column-orders-long",
       "request": {
         "op": "validate",
         "level": "structural"

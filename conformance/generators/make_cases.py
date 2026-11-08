@@ -20,7 +20,9 @@ sys.path.insert(0, str(HERE))
 import oracle  # noqa: E402
 from common import b64e, dumps, load_rows, write_text  # noqa: E402
 
-SUITE_REVISION = "0.1.0-draft.1"
+SUITE_REVISION = "0.1.0-draft.2"
+# Datasets that use optional features (outside ENC-1): a reader may support them or answer unsupported.
+OPTIONAL = {"optional-codecs": ["unsupported_encoding"]}
 BIG = 100000  # a limit at least the number of rows of every fixture (QUERY-3)
 
 
@@ -151,8 +153,15 @@ def open_group(lock):
                 reqs += ["MAN-3"]
             if d["name"] in ("projection", "key-legacy-utf8"):
                 reqs += ["KEY-1", "KEY-6"]
-            g.add(d["name"], reqs, d["dir"], {"status": "ok"}, request={"op": "open"},
-                  desc=d["description"])
+            if d["name"] == "extensions-numbers":
+                reqs += ["EXT-1", "MAN-6"]
+            if d["name"] == "encodings":
+                reqs += ["ENC-1"]
+            exp = {"status": "ok"}
+            if d["name"] in OPTIONAL:
+                reqs += ["ENC-1"]
+                exp["accept_unsupported"] = OPTIONAL[d["name"]]
+            g.add(d["name"], reqs, d["dir"], exp, request={"op": "open"}, desc=d["description"])
     e = oracle.Dataset.load("empty")
     g.add("empty-range", ["RANGE-1", "MAN-3"], "empty", run(e, rq_range()), request=rq_range())
     g.add("empty-list", ["LIST-4", "MAN-3"], "empty", run(e, rq_list()), request=rq_list())
@@ -239,12 +248,15 @@ def range_group():
             if name == "truncated-bounds-2":
                 add(f"{name}/end-{i:02d}", reqs, name, "binary-keys", rq_range(start=k[:1], end=k, limit=3),
                     f"end exactly at {show(k)}")
-    for name, src in (("non-monotone-bounds", "basic"), ("no-value-page-index", "basic"),
-                      ("non-utf8-keys", "non-utf8-keys")):
+    for name, src, cols, extra in (
+            ("non-monotone-bounds", "basic", ["size", "etag"], ["RG-5", "RG-6"]),
+            ("no-value-page-index", "basic", ["size", "etag"], ["COL-4", "RANGE-2"]),
+            ("non-utf8-keys", "non-utf8-keys", ["size"], ["KEY-6"]),
+            ("extensions-numbers", "basic", ["size", "etag"], ["EXT-1"]),
+            ("encodings", "encodings", ["i32", "i64", "s"], ["ENC-1", "RANGE-2"]),
+            ("annotated", "annotated", ["d", "ts_ms", "ts_utc", "dec9", "dec18", "dec30", "s"], ["RANGE-2", "COL-3"])):
         ds = oracle.Dataset.load(src)
-        reqs = R + {"non-monotone-bounds": ["RG-5", "RG-6"], "no-value-page-index": ["COL-4", "RANGE-2"],
-                    "non-utf8-keys": ["KEY-6"]}[name]
-        cols = ["size"] + (["etag"] if src == "basic" else [])
+        reqs = R + extra
         add(f"{name}/all", reqs, name, src, rq_range(columns=cols))
         for i, k in enumerate(ds.keys()):
             add(f"{name}/seek-{i:02d}", reqs, name, src, rq_range(start=k, limit=2, columns=cols))
@@ -457,6 +469,48 @@ def projection_group():
     req = rq_range(columns=["a"])
     g.add("col-6/no-path-lookup", ["COL-6", "COL-7"], P, run(ds, req), request=req,
           desc="'a' is not a field; the column 'a.b' does not make it one")
+    # The key column is projected like any other column: its physical BYTE_ARRAY bytes.
+    key_cases = [
+        ("basic", "basic", rq_range(columns=["key"]), "unannotated key alone"),
+        ("basic", "basic", rq_range(start=b"b", limit=5, columns=["size", "key", "etag", "key"]),
+         "key with other columns, requested twice"),
+        ("basic", "basic", rq_list(prefix=b"a/", columns=["key", "size"]), "list rows with the key projected"),
+        ("projection", P, rq_range(columns=["key", "i32"]), "key annotated STRING"),
+        ("projection", P, rq_list(prefix=b"row-1", delimiter=b"-", columns=["key", "key"]), "list, key twice"),
+        ("key-legacy-utf8", P, rq_range(start=b"row-10", limit=3, columns=["key"]), "key annotated UTF8 only"),
+        ("binary-keys", "binary-keys", rq_range(columns=["v", "key"]), "keys that are not UTF-8"),
+        ("non-utf8-keys", "non-utf8-keys", rq_range(columns=["key"]), None),
+        ("multipart", "multipart", rq_list(prefix=b"logs/2026/02/", columns=["key"], limit=6), "rows from two parts"),
+    ]
+    for i, (name, src, req, desc) in enumerate(key_cases):
+        g.add(f"key/{name}-{i:02d}", ["RANGE-2", "KEY-1"] + (["LIST-3"] if req["op"] == "list" else []), name,
+              run(oracle.Dataset.load(src), req), request=req, desc=desc)
+    an = oracle.Dataset.load("annotated")
+    acols = ["d", "ts_ms", "ts_utc", "dec9", "dec18", "dec30", "s"]
+    for c in acols:
+        req = rq_range(columns=[c])
+        g.add(f"annotated/{c}", ["RANGE-2", "COL-3"], "annotated", run(an, req), request=req,
+              desc="the physical value, whatever the logical annotation")
+    req = rq_range(columns=["key"])
+    g.add("annotated/keys-only", ["RANGE-2"], "annotated", run(an, req), request=req,
+          desc="unrequested annotated columns must not affect a keys-only request")
+    req = rq_list(prefix=b"ann-", delimiter=b"/", columns=list(reversed(acols)))
+    g.add("annotated/list-all", ["RANGE-2", "LIST-3"], "annotated", run(an, req), request=req)
+    en = oracle.Dataset.load("encodings")
+    for c in ("i32", "i64", "s"):
+        req = rq_range(columns=[c, "key"])
+        g.add(f"encodings/{c}", ["RANGE-2", "ENC-1"], "encodings", run(en, req), request=req,
+              desc="PLAIN_DICTIONARY pages in part 0; DELTA_BINARY_PACKED / DELTA_LENGTH_BYTE_ARRAY in part 1")
+    oc = oracle.Dataset.load("optional-codecs")
+    req = rq_range(columns=["size"])
+    g.add("optional-codecs/baseline-column", ["RANGE-2", "ENC-1"], "optional-codecs",
+          dict(run(oc, req), accept_unsupported=["unsupported_encoding"]), request=req,
+          desc="only baseline codecs are decoded, but a reader that checks codecs eagerly may answer unsupported")
+    for c in ("lz4col", "brcol"):
+        req = rq_range(columns=[c])
+        g.add(f"optional-codecs/{c}", ["RANGE-2", "ENC-1"], "optional-codecs",
+              dict(run(oc, req), accept_unsupported=["unsupported_encoding"]), request=req,
+              desc="a codec outside the baseline: the values, or unsupported (never wrong values or a refusal)")
     for c in ("meta", "tags"):
         req = rq_range(columns=["i32", c])
         g.add(f"nested/{c}", ["COL-3"], P, run(ds, req), request=req,
@@ -560,7 +614,12 @@ def refusal_groups(lock):
             n_sha = sum(1 for p in m["parts"] if "sha256" in p)
             for lvl in order:
                 levels = {x: {"result": "complete"} for x in order[: order.index(lvl) + 1]}
-                gv[lvl].add(d["name"], ["VAL-1"], d["dir"], {"status": "ok", "levels": levels},
+                reqs = ["VAL-1"]
+                if d["name"] in OPTIONAL and lvl == "full":
+                    # an unsupported optional codec makes full incomplete, never failed; lower levels complete
+                    levels["full"] = {"result": "complete", "accept": ["incomplete"]}
+                    reqs += ["ENC-1"]
+                gv[lvl].add(d["name"], reqs, d["dir"], {"status": "ok", "levels": levels},
                             request={"op": "validate", "level": lvl}, requires=[f"validate:{lvl}"])
             gv["digest"].add(d["name"], ["VAL-2", "PART-5"], d["dir"],
                              {"status": "ok", "levels": {"digest": {"result": "complete", "checked": n_sha}}},
@@ -572,9 +631,8 @@ def refusal_groups(lock):
         desc = d["description"] + (f" Note: {f['note']}" if f.get("note") else "")
         if f["detect"] == "open":
             g_open.add(d["name"], f["requirements"], d["dir"], exp, request={"op": "open"}, detect="open", desc=desc)
-        elif f["detect"] == "read" or "invalid_parquet" in codes:
-            g_read.add(d["name"], f["requirements"], d["dir"], exp, request=read_request(
-                {"request": "range-columns:size"} if "invalid_parquet" in codes else f), detect="read", desc=desc)
+        elif f["detect"] == "read" or ("invalid_parquet" in codes and "No read case" not in f.get("note", "")):
+            g_read.add(d["name"], f["requirements"], d["dir"], exp, request=read_request(f), detect="read", desc=desc)
         lvl = fault_level(f)
         reqs = f["requirements"] + (["VAL-2"] if lvl == "digest" else ["VAL-1"])
         failed = {"result": "failed", **({"code": codes[0]} if len(codes) == 1 else {"codes": codes})}
@@ -587,6 +645,16 @@ def refusal_groups(lock):
         # structural with the refusal code).
         gv[lvl].add(d["name"], reqs, d["dir"], {"status": "ok", "levels": levels},
                     request={"op": "validate", "level": lvl}, requires=[f"validate:{lvl}"], desc=desc)
+        # A higher-level request on a lower-level fault: the failed level is reported and every dependent
+        # level is incomplete (VAL-1: a level is complete only if its prerequisite is complete).
+        if lvl in order:
+            for higher in order[order.index(lvl) + 1:]:
+                lv = dict(levels)
+                for x in order[order.index(lvl) + 1: order.index(higher) + 1]:
+                    lv[x] = {"result": "incomplete"}
+                gv[higher].add(f"prerequisite/{d['name']}", reqs, d["dir"], {"status": "ok", "levels": lv},
+                               request={"op": "validate", "level": higher}, requires=[f"validate:{higher}"],
+                               desc=f"fault at the {lvl} level, validation requested at {higher}. " + desc)
     return [g_open, g_read] + [gv[x] for x in ("structural", "profile", "full", "digest")]
 
 
@@ -611,8 +679,68 @@ def main():
         "case_files": files,
         "case_counts": {g.name: len(g.cases) for g in groups},
     }
+    suite["content_sha256"] = suite_digest(files)
     write_text(CONF / "suite.json", dumps(suite))
+    write_coverage(groups)
     print(f"{sum(len(g.cases) for g in groups)} cases in {len(groups)} files")
+
+
+DIGEST_FILES = ["protocol.md", "case.schema.json", "capabilities.json", "fixtures.lock.json"]
+
+
+def suite_digest(case_files):
+    """SHA-256 over the suite's contract files and case files (path, NUL, bytes, NUL; sorted by path).
+
+    harness/check_suite.py recomputes it, so spec/status.json can pin a suite revision by revision and digest.
+    """
+    import hashlib
+    h = hashlib.sha256()
+    for path in sorted(DIGEST_FILES + list(case_files)):
+        h.update(path.encode() + b"\0" + (CONF / path).read_bytes() + b"\0")
+    return h.hexdigest()
+
+
+UNTESTABLE = {
+    "COMMIT-1": "publication property (atomic, durable publication): not testable from stored bytes",
+    "COMMIT-2": "publication property (parts immutable while referenced): not testable from stored bytes",
+    "COMMIT-3": "scope statement (one snapshot per manifest): not testable",
+    "VER-2": "process rule for the specification itself: not testable",
+    "VAL-3": "statement of what validation cannot show: not testable",
+    "EXT-2": "API recommendation (expose extensions unchanged): outside the runner protocol",
+    "GEO-1": "writer recommendation affecting speed, not validity; readers must accept any page size, which "
+             "every fixture with a different page size exercises",
+    "GEO-2": "writer's choice: not a reader obligation",
+    "MAN-5": "reader configuration (accepting a draft only when configured): adapters declare supported "
+             "versions in hello; covered indirectly by the unsupported-version cases",
+    "LAYOUT-2": "paths are relative to the root: exercised implicitly by every dataset",
+    "FILE-2": "not yet covered: needs an encrypted fixture (pyarrow can write one; deferred)",
+    "COL-1": "producer freedom: no reader obligation",
+}
+
+
+def write_coverage(groups):
+    spec = (CONF.parent / "spec" / "format-1.md").read_text(encoding="utf-8")
+    import re
+    ids = list(dict.fromkeys(re.findall(r"\[([A-Z]+-[0-9]+)\]", spec)))
+    cites = {}
+    for g in groups:
+        for c in g.cases:
+            for r in c["requirements"]:
+                cites.setdefault(r, {}).setdefault(g.name, 0)
+                cites[r][g.name] += 1
+    lines = ["# Requirement coverage", "",
+             "Generated by `generators/make_cases.py` from the case files: for each requirement identifier in",
+             "`spec/format-1.md`, the case groups that cite it (with counts), or why no case does.", "",
+             "| Requirement | Cases | Coverage |", "|---|---|---|"]
+    for r in ids:
+        if r in cites:
+            total = sum(cites[r].values())
+            detail = ", ".join(f"{g} ({n})" for g, n in sorted(cites[r].items()))
+            note = UNTESTABLE.get(r, "")
+            lines.append(f"| {r} | {total} | {detail}{'; ' + note if note else ''} |")
+        else:
+            lines.append(f"| {r} | 0 | {UNTESTABLE.get(r, 'not yet covered')} |")
+    write_text(CONF / "COVERAGE.md", "\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

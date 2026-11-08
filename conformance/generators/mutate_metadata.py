@@ -359,6 +359,51 @@ def corrupt_page(rg, col, page_no):
     return fn
 
 
+def column_orders_len(delta):
+    def fn(part):
+        lst = part.meta.get(7).items
+        n = len(lst)
+        if delta < 0:
+            del lst[delta:]
+        else:
+            lst += [copy.deepcopy(lst[0]) for _ in range(delta)]
+        part.changes.append(f"footer: column_orders has {len(lst)} entries for {n} leaf columns "
+                            f"(the key's entry is still TYPE_ORDER)")
+    return fn
+
+
+def corrupt_dictionary(rg, col):
+    """Make the first PLAIN BYTE_ARRAY dictionary entry claim a 2^31-1 byte length (uncompressed page)."""
+    def fn(data):
+        pf = pm.read_parquet(data)
+        cc = pm.column_chunk(pf, rg, col)
+        d = next(p for p in pm.chunk_pages(pf, cc) if p.type == 2)
+        assert cc.get(pm.CC_META).get(pm.CMD_CODEC) == 0, "needs an uncompressed chunk"
+        body = d.offset + d.header_len
+        new = data[:body] + (0x7FFFFFFF).to_bytes(4, "little") + data[body + 4:]
+        return new, [f"row group {rg} column {col}: dictionary page at {d.offset}: first value's length prefix "
+                     f"{int.from_bytes(data[body:body + 4], 'little')} -> 2147483647"]
+    return fn
+
+
+def bump_num_values(rg, col, page_no):
+    """Raise a data page header's num_values by one, keeping the header's encoded length."""
+    def fn(data):
+        pf = pm.read_parquet(data)
+        cc = pm.column_chunk(pf, rg, col)
+        p = pm.data_pages(pf, cc)[page_no]
+        h, hend = pm.decode_struct(data, p.offset)
+        sub = h.get(pm.PH_DATA_V1)
+        old = sub.get(pm.DPH_NUM_VALUES)
+        sub.set(pm.DPH_NUM_VALUES, pm.CT_I32, old + 1)
+        enc = pm.encode_struct(h)
+        assert len(enc) == hend - p.offset, "header length changed"
+        new = data[:p.offset] + enc + data[hend:]
+        return new, [f"row group {rg} column {col}: data page {page_no} header num_values {old} -> {old + 1} "
+                     f"(the page holds {old} values); header length unchanged"]
+    return fn
+
+
 # Conservative bound shortening, as parquet-java's BinaryTruncator does it ------
 
 TRUNC = 16
@@ -459,6 +504,17 @@ def build():
                     None, valid=True, out=DATASETS / "key-legacy-utf8",
                     parts={p: set_key_annotation("legacy-utf8") for p in
                            ("data/part-00000.parquet", "data/part-00001.parquet", "data/part-00002.parquet")}))
+    ext_text = (', "extensions": {"conformance": {"ratio": 1.5, "exp": 1e3, "small": -2.5E-7, "neg": -7, '
+                '"zero": -0.0, "big": 123456789012345678901234567890, "nil": null, "flag": false, '
+                '"list": [1, 2.5, "x", null, {"deep": [true, {"n": 1e-300}]}], '
+                '"nested": {"a": {"b": {"c": [[], {}]}}}, "unicode": "caf\\u00e9 \\ud83d\\ude00"}},\n  "parts": [')
+    R.append(derive("extensions-numbers", "basic",
+                    "basic with an extension holding fractional, exponent, negative, very large, null, boolean, "
+                    "array and nested values, and an escaped surrogate pair: ordinary JSON inside extensions (EXT-1; "
+                    "MAN-6 constrains only the defined integer members).",
+                    None, valid=True, out=DATASETS / "extensions-numbers",
+                    raw_manifest=lambda t: (t.replace(',\n  "parts": [', ext_text, 1),
+                                            ["manifest text: extensions member added with ordinary JSON values"])))
     R.append(derive("no-value-page-index", "basic",
                     "basic with the ColumnIndex and OffsetIndex of every non-key column removed (allowed: COL-4).",
                     None, valid=True, out=DATASETS / "no-value-page-index", parts={B: remove_value_indexes}))
@@ -546,6 +602,19 @@ def build():
     R.append(derive("manifest-unpaired-surrogate", "basic", "schema_id ends with the escaped lone surrogate \\ud800.",
                     mi(["MAN-1"]), raw_manifest=text_replace('"schema_id": "conformance/objects/v1"',
                                                             '"schema_id": "conformance/objects/v1\\ud800"')))
+    R.append(derive("manifest-draft-revision-zero", "basic", "draft_revision is 0.", mi(["MAN-7"]),
+                    manifest=set_member(["draft_revision"], 0)))
+    R.append(derive("manifest-format-1-with-draft-revision", "basic",
+                    "format_version 1 with a draft_revision (only format_version 0 may carry one).", mi(["MAN-7"]),
+                    manifest=set_member(["format_version"], 1)))
+    R.append(derive("manifest-format-version-overflow", "basic",
+                    "format_version is 2^63, beyond the integer range of MAN-6 (it must not wrap or be read as "
+                    "unsupported).", mi(["MAN-6", "MAN-7"]),
+                    manifest=lambda m, ch: (del_member(["draft_revision"])(m, ch),
+                                            set_member(["format_version"], 1 << 63)(m, ch))))
+    R.append(derive("manifest-format-version-negative", "basic", "format_version is -1.", mi(["MAN-6", "MAN-7"]),
+                    manifest=lambda m, ch: (del_member(["draft_revision"])(m, ch),
+                                            set_member(["format_version"], -1)(m, ch))))
     uv = lambda reqs: F("unsupported_version", open_, reqs)  # noqa: E731
     R.append(derive("unsupported-version-2", "basic", "format_version is 2 (well formed, not defined by this draft).",
                     uv(["MAN-4", "MAN-7", "VER-1"]),
@@ -613,6 +682,22 @@ def build():
                     F("invalid_key_column", open_, ["KEY-1", "CHECK-1"]), parts={B: set_key_annotation("json")}))
     R.append(derive("column-orders-missing", "basic", "The footer has no column_orders.",
                     F("invalid_key_column", open_, ["KEY-5", "CHECK-1"]), parts={B: remove_column_orders}))
+    R.append(derive("column-orders-short", "basic",
+                    "column_orders holds only the key's TYPE_ORDER entry; the schema has three leaf columns.",
+                    F("invalid_key_column", open_, ["KEY-5", "CHECK-1"]), parts={B: column_orders_len(-2)}))
+    R.append(derive("column-orders-long", "basic", "column_orders has one entry more than there are leaf columns.",
+                    F("invalid_key_column", open_, ["KEY-5", "CHECK-1"]), parts={B: column_orders_len(1)}))
+    R.append(derive("invalid-parquet-dictionary", "encodings",
+                    "The dictionary page of column s in part 0, row group 0 is malformed: its first value claims a "
+                    "length of 2^31-1 bytes.",
+                    F("invalid_parquet", "validate:full", ["CHECK-5", "VAL-1"], request="range-columns:s"),
+                    raw={B: corrupt_dictionary(0, 3)}))
+    R.append(derive("invalid-parquet-value-count", "basic",
+                    "The first data page of column size claims 3 values but holds 2.",
+                    F("invalid_parquet", "validate:full", ["CHECK-5", "VAL-1"], request="range-columns:size",
+                      note="No read case: a reader may decode only the values it needs from a value page, and "
+                           "CHECK-2's exact row count applies to key pages; full validation must find it."),
+                    raw={B: bump_num_values(0, 1, 0)}))
     R.append(derive("invalid-key-utf8", "non-utf8-keys",
                     "non-utf8-keys with the key annotated STRING: two keys (each mid-page) are not valid UTF-8; "
                     "every page bound is.",
@@ -620,7 +705,7 @@ def build():
     MP = "shards/c.parquet"
     R.append(derive("invalid-parquet-page", "multipart",
                     "The first data page of column size in row group 1 of shards/c.parquet does not decompress.",
-                    F("invalid_parquet", "validate:full", ["CHECK-5", "VAL-1"], request="validate:full"),
+                    F("invalid_parquet", "validate:full", ["CHECK-5", "VAL-1"], request="range-columns:size"),
                     raw={MP: corrupt_page(1, 1, 0)}))
     R.append(derive("sorting-columns-missing-second-row-group", "basic",
                     "Only row group 1 lacks sorting_columns.",

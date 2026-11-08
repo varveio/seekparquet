@@ -813,6 +813,76 @@
       }
     },
     {
+      "id": "refusals-open/manifest-draft-revision-zero",
+      "description": "draft_revision is 0.",
+      "requirements": [
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-draft-revision-zero",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-format-1-with-draft-revision",
+      "description": "format_version 1 with a draft_revision (only format_version 0 may carry one).",
+      "requirements": [
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-format-1-with-draft-revision",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-format-version-overflow",
+      "description": "format_version is 2^63, beyond the integer range of MAN-6 (it must not wrap or be read as unsupported).",
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-format-version-overflow",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-format-version-negative",
+      "description": "format_version is -1.",
+      "requirements": [
+        "MAN-6",
+        "MAN-7",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-format-version-negative",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
       "id": "refusals-open/unsupported-version-2",
       "description": "format_version is 2 (well formed, not defined by this draft).",
       "requirements": [
@@ -1086,6 +1156,40 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/column-orders-missing",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key_column"
+      }
+    },
+    {
+      "id": "refusals-open/column-orders-short",
+      "description": "column_orders holds only the key's TYPE_ORDER entry; the schema has three leaf columns.",
+      "requirements": [
+        "KEY-5",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/column-orders-short",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_key_column"
+      }
+    },
+    {
+      "id": "refusals-open/column-orders-long",
+      "description": "column_orders has one entry more than there are leaf columns.",
+      "requirements": [
+        "KEY-5",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/column-orders-long",
       "detect": "open",
       "request": {
         "op": "open"

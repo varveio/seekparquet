@@ -18956,6 +18956,3247 @@
           }
         ]
       }
+    },
+    {
+      "id": "range/extensions-numbers/all",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "values": [
+              {
+                "int": "100"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wMA=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "values": [
+              {
+                "int": "107"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wMQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "values": [
+              {
+                "int": "114"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wMg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "values": [
+              {
+                "int": "121"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": [
+              {
+                "int": "128"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNA=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": [
+              {
+                "int": "135"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": [
+              {
+                "int": "142"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": [
+              {
+                "int": "149"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "values": [
+              {
+                "int": "156"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wOA=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "values": [
+              {
+                "int": "163"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wOQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "values": [
+              {
+                "int": "170"
+              },
+              {
+                "bytes_base64": "ZXRhZy0xMA=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "values": [
+              {
+                "int": "177"
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-00",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "YS8xLnR4dA==",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "values": [
+              {
+                "int": "100"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wMA=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "values": [
+              {
+                "int": "107"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wMQ=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-01",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "YS8yLnR4dA==",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "values": [
+              {
+                "int": "107"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wMQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "values": [
+              {
+                "int": "114"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wMg=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-02",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "YS9iLzMudHh0",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "values": [
+              {
+                "int": "114"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wMg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "values": [
+              {
+                "int": "121"
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-03",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "YWxwaGE=",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "values": [
+              {
+                "int": "121"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": [
+              {
+                "int": "128"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNA=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-04",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "Yg==",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "values": [
+              {
+                "int": "128"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNA=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": [
+              {
+                "int": "135"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNQ=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-05",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "YnJhdm8=",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "values": [
+              {
+                "int": "135"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": [
+              {
+                "int": "142"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNg=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-06",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "Yy8=",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "values": [
+              {
+                "int": "142"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": [
+              {
+                "int": "149"
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-07",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "Yy9k",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "values": [
+              {
+                "int": "149"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "values": [
+              {
+                "int": "156"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wOA=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-08",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "Y2hhcmxpZQ==",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "values": [
+              {
+                "int": "156"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wOA=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "values": [
+              {
+                "int": "163"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wOQ=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-09",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "ZGVsdGE=",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "values": [
+              {
+                "int": "163"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wOQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "values": [
+              {
+                "int": "170"
+              },
+              {
+                "bytes_base64": "ZXRhZy0xMA=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-10",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "ZWNobw==",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "values": [
+              {
+                "int": "170"
+              },
+              {
+                "bytes_base64": "ZXRhZy0xMA=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "values": [
+              {
+                "int": "177"
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/extensions-numbers/seek-11",
+      "requirements": [
+        "RANGE-1",
+        "EXT-1"
+      ],
+      "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "range",
+        "start_base64": "Zm94dHJvdA==",
+        "limit": 2,
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "values": [
+              {
+                "int": "177"
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/all",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMA==",
+            "values": [
+              {
+                "int": "801471672"
+              },
+              {
+                "int": "-2305843007954207101"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMQ==",
+            "values": [
+              {
+                "int": "-904691681"
+              },
+              {
+                "int": "2305843008785624744"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMg==",
+            "values": [
+              {
+                "int": "888343710"
+              },
+              {
+                "int": "-2305843007287341469"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMw==",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "2305843008564755599"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNA==",
+            "values": [
+              {
+                "int": "-730534702"
+              },
+              {
+                "int": "-2305843008335262212"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNQ==",
+            "values": [
+              {
+                "int": "466141939"
+              },
+              {
+                "int": "2305843007344531277"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNg==",
+            "values": [
+              {
+                "int": "-555335117"
+              },
+              {
+                "int": "-2305843008925674984"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNw==",
+            "values": [
+              {
+                "int": "31096827"
+              },
+              {
+                "int": "2305843008034680843"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwOA==",
+            "values": [
+              {
+                "int": "-489400997"
+              },
+              {
+                "int": "-2305843008059083968"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwOQ==",
+            "values": [
+              {
+                "int": "99958443"
+              },
+              {
+                "int": "2305843007667561199"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMA==",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "-2305843008932168475"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMQ==",
+            "values": [
+              {
+                "int": "407103435"
+              },
+              {
+                "int": "2305843008602790653"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMg==",
+            "values": [
+              {
+                "int": "-331783568"
+              },
+              {
+                "int": "-2305843007185842414"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMw==",
+            "values": [
+              {
+                "int": "-188894946"
+              },
+              {
+                "int": "2305843008915896762"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNA==",
+            "values": [
+              {
+                "int": "477341222"
+              },
+              {
+                "int": "-2305843008661174273"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNQ==",
+            "values": [
+              {
+                "int": "762725564"
+              },
+              {
+                "int": "2305843007605510661"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNg==",
+            "values": [
+              {
+                "int": "-648789310"
+              },
+              {
+                "int": "-2305843008117070683"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNw==",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "2305843007219509075"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxOA==",
+            "values": [
+              {
+                "int": "-581012081"
+              },
+              {
+                "int": "-2305843008795347758"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxOQ==",
+            "values": [
+              {
+                "int": "-77779314"
+              },
+              {
+                "int": "2305843007348658696"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMA==",
+            "values": [
+              {
+                "int": "144706214"
+              },
+              {
+                "int": "-2305843008958560876"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMQ==",
+            "values": [
+              {
+                "int": "-866229180"
+              },
+              {
+                "int": "2305843007773743748"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMg==",
+            "values": [
+              {
+                "int": "151891385"
+              },
+              {
+                "int": "-2305843007578211197"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMw==",
+            "values": [
+              {
+                "int": "418470590"
+              },
+              {
+                "int": "2305843008641499541"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-00",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAwMA==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMA==",
+            "values": [
+              {
+                "int": "801471672"
+              },
+              {
+                "int": "-2305843007954207101"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMQ==",
+            "values": [
+              {
+                "int": "-904691681"
+              },
+              {
+                "int": "2305843008785624744"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-01",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAwMQ==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMQ==",
+            "values": [
+              {
+                "int": "-904691681"
+              },
+              {
+                "int": "2305843008785624744"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMg==",
+            "values": [
+              {
+                "int": "888343710"
+              },
+              {
+                "int": "-2305843007287341469"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-02",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAwMg==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMg==",
+            "values": [
+              {
+                "int": "888343710"
+              },
+              {
+                "int": "-2305843007287341469"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMw==",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "2305843008564755599"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-03",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAwMw==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMw==",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "2305843008564755599"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNA==",
+            "values": [
+              {
+                "int": "-730534702"
+              },
+              {
+                "int": "-2305843008335262212"
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-04",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAwNA==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNA==",
+            "values": [
+              {
+                "int": "-730534702"
+              },
+              {
+                "int": "-2305843008335262212"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNQ==",
+            "values": [
+              {
+                "int": "466141939"
+              },
+              {
+                "int": "2305843007344531277"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-05",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAwNQ==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNQ==",
+            "values": [
+              {
+                "int": "466141939"
+              },
+              {
+                "int": "2305843007344531277"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNg==",
+            "values": [
+              {
+                "int": "-555335117"
+              },
+              {
+                "int": "-2305843008925674984"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-06",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAwNg==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNg==",
+            "values": [
+              {
+                "int": "-555335117"
+              },
+              {
+                "int": "-2305843008925674984"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNw==",
+            "values": [
+              {
+                "int": "31096827"
+              },
+              {
+                "int": "2305843008034680843"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-07",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAwNw==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNw==",
+            "values": [
+              {
+                "int": "31096827"
+              },
+              {
+                "int": "2305843008034680843"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwOA==",
+            "values": [
+              {
+                "int": "-489400997"
+              },
+              {
+                "int": "-2305843008059083968"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-08",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAwOA==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwOA==",
+            "values": [
+              {
+                "int": "-489400997"
+              },
+              {
+                "int": "-2305843008059083968"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwOQ==",
+            "values": [
+              {
+                "int": "99958443"
+              },
+              {
+                "int": "2305843007667561199"
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-09",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAwOQ==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwOQ==",
+            "values": [
+              {
+                "int": "99958443"
+              },
+              {
+                "int": "2305843007667561199"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMA==",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "-2305843008932168475"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-10",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAxMA==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMA==",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "-2305843008932168475"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMQ==",
+            "values": [
+              {
+                "int": "407103435"
+              },
+              {
+                "int": "2305843008602790653"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-11",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAxMQ==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMQ==",
+            "values": [
+              {
+                "int": "407103435"
+              },
+              {
+                "int": "2305843008602790653"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMg==",
+            "values": [
+              {
+                "int": "-331783568"
+              },
+              {
+                "int": "-2305843007185842414"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-12",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAxMg==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMg==",
+            "values": [
+              {
+                "int": "-331783568"
+              },
+              {
+                "int": "-2305843007185842414"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMw==",
+            "values": [
+              {
+                "int": "-188894946"
+              },
+              {
+                "int": "2305843008915896762"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-13",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAxMw==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMw==",
+            "values": [
+              {
+                "int": "-188894946"
+              },
+              {
+                "int": "2305843008915896762"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNA==",
+            "values": [
+              {
+                "int": "477341222"
+              },
+              {
+                "int": "-2305843008661174273"
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-14",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAxNA==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNA==",
+            "values": [
+              {
+                "int": "477341222"
+              },
+              {
+                "int": "-2305843008661174273"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNQ==",
+            "values": [
+              {
+                "int": "762725564"
+              },
+              {
+                "int": "2305843007605510661"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-15",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAxNQ==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNQ==",
+            "values": [
+              {
+                "int": "762725564"
+              },
+              {
+                "int": "2305843007605510661"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNg==",
+            "values": [
+              {
+                "int": "-648789310"
+              },
+              {
+                "int": "-2305843008117070683"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-16",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAxNg==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNg==",
+            "values": [
+              {
+                "int": "-648789310"
+              },
+              {
+                "int": "-2305843008117070683"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNw==",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "2305843007219509075"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-17",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAxNw==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNw==",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "2305843007219509075"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxOA==",
+            "values": [
+              {
+                "int": "-581012081"
+              },
+              {
+                "int": "-2305843008795347758"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-18",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAxOA==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxOA==",
+            "values": [
+              {
+                "int": "-581012081"
+              },
+              {
+                "int": "-2305843008795347758"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxOQ==",
+            "values": [
+              {
+                "int": "-77779314"
+              },
+              {
+                "int": "2305843007348658696"
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-19",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAxOQ==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxOQ==",
+            "values": [
+              {
+                "int": "-77779314"
+              },
+              {
+                "int": "2305843007348658696"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMA==",
+            "values": [
+              {
+                "int": "144706214"
+              },
+              {
+                "int": "-2305843008958560876"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-20",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAyMA==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMA==",
+            "values": [
+              {
+                "int": "144706214"
+              },
+              {
+                "int": "-2305843008958560876"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMQ==",
+            "values": [
+              {
+                "int": "-866229180"
+              },
+              {
+                "int": "2305843007773743748"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-21",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAyMQ==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMQ==",
+            "values": [
+              {
+                "int": "-866229180"
+              },
+              {
+                "int": "2305843007773743748"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMg==",
+            "values": [
+              {
+                "int": "151891385"
+              },
+              {
+                "int": "-2305843007578211197"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-22",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAyMg==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMg==",
+            "values": [
+              {
+                "int": "151891385"
+              },
+              {
+                "int": "-2305843007578211197"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMw==",
+            "values": [
+              {
+                "int": "418470590"
+              },
+              {
+                "int": "2305843008641499541"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/encodings/seek-23",
+      "requirements": [
+        "RANGE-1",
+        "ENC-1",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "range",
+        "start_base64": "ZW5jLzAyMw==",
+        "limit": 2,
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMw==",
+            "values": [
+              {
+                "int": "418470590"
+              },
+              {
+                "int": "2305843008641499541"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/annotated/all",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "d",
+          "ts_ms",
+          "ts_utc",
+          "dec9",
+          "dec18",
+          "dec30",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTA=",
+            "values": [
+              {
+                "int": "-719162"
+              },
+              {
+                "int": "-62135596800000"
+              },
+              {
+                "int": "0"
+              },
+              {
+                "int": "0"
+              },
+              {
+                "int": "0"
+              },
+              {
+                "bytes_base64": "AAAAAAAAAAAAAAAAAA=="
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTE=",
+            "values": [
+              {
+                "int": "-1"
+              },
+              {
+                "int": "-1"
+              },
+              {
+                "int": "1767225600123456"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "int": "999999999999999999"
+              },
+              {
+                "bytes_base64": "DJ8snNBGdO3qP////w=="
+              },
+              {
+                "bytes_base64": "cGxhaW4="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTI=",
+            "values": [
+              {
+                "int": "0"
+              },
+              {
+                "int": "0"
+              },
+              {
+                "int": "-1"
+              },
+              {
+                "int": "-1"
+              },
+              {
+                "int": "-999999999999999999"
+              },
+              {
+                "bytes_base64": "82DTYy+5ixIVwAAAAQ=="
+              },
+              {
+                "bytes_base64": "Y2Fmw6k="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTM=",
+            "values": [
+              {
+                "int": "1"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "null": true
+              },
+              {
+                "int": "999999999"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "bytes_base64": "/////////////////w=="
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTQ=",
+            "values": [
+              {
+                "int": "19000"
+              },
+              {
+                "int": "1767225600123"
+              },
+              {
+                "int": "9223372036854775807"
+              },
+              {
+                "int": "-999999999"
+              },
+              {
+                "null": true
+              },
+              {
+                "bytes_base64": "AAAAAAAAAAAAAAAAAQ=="
+              },
+              {
+                "bytes_base64": "5pel5pys"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTU=",
+            "values": [
+              {
+                "int": "20454"
+              },
+              {
+                "int": "253402300799999"
+              },
+              {
+                "int": "-9223372036854775808"
+              },
+              {
+                "int": "12345"
+              },
+              {
+                "int": "-5"
+              },
+              {
+                "null": true
+              },
+              {
+                "bytes_base64": "eg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTY=",
+            "values": [
+              {
+                "int": "2932896"
+              },
+              {
+                "null": true
+              },
+              {
+                "int": "5"
+              },
+              {
+                "null": true
+              },
+              {
+                "int": "100000000000000000"
+              },
+              {
+                "bytes_base64": "AY7pD/bDc+DuTj8K0g=="
+              },
+              {
+                "bytes_base64": "YWFhYWFhYWFhYWFhYWFhYWFhYWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTc=",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "42"
+              },
+              {
+                "int": "6"
+              },
+              {
+                "int": "7"
+              },
+              {
+                "int": "3"
+              },
+              {
+                "bytes_base64": "////////////////AA=="
+              },
+              {
+                "bytes_base64": "ZW5k"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/annotated/seek-00",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "start_base64": "YW5uLTA=",
+        "limit": 2,
+        "columns": [
+          "d",
+          "ts_ms",
+          "ts_utc",
+          "dec9",
+          "dec18",
+          "dec30",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTA=",
+            "values": [
+              {
+                "int": "-719162"
+              },
+              {
+                "int": "-62135596800000"
+              },
+              {
+                "int": "0"
+              },
+              {
+                "int": "0"
+              },
+              {
+                "int": "0"
+              },
+              {
+                "bytes_base64": "AAAAAAAAAAAAAAAAAA=="
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTE=",
+            "values": [
+              {
+                "int": "-1"
+              },
+              {
+                "int": "-1"
+              },
+              {
+                "int": "1767225600123456"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "int": "999999999999999999"
+              },
+              {
+                "bytes_base64": "DJ8snNBGdO3qP////w=="
+              },
+              {
+                "bytes_base64": "cGxhaW4="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/annotated/seek-01",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "start_base64": "YW5uLTE=",
+        "limit": 2,
+        "columns": [
+          "d",
+          "ts_ms",
+          "ts_utc",
+          "dec9",
+          "dec18",
+          "dec30",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTE=",
+            "values": [
+              {
+                "int": "-1"
+              },
+              {
+                "int": "-1"
+              },
+              {
+                "int": "1767225600123456"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "int": "999999999999999999"
+              },
+              {
+                "bytes_base64": "DJ8snNBGdO3qP////w=="
+              },
+              {
+                "bytes_base64": "cGxhaW4="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTI=",
+            "values": [
+              {
+                "int": "0"
+              },
+              {
+                "int": "0"
+              },
+              {
+                "int": "-1"
+              },
+              {
+                "int": "-1"
+              },
+              {
+                "int": "-999999999999999999"
+              },
+              {
+                "bytes_base64": "82DTYy+5ixIVwAAAAQ=="
+              },
+              {
+                "bytes_base64": "Y2Fmw6k="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/annotated/seek-02",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "start_base64": "YW5uLTI=",
+        "limit": 2,
+        "columns": [
+          "d",
+          "ts_ms",
+          "ts_utc",
+          "dec9",
+          "dec18",
+          "dec30",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTI=",
+            "values": [
+              {
+                "int": "0"
+              },
+              {
+                "int": "0"
+              },
+              {
+                "int": "-1"
+              },
+              {
+                "int": "-1"
+              },
+              {
+                "int": "-999999999999999999"
+              },
+              {
+                "bytes_base64": "82DTYy+5ixIVwAAAAQ=="
+              },
+              {
+                "bytes_base64": "Y2Fmw6k="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTM=",
+            "values": [
+              {
+                "int": "1"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "null": true
+              },
+              {
+                "int": "999999999"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "bytes_base64": "/////////////////w=="
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/annotated/seek-03",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "start_base64": "YW5uLTM=",
+        "limit": 2,
+        "columns": [
+          "d",
+          "ts_ms",
+          "ts_utc",
+          "dec9",
+          "dec18",
+          "dec30",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTM=",
+            "values": [
+              {
+                "int": "1"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "null": true
+              },
+              {
+                "int": "999999999"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "bytes_base64": "/////////////////w=="
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTQ=",
+            "values": [
+              {
+                "int": "19000"
+              },
+              {
+                "int": "1767225600123"
+              },
+              {
+                "int": "9223372036854775807"
+              },
+              {
+                "int": "-999999999"
+              },
+              {
+                "null": true
+              },
+              {
+                "bytes_base64": "AAAAAAAAAAAAAAAAAQ=="
+              },
+              {
+                "bytes_base64": "5pel5pys"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/annotated/seek-04",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "start_base64": "YW5uLTQ=",
+        "limit": 2,
+        "columns": [
+          "d",
+          "ts_ms",
+          "ts_utc",
+          "dec9",
+          "dec18",
+          "dec30",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTQ=",
+            "values": [
+              {
+                "int": "19000"
+              },
+              {
+                "int": "1767225600123"
+              },
+              {
+                "int": "9223372036854775807"
+              },
+              {
+                "int": "-999999999"
+              },
+              {
+                "null": true
+              },
+              {
+                "bytes_base64": "AAAAAAAAAAAAAAAAAQ=="
+              },
+              {
+                "bytes_base64": "5pel5pys"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTU=",
+            "values": [
+              {
+                "int": "20454"
+              },
+              {
+                "int": "253402300799999"
+              },
+              {
+                "int": "-9223372036854775808"
+              },
+              {
+                "int": "12345"
+              },
+              {
+                "int": "-5"
+              },
+              {
+                "null": true
+              },
+              {
+                "bytes_base64": "eg=="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/annotated/seek-05",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "start_base64": "YW5uLTU=",
+        "limit": 2,
+        "columns": [
+          "d",
+          "ts_ms",
+          "ts_utc",
+          "dec9",
+          "dec18",
+          "dec30",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTU=",
+            "values": [
+              {
+                "int": "20454"
+              },
+              {
+                "int": "253402300799999"
+              },
+              {
+                "int": "-9223372036854775808"
+              },
+              {
+                "int": "12345"
+              },
+              {
+                "int": "-5"
+              },
+              {
+                "null": true
+              },
+              {
+                "bytes_base64": "eg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTY=",
+            "values": [
+              {
+                "int": "2932896"
+              },
+              {
+                "null": true
+              },
+              {
+                "int": "5"
+              },
+              {
+                "null": true
+              },
+              {
+                "int": "100000000000000000"
+              },
+              {
+                "bytes_base64": "AY7pD/bDc+DuTj8K0g=="
+              },
+              {
+                "bytes_base64": "YWFhYWFhYWFhYWFhYWFhYWFhYWE="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/annotated/seek-06",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "start_base64": "YW5uLTY=",
+        "limit": 2,
+        "columns": [
+          "d",
+          "ts_ms",
+          "ts_utc",
+          "dec9",
+          "dec18",
+          "dec30",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTY=",
+            "values": [
+              {
+                "int": "2932896"
+              },
+              {
+                "null": true
+              },
+              {
+                "int": "5"
+              },
+              {
+                "null": true
+              },
+              {
+                "int": "100000000000000000"
+              },
+              {
+                "bytes_base64": "AY7pD/bDc+DuTj8K0g=="
+              },
+              {
+                "bytes_base64": "YWFhYWFhYWFhYWFhYWFhYWFhYWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTc=",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "42"
+              },
+              {
+                "int": "6"
+              },
+              {
+                "int": "7"
+              },
+              {
+                "int": "3"
+              },
+              {
+                "bytes_base64": "////////////////AA=="
+              },
+              {
+                "bytes_base64": "ZW5k"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "range/annotated/seek-07",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "range",
+        "start_base64": "YW5uLTc=",
+        "limit": 2,
+        "columns": [
+          "d",
+          "ts_ms",
+          "ts_utc",
+          "dec9",
+          "dec18",
+          "dec30",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YW5uLTc=",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "42"
+              },
+              {
+                "int": "6"
+              },
+              {
+                "int": "7"
+              },
+              {
+                "int": "3"
+              },
+              {
+                "bytes_base64": "////////////////AA=="
+              },
+              {
+                "bytes_base64": "ZW5k"
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

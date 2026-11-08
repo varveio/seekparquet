@@ -87,6 +87,11 @@ jobs:
         run: |
           python -m pip install -r conformance/generators/requirements.txt
           python conformance/harness/check_suite.py
+      - name: harness and Thrift codec self-tests
+        working-directory: conformance
+        run: python -m unittest harness/test_run.py generators/test_parquet_meta.py
+      - name: fixtures regenerate byte for byte
+        run: python conformance/generators/check_reproducible.py
       - name: reference adapter (full-scan oracle)
         run: python conformance/harness/run.py --adapter "python conformance/harness/reference_adapter.py"
       - name: Go adapter

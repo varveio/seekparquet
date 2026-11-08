@@ -67,8 +67,9 @@ def canon_b64(s, what):
 
 
 class Adapter:
-    def __init__(self, cmd, timeout):
+    def __init__(self, cmd, timeout, shutdown_timeout=10.0):
         self.timeout = timeout
+        self.shutdown_timeout = shutdown_timeout
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=None)
         self.q = queue.Queue()
         self.n = 0
@@ -116,13 +117,18 @@ class Adapter:
         return resp
 
     def close(self):
-        extra = []
+        """Close stdin, collect unsolicited output, and reap the adapter.
+
+        Returns (extra lines, problems): a non-zero exit status, or failing to exit within the shutdown
+        timeout (the adapter is then killed and reaped), is a problem.
+        """
+        extra, problems = [], []
         try:
             self.proc.stdin.close()
         except OSError:
             pass
-        deadline = time.time() + 10
-        while time.time() < deadline:
+        deadline = time.time() + self.shutdown_timeout
+        while True:
             try:
                 line = self.q.get(timeout=max(0.01, deadline - time.time()))
             except queue.Empty:
@@ -130,12 +136,17 @@ class Adapter:
             if line is None:
                 break
             extra.append(line)
+            if time.time() >= deadline:
+                break
         try:
-            self.proc.wait(timeout=10)
+            rc = self.proc.wait(timeout=max(0.01, deadline - time.time()))
+            if rc != 0:
+                problems.append(f"adapter exited with status {rc}")
         except subprocess.TimeoutExpired:
             self.proc.kill()
-            extra.append(b"<adapter did not exit after stdin closed>")
-        return extra
+            self.proc.wait()
+            problems.append(f"adapter did not exit within {self.shutdown_timeout}s after stdin closed; killed")
+        return extra, problems
 
 
 # --------------------------------------------------------------------------
@@ -206,7 +217,9 @@ def compare_entries(got, exp):
 
 
 def acceptable(exp):
-    return exp["codes"] if "codes" in exp else [exp["code"]]
+    if "codes" in exp:
+        return exp["codes"]
+    return [exp["code"]] if "code" in exp else []
 
 
 # --------------------------------------------------------------------------
@@ -222,6 +235,8 @@ class Runner:
         return r
 
     def expect_ok(self, case, req, resp, exp):
+        if resp["status"] == "unsupported" and resp.get("code") in exp.get("accept_unsupported", []):
+            return  # an optional feature the implementation does not support
         if resp["status"] != exp["status"]:
             extra = f" (code {resp.get('code')})" if resp.get("code") else ""
             msg = f": {resp.get('message')}" if resp.get("message") else ""
@@ -235,11 +250,15 @@ class Runner:
         op = req.get("op")
         if op in ("range", "list"):
             ncols = len(req.get("columns") or [])
+            if "entries" not in exp:
+                raise CaseFail("the case has no expected entries (suite error)")
             got = norm_entries(resp.get("entries"), ncols, "response.entries")
-            want = norm_entries(exp.get("entries", []), ncols, "expected.entries")
+            want = norm_entries(exp["entries"], ncols, "expected.entries")
             compare_entries(got, want)
         elif op == "validate":
-            self.compare_levels(resp, exp.get("levels", {}))
+            if not exp.get("levels"):
+                raise CaseFail("the case has no expected levels (suite error)")
+            self.compare_levels(resp, exp["levels"])
 
     def compare_levels(self, resp, want):
         levels = resp.get("levels")
@@ -249,12 +268,13 @@ class Runner:
             g = levels.get(lvl)
             if not isinstance(g, dict):
                 raise CaseFail(f"validate response has no result for level {lvl}")
-            if g.get("result") != w["result"]:
-                raise CaseFail(f"level {lvl}: expected {w['result']}, got {g.get('result')!r}"
+            allowed = [w["result"]] + list(w.get("accept", []))
+            if g.get("result") not in allowed:
+                raise CaseFail(f"level {lvl}: expected {' or '.join(allowed)}, got {g.get('result')!r}"
                                f"{' (' + str(g.get('code') or g.get('reason')) + ')' if g.get('code') or g.get('reason') else ''}")
-            if w["result"] == "failed" and g.get("code") not in acceptable(w):
+            if g.get("result") == "failed" and g.get("code") not in acceptable(w):
                 raise CaseFail(f"level {lvl}: expected code {acceptable(w)}, got {g.get('code')!r}")
-            if "checked" in w and g.get("checked") != w["checked"]:
+            if "checked" in w and g.get("result") == w["result"] and g.get("checked") != w["checked"]:
                 raise CaseFail(f"level {lvl}: expected checked {w['checked']}, got {g.get('checked')!r}")
 
     def refusal(self, case):
@@ -317,6 +337,8 @@ def main(argv=None):
                                       "the suite's mandatory targets must then be claimed)")
     ap.add_argument("--json", action="store_true", help="print a JSON report instead of text")
     ap.add_argument("--timeout", type=float, default=120.0, help="seconds to wait for each response")
+    ap.add_argument("--shutdown-timeout", type=float, default=10.0,
+                    help="seconds the adapter may take to exit after stdin closes")
     ap.add_argument("--verbose", "-v", action="store_true", help="list passing cases too")
     args = ap.parse_args(argv)
 
@@ -325,12 +347,23 @@ def main(argv=None):
     sdir = suite_path.parent
     caps_doc = json.loads((sdir / "capabilities.json").read_text(encoding="utf-8"))
     known_caps, known_targets = set(caps_doc["capabilities"]), caps_doc["targets"]
+    deps = {k: v for k, v in caps_doc.get("target_dependencies", {}).items() if k in known_targets}
+
+    def closure(ts):
+        out, todo = set(), list(ts)
+        while todo:
+            t = todo.pop()
+            if t not in out:
+                out.add(t)
+                todo += deps.get(t, [])
+        return out
     files = [(f, json.loads((sdir / f).read_text(encoding="utf-8"))) for f in suite["case_files"]]
     pattern = re.compile(args.filter) if args.filter else None
 
     results, fatal, run_errors = [], None, []
-    adapter = Adapter(shlex.split(args.adapter), args.timeout)
+    adapter = Adapter(shlex.split(args.adapter), args.timeout, args.shutdown_timeout)
     hello = {}
+    targets, selected, partial = [], set(), bool(pattern)
     try:
         try:
             hello = adapter.call({"op": "hello"})
@@ -356,13 +389,19 @@ def main(argv=None):
         if {"format_version": suite["format_version"], "draft_revision": suite["draft_revision"]} not in supports:
             run_errors.append(f"hello: the adapter does not support format_version {suite['format_version']} "
                               f"draft_revision {suite['draft_revision']}")
-        selected = set(targets)
+        for t in closure(t for t in targets if t in known_targets):
+            missing = [c for c in known_targets[t] if c not in caps]
+            if missing and t not in targets:
+                run_errors.append(f"hello: target {t!r} (a dependency of a claimed target) lacks capabilities {missing}")
+        selected = closure(t for t in targets if t in known_targets)
         if args.targets:
             want = [t.strip() for t in args.targets.split(",") if t.strip()]
             for t in want:
                 if t not in targets:
                     run_errors.append(f"--targets: the adapter does not claim target {t!r}")
-            selected &= set(want)
+            narrowed = closure(t for t in want if t in known_targets) & selected
+            partial = partial or narrowed != selected
+            selected = narrowed
         else:
             for t in suite.get("mandatory_targets", []):
                 if t not in targets:
@@ -397,9 +436,10 @@ def main(argv=None):
                 results.append(rec)
     except Fatal as e:
         fatal = str(e)
-    extra = adapter.close()
+    extra, problems = adapter.close()
     if extra:
         run_errors.append(f"adapter wrote {len(extra)} unexpected line(s) after its last response: {extra[0][:200]!r}")
+    run_errors += problems
     if fatal and fatal not in run_errors:
         run_errors.append(fatal)
 
@@ -410,10 +450,24 @@ def main(argv=None):
         g = by_group.setdefault(r["group"], {"pass": 0, "fail": 0, "skip": 0})
         g[r["result"]] += 1
     ok = counts["fail"] == 0 and not run_errors and counts["pass"] > 0
+    # Qualification: complete runs only; a target needs every case of itself and its dependencies.
+    tstats = {}
+    for t in sorted(known_targets):
+        rs = [r for r in results if r["target"] in closure([t])]
+        tstats[t] = {"claimed": t in targets, "selected": t in selected,
+                     "pass": sum(r["result"] == "pass" for r in rs), "fail": sum(r["result"] == "fail" for r in rs),
+                     "skip": sum(r["result"] == "skip" for r in rs)}
+        tstats[t]["qualified"] = (not partial and t in targets and t in selected and not run_errors and bool(rs)
+                                  and all(r["result"] == "pass" for r in rs))
+    qualified = [t for t, v in tstats.items() if v["qualified"]]
+    selection = {"filter": args.filter, "targets": args.targets, "partial": partial,
+                 "selected_targets": sorted(selected)}
     if args.json:
-        print(json.dumps({"suite": suite.get("revision"), "adapter": {k: hello.get(k) for k in
-                          ("implementation", "version", "targets", "capabilities", "supports")},
-                          "passed": ok, "counts": counts, "groups": by_group, "errors": run_errors,
+        print(json.dumps({"suite": suite.get("revision"), "suite_sha256": suite.get("content_sha256"),
+                          "adapter": {k: hello.get(k) for k in
+                                      ("implementation", "version", "targets", "capabilities", "supports")},
+                          "selection": selection, "selected_cases_passed": ok, "qualified_targets": qualified,
+                          "targets": tstats, "counts": counts, "groups": by_group, "errors": run_errors,
                           "results": results}, indent=2))
     else:
         print(f"suite {suite.get('revision')}  adapter {hello.get('implementation')} {hello.get('version')}  "
@@ -427,6 +481,10 @@ def main(argv=None):
             print(f"ERROR {e}")
         print(f"{'PASSED' if ok else 'FAILED'}: {counts['pass']} passed, {counts['fail']} failed, "
               f"{counts['skip']} skipped")
+        if partial:
+            print(f"PARTIAL RUN (filter={args.filter!r}, targets={args.targets!r}): no target qualification")
+        else:
+            print(f"QUALIFIED TARGETS: {', '.join(qualified) if qualified else 'none'}")
     return 0 if ok else 1
 
 

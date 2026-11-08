@@ -445,43 +445,81 @@ class Page:
     encoding: int | None
 
 
-def chunk_pages(pf: ParquetFile, cc: Struct):
-    """Walk the page headers of a column chunk (dictionary and data pages)."""
+def _int_field(st, fid, what, required=True, minimum=0):
+    v = st.get(fid) if st is not None else None
+    if v is None:
+        if required:
+            raise ParquetMetaError(f"{what} missing")
+        return None
+    if not isinstance(v, int) or isinstance(v, bool) or v < minimum:
+        raise ParquetMetaError(f"{what} invalid: {v!r}")
+    return v
+
+
+def chunk_pages(pf: ParquetFile, cc: Struct, max_pages: int = 1 << 20):
+    """Walk the page headers of a column chunk (dictionary and data pages).
+
+    Every size and count must be present and non-negative, each page type must carry its own header
+    struct, and each step must move forward inside the chunk (pos < next <= end), so a malformed chunk
+    raises ParquetMetaError after a bounded amount of work.
+    """
     md = cc.get(CC_META)
     if md is None:
         raise ParquetMetaError("column chunk without meta_data")
+    dpo = _int_field(md, CMD_DATA_PAGE_OFFSET, "data_page_offset")
     start = md.get(CMD_DICT_PAGE_OFFSET)
-    dpo = md.get(CMD_DATA_PAGE_OFFSET)
-    if start is None or (dpo is not None and dpo < start) or start <= 0:
+    if not isinstance(start, int) or isinstance(start, bool) or start <= 0 or start > dpo:
         start = dpo
-    total = md.get(CMD_TOTAL_COMPRESSED)
+    total = _int_field(md, CMD_TOTAL_COMPRESSED, "total_compressed_size")
     end = start + total
     if start < 4 or end > pf.footer_start:
         raise ParquetMetaError("column chunk out of range")
     pages = []
     pos = start
     while pos < end:
+        if len(pages) >= max_pages:
+            raise ParquetMetaError("too many pages")
         try:
             h, hend = decode_struct(pf.data, pos, end)
         except ThriftError as e:
             raise ParquetMetaError(f"page header at {pos}: {e}") from e
-        ptype = h.get(PH_TYPE)
-        csize = h.get(PH_COMPRESSED)
-        usize = h.get(PH_UNCOMPRESSED)
-        nv = nr = enc = None
+        ptype = _int_field(h, PH_TYPE, f"page header at {pos}: type")
+        csize = _int_field(h, PH_COMPRESSED, f"page header at {pos}: compressed_page_size")
+        usize = _int_field(h, PH_UNCOMPRESSED, f"page header at {pos}: uncompressed_page_size")
+        nxt = hend + csize
+        if not (pos < nxt <= end):
+            raise ParquetMetaError(f"page at {pos} does not end inside the column chunk")
+        nr = enc = None
         if ptype == 0:
             d = h.get(PH_DATA_V1)
-            nv, enc = d.get(DPH_NUM_VALUES), d.get(DPH_ENCODING)
+            if not isinstance(d, Struct):
+                raise ParquetMetaError(f"DATA_PAGE at {pos} without data_page_header")
+            nv = _int_field(d, DPH_NUM_VALUES, "data_page_header.num_values")
+            enc = _int_field(d, DPH_ENCODING, "data_page_header.encoding")
         elif ptype == 3:
             d = h.get(PH_DATA_V2)
-            nv, nr, enc = d.get(DPH2_NUM_VALUES), d.get(DPH2_NUM_ROWS), d.get(DPH2_ENCODING)
+            if not isinstance(d, Struct):
+                raise ParquetMetaError(f"DATA_PAGE_V2 at {pos} without data_page_header_v2")
+            nv = _int_field(d, DPH2_NUM_VALUES, "data_page_header_v2.num_values")
+            nn = _int_field(d, DPH2_NUM_NULLS, "data_page_header_v2.num_nulls")
+            nr = _int_field(d, DPH2_NUM_ROWS, "data_page_header_v2.num_rows")
+            enc = _int_field(d, DPH2_ENCODING, "data_page_header_v2.encoding")
+            dl = _int_field(d, 5, "data_page_header_v2.definition_levels_byte_length")
+            rl = _int_field(d, 6, "data_page_header_v2.repetition_levels_byte_length")
+            if nn > nv or dl + rl > csize:
+                raise ParquetMetaError(f"DATA_PAGE_V2 at {pos}: inconsistent counts or level lengths")
         elif ptype == 2:
             d = h.get(PH_DICT)
-            nv, enc = d.get(1), d.get(2)
-        pages.append(Page(pos, hend - pos, csize, usize, ptype, nv or 0, nr, enc))
-        pos = hend + csize
-    if pos != end:
-        raise ParquetMetaError("pages overrun column chunk")
+            if not isinstance(d, Struct):
+                raise ParquetMetaError(f"DICTIONARY_PAGE at {pos} without dictionary_page_header")
+            nv = _int_field(d, 1, "dictionary_page_header.num_values")
+            enc = _int_field(d, 2, "dictionary_page_header.encoding")
+        elif ptype == 1:
+            nv = 0  # INDEX_PAGE: not used by Parquet writers; skipped
+        else:
+            raise ParquetMetaError(f"unknown page type {ptype} at {pos}")
+        pages.append(Page(pos, hend - pos, csize, usize, ptype, nv, nr, enc))
+        pos = nxt
     return pages
 
 

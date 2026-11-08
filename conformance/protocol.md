@@ -12,7 +12,8 @@ implementation needs another implementation's toolchain to run the suite.
   in the same order. Lines are UTF-8 without a byte order mark; objects have unique member names. The adapter
   writes nothing else to stdout. Diagnostics go to stderr.
 - Every request has an `id`, a string; the response repeats it.
-- The adapter exits when stdin closes.
+- The adapter exits with status 0 when stdin closes. A non-zero exit status, a crash, or failing to exit
+  shortly after stdin closes is a run error, even if every response was correct.
 
 ## Encoding
 
@@ -56,9 +57,16 @@ implementation needs another implementation's toolchain to run the suite.
 `capabilities` and `targets` use the names in [capabilities.json](capabilities.json). A **target** is a
 conformance claim (for example `reader`, the semantic reader target; `validator-profile`); each target
 lists the capabilities it needs. For every target an adapter claims, every case of that target runs:
-skipping one is a failure. Cases outside the claimed targets are skipped and reported as skipped. The run
-fails if a claimed target's capability is not reported, or if the adapter does not support the suite's
-format version and draft revision.
+skipping one is a failure. A target may depend on other targets (`target_dependencies` in capabilities.json,
+for example `validator-full` on `validator-profile` on `validator-structural`): claiming it runs the cases
+of its dependencies as well, and it qualifies only if they qualify. Cases outside the claimed targets and
+their dependencies are skipped and reported as skipped. The run fails if a claimed target's capability is
+not reported, or if the adapter does not support the suite's format version and draft revision.
+
+**Qualification.** A target is qualified only by a complete run: every case of the target and of its
+dependencies ran and passed, with no run error. A run narrowed by a case filter or by selecting fewer
+targets than the adapter claims is a partial run: it reports whether the selected cases passed, and never
+reports a target as qualified. The harness records the selection in its report.
 
 ### `open`
 
@@ -148,6 +156,14 @@ otherwise the case lists every acceptable code.
 
 Cases that test `invalid_request` use `raw_request` instead of `request`: an object the harness sends as it
 is, adding only `id` and `dataset`, so that a fractional limit or malformed base64 can be expressed.
+
+## Optional features
+
+A case on a dataset that uses a feature outside the mandatory baseline (for example the LZ4_RAW or BROTLI
+codec, ENC-1) may list `accept_unsupported` codes in its expectation: the expected `ok` result passes, and so
+does `unsupported` with one of those codes. A refusal never passes. In a validation expectation a level may
+list further acceptable results in `accept`, for example a `full` level that is `complete` or, for a
+validator without the codec, `incomplete` (never `failed`).
 
 ## Suites
 

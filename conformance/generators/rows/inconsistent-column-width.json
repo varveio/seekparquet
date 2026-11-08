@@ -1,0 +1,112 @@
+{
+  "dataset": "inconsistent-column-width",
+  "description": "Column h is FIXED_LEN_BYTE_ARRAY(4) in part 0 and FIXED_LEN_BYTE_ARRAY(8) in part 1.",
+  "schema_id": "conformance/objects/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "h",
+      "type": "fixed:4",
+      "nullable": false
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        4
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "azAw",
+          "values": {
+            "h": {
+              "bytes_base64": "AAAAAA=="
+            }
+          }
+        },
+        {
+          "key_base64": "azAx",
+          "values": {
+            "h": {
+              "bytes_base64": "AQEBAQ=="
+            }
+          }
+        },
+        {
+          "key_base64": "azAy",
+          "values": {
+            "h": {
+              "bytes_base64": "AgICAg=="
+            }
+          }
+        },
+        {
+          "key_base64": "azAz",
+          "values": {
+            "h": {
+              "bytes_base64": "AwMDAw=="
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "data/part-00001.parquet",
+      "row_groups": [
+        4
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "azA0",
+          "values": {
+            "h": {
+              "bytes_base64": "BAQEBAQEBAQ="
+            }
+          }
+        },
+        {
+          "key_base64": "azA1",
+          "values": {
+            "h": {
+              "bytes_base64": "BQUFBQUFBQU="
+            }
+          }
+        },
+        {
+          "key_base64": "azA2",
+          "values": {
+            "h": {
+              "bytes_base64": "BgYGBgYGBgY="
+            }
+          }
+        },
+        {
+          "key_base64": "azA3",
+          "values": {
+            "h": {
+              "bytes_base64": "BwcHBwcHBwc="
+            }
+          }
+        }
+      ],
+      "column_overrides": {
+        "h": {
+          "type": "fixed:8"
+        }
+      }
+    }
+  ]
+}

@@ -2,12 +2,12 @@
   "description": "Every fixture file under datasets/ with its SHA-256, size, producer, provenance category and generator command. Provenance categories: 'native' = written by an independent Parquet writer (pyarrow) including the profile metadata; 'native-with-profile-metadata' = independent-writer output to which profile metadata was added afterwards (unused so far: pyarrow writes stamps, sorting_columns and the page index itself); 'mutated' = deliberately edited by generators/mutate_metadata.py (data pages preserved unless a change says otherwise); 'generated' = a text file (manifest) written by a generator.",
   "generator": {
     "command": "python generators/regenerate.py",
-    "python": "3.13.18",
+    "python": "3.13",
     "pyarrow": "26.0.1",
     "requirements": "generators/requirements.txt"
   },
-  "reproducibility": "Byte-reproducible with the pinned pyarrow: two regenerations produce identical files (pyarrow 26.0.1 footers carry no timestamps). If a future writer is not byte-reproducible, the checked-in bytes stay authoritative and STRUCTURE.txt must remain identical.",
-  "total_bytes": 511397,
+  "reproducibility": "Byte-reproducible with the pinned pyarrow on Python 3.13: generators/check_reproducible.py regenerates everything in a temporary directory and compares it with the checked-in files (pyarrow 26.0.1 footers carry no timestamps). If a future writer is not byte-reproducible, the checked-in bytes stay authoritative and STRUCTURE.txt must remain identical.",
+  "total_bytes": 555948,
   "largest_file_bytes": 9076,
   "datasets": [
     {
@@ -276,6 +276,95 @@
           "path": "datasets/non-utf8-keys/manifest.json",
           "bytes": 289,
           "sha256": "8465b6b93249856d82be2e5a73995ffa28da050d1a768a83833c5b6205e1ee02",
+          "producer": "generators/pyarrow_fixtures.py",
+          "provenance": "generated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "annotated",
+      "dir": "datasets/annotated",
+      "valid": true,
+      "description": "Columns with logical annotations whose physical values the protocol reports: DATE (INT32 days), TIMESTAMP millis and micros/UTC (INT64), DECIMAL stored as INT32, INT64 and FIXED_LEN_BYTE_ARRAY(13) (unscaled two's complement), STRING (BYTE_ARRAY).",
+      "provenance": "native",
+      "producer": "pyarrow 26.0.1",
+      "rows": "generators/rows/annotated.json",
+      "files": [
+        {
+          "path": "datasets/annotated/data/part-00000.parquet",
+          "bytes": 3512,
+          "sha256": "94bbc7e1adc698e3aaca0f13ec948ce0e28b775d145371e0f25796bb579f7bae",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/annotated/manifest.json",
+          "bytes": 299,
+          "sha256": "06cce87367def557d3d46cce5038ff50137697997ff1bc210239d5137af06a84",
+          "producer": "generators/pyarrow_fixtures.py",
+          "provenance": "generated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "encodings",
+      "dir": "datasets/encodings",
+      "valid": true,
+      "description": "Data pages that use the remaining mandatory encodings: part 0 is written as Parquet format 1.0 with dictionaries, so key and value data pages are PLAIN_DICTIONARY; part 1 uses DELTA_BINARY_PACKED for INT32 and INT64 and DELTA_LENGTH_BYTE_ARRAY for BYTE_ARRAY columns (including the key), with data page v2. Asserted from the page headers.",
+      "provenance": "native",
+      "producer": "pyarrow 26.0.1",
+      "rows": "generators/rows/encodings.json",
+      "files": [
+        {
+          "path": "datasets/encodings/data/part-00000.parquet",
+          "bytes": 3061,
+          "sha256": "22e636adfa2d7a54c162de320d8c885631d7fe565bb7644a267f876621dc4a7a",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/encodings/data/part-00001.parquet",
+          "bytes": 2446,
+          "sha256": "a8abad04fe67e7d782602a2b93f2443821bb83d90e26d2da6e7c56d881855dda",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/encodings/manifest.json",
+          "bytes": 480,
+          "sha256": "0520c6a423689a2cfa1c84e1028ef84e3134a4d8cea57ceabd2c1a62288f9be6",
+          "producer": "generators/pyarrow_fixtures.py",
+          "provenance": "generated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "optional-codecs",
+      "dir": "datasets/optional-codecs",
+      "valid": true,
+      "description": "Valid, but two value columns use codecs outside the ENC-1 baseline: lz4col is LZ4_RAW and brcol is BROTLI. The key and size columns are SNAPPY. A reader or validator may support these codecs or report them unsupported.",
+      "provenance": "native",
+      "producer": "pyarrow 26.0.1",
+      "rows": "generators/rows/optional-codecs.json",
+      "files": [
+        {
+          "path": "datasets/optional-codecs/data/part-00000.parquet",
+          "bytes": 2122,
+          "sha256": "2d4c9674086b2a3090c1d47f8299d336796f4acc6d92e3880a4bb0c01f7f526d",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/optional-codecs/manifest.json",
+          "bytes": 297,
+          "sha256": "0b8a55dbcf3f8249d469d9dd8f081d41732b288a2ba5a88b00a51fc4281ba2ba",
           "producer": "generators/pyarrow_fixtures.py",
           "provenance": "generated",
           "command": "python generators/regenerate.py"
@@ -585,6 +674,52 @@
           "path": "datasets/invalid/inconsistent-column-type/manifest.json",
           "bytes": 444,
           "sha256": "dd50e0c71ae129a8fbc785caf516b7e91c43f30ef7f06904633052826d62f821",
+          "producer": "generators/pyarrow_fixtures.py",
+          "provenance": "generated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "inconsistent-column-width",
+      "dir": "datasets/invalid/inconsistent-column-width",
+      "valid": false,
+      "description": "Column h is FIXED_LEN_BYTE_ARRAY(4) in part 0 and FIXED_LEN_BYTE_ARRAY(8) in part 1.",
+      "provenance": "native",
+      "producer": "pyarrow 26.0.1",
+      "rows": "generators/rows/inconsistent-column-width.json",
+      "fault": {
+        "codes": [
+          "inconsistent_column"
+        ],
+        "detect": "read",
+        "requirements": [
+          "COL-5",
+          "CHECK-1"
+        ],
+        "request": "range-columns:h"
+      },
+      "files": [
+        {
+          "path": "datasets/invalid/inconsistent-column-width/data/part-00000.parquet",
+          "bytes": 1091,
+          "sha256": "1a83e2fb7ad3dd24c90024239de4aee59e5fc9960a0ff8fd8e7e36f02c757868",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/inconsistent-column-width/data/part-00001.parquet",
+          "bytes": 1133,
+          "sha256": "a268c8d19652c174203d64f2b76234d2e733ed1d4637ede8cb1cd62f73e7c531",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/inconsistent-column-width/manifest.json",
+          "bytes": 444,
+          "sha256": "bc3fbf545d1e4a296b192996d8b506ea017332472f161f8819a986c7e7216187",
           "producer": "generators/pyarrow_fixtures.py",
           "provenance": "generated",
           "command": "python generators/regenerate.py"
@@ -1403,6 +1538,36 @@
           "path": "datasets/key-legacy-utf8/manifest.json",
           "bytes": 626,
           "sha256": "2ecfe26537c119075d29726d2ee55ef6bd6d6c30cccf4e61062b6aef649da77e",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "extensions-numbers",
+      "dir": "datasets/extensions-numbers",
+      "valid": true,
+      "description": "basic with an extension holding fractional, exponent, negative, very large, null, boolean, array and nested values, and an escaped surrogate pair: ordinary JSON inside extensions (EXT-1; MAN-6 constrains only the defined integer members).",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "manifest text: extensions member added with ordinary JSON values"
+      ],
+      "files": [
+        {
+          "path": "datasets/extensions-numbers/data/part-00000.parquet",
+          "bytes": 2619,
+          "sha256": "8282d0a2223c1842043acc16025659ae3047d0401c6525e46b9e3d73b4867dd0",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/basic)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/extensions-numbers/manifest.json",
+          "bytes": 615,
+          "sha256": "58e4b8fc34125adf54cbb4694e44fd4a1ae9d17116fbcf7989ef02cbdc9b2af2",
           "producer": "generators/mutate_metadata.py",
           "provenance": "mutated",
           "command": "python generators/regenerate.py"
@@ -2768,6 +2933,170 @@
       ]
     },
     {
+      "name": "manifest-draft-revision-zero",
+      "dir": "datasets/invalid/manifest-draft-revision-zero",
+      "valid": false,
+      "description": "draft_revision is 0.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "manifest: draft_revision 1 -> 0"
+      ],
+      "fault": {
+        "codes": [
+          "invalid_manifest"
+        ],
+        "detect": "open",
+        "requirements": [
+          "MAN-7",
+          "CHECK-1"
+        ]
+      },
+      "files": [
+        {
+          "path": "datasets/invalid/manifest-draft-revision-zero/data/part-00000.parquet",
+          "bytes": 2619,
+          "sha256": "8282d0a2223c1842043acc16025659ae3047d0401c6525e46b9e3d73b4867dd0",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/basic)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/manifest-draft-revision-zero/manifest.json",
+          "bytes": 306,
+          "sha256": "75e11c48d2817f5fe6535066cde12b7349507fbfeb900ff04f3e5f309a6adfe7",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "manifest-format-1-with-draft-revision",
+      "dir": "datasets/invalid/manifest-format-1-with-draft-revision",
+      "valid": false,
+      "description": "format_version 1 with a draft_revision (only format_version 0 may carry one).",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "manifest: format_version 0 -> 1"
+      ],
+      "fault": {
+        "codes": [
+          "invalid_manifest"
+        ],
+        "detect": "open",
+        "requirements": [
+          "MAN-7",
+          "CHECK-1"
+        ]
+      },
+      "files": [
+        {
+          "path": "datasets/invalid/manifest-format-1-with-draft-revision/data/part-00000.parquet",
+          "bytes": 2619,
+          "sha256": "8282d0a2223c1842043acc16025659ae3047d0401c6525e46b9e3d73b4867dd0",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/basic)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/manifest-format-1-with-draft-revision/manifest.json",
+          "bytes": 306,
+          "sha256": "ee463c779cd592f98e375135b0edeb6f903863ae6fc27cd5bceab19ebd69905b",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "manifest-format-version-overflow",
+      "dir": "datasets/invalid/manifest-format-version-overflow",
+      "valid": false,
+      "description": "format_version is 2^63, beyond the integer range of MAN-6 (it must not wrap or be read as unsupported).",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "manifest: draft_revision removed",
+        "manifest: format_version 0 -> 9223372036854775808"
+      ],
+      "fault": {
+        "codes": [
+          "invalid_manifest"
+        ],
+        "detect": "open",
+        "requirements": [
+          "MAN-6",
+          "MAN-7",
+          "CHECK-1"
+        ]
+      },
+      "files": [
+        {
+          "path": "datasets/invalid/manifest-format-version-overflow/data/part-00000.parquet",
+          "bytes": 2619,
+          "sha256": "8282d0a2223c1842043acc16025659ae3047d0401c6525e46b9e3d73b4867dd0",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/basic)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/manifest-format-version-overflow/manifest.json",
+          "bytes": 301,
+          "sha256": "edd66e1abf34d1be58b8473c791ecb24a7f7717f3241f7c3da0a995a7cb3fa95",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "manifest-format-version-negative",
+      "dir": "datasets/invalid/manifest-format-version-negative",
+      "valid": false,
+      "description": "format_version is -1.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "manifest: draft_revision removed",
+        "manifest: format_version 0 -> -1"
+      ],
+      "fault": {
+        "codes": [
+          "invalid_manifest"
+        ],
+        "detect": "open",
+        "requirements": [
+          "MAN-6",
+          "MAN-7",
+          "CHECK-1"
+        ]
+      },
+      "files": [
+        {
+          "path": "datasets/invalid/manifest-format-version-negative/data/part-00000.parquet",
+          "bytes": 2619,
+          "sha256": "8282d0a2223c1842043acc16025659ae3047d0401c6525e46b9e3d73b4867dd0",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/basic)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/manifest-format-version-negative/manifest.json",
+          "bytes": 284,
+          "sha256": "04d9832701434deaa60f52e5c2cbb9eb9edbdf58be03b9e4c6ee01d7ff4ff656",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
       "name": "unsupported-version-2",
       "dir": "datasets/invalid/unsupported-version-2",
       "valid": false,
@@ -3640,6 +3969,181 @@
       ]
     },
     {
+      "name": "column-orders-short",
+      "dir": "datasets/invalid/column-orders-short",
+      "valid": false,
+      "description": "column_orders holds only the key's TYPE_ORDER entry; the schema has three leaf columns.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "data/part-00000.parquet: footer: column_orders has 1 entries for 3 leaf columns (the key's entry is still TYPE_ORDER)",
+        "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2613",
+        "manifest: parts[0].bytes 2619 -> 2613"
+      ],
+      "fault": {
+        "codes": [
+          "invalid_key_column"
+        ],
+        "detect": "open",
+        "requirements": [
+          "KEY-5",
+          "CHECK-1"
+        ]
+      },
+      "files": [
+        {
+          "path": "datasets/invalid/column-orders-short/data/part-00000.parquet",
+          "bytes": 2613,
+          "sha256": "a0697779a27d2a7d38989a765a9f419bb3ec10a99f8b41e7b4f50e9efc1b15a5",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/column-orders-short/manifest.json",
+          "bytes": 306,
+          "sha256": "873569bae4b87e7efb3826af5425ad75fcfb79a96e8932c773c0c30cd59ef077",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "column-orders-long",
+      "dir": "datasets/invalid/column-orders-long",
+      "valid": false,
+      "description": "column_orders has one entry more than there are leaf columns.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "data/part-00000.parquet: footer: column_orders has 4 entries for 3 leaf columns (the key's entry is still TYPE_ORDER)",
+        "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2622",
+        "manifest: parts[0].bytes 2619 -> 2622"
+      ],
+      "fault": {
+        "codes": [
+          "invalid_key_column"
+        ],
+        "detect": "open",
+        "requirements": [
+          "KEY-5",
+          "CHECK-1"
+        ]
+      },
+      "files": [
+        {
+          "path": "datasets/invalid/column-orders-long/data/part-00000.parquet",
+          "bytes": 2622,
+          "sha256": "42a02925143173160c67300eb4f270590e84360770f3ad63e78944f33a8a28d2",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/column-orders-long/manifest.json",
+          "bytes": 306,
+          "sha256": "ce97ec67fb22a2b2baeb557335eec3fc6285b79a827fca46ee00d70d76183a37",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "invalid-parquet-dictionary",
+      "dir": "datasets/invalid/invalid-parquet-dictionary",
+      "valid": false,
+      "description": "The dictionary page of column s in part 0, row group 0 is malformed: its first value claims a length of 2^31-1 bytes.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/encodings",
+      "changes": [
+        "data/part-00000.parquet: row group 0 column 3: dictionary page at 323: first value's length prefix 5 -> 2147483647"
+      ],
+      "fault": {
+        "codes": [
+          "invalid_parquet"
+        ],
+        "detect": "validate:full",
+        "requirements": [
+          "CHECK-5",
+          "VAL-1"
+        ],
+        "request": "range-columns:s"
+      },
+      "files": [
+        {
+          "path": "datasets/invalid/invalid-parquet-dictionary/data/part-00000.parquet",
+          "bytes": 3061,
+          "sha256": "9c9feae97c7bddf4d0de58b2158acc29fd2e0dc11af50b60a6538c63ed1fe554",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/invalid-parquet-dictionary/data/part-00001.parquet",
+          "bytes": 2446,
+          "sha256": "a8abad04fe67e7d782602a2b93f2443821bb83d90e26d2da6e7c56d881855dda",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/encodings)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/invalid-parquet-dictionary/manifest.json",
+          "bytes": 480,
+          "sha256": "0520c6a423689a2cfa1c84e1028ef84e3134a4d8cea57ceabd2c1a62288f9be6",
+          "producer": "generators/pyarrow_fixtures.py",
+          "provenance": "generated (copied unchanged from datasets/encodings)",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "invalid-parquet-value-count",
+      "dir": "datasets/invalid/invalid-parquet-value-count",
+      "valid": false,
+      "description": "The first data page of column size claims 3 values but holds 2.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "data/part-00000.parquet: row group 0 column 1: data page 0 header num_values 2 -> 3 (the page holds 2 values); header length unchanged"
+      ],
+      "fault": {
+        "codes": [
+          "invalid_parquet"
+        ],
+        "detect": "validate:full",
+        "requirements": [
+          "CHECK-5",
+          "VAL-1"
+        ],
+        "request": "range-columns:size",
+        "note": "No read case: a reader may decode only the values it needs from a value page, and CHECK-2's exact row count applies to key pages; full validation must find it."
+      },
+      "files": [
+        {
+          "path": "datasets/invalid/invalid-parquet-value-count/data/part-00000.parquet",
+          "bytes": 2619,
+          "sha256": "d69594469aa7313f2d3aa43fa24e83f2f75e3434f6974133c85044ad23cfa7f4",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/invalid-parquet-value-count/manifest.json",
+          "bytes": 306,
+          "sha256": "e2a12c97ec30658bdb832d733e487bcc8aa3ad3e82d83609f6436352f81682e1",
+          "producer": "generators/pyarrow_fixtures.py",
+          "provenance": "generated (copied unchanged from datasets/basic)",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
       "name": "invalid-key-utf8",
       "dir": "datasets/invalid/invalid-key-utf8",
       "valid": false,
@@ -3701,7 +4205,7 @@
           "CHECK-5",
           "VAL-1"
         ],
-        "request": "validate:full"
+        "request": "range-columns:size"
       },
       "files": [
         {

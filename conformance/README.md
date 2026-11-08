@@ -17,7 +17,9 @@ and a harness that drives any implementation through a small adapter.
 | [oracle.py](oracle.py) | Sequential implementation of the query semantics (spec §6) over source rows; computes every expected entry. |
 | [generators/](generators/) | Source rows, pinned generators and the metadata mutator ([README](generators/README.md)). |
 | [harness/run.py](harness/run.py) | The harness (Python standard library only). |
-| [harness/check_suite.py](harness/check_suite.py) | Static checks of the suite (schema, requirement ids, codes, names, lock). |
+| [harness/check_suite.py](harness/check_suite.py) | Static checks of the suite (schema, operation-specific payloads, requirement ids, codes, names, lock, suite digest). |
+| [harness/test_run.py](harness/test_run.py) | Self-tests of the harness with deliberately deficient adapters. |
+| [COVERAGE.md](COVERAGE.md) | Generated: each spec requirement id and the cases that cite it, or why none do. |
 | [harness/reference_adapter.py](harness/reference_adapter.py) | A full-scan semantic reference adapter used to test the suite itself. It is **not** a SeekParquet reader. |
 
 ## Running the suite against an implementation
@@ -45,6 +47,17 @@ there completes the case; for `detect: read` it then sends the case's request (a
 covers every row, so every correct access path decodes the faulty data); for `detect: validate:<level>` it
 sends `validate` and expects that level to fail with an acceptable code.
 
+**Qualification.** A target qualifies only on a complete run: every case of the target and of the targets
+it depends on (`target_dependencies` in capabilities.json; `validator-full` → `validator-profile` →
+`validator-structural`) ran and passed, with no run error. A run with `--filter`, or with `--targets`
+narrower than what the adapter claims, is a partial run: the harness reports whether the selected cases
+passed, records the selection (`selection` in `--json` output), and never reports qualification. The exit
+status is 0 when every selected case passed and there was no run error (including a non-zero adapter exit).
+
+**Optional features.** Cases on `optional-codecs` (LZ4_RAW and BROTLI value columns) accept the values or
+`unsupported` (`unsupported_encoding`); full validation of it may be `complete` or `incomplete`, never
+`failed`.
+
 Passing this semantic suite does not claim indexed access (the planned indexed-access suite) or
 performance.
 
@@ -52,7 +65,10 @@ To check the suite itself:
 
 ```sh
 python3 harness/check_suite.py                                     # needs jsonschema
+python3 -m unittest discover -s harness -p 'test_*.py'             # harness self-tests, stdlib only
+python3 -m unittest discover -s generators -p 'test_*.py'          # parquet_meta malformed-input tests
 python3 harness/run.py --adapter "python3 harness/reference_adapter.py"   # needs generators/requirements.txt
+python3 generators/check_reproducible.py                           # regenerate in a temp dir and compare
 ```
 
 ## Where expected results come from
@@ -98,11 +114,15 @@ python3 -m venv .venv && .venv/bin/pip install -r generators/requirements.txt
 ```
 
 With the pinned pyarrow, regeneration is byte-reproducible: the fixtures, `fixtures.lock.json`, the case
-files and `STRUCTURE.txt` come out identical. If a future writer is not byte-reproducible, keep the
+files and `STRUCTURE.txt` come out identical. `generators/check_reproducible.py` proves it by regenerating
+in a temporary directory and comparing; CI should run it whenever `generators/` or its requirements change.
+The lock records Python as major.minor only. If a future writer is not byte-reproducible, keep the
 committed bytes and require identical `STRUCTURE.txt` output instead.
 
 ## Versions
 
 The suite revision is in `suite.json` (`revision`); it moves independently of the specification's draft
-revision, which the suite also records (`format_version`, `draft_revision`). A published suite revision is
-immutable.
+revision, which the suite also records (`format_version`, `draft_revision`). `content_sha256` is a digest of
+protocol.md, case.schema.json, capabilities.json, fixtures.lock.json and every case file (recomputed by
+`check_suite.py`), so `spec/status.json` can pin a suite by revision and digest. A published suite revision
+is immutable.

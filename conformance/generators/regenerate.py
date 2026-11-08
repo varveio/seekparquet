@@ -117,6 +117,7 @@ def file_entries(rec):
 
 
 def main():
+    (DATASETS / "invalid").mkdir(parents=True, exist_ok=True)
     records = pyarrow_fixtures.build() + mutate_metadata.build()
     names = [r["name"] for r in records]
     assert len(names) == len(set(names)), "duplicate dataset names"
@@ -145,10 +146,12 @@ def main():
                         "pyarrow writes stamps, sorting_columns and the page index itself); 'mutated' = deliberately "
                         "edited by generators/mutate_metadata.py (data pages preserved unless a change says "
                         "otherwise); 'generated' = a text file (manifest) written by a generator."),
-        "generator": {"command": "python generators/regenerate.py", "python": platform.python_version(),
+        "generator": {"command": "python generators/regenerate.py",
+                      "python": ".".join(platform.python_version_tuple()[:2]),
                       "pyarrow": pa.__version__, "requirements": "generators/requirements.txt"},
-        "reproducibility": ("Byte-reproducible with the pinned pyarrow: two regenerations produce identical files "
-                            "(pyarrow 26.0.1 footers carry no timestamps). If a future writer is not "
+        "reproducibility": ("Byte-reproducible with the pinned pyarrow on Python 3.13: "
+                            "generators/check_reproducible.py regenerates everything in a temporary directory and "
+                            "compares it with the checked-in files (pyarrow 26.0.1 footers carry no timestamps). If a future writer is not "
                             "byte-reproducible, the checked-in bytes stay authoritative and STRUCTURE.txt must "
                             "remain identical."),
         "total_bytes": total,

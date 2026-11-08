@@ -1,0 +1,26 @@
+# optional-codecs
+
+valid: yes
+description: Valid, but two value columns use codecs outside the ENC-1 baseline: lz4col is LZ4_RAW and brcol is BROTLI. The key and size columns are SNAPPY. A reader or validator may support these codecs or report them unsupported.
+provenance: native
+producer: pyarrow 26.0.1
+source rows: generators/rows/optional-codecs.json
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 6, bytes 2122, keys 'opt-00' .. 'opt-05'
+
+file data/part-00000.parquet: 2122 bytes, footer 1274 bytes
+  num_rows 6, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  column lz4col: INT64 REQUIRED def=0 rep=0
+  column brcol: BYTE_ARRAY REQUIRED def=0 rep=0
+  row_group 0: rows 6, sorting_columns [col0 asc]
+    key chunk: codec SNAPPY, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 3 pages, first_row_index [0, 2, 4]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [6, 6, 6]
+      max lengths [6, 6, 6]

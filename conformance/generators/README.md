@@ -14,6 +14,8 @@ python generators/regenerate.py      # from conformance/, with generators/requir
 | `parquet_meta.py` | Pure-stdlib Thrift compact-protocol reader/writer for FileMetaData, ColumnIndex, OffsetIndex and PageHeader; prints structural summaries (`python generators/parquet_meta.py FILE...`). Decode-then-encode is asserted to reproduce pyarrow's bytes exactly. |
 | `mutate_metadata.py` | Derives fixtures by editing manifests, footers and page indexes, preserving data pages, recomputing index offsets, file sizes and manifest sizes, and recording every change. |
 | `make_cases.py` | Writes the case files and `suite.json` from the rows (through `../oracle.py`) and the faults in the lock. |
+| `check_reproducible.py` | Regenerates everything in a temporary directory and compares with the checked-in files. |
+| `test_parquet_meta.py` | Bounded malformed-input regression tests for `parquet_meta.py`. |
 | `regenerate.py` | Runs the above, writes `STRUCTURE.txt` per dataset and `fixtures.lock.json`, and removes stale dataset directories. |
 | `common.py` | Shared helpers. |
 
@@ -37,4 +39,11 @@ python generators/regenerate.py      # from conformance/, with generators/requir
   `missing_page_index` fault produced natively (`invalid/missing-column-index-native`).
 - **Physical values.** Unsigned Arrow integers are written as INT32/INT64 with an unsigned annotation;
   float columns built from bit patterns keep NaN payloads and signed zeros.
+- **Encodings.** Writer `version="1.0"` with dictionaries gives PLAIN_DICTIONARY dictionary and data pages;
+  `column_encoding` gives DELTA_BINARY_PACKED (INT32, INT64) and DELTA_LENGTH_BYTE_ARRAY (needs
+  dictionaries off for those columns). Asserted from the page headers (`expect_encodings`).
+- **Codecs.** Per-column `compression` works; `"lz4"` writes LZ4_RAW, `"brotli"` BROTLI.
+- **Annotations.** `store_decimal_as_integer=True` writes DECIMAL(≤9) as INT32 and DECIMAL(≤18) as INT64;
+  larger precisions are FIXED_LEN_BYTE_ARRAY of the minimum width (13 bytes for precision 30). Python's
+  default `decimal` context (28 digits) silently rounds wider values; the generator uses an explicit one.
 - **Determinism.** Output is byte-identical across runs (no timestamps in the footer).

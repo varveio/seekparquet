@@ -56,6 +56,11 @@ def main(argv=None):
         for c in tcaps:
             if c not in caps["capabilities"]:
                 bad(f"capabilities.json: target {t} names unknown capability {c}")
+    for t, ds in caps.get("target_dependencies", {}).items():
+        if t == "description":
+            continue
+        if t not in caps["targets"] or any(d not in caps["targets"] for d in ds):
+            bad(f"capabilities.json: target_dependencies names an unknown target ({t}: {ds})")
     for t in suite.get("mandatory_targets", []):
         if t not in caps["targets"]:
             bad(f"suite.json: unknown mandatory target {t}")
@@ -105,9 +110,19 @@ def main(argv=None):
             for code in codes:
                 if code not in allowed:
                     bad(f"{where}: unknown code {code!r} for status {exp.get('status')}")
+            for code in exp.get("accept_unsupported", []):
+                if code not in unsupported_codes:
+                    bad(f"{where}: accept_unsupported names unknown code {code!r}")
             det = c.get("detect", "")
             if det.startswith("validate:") and f"{det}" not in c.get("requires", []):
                 bad(f"{where}: detect {det} but requires does not list {det}")
+            op = c.get("request", {}).get("op")
+            if exp.get("status") == "ok" and op in ("range", "list") and "entries" not in exp:
+                bad(f"{where}: an ok {op} expectation needs entries")
+            if op == "validate" and (exp.get("status") != "ok" or not exp.get("levels")):
+                bad(f"{where}: a validate expectation must be status ok with levels")
+            if op == "validate" and c["request"].get("level") not in exp.get("levels", {}):
+                bad(f"{where}: the expected levels do not include the requested level")
 
     lock = json.loads((conf / "fixtures.lock.json").read_text(encoding="utf-8"))
     locked = {}
@@ -149,6 +164,16 @@ def main(argv=None):
             bad(f"{p.relative_to(conf)} is not listed in fixtures.lock.json")
     if total > 10 * 1024 * 1024:
         bad(f"fixture corpus is {total} bytes, over 10 MiB")
+
+    sys.path.insert(0, str(conf / "generators"))
+    try:
+        import make_cases
+        if suite.get("content_sha256") != make_cases.suite_digest(suite["case_files"]):
+            bad("suite.json content_sha256 does not match the contract and case files")
+    except ImportError as e:
+        bad(f"cannot import generators/make_cases.py to check the suite digest: {e}")
+    if not (conf / "COVERAGE.md").exists():
+        bad("COVERAGE.md missing")
 
     for p in problems:
         print(f"PROBLEM {p}")

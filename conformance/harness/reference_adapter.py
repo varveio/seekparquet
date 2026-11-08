@@ -42,6 +42,7 @@ import parquet_meta as pm  # noqa: E402
 
 SCHEMA = json.loads((CONF.parent / "spec" / "manifest.schema.json").read_text(encoding="utf-8"))
 SUPPORTED = [(0, 1)]
+MAX_INT = (1 << 63) - 1
 LEVELS = ["structural", "profile", "full"]
 
 
@@ -92,16 +93,6 @@ def _walk_strings(x):
             yield from _walk_strings(v)
 
 
-def _has_num(x):
-    if isinstance(x, Num):
-        return True
-    if isinstance(x, dict):
-        return any(_has_num(v) for v in x.values())
-    if isinstance(x, list):
-        return any(_has_num(v) for v in x)
-    return False
-
-
 def _is_int(x):
     return isinstance(x, int) and not isinstance(x, bool)
 
@@ -146,18 +137,21 @@ def load_manifest(root: Path):
             s.encode("utf-8")
         except UnicodeEncodeError:
             raise Refusal("invalid_manifest", "unpaired surrogate") from None
-    # MAN-7: the version first.
+    # MAN-7: the version members are checked for well-formedness first, then for support.
     fv, dr = m.get("format_version"), m.get("draft_revision", None)
-    if m.get("format") != "seekparquet" or not _is_int(fv) or ("draft_revision" in m and not _is_int(dr)):
-        raise Refusal("invalid_manifest", "format/version members")
-    if fv < 0 or (dr is not None and dr < 0):
-        raise Refusal("invalid_manifest", "negative version")
-    if fv == 0 and dr is None:
-        raise Refusal("invalid_manifest", "draft_revision required when format_version is 0")
+    if m.get("format") != "seekparquet":
+        raise Refusal("invalid_manifest", "format")
+    if not _is_int(fv) or not 0 <= fv <= MAX_INT:
+        raise Refusal("invalid_manifest", "format_version is not an integer in range (MAN-6, MAN-7)")
+    if fv == 0:
+        if not _is_int(dr) or not 1 <= dr <= MAX_INT:
+            raise Refusal("invalid_manifest", "format_version 0 needs a draft_revision in 1..2^63-1")
+    elif "draft_revision" in m:
+        raise Refusal("invalid_manifest", "draft_revision is only allowed with format_version 0")
     if (fv, dr) not in SUPPORTED:
         raise Refusal("unsupported_version", f"({fv}, {dr})")
-    if _has_num(m):
-        raise Refusal("invalid_manifest", "number with fraction or exponent")
+    # MAN-6 applies to the defined integer members only: a number spelled with a fraction or exponent is a
+    # Num, which the schema's "integer" type rejects there; numbers inside extensions are ordinary JSON.
     errs = list(jsonschema.Draft202012Validator(SCHEMA).iter_errors(m))
     if errs:
         raise Refusal("invalid_manifest", errs[0].message)
@@ -288,7 +282,8 @@ class Part:
         self.utf8 = ct == 0 or lt_kinds == [1]
         self.key_leaf = leaves[0]
         orders = self.pf.meta.get(7)
-        if orders is None or len(orders.items) <= self.key_leaf or not orders.items[self.key_leaf].has(1):
+        nleaves = len(self.pf.leaf_columns())
+        if orders is None or len(orders.items) != nleaves or not orders.items[self.key_leaf].has(1):
             raise Refusal("invalid_key_column", "column_orders missing or not TYPE_ORDER for key")
 
     # --- read-time checks (CHECK-2), done over the whole part --------------
@@ -440,43 +435,76 @@ class Dataset:
         except Refusal as r:
             self.read_state = r
             raise
+        self.tables = tables
+        self.colcache = {}
         rows = []
-        for p, t in zip(self.parts, tables):
-            phys = {name: (el.get(pm.SE_TYPE), el) for name, el, _s, _l in p.fields}
-            cols = {}
-            for name in t.column_names:
-                if name == "key" or self.nested.get(name):
-                    continue
-                cols[name] = to_protocol(t.column(name).combine_chunks(), phys[name][0])
+        for pi, t in enumerate(tables):
             keys = t.column("key").combine_chunks()
-            if pa.types.is_string(keys.type):
-                keys = keys.view(pa.binary())
-            for i, k in enumerate(keys.to_pylist()):
-                rows.append((k, {n: v[i] for n, v in cols.items()}))
+            if pa.types.is_string(keys.type) or pa.types.is_large_string(keys.type):
+                keys = keys.view(pa.binary() if pa.types.is_string(keys.type) else pa.large_binary())
+            for ri, k in enumerate(keys.to_pylist()):
+                rows.append((k, (pi, ri)))
         self.rows = rows
         return rows
 
+    def value(self, key, pos, col):
+        """The protocol value of one projected column, converted lazily per (part, column)."""
+        pi, ri = pos
+        if col == "key":
+            return {"bytes_base64": base64.b64encode(key).decode("ascii")}
+        p = self.parts[pi]
+        field = next((f for f in p.fields if f[0] == col), None)
+        if field is None:
+            return {"absent": True}  # COL-2 / COL-7
+        vals = self.colcache.get((pi, col))
+        if vals is None:
+            el = field[1]
+            vals = to_protocol(self.tables[pi].column(col).combine_chunks(), el.get(pm.SE_TYPE),
+                               el.get(pm.SE_TYPE_LENGTH))
+            self.colcache[(pi, col)] = vals
+        return vals[ri]
 
-def to_protocol(arr, ptype):
-    """Physical Parquet values as protocol values (protocol.md, Encoding)."""
+
+def to_protocol(arr, ptype, type_length=None):
+    """Physical Parquet values as protocol values (protocol.md, Encoding).
+
+    Arrow presents annotated columns as logical values (dates, timestamps, decimals, unsigned integers);
+    they are mapped back to the footer's physical type here.
+    """
+    from decimal import Context
+    t = arr.type
     if ptype == 4:
         bits = arr.view(pa.uint32()).to_pylist()
         return [{"null": True} if b is None else {"float32": f"{b:08x}"} for b in bits]
     if ptype == 5:
         bits = arr.view(pa.uint64()).to_pylist()
         return [{"null": True} if b is None else {"float64": f"{b:016x}"} for b in bits]
+    if ptype in (1, 2) and (pa.types.is_temporal(t)):
+        arr = arr.view(pa.int32() if t.bit_width == 32 else pa.int64())
     out = []
+    dec = pa.types.is_decimal(t)
+    scale = t.scale if dec else 0
+    ctx = Context(prec=100)
     for x in arr.to_pylist():
         if x is None:
             out.append({"null": True})
         elif ptype == 0:
             out.append({"bool": bool(x)})
         elif ptype in (1, 2):
+            if dec:
+                x = int(x.scaleb(scale, ctx))
             w = 32 if ptype == 1 else 64
             x %= 1 << w
             out.append({"int": str(x - (1 << w) if x >= 1 << (w - 1) else x)})
         elif ptype in (6, 7):
-            b = x.encode("utf-8") if isinstance(x, str) else bytes(x)
+            if dec:
+                u = int(x.scaleb(scale, ctx))
+                if ptype == 7:
+                    b = u.to_bytes(type_length, "big", signed=True)
+                else:
+                    b = u.to_bytes(max(1, (u.bit_length() + 8) // 8), "big", signed=True)
+            else:
+                b = x.encode("utf-8") if isinstance(x, str) else bytes(x)
             out.append({"bytes_base64": base64.b64encode(b).decode("ascii")})
         else:
             raise NotSupported("unsupported_encoding", f"physical type {ptype}")
@@ -527,11 +555,8 @@ def common_args(req):
     return limit, cols
 
 
-def project(ds, values, cols):
-    out = []
-    for c in cols:
-        out.append(values[c] if c in values else {"absent": True})
-    return out
+def project(ds, key, pos, cols):
+    return [ds.value(key, pos, c) for c in cols]
 
 
 def do_range(ds, req):
@@ -553,7 +578,7 @@ def do_range(ds, req):
             break
         if prefix is not None and not k.startswith(prefix):
             continue
-        entries.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "values": project(ds, v, cols)})
+        entries.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "values": project(ds, k, v, cols)})
     return entries
 
 
@@ -584,7 +609,7 @@ def do_list(ds, req):
             last_prefix = cp
             entries.append({"kind": "prefix", "key_base64": base64.b64encode(cp).decode()})
         else:
-            entries.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "values": project(ds, v, cols)})
+            entries.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "values": project(ds, k, v, cols)})
     return entries
 
 

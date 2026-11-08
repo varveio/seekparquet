@@ -43,6 +43,26 @@
         {
           "if": {"required": ["raw_request"]},
           "then": {"properties": {"expect": {"properties": {"status": {"const": "invalid_request"}}}}}
+        },
+        {
+          "description": "A successful range or list expectation states its entries.",
+          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"enum": ["range", "list"]}}},
+                                                         "expect": {"properties": {"status": {"const": "ok"}}}}},
+          "then": {"properties": {"expect": {"required": ["entries"]}}}
+        },
+        {
+          "description": "A validate expectation is always status ok with levels: validate never answers refused.",
+          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"const": "validate"}}}}},
+          "then": {"properties": {"expect": {"required": ["levels"], "properties": {"status": {"const": "ok"}}}}}
+        },
+        {
+          "description": "entries only for range and list, levels only for validate.",
+          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"enum": ["open", "validate"]}}}}},
+          "then": {"properties": {"expect": {"not": {"required": ["entries"]}}}}
+        },
+        {
+          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"enum": ["open", "range", "list"]}}}}},
+          "then": {"properties": {"expect": {"not": {"required": ["levels"]}}}}
         }
       ]
     },
@@ -78,6 +98,10 @@
         "code": {"type": "string"},
         "codes": {"$ref": "#/$defs/codes"},
         "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+        "accept_unsupported": {
+          "description": "Optional features: an unsupported response with one of these codes also passes. Only with status ok.",
+          "type": "array", "minItems": 1, "items": {"type": "string"}
+        },
         "levels": {
           "type": "object",
           "additionalProperties": false,
@@ -93,7 +117,9 @@
         {"if": {"properties": {"status": {"enum": ["refused", "unsupported"]}}},
          "then": {"oneOf": [{"required": ["code"], "not": {"required": ["codes"]}}, {"required": ["codes"], "not": {"required": ["code"]}}]}},
         {"if": {"properties": {"status": {"enum": ["ok", "invalid_request"]}}},
-         "then": {"not": {"anyOf": [{"required": ["code"]}, {"required": ["codes"]}]}}}
+         "then": {"not": {"anyOf": [{"required": ["code"]}, {"required": ["codes"]}]}}},
+        {"if": {"properties": {"status": {"not": {"const": "ok"}}}},
+         "then": {"not": {"anyOf": [{"required": ["accept_unsupported"]}, {"required": ["entries"]}, {"required": ["levels"]}]}}}
       ]
     },
     "level": {
@@ -104,7 +130,11 @@
         "result": {"enum": ["complete", "failed", "incomplete"]},
         "code": {"type": "string"},
         "codes": {"$ref": "#/$defs/codes"},
-        "checked": {"type": "integer", "minimum": 0}
+        "checked": {"type": "integer", "minimum": 0},
+        "accept": {
+          "description": "Further results that also pass, for levels that depend on optional features (for example a full level that may be incomplete when a codec is unsupported).",
+          "type": "array", "minItems": 1, "items": {"enum": ["complete", "failed", "incomplete"]}
+        }
       },
       "if": {"properties": {"result": {"const": "failed"}}},
       "then": {"oneOf": [{"required": ["code"]}, {"required": ["codes"]}]}

@@ -196,6 +196,78 @@
       }
     },
     {
+      "id": "validate-digest/annotated",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/annotated",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/encodings",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/optional-codecs",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/optional-codecs",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
       "id": "validate-digest/truncated-bounds",
       "requirements": [
         "VAL-2",
@@ -277,6 +349,30 @@
         "validate:digest"
       ],
       "dataset": "datasets/key-legacy-utf8",
+      "request": {
+        "op": "validate",
+        "level": "digest"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "complete",
+            "checked": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-digest/extensions-numbers",
+      "requirements": [
+        "VAL-2",
+        "PART-5"
+      ],
+      "requires": [
+        "validate:digest"
+      ],
+      "dataset": "datasets/extensions-numbers",
       "request": {
         "op": "validate",
         "level": "digest"

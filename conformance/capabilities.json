@@ -11,6 +11,12 @@
     "validate:digest": "validation at the digest level",
     "indexed-access": "the indexed-access suite (planned)"
   },
+  "target_dependencies": {
+    "description": "A target qualifies only if every target it depends on also qualifies on the same run; claiming a target runs the cases of its dependencies too.",
+    "validator-profile": ["validator-structural"],
+    "validator-full": ["validator-profile"],
+    "indexed-access": ["reader"]
+  },
   "targets": {
     "reader": ["open", "range", "list", "projection"],
     "validator-structural": ["open", "validate:structural"],

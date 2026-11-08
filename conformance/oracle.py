@@ -56,10 +56,12 @@ class Dataset:
     def keys(self):
         return [k for k, _v, _p in self.rows]
 
-    def _values(self, values, present, columns):
+    def _values(self, key, values, present, columns):
         out = []
         for c in columns:
-            if c not in present:  # COL-2, and COL-7 for a column no part has
+            if c == "key":  # the key column is projected like any other BYTE_ARRAY column
+                out.append({"bytes_base64": b64(key)})
+            elif c not in present:  # COL-2, and COL-7 for a column no part has
                 out.append({"absent": True})
             else:
                 out.append(values[c])
@@ -84,7 +86,7 @@ class Dataset:
                 continue
             if end is not None and not k < end:
                 continue
-            out.append({"kind": "row", "key_base64": b64(k), "values": self._values(v, present, columns)})
+            out.append({"kind": "row", "key_base64": b64(k), "values": self._values(k, v, present, columns)})
             if len(out) == limit:
                 break
         return out
@@ -114,7 +116,7 @@ class Dataset:
                 seen.add(cp)
                 out.append({"kind": "prefix", "key_base64": b64(cp)})
             else:  # LIST-3
-                out.append({"kind": "row", "key_base64": b64(k), "values": self._values(v, present, columns)})
+                out.append({"kind": "row", "key_base64": b64(k), "values": self._values(k, v, present, columns)})
             if len(out) == limit:
                 break
         # LIST-4: distinct and ascending by entry bytes.

@@ -50,11 +50,15 @@ class LCG:
         return (self.s >> 33) % n
 
 
-def W(mrpp, compression="none", dictionary=False, page_version="1.0", key_encoding=None):
+def W(mrpp, compression="none", dictionary=False, page_version="1.0", key_encoding=None, **extra):
+    """Writer settings. extra: format_version ("1.0"/"2.6"), column_encoding {col: enc},
+    column_compression {col: codec}, decimal_as_integer, expect_encodings {col: [data page encodings]},
+    expect_codecs {col: codec name}."""
     w = {"max_rows_per_page": mrpp, "compression": compression, "use_dictionary": dictionary,
          "data_page_version": page_version}
     if key_encoding:
         w["key_encoding"] = key_encoding
+    w.update(extra)
     return w
 
 
@@ -306,6 +310,110 @@ def def_inconsistent(name, desc, override):
                        "column_overrides": {"size": override}}]}
 
 
+def def_annotated():
+    days = [-719162, -1, 0, 1, 19000, 20454, 2932896, None]
+    ts_ms = [-62135596800000, -1, 0, 1, 1767225600123, 253402300799999, None, 42]
+    ts_us = [0, 1767225600123456, -1, None, 9223372036854775807, -9223372036854775808, 5, 6]
+    d9 = [0, 1, -1, 999999999, -999999999, 12345, None, 7]
+    d18 = [0, 999999999999999999, -999999999999999999, 1, None, -5, 10 ** 17, 3]
+    d30 = [0, 10 ** 30 - 1, -(10 ** 30 - 1), -1, 1, None, 123456789012345678901234567890, -256]
+    strs = ["", "plain", "caf\u00e9", None, "\u65e5\u672c", "z", "a" * 20, "end"]
+    flba = decimal_flba_len(30)
+
+    def N(x, f):
+        return NULL if x is None else f(x)
+
+    def vals(i, k):
+        return {"d": N(days[i], I), "ts_ms": N(ts_ms[i], I), "ts_utc": N(ts_us[i], I), "dec9": N(d9[i], I),
+                "dec18": N(d18[i], I),
+                "dec30": N(d30[i], lambda u: S(u.to_bytes(flba, "big", signed=True))),
+                "s": N(strs[i], S)}
+
+    rows = rows_of([b"ann-%d" % i for i in range(8)], vals)
+    return {"dataset": "annotated",
+            "description": ("Columns with logical annotations whose physical values the protocol reports: DATE "
+                            "(INT32 days), TIMESTAMP millis and micros/UTC (INT64), DECIMAL stored as INT32, INT64 "
+                            "and FIXED_LEN_BYTE_ARRAY(13) (unscaled two's complement), STRING (BYTE_ARRAY)."),
+            "schema_id": "conformance/annotated/v1", "key_type": "binary",
+            "columns": [{"name": "d", "type": "date32", "nullable": True},
+                        {"name": "ts_ms", "type": "timestamp:ms", "nullable": True},
+                        {"name": "ts_utc", "type": "timestamp:us:UTC", "nullable": True},
+                        {"name": "dec9", "type": "decimal:9:2", "nullable": True},
+                        {"name": "dec18", "type": "decimal:18:4", "nullable": True},
+                        {"name": "dec30", "type": "decimal:30:5", "nullable": True},
+                        {"name": "s", "type": "string", "nullable": True}],
+            "parts": [{"path": "data/part-00000.parquet", "row_groups": [8],
+                       "writer": W(4, decimal_as_integer=True,
+                                   expect_physical={"d": ("INT32", None), "ts_ms": ("INT64", None),
+                                                    "ts_utc": ("INT64", None), "dec9": ("INT32", None),
+                                                    "dec18": ("INT64", None),
+                                                    "dec30": ("FIXED_LEN_BYTE_ARRAY", flba),
+                                                    "s": ("BYTE_ARRAY", None)}),
+                       "rows": rows}]}
+
+
+def def_encodings():
+    rng = LCG(11)
+    keys = [b"enc/%03d" % i for i in range(24)]
+
+    def vals(i, k):
+        return {"i32": NULL if i % 7 == 3 else I(rng.next(1 << 31) - (1 << 30)),
+                "i64": I((rng.next(1 << 62) - (1 << 61)) * (-1 if i % 2 else 1)),
+                "s": NULL if i % 5 == 4 else S(["alpha", "beta", "gamma", "", "delta-" + "x" * i][i % 5])}
+
+    rows = rows_of(keys, vals)
+    return {"dataset": "encodings",
+            "description": ("Data pages that use the remaining mandatory encodings: part 0 is written as Parquet "
+                            "format 1.0 with dictionaries, so key and value data pages are PLAIN_DICTIONARY; part 1 "
+                            "uses DELTA_BINARY_PACKED for INT32 and INT64 and DELTA_LENGTH_BYTE_ARRAY for BYTE_ARRAY "
+                            "columns (including the key), with data page v2. Asserted from the page headers."),
+            "schema_id": "conformance/encodings/v1", "key_type": "binary",
+            "columns": [{"name": "i32", "type": "int32", "nullable": True},
+                        {"name": "i64", "type": "int64", "nullable": False},
+                        {"name": "s", "type": "string", "nullable": True}],
+            "parts": [{"path": "data/part-00000.parquet", "row_groups": [6, 6],
+                       "writer": W(3, "none", True, "1.0", format_version="1.0",
+                                   expect_encodings={c: ["PLAIN_DICTIONARY"] for c in ("key", "i32", "i64", "s")}),
+                       "rows": rows[:12]},
+                      {"path": "data/part-00001.parquet", "row_groups": [12],
+                       "writer": W(4, "snappy", False, "2.0",
+                                   column_encoding={"key": "DELTA_LENGTH_BYTE_ARRAY", "i32": "DELTA_BINARY_PACKED",
+                                                    "i64": "DELTA_BINARY_PACKED", "s": "DELTA_LENGTH_BYTE_ARRAY"},
+                                   expect_encodings={"key": ["DELTA_LENGTH_BYTE_ARRAY"], "i32": ["DELTA_BINARY_PACKED"],
+                                                     "i64": ["DELTA_BINARY_PACKED"], "s": ["DELTA_LENGTH_BYTE_ARRAY"]}),
+                       "rows": rows[12:]}]}
+
+
+def def_optional_codecs():
+    rows = rows_of([b"opt-%02d" % i for i in range(6)],
+                   lambda i, k: {"size": I(i), "lz4col": I(i * 1000), "brcol": S("brotli-%d" % i)})
+    return {"dataset": "optional-codecs",
+            "description": ("Valid, but two value columns use codecs outside the ENC-1 baseline: lz4col is LZ4_RAW "
+                            "and brcol is BROTLI. The key and size columns are SNAPPY. A reader or validator may "
+                            "support these codecs or report them unsupported."),
+            "schema_id": "conformance/objects/v1", "key_type": "binary",
+            "columns": [{"name": "size", "type": "int64", "nullable": False},
+                        {"name": "lz4col", "type": "int64", "nullable": False},
+                        {"name": "brcol", "type": "string", "nullable": False}],
+            "parts": [{"path": "data/part-00000.parquet", "row_groups": [6],
+                       "writer": W(2, "snappy", column_compression={"lz4col": "lz4", "brcol": "brotli"},
+                                   expect_codecs={"key": "SNAPPY", "size": "SNAPPY", "lz4col": "LZ4_RAW",
+                                                  "brcol": "BROTLI"}),
+                       "rows": rows}]}
+
+
+def def_inconsistent_width():
+    r0 = [{"key_base64": b64e(b"k%02d" % i), "values": {"h": S(bytes([i] * 4))}} for i in range(4)]
+    r1 = [{"key_base64": b64e(b"k%02d" % i), "values": {"h": S(bytes([i] * 8))}} for i in range(4, 8)]
+    return {"dataset": "inconsistent-column-width",
+            "description": "Column h is FIXED_LEN_BYTE_ARRAY(4) in part 0 and FIXED_LEN_BYTE_ARRAY(8) in part 1.",
+            "schema_id": "conformance/objects/v1", "key_type": "binary",
+            "columns": [{"name": "h", "type": "fixed:4", "nullable": False}],
+            "parts": [{"path": "data/part-00000.parquet", "row_groups": [4], "writer": W(2), "rows": r0},
+                      {"path": "data/part-00001.parquet", "row_groups": [4], "writer": W(2), "rows": r1,
+                       "column_overrides": {"h": {"type": "fixed:8"}}}]}
+
+
 def def_empty():
     return {"dataset": "empty", "description": "A committed dataset with no parts.",
             "schema_id": "conformance/objects/v1", "key_type": "binary",
@@ -407,6 +515,14 @@ def arrow_type(t):
         return simple[t]
     if t.startswith("fixed:"):
         return pa.binary(int(t.split(":")[1]))
+    if t == "date32":
+        return pa.date32()
+    if t.startswith("timestamp:"):
+        parts = t.split(":")
+        return pa.timestamp(parts[1], tz=parts[2] if len(parts) > 2 else None)
+    if t.startswith("decimal:"):
+        _, prec, scale = t.split(":")
+        return pa.decimal128(int(prec), int(scale))
     if t == "struct<a:int32>":
         return pa.struct([pa.field("a", pa.int32())])
     if t == "list<string>":
@@ -485,7 +601,30 @@ def physical_array(tname, t, values):
     if tname in ("uint32", "uint64"):
         _, w = BITS[tname]
         return pa.array([None if "null" in v else int(v["int"]) % (1 << w) for v in values], t)
+    if tname == "date32":
+        return pa.array([None if "null" in v else int(v["int"]) for v in values], pa.int32()).view(t)
+    if tname.startswith("timestamp:"):
+        return pa.array([None if "null" in v else int(v["int"]) for v in values], pa.int64()).view(t)
+    if tname.startswith("decimal:"):
+        from decimal import Decimal
+        scale = int(tname.split(":")[2])
+
+        def unscaled(v):
+            if "int" in v:
+                return int(v["int"])
+            return int.from_bytes(b64d(v["bytes_base64"]), "big", signed=True)
+        from decimal import Context
+        ctx = Context(prec=80)
+        return pa.array([None if "null" in v else Decimal(unscaled(v)).scaleb(-scale, ctx) for v in values], t)
     return pa.array([py_value(tname, v) for v in values], t)
+
+
+def decimal_flba_len(prec):
+    """Minimum FIXED_LEN_BYTE_ARRAY width for a decimal precision (as parquet-format defines it)."""
+    n = 1
+    while 10 ** prec - 1 >= 1 << (8 * n - 1):
+        n += 1
+    return n
 
 
 def physical_values(tname, arr):
@@ -495,6 +634,21 @@ def physical_values(tname, arr):
         bits = arr.view(BITS[tname][0]).to_pylist()
         w = BITS[tname][1] // 4
         return [{"null": True} if b is None else {tname: format(b, "0%dx" % w)} for b in bits]
+    if tname == "date32":
+        return [{"null": True} if x is None else {"int": str(x)} for x in arr.view(pa.int32()).to_pylist()]
+    if tname.startswith("timestamp:"):
+        return [{"null": True} if x is None else {"int": str(x)} for x in arr.view(pa.int64()).to_pylist()]
+    if tname.startswith("decimal:"):
+        _, prec, scale = (int(x) if x.isdigit() else x for x in tname.split(":"))
+        for x in arr.to_pylist():
+            if x is None:
+                out.append({"null": True})
+                continue
+            from decimal import Context
+            u = int(x.scaleb(scale, Context(prec=80)))
+            out.append({"int": str(u)} if prec <= 18 else
+                       {"bytes_base64": b64e(u.to_bytes(decimal_flba_len(prec), "big", signed=True))})
+        return out
     for x in arr.to_pylist():
         if x is None:
             out.append({"null": True})
@@ -522,12 +676,20 @@ def write_part(doc, part, fault=None) -> bytes:
     sorting = fault.get("sorting", "key")
     sc = {"key": [pq.SortingColumn(0)], "none": None, "descending": [pq.SortingColumn(0, descending=True)],
           "other_first": [pq.SortingColumn(1), pq.SortingColumn(0)]}[sorting]
-    kwargs = dict(version="2.6", write_statistics=True, write_page_index=True, store_schema=True,  # store_schema=False drops all schema metadata, including the stamps
-                  max_rows_per_page=w["max_rows_per_page"], compression=w["compression"],
-                  data_page_version=w["data_page_version"], sorting_columns=sc)
+    compression = w["compression"]
+    if w.get("column_compression"):
+        compression = {f.name: w["column_compression"].get(f.name, w["compression"]) for f in fields}
+    # store_schema=False drops all schema metadata, including the stamps.
+    kwargs = dict(version=w.get("format_version", "2.6"), write_statistics=True, write_page_index=True,
+                  store_schema=True, max_rows_per_page=w["max_rows_per_page"], compression=compression,
+                  data_page_version=w["data_page_version"], sorting_columns=sc,
+                  store_decimal_as_integer=w.get("decimal_as_integer", False))
+    enc = dict(w.get("column_encoding", {}))
     if w.get("key_encoding"):
-        others = [f.name for f in fields[1:]] if w["use_dictionary"] else False
-        kwargs.update(use_dictionary=others, column_encoding={"key": w["key_encoding"]})
+        enc["key"] = w["key_encoding"]
+    if enc:
+        others = [f.name for f in fields if f.name not in enc] if w["use_dictionary"] else False
+        kwargs.update(use_dictionary=others, column_encoding=enc)
     else:
         kwargs.update(use_dictionary=w["use_dictionary"])
     buf = io.BytesIO()
@@ -591,6 +753,22 @@ def assert_structure(data, doc, part, fault=None):
                 pk = keys[off + cum[pi]: off + cum[pi] + cnt]
                 assert mins[pi] == min(pk) and maxs[pi] == max(pk), "pyarrow bounds are exact page min/max"
         off += n
+    # Declared data page encodings and codecs, per column, from the actual page headers.
+    leaf_index = {".".join(p): i for i, (p, *_r) in enumerate(leaves)}
+    for col, encs in part["writer"].get("expect_encodings", {}).items():
+        want = {k for k, v in pm.ENCODINGS.items() if v in encs}
+        for ri, rg in enumerate(rgs):
+            if rg.get(pm.RG_NUM_ROWS):
+                got = {p.encoding for p in pm.data_pages(pf, pm.column_chunk(pf, ri, leaf_index[col]))}
+                assert got <= want and got, f"{col}: data page encodings {got} not in {encs}"
+    for col, codec in part["writer"].get("expect_codecs", {}).items():
+        for ri, rg in enumerate(rgs):
+            md = pm.column_chunk(pf, ri, leaf_index[col]).get(pm.CC_META)
+            assert pm.CODECS[md.get(pm.CMD_CODEC)] == codec, f"{col}: codec {pm.CODECS[md.get(pm.CMD_CODEC)]} != {codec}"
+    for col, (ptype, tlen) in part["writer"].get("expect_physical", {}).items():
+        el = leaves[leaf_index[col]][1]
+        assert pm.TYPES[el.get(pm.SE_TYPE)] == ptype and (tlen is None or el.get(pm.SE_TYPE_LENGTH) == tlen), \
+            f"{col}: physical {pm.TYPES[el.get(pm.SE_TYPE)]}({el.get(pm.SE_TYPE_LENGTH)}) != {ptype}({tlen})"
     # Values read back by pyarrow equal the source rows.
     if fault.get("key") is None:
         t = pq.read_table(io.BytesIO(data))
@@ -664,14 +842,15 @@ def write_dataset(doc, out_dir, fault=None, check=True, extra_files=None):
 
 
 VALID = [def_empty, def_basic, def_multipart, def_binary_keys, def_projection, def_delimiter, def_list_bounds,
-         def_non_utf8_keys]
+         def_non_utf8_keys, def_annotated, def_encodings, def_optional_codecs]
 
 
 def def_inconsistent_all():
     return [def_inconsistent("inconsistent-column-type", "Column size is INT64 in part 0 and INT32 in part 1.",
                              {"type": "int32"}),
             def_inconsistent("inconsistent-column-repetition",
-                             "Column size is REQUIRED in part 0 and OPTIONAL in part 1.", {"nullable": True})]
+                             "Column size is REQUIRED in part 0 and OPTIONAL in part 1.", {"nullable": True}),
+            def_inconsistent_width()]
 
 
 def rec(name, out_dir, rows_name, valid, desc, provenance="native", fault=None, extra=None):
@@ -728,6 +907,8 @@ def build():
                                       "request": "range-columns:size",
                                       "note": "COL-5 requires the check no later than the first request that projects "
                                               "the column, so the read case projects size; structural validation checks all columns."}, {}),
+        "inconsistent-column-width": ({"codes": ["inconsistent_column"], "detect": "read", "requirements": ["COL-5", "CHECK-1"],
+                                       "request": "range-columns:h"}, {}),
         "inconsistent-column-repetition": ({"codes": ["inconsistent_column"], "detect": "read", "requirements": ["COL-5", "CHECK-1"],
                                             "request": "range-columns:size"}, {}),
         "key-order-across-parts": ({"codes": ["key_order", "bounds_mismatch"], "detect": "read",
