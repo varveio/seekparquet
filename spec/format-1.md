@@ -180,8 +180,8 @@ Each part is a Parquet file that any conforming Parquet reader can read.
   across the whole dataset: within each page, from page to page, from row group to row group, and from
   part to part in manifest order. A decreasing key, or an equal key in unique mode, is `key_order`.
 - [KEY-7] Consecutive rows with equal keys form a **group**. Within a group, order is file order, chosen
-  by the producer and opaque to the format. Pages and row groups MAY split a group; parts MUST NOT
-  (PART-4). Row-group first keys are therefore non-decreasing in repeated-key mode.
+  by the producer and opaque to the format. Pages and row groups MAY split a group; a group never spans
+  parts (PART-4). Row-group first keys are therefore non-decreasing in repeated-key mode.
 - [KEY-4] The format sets no maximum key length. A producer's schema MAY impose one.
 
 In this document, the **key column** (also written `key` in Parquet rules) always means the column
@@ -194,7 +194,8 @@ and are ignored.
 
 - [RG-1] The row group's `sorting_columns` is present and its first entry names the `key` column with
   `descending` false. Further entries MAY follow and are ignored.
-- [RG-2] The `key` column chunk has both a ColumnIndex and an OffsetIndex.
+- [RG-2] The column chunk of the key column (named by `key.column`) has both a ColumnIndex and an
+  OffsetIndex.
 - [RG-3] The OffsetIndex lists every data page of the chunk, in order, and only those: each entry's
   `offset` and `compressed_page_size` locate exactly one data page header and its page within the column
   chunk. The first page's `first_row_index` is 0, `first_row_index` strictly increases, every value is less
@@ -288,14 +289,13 @@ finds them. A reader MAY use any access path, provided its results are these.
 | start exclusive | ✓ | | false (inclusive) | whether the start itself is excluded |
 | prefix | ✓ | ✓ | empty | keys must begin with it |
 | delimiter | | ✓ | required | exactly one byte |
-| after | ✓ | ✓ | none | tagged continuation cursor (PAGE-1); legacy byte floor for listing (LIST-5) |
-| continuation | | ✓ | false | see LIST-5; has no effect without `after` |
+| after | ✓ | ✓ | none | continuation cursor (PAGE-1): a row cursor; for listing, a row or prefix cursor |
 | end | ✓ | ✓ | unbounded above | keys must be strictly less |
 | limit | ✓ | ✓ | required | maximum number of entries; a positive integer |
 | columns | ✓ | ✓ | none | columns to project, by exact name (COL-6) |
 
-- [QUERY-1] A limit that is not a positive integer, or a delimiter that is not exactly one byte, is an
-  invalid request, not an empty result.
+- [QUERY-1] A limit that is not a positive integer, a delimiter that is not exactly one byte, a malformed
+  cursor, or a prefix cursor in a range request is an invalid request, not an empty result.
 - [QUERY-2] Boundaries are byte strings and MAY be empty. An empty start includes every key; an empty end
   includes none, since every key is non-empty and so greater than the empty string.
 - [QUERY-3] "All results" below means the results of the same request with a limit at least the number of
@@ -304,8 +304,8 @@ finds them. A reader MAY use any access path, provided its results are these.
 ### 6.2 Range
 
 - [RANGE-1] The result is the rows whose keys begin with the prefix, are at or after the start (strictly
-  after, when the start is exclusive) and are strictly before the end, in ascending key order, at most limit
-  of them. Bounds and prefix filtering include or exclude whole groups; a limit may split a group.
+  after, when the start is exclusive) and are strictly before the end, and that come after the cursor when
+  one is given (PAGE-1), in ascending key order, at most limit of them. Bounds and prefix filtering include or exclude whole groups; a limit may split a group.
   Rows with equal keys retain file order.
 - [RANGE-2] Each returned row carries its key and, for each projected column in request order, the value,
   null, or absent (COL-2).
@@ -318,9 +318,9 @@ It returns the whole group (zero or more rows), paginated like any range.
 
 ### 6.3 Delimited listing
 
-The **candidate keys** are the keys `k` that begin with the prefix `p`, are greater than the listing byte
-floor `after` when it is given, and are less than the end when it is given. Tagged continuation cursors
-add the row-position rules in PAGE-1 instead of a byte floor. Each candidate row yields one entry:
+The **candidate rows** are the rows whose key `k` begins with the prefix `p` and is less than the end when
+one is given, and that come after the cursor when one is given (PAGE-1). Their keys are the **candidate
+keys**. Each candidate row yields one entry:
 
 - [LIST-2] If the part of `k` after `p` contains the delimiter `d`, let `i` be the index in `k` of the
   first `d` at or after position `len(p)`. The entry is the **common prefix** `k[0 : i+1]` (half-open: `k`
@@ -333,23 +333,34 @@ add the row-position rules in PAGE-1 instead of a byte floor. Each candidate row
   prefix compares as its own bytes, a row as its key), at most limit of them. Every key under a common
   prefix sorts at or after the prefix and before any key outside it, so this is the order in which the
   entries' first candidate keys occur.
-- [LIST-5] When `continuation` is true and `after` is given, a common prefix that sorts at or before
-  `after` is not returned, because the page that ended at `after` already returned it. Otherwise a common
-  prefix is returned if any candidate key rolls up to it, even if the prefix itself sorts at or before
-  `after`.
+- [LIST-5] A common prefix is returned if and only if some candidate key rolls up to it, even if the prefix
+  sorts before a row cursor's key. For example, with `p` = `a/`, `d` = `/` and the row cursor (`a/b/c`, 0),
+  the candidate `a/b/d` makes `a/b/` appear. No other rule suppresses a common prefix: a prefix cursor
+  excludes every key under its prefix (PAGE-1), so that prefix has no candidate key.
 - [LIST-7] Bounds apply to candidate keys, not to entries. For example, with `p` empty, `d` = `/` and end
   `a/b`, the keys `a/a` and `a/z` give the common prefix `a/` only because `a/a` is a candidate; if `a/a`
   did not exist, `a/z` alone would not make `a/` appear.
 
 **Pagination.**
 
-- [PAGE-1] A continuation cursor is tagged: after a row it is `(key, offset)`, where `offset` is
-  the row's zero-based position in its group in file order (always zero in unique mode); after a common
-  prefix it is the prefix bytes. Resuming after `(k, n)` returns the remainder of `k`'s group from
-  offset `n+1`, then later keys, subject to the original query's bounds and prefix. A page MAY end
-  inside a group. A cursor's offset is a non-negative integer.
-- [LIST-6] After a common prefix `c`, continuation suppresses common prefixes at or before `c`
-  as in LIST-5. A reader MAY resume directly at `successor(c)`; with no successor it is exhausted.
+- [PAGE-1] A continuation cursor is tagged, and is one of:
+  - a **row cursor** `(k, n)`: a key and an offset, an integer from 0 to 2^63 − 1. A row's **offset** is
+    its zero-based position in its complete stored group, in file order, before any query filtering;
+    it is always 0 in unique mode. A row comes after `(k, n)` when its key is greater than `k`, or equal
+    to `k` with an offset greater than `n`.
+  - a **prefix cursor** `c`, accepted by listings only: a row comes after it when its key is greater than
+    `c` and does not begin with `c` (equivalently, its key is at or after `successor(c)`; when `c` has no
+    successor, no row does). A prefix cursor in a range request is an invalid request (QUERY-1).
+
+  The cursor of a returned row is its row cursor; the cursor of a returned common prefix is its prefix
+  cursor. Resuming with `(k, n)` returns the remainder of `k`'s group from offset `n+1`, then later keys,
+  subject to the query's bounds and prefix. A page MAY end inside a group. A cursor is meant for the same
+  query on the same immutable dataset; a reader applies the comparison above and need not check that the
+  position exists. An offset beyond the last row of `k`'s group therefore skips that group, and a nonzero
+  offset in unique mode means "after `k`"; neither is an error.
+- [LIST-6] After a common prefix `c`, resuming with the prefix cursor `c` skips every key under `c`, so
+  `c` is not returned again. A reader MAY resume directly at `successor(c)`; with no successor the
+  listing is exhausted.
 - [PAGE-2] Repeating the same query with the cursor of its last entry MUST produce pages whose
   concatenation equals the unpaginated result, without gaps or extra rows. This is exact because
   the dataset is immutable. Cursor wire encoding is a protocol concern.
@@ -397,7 +408,8 @@ visits: it enumerates pages and rows independently of the seek path.
 - [VAL-1] A validator reports, for each level, whether it completed, failed (with the refusal code), or is
   incomplete (with the reason). A level is complete only if its prerequisite is complete. If a column,
   encoding or codec the level needs is not supported, the level is incomplete, never complete; levels below
-  it keep their result.
+  it keep their result, and levels that require it are incomplete. The `digest` level has no prerequisite:
+  it reads the bytes of the parts the manifest lists, whether or not they open as Parquet.
 - [VAL-2] The `digest` level completes when every declared `sha256` matches. When no part declares one it
   completes with nothing checked, and the report says so.
 - [VAL-3] Validation checks the dataset as stored. It cannot show that the manifest was published

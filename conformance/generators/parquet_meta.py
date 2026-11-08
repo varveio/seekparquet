@@ -131,6 +131,9 @@ def _put_uvarint(out, n):
             return
 
 
+MAX_DEPTH = 64
+
+
 class Reader:
     def __init__(self, buf, pos=0, limit=None):
         self.buf = buf
@@ -176,6 +179,7 @@ class Reader:
             self.pos += n
             return v
         if ctype in (CT_LIST, CT_SET):
+            self._enter()
             h = self.byte()
             size = h >> 4
             etype = h & 0x0F
@@ -189,23 +193,33 @@ class Reader:
                     items.append(self.byte() == CT_TRUE)
                 else:
                     items.append(self.value(etype))
+            self.depth -= 1
             return TList(etype, items)
         if ctype == CT_MAP:
+            self._enter()
             size = self.varint()
             if size == 0:
+                self.depth -= 1
                 return TMap(0, 0, [])
+            if size > self.limit - self.pos:
+                raise ThriftError("map larger than input")
             kv = self.byte()
             kt, vt = kv >> 4, kv & 0x0F
             items = [(self.value(kt), self.value(vt)) for _ in range(size)]
+            self.depth -= 1
             return TMap(kt, vt, items)
         if ctype == CT_STRUCT:
             return self.struct()
         raise ThriftError(f"unknown compact type {ctype}")
 
-    def struct(self):
+    def _enter(self):
+        """Every struct, list, set and map is one nesting level; deep nesting is an error, not a RecursionError."""
         self.depth += 1
-        if self.depth > 64:
+        if self.depth > MAX_DEPTH:
             raise ThriftError("nesting too deep")
+
+    def struct(self):
+        self._enter()
         s = Struct()
         last = 0
         while True:

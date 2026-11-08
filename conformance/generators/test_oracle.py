@@ -16,9 +16,10 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
+sys.path[:0] = [str(HERE.parent), str(HERE)]
 
 import oracle  # noqa: E402
+from common import DEFAULT_KEY as KEY  # noqa: E402
 
 BIG = 10 ** 6
 VALID = ["basic", "multipart", "binary-keys", "projection", "delimiter", "list-bounds", "non-utf8-keys", "annotated",
@@ -32,8 +33,22 @@ def keys_of(entries):
 def mini(keys, values=None):
     rows = [{"key_base64": base64.b64encode(k).decode(), "values": (values or {}).get(k, {"v": {"int": str(i)}})}
             for i, k in enumerate(sorted(keys))]
-    return oracle.Dataset({"dataset": "mini", "columns": [{"name": "v", "type": "int64"}],
+    return oracle.Dataset({"dataset": "mini", "key": KEY, "columns": [{"name": "v", "type": "int64"}],
                            "parts": [{"path": "p", "rows": rows}]})
+
+
+def row(key, offset=0):
+    return {"key_base64": base64.b64encode(key).decode(), "offset": offset}
+
+
+def prefix(p):
+    return {"prefix_base64": base64.b64encode(p).decode()}
+
+
+def cursor_of(entry):
+    if entry["kind"] == "row":
+        return {"key_base64": entry["key_base64"], "offset": entry["offset"]}
+    return {"prefix_base64": entry["key_base64"]}
 
 
 class Properties(unittest.TestCase):
@@ -101,13 +116,13 @@ class Properties(unittest.TestCase):
                 for d in (b"/", b"\xff"):
                     full = ds.list(prefix=p, delimiter=d, limit=BIG)
                     for n in (1, 2, 3):
-                        got, after = [], None
+                        got, cursor = [], None
                         while True:
-                            page = ds.list(prefix=p, delimiter=d, after=after, continuation=after is not None, limit=n)
+                            page = ds.list(prefix=p, delimiter=d, cursor=cursor, limit=n)
                             got += page
                             if len(page) < n:
                                 break
-                            after = base64.b64decode(page[-1]["key_base64"])
+                            cursor = cursor_of(page[-1])
                         self.assertEqual(got, full, (name, p, d, n))
 
 
@@ -141,19 +156,25 @@ class HandWrittenExamples(unittest.TestCase):
     def test_list7_worked_example(self):
         ds = mini([b"a/a", b"a/z"])
         self.assertEqual(keys_of(ds.list(delimiter=b"/", end=b"a/b", limit=10)), [("prefix", b"a/")])
-        self.assertEqual(ds.list(delimiter=b"/", after=b"a/a", end=b"a/b", limit=10), [])
+        self.assertEqual(ds.list(delimiter=b"/", cursor=row(b"a/a"), end=b"a/b", limit=10), [])
 
-    def test_list5_continuation(self):
+    def test_list5_row_and_prefix_cursors(self):
         ds = mini([b"a/b/c", b"a/b/d", b"a/c"])
-        self.assertEqual(keys_of(ds.list(prefix=b"a/", delimiter=b"/", after=b"a/b/c", limit=10)),
+        # a row cursor filters rows only: a/b/d still rolls up to a/b/, which sorts before the cursor key
+        self.assertEqual(keys_of(ds.list(prefix=b"a/", delimiter=b"/", cursor=row(b"a/b/c"), limit=10)),
                          [("prefix", b"a/b/"), ("row", b"a/c")])
-        self.assertEqual(keys_of(ds.list(prefix=b"a/", delimiter=b"/", after=b"a/b/c", continuation=True, limit=10)),
+        # a prefix cursor excludes every key under the prefix
+        self.assertEqual(keys_of(ds.list(prefix=b"a/", delimiter=b"/", cursor=prefix(b"a/b/"), limit=10)),
                          [("row", b"a/c")])
-        # continuation without after has no effect
-        self.assertEqual(ds.list(delimiter=b"/", continuation=True, limit=10), ds.list(delimiter=b"/", limit=10))
+        # a prefix with no successor excludes everything after it
+        self.assertEqual(mini([b"\xff/a", b"\xff\xff"]).list(delimiter=b"/", cursor=prefix(b"\xff\xff"), limit=10), [])
+
+    def test_prefix_cursor_is_for_listing_only(self):
+        with self.assertRaises(oracle.InvalidRequest):
+            mini([b"a/b"]).range(cursor=prefix(b"a/"), limit=10)
 
     def test_absent_versus_null(self):
-        doc = {"dataset": "m", "columns": [{"name": "v", "type": "int64"}, {"name": "w", "type": "int64"}],
+        doc = {"dataset": "m", "key": KEY, "columns": [{"name": "v", "type": "int64"}, {"name": "w", "type": "int64"}],
                "parts": [{"path": "p0", "columns": ["v"], "rows": [{"key_base64": "YQ==", "values": {"v": {"null": True}}}]},
                          {"path": "p1", "rows": [{"key_base64": "Yg==", "values": {"v": {"int": "1"}, "w": {"int": "2"}}}]}]}
         e = oracle.Dataset(doc).range(limit=10, columns=["w", "v"])
@@ -170,12 +191,14 @@ class RepeatedGroups(unittest.TestCase):
                "columns": [{"name": "v", "type": "int64"}],
                "parts": [{"rows": [{"key_base64": "YQ==", "values": {"v": {"int": str(n)}}} for n in (9, 7, 8)]}]}
         ds = oracle.Dataset(doc)
-        e = ds.range(after={"key_base64": "YQ==", "offset": 0}, limit=10, columns=["v", "id", "key"])
+        e = ds.range(cursor={"key_base64": "YQ==", "offset": 0}, limit=10, columns=["v", "id", "key"])
         self.assertEqual([x["offset"] for x in e], [1, 2])
         self.assertEqual([x["values"] for x in e], [[{"int": "7"}, {"bytes_base64": "YQ=="}, {"absent": True}],
                                                    [{"int": "8"}, {"bytes_base64": "YQ=="}, {"absent": True}]])
         self.assertEqual(ds.range(start=b"a", start_exclusive=True, limit=10), [])
         self.assertEqual(ds.range(end=b"a", limit=10), [])
+        # an offset beyond the group skips the group; it is not an error
+        self.assertEqual(ds.range(cursor={"key_base64": "YQ==", "offset": 9}, limit=10), [])
 
     def test_tagged_pagination_all_group_offsets(self):
         for name in ("repeated-keys", "one-large-group", "named-key"):
@@ -195,19 +218,18 @@ class RepeatedGroups(unittest.TestCase):
                         if len(page) < limit:
                             break
                         e = page[-1]
-                        args["after"] = ({"key_base64": e["key_base64"], "offset": e["offset"]}
-                                         if e["kind"] == "row" else {"prefix_base64": e["key_base64"]})
+                        args["cursor"] = cursor_of(e)
                         self.assertLessEqual(len(got), len(ds.rows))
                     self.assertEqual(got, full, (name, op, limit))
 
     def test_malformed_cursors_even_on_empty(self):
-        ds = oracle.Dataset({"dataset": "empty", "columns": [], "parts": []})
+        ds = oracle.Dataset({"dataset": "empty", "key": KEY, "columns": [], "parts": []})
         for cursor in ({}, {"key_base64": "YQ==", "offset": True}, {"key_base64": "YQ==", "offset": -1},
                        {"key_base64": "YQ==", "offset": 1 << 63}, {"key_base64": "YR==", "offset": 0},
                        {"prefix_base64": "@@@@"}):
             for query, args in ((ds.range, {}), (ds.list, {"delimiter": b"/"})):
                 with self.assertRaises(oracle.InvalidRequest):
-                    query(after=cursor, limit=1, **args)
+                    query(cursor=cursor, limit=1, **args)
 
 
 if __name__ == "__main__":

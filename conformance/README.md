@@ -20,7 +20,7 @@ and a harness that drives any implementation through a small adapter.
 | [generators/](generators/) | Source rows, pinned generators and the metadata mutator ([README](generators/README.md)). |
 | [harness/run.py](harness/run.py) | The harness (Python standard library only). |
 | [harness/check_suite.py](harness/check_suite.py) | Static checks of the suite (schema, operation-specific payloads, requirement ids, codes, names, lock, suite digest). |
-| [harness/test_run.py](harness/test_run.py) | Self-tests of the harness with deliberately deficient adapters (transport faults, and oracle-backed adapters with one injected bug each: signed byte order, inclusive end, shortened bounds treated as exact, ignored continuation, absent reported as null, validation skipping prerequisites, incomplete without a reason). |
+| [harness/test_run.py](harness/test_run.py) | Self-tests of the harness with deliberately deficient adapters (transport faults, and oracle-backed adapters with one injected bug each: signed byte order, inclusive end, shortened bounds treated as exact, a prefix cursor read as a byte floor, a seek from the last row group with an equal first key, group offsets reset at row groups, ignored cursor offsets, absent reported as null, validation skipping prerequisites, incomplete without a reason); qualification of a target without cases; offset spelling in the parsers; and the reference adapter's validation levels. |
 | [COVERAGE.md](COVERAGE.md) | Generated: each spec requirement id and the cases that cite it, or why none do. |
 | [harness/reference_adapter.py](harness/reference_adapter.py) | A full-scan semantic reference adapter used to test the suite itself. It is **not** a SeekParquet reader. |
 
@@ -56,8 +56,8 @@ there completes the case; for `detect: read` it then sends the case's request (a
 covers every row, so every correct access path decodes the faulty data); for `detect: validate:<level>` it
 sends `validate` and expects that level to fail with an acceptable code.
 
-**Qualification.** A target qualifies only on a complete run: every case of the target and of the targets
-it depends on (`target_dependencies` in capabilities.json; `validator-full` → `validator-profile` →
+**Qualification.** A target qualifies only on a complete run: it has cases of its own, and every case of
+the target and of the targets it depends on (`target_dependencies` in capabilities.json; `validator-full` → `validator-profile` →
 `validator-structural`) ran and passed, with no run error. A run with `--filter`, or with `--targets`
 narrower than what the adapter claims, is a partial run: the harness reports whether the selected cases
 passed, records the selection (`selection` in `--json` output), and never reports qualification. The exit
@@ -67,15 +67,15 @@ status is 0 when every selected case passed and there was no run error (includin
 `unsupported` (`unsupported_encoding`); full validation of it may be `complete` or `incomplete`, never
 `failed`.
 
-Passing this semantic suite does not claim indexed access (the planned indexed-access suite) or
-performance.
+Passing this semantic suite does not claim indexed access (the planned indexed-access suite, which
+has no target until its cases exist) or performance.
 
 To check the suite itself:
 
 ```sh
 python3 harness/check_suite.py                                     # needs jsonschema
 python3 -m unittest harness/test_run.py generators/test_parquet_meta.py \
-    generators/test_oracle.py generators/test_case_generation.py   # stdlib only
+    generators/test_oracle.py generators/test_case_generation.py   # stdlib; reference adapter tests need requirements.txt
 python3 harness/run.py --adapter "python3 harness/reference_adapter.py"   # needs generators/requirements.txt
 python3 generators/check_reproducible.py                           # regenerate in a temp dir and compare
 ```
@@ -119,7 +119,8 @@ output. The reference adapter, which shares no query code with the oracle, must 
 - **Renames keep case ids.** `truncated-bounds` and `truncated-bounds-2` became
   `binary-bounds-truncated-16-byte` and `binary-bounds-truncated-2-byte`; the mapping is in `suite.json`
   (`renamed_datasets`), and case ids still say `truncated-bounds…`. Exact duplicate cases are retired
-  (`retired_case_ids`, with the id each duplicated); retired ids are never reused.
+  (`retired_case_ids`, with the id each duplicated), as are cases that tested only a removed request member
+  (with a `reason`); retired ids are never reused.
 
 ## Provenance categories
 

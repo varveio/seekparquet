@@ -121,6 +121,25 @@ class Bounded(unittest.TestCase):
         with self.assertRaises(pm.ParquetMetaError):
             pm.read_parquet(data)
 
+    def deep(self, field_header, level, depth=5000):
+        """A struct whose field 1 opens `level` repeated `depth` times: far beyond the interpreter's recursion
+        limit, so only the codec's own depth check can stop it."""
+        with self.assertRaisesRegex(pm.ThriftError, "nesting too deep"):
+            pm.decode_struct(bytes([field_header]) + level * depth)
+
+    def test_deep_list_of_lists(self):
+        self.deep(0x19, bytes([0x19]))  # field 1: list; each list holds one list
+
+    def test_deep_set_of_sets(self):
+        self.deep(0x1A, bytes([0x1A]))  # field 1: set; each set holds one set
+
+    def test_deep_map_of_maps(self):
+        self.deep(0x1B, bytes([0x01, 0x5B, 0x00]))  # one entry: i32 key 0, map value
+
+    def test_deep_mixed_containers(self):
+        # list of one map whose struct value has field 1 holding a list, and so on
+        self.deep(0x19, bytes([0x1B, 0x01, 0x5C, 0x00, 0x19]))
+
     def test_fixture_round_trip(self):
         f = Path(__file__).resolve().parents[1] / "datasets" / "multipart" / "shards" / "c.parquet"
         if f.exists():

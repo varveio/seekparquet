@@ -168,7 +168,7 @@
   "non_refusals": [
     {
       "status": "invalid_request",
-      "meaning": "The request itself is malformed: a limit that is not a positive integer, a delimiter that is not one byte, malformed base64.",
+      "meaning": "The request itself is malformed: a limit that is not a positive integer, a delimiter that is not one byte, malformed base64, a malformed cursor, a prefix cursor in a range request.",
       "requirements": [
         "QUERY-1"
       ]

@@ -28,6 +28,7 @@ import hashlib
 import json
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -211,19 +212,36 @@ def top_level(pf):
     return out
 
 
+def part_path(root, rel):
+    """The file of a manifest part path, confined to the dataset root (PART-1)."""
+    full = (root / rel).resolve()
+    if os.path.commonpath([str(full), str(root.resolve())]) != str(root.resolve()):
+        raise Refusal("invalid_manifest", "path outside root")
+    if not full.is_file():
+        raise Refusal("missing_part", rel)
+    return full
+
+
+@contextmanager
+def decoding():
+    """Arrow decoding: a feature Arrow does not implement is unsupported (CHECK-5, VAL-1); other failures are
+    invalid_parquet."""
+    try:
+        yield
+    except pa.ArrowNotImplementedError as e:
+        raise NotSupported("unsupported_encoding", str(e)) from None
+    except (OSError, pa.ArrowException) as e:
+        raise Refusal("invalid_parquet", str(e)) from None
+
+
 class Part:
     def __init__(self, root, entry, manifest):
         self.entry = entry
         self.key_name = manifest["key"]["column"]
         self.unique = manifest["key"]["unique"]
         rel = entry["path"]
-        full = (root / rel).resolve()
-        if os.path.commonpath([str(full), str(root.resolve())]) != str(root.resolve()):
-            raise Refusal("invalid_manifest", "path outside root")
-        if not full.is_file():
-            raise Refusal("missing_part", rel)
-        self.path = full
-        self.data = full.read_bytes()
+        self.path = part_path(root, rel)
+        self.data = self.path.read_bytes()
         if len(self.data) != entry["bytes"]:
             raise Refusal("part_mismatch", f"{rel}: size {len(self.data)} != {entry['bytes']}")
         try:
@@ -337,10 +355,8 @@ class Part:
 
     def key_checks(self, ri, intervals, mins, maxs, prev):
         """KEY-2, KEY-3, KEY-6, RG-5 over the decoded keys of one row group. Returns the last key."""
-        try:
+        with decoding():
             col = pq.ParquetFile(self.path).read_row_group(ri, columns=[self.key_name]).column(0).combine_chunks()
-        except (OSError, pa.ArrowException) as e:
-            raise Refusal("invalid_parquet", str(e)) from None
         if pa.types.is_string(col.type) or pa.types.is_large_string(col.type):
             col = col.view(pa.binary() if pa.types.is_string(col.type) else pa.large_binary())
         keys = col.to_pylist()
@@ -415,14 +431,12 @@ class Dataset:
     def full(self):
         tables = []
         for p in self.parts:
-            try:
+            with decoding():
                 t = pq.read_table(p.path)
                 for c in t.columns:
                     c.combine_chunks()
-                    if len(c) != p.entry["rows"]:
-                        raise Refusal("invalid_parquet", "column row count")
-            except (OSError, pa.ArrowException) as e:
-                raise Refusal("invalid_parquet", str(e)) from None
+            if any(len(c) != p.entry["rows"] for c in t.columns):
+                raise Refusal("invalid_parquet", "column row count")
             tables.append(t)
         return tables
 
@@ -551,16 +565,22 @@ def b64arg(req, name, required=False):
         raise BadRequest(f"{name} is not canonical base64") from None
 
 
+def parse_request(line):
+    """A request line. Number spellings are kept where they matter: -0, fractions and exponents are never integers."""
+    return json.loads(line, parse_float=Num, parse_constant=Num, parse_int=lambda s: Num(s) if s == "-0" else int(s))
+
+
 def cursor_arg(req):
+    """PAGE-1: None, ("row", key, offset), or ("prefix", bytes, None), which only list accepts."""
     if "after" not in req:
         return None
-    if "after_base64" in req:
-        raise BadRequest("conflicting cursors")
     a = req["after"]
     if not isinstance(a, dict):
         raise BadRequest("cursor must be an object")
     if set(a) == {"prefix_base64"}:
-        return ("prefix", b64arg(a, "prefix_base64", True), 0)
+        if req.get("op") != "list":
+            raise BadRequest("a prefix cursor is valid only for list")
+        return ("prefix", b64arg(a, "prefix_base64", True), None)
     if set(a) == {"key_base64", "offset"} and _is_int(a["offset"]) and 0 <= a["offset"] <= MAX_INT:
         return ("row", b64arg(a, "key_base64", True), a["offset"])
     raise BadRequest("malformed cursor")
@@ -569,8 +589,10 @@ def cursor_arg(req):
 def past_cursor(cursor, key, offset):
     if cursor is None:
         return True
-    tag, floor, n = cursor
-    return key > floor or tag == "row" and key == floor and offset > n
+    tag, c, n = cursor
+    if tag == "prefix":
+        return key > c and not key.startswith(c)
+    return key > c or key == c and offset > n
 
 
 def common_args(req):
@@ -581,9 +603,8 @@ def common_args(req):
     cols = req.get("columns", [])
     if not isinstance(cols, list) or not all(isinstance(c, str) for c in cols):
         raise BadRequest("columns must be an array of strings")
-    for flag in ("start_exclusive", "continuation"):
-        if flag in req and not isinstance(req[flag], bool):
-            raise BadRequest(f"{flag} must be a boolean")
+    if "start_exclusive" in req and not isinstance(req["start_exclusive"], bool):
+        raise BadRequest("start_exclusive must be a boolean")
     return limit, cols
 
 
@@ -623,8 +644,7 @@ def do_list(ds, req):
     d = b64arg(req, "delimiter_base64", required=True)
     if len(d) != 1:
         raise BadRequest("delimiter must be one byte")
-    after, end = b64arg(req, "after_base64"), b64arg(req, "end_base64")
-    cont = req.get("continuation", False) and after is not None
+    end = b64arg(req, "end_base64")
     for c in cols:
         if ds.nested.get(c):
             raise NotSupported("unsupported_projection", c)
@@ -635,14 +655,12 @@ def do_list(ds, req):
     for k, offset, v in rows:
         if len(entries) >= limit:
             break
-        if k[: len(prefix)] != prefix or (after is not None and k <= after) or (end is not None and k >= end):
-            continue
-        if not past_cursor(cursor, k, offset):
+        if k[: len(prefix)] != prefix or (end is not None and k >= end) or not past_cursor(cursor, k, offset):
             continue
         rest = k[len(prefix):]
         if d in rest:
             cp = k[: len(prefix) + rest.index(d) + 1]
-            if cp == last_prefix or (cont and cp <= after) or (cursor and cursor[0] == "prefix" and cp <= cursor[1]):
+            if cp == last_prefix:
                 continue
             last_prefix = cp
             entries.append({"kind": "prefix", "key_base64": base64.b64encode(cp).decode()})
@@ -651,26 +669,32 @@ def do_list(ds, req):
     return entries
 
 
-def do_validate(path, level):
-    out = {}
-    if level == "digest":
-        try:
-            ds = get_dataset(path)
-        except Refusal as r:  # unopenable: structural fails with the refusal code
-            return {"structural": {"result": "failed", "code": r.code},
-                    "digest": {"result": "incomplete", "reason": "the dataset cannot be opened"}}
-        checked = 0
-        for p in ds.parts:
-            if "sha256" in p.entry:
+def do_digest(path):
+    """VAL-2: hash the manifest-listed bytes of each part that declares sha256, without opening any part as
+    Parquet (digest has no prerequisite level)."""
+    root = Path(path)
+    checked = 0
+    try:
+        manifest, _bounds = load_manifest(root)
+        for e in manifest["parts"]:
+            if "sha256" in e:
                 checked += 1
-                if hashlib.sha256(p.data).hexdigest() != p.entry["sha256"]:
+                if hashlib.sha256(part_path(root, e["path"]).read_bytes()).hexdigest() != e["sha256"]:
                     return {"digest": {"result": "failed", "code": "digest_mismatch", "checked": checked}}
-        return {"digest": {"result": "complete", "checked": checked}}
-    want = LEVELS[: LEVELS.index(level) + 1]
-    failed = False
-    ds = None
-    for lvl in want:
-        if failed:
+    except Refusal as r:
+        return {"digest": {"result": "incomplete", "reason": f"the part files cannot be identified ({r.code})"}}
+    return {"digest": {"result": "complete", "checked": checked}}
+
+
+def do_validate(path, level):
+    """VAL-1: each level completes, fails with a code, or is incomplete with a reason; a level whose
+    prerequisite did not complete is incomplete, and lower levels keep their results."""
+    if level == "digest":
+        return do_digest(path)
+    out = {}
+    blocked = False
+    for lvl in LEVELS[: LEVELS.index(level) + 1]:
+        if blocked:
             out[lvl] = {"result": "incomplete", "reason": "a prerequisite level did not complete"}
             continue
         try:
@@ -684,7 +708,10 @@ def do_validate(path, level):
             out[lvl] = {"result": "complete"}
         except Refusal as r:
             out[lvl] = {"result": "failed", "code": r.code}
-            failed = True
+            blocked = True
+        except NotSupported as u:
+            out[lvl] = {"result": "incomplete", "reason": f"unsupported ({u.code}): {u}"}
+            blocked = True
     return out
 
 
@@ -710,7 +737,7 @@ def handle(req):
             return {"status": "ok", "entries": do_range(get_dataset(path), req)}
         if op == "list":
             common_args(req)
-            for n in ("prefix_base64", "after_base64", "end_base64"):
+            for n in ("prefix_base64", "end_base64"):
                 b64arg(req, n)
             dl = b64arg(req, "delimiter_base64", required=True)
             if len(dl) != 1:
@@ -732,7 +759,7 @@ def handle(req):
 def main():
     for line in sys.stdin.buffer:
         try:
-            req = json.loads(line)
+            req = parse_request(line)
         except ValueError:
             continue
         try:

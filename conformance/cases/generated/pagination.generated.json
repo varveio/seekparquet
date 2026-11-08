@@ -5,7 +5,7 @@
   "generator": "generators/make_cases.py",
   "description": "Paginated listings and ranges (LIST-6, QUERY-3): each page is a case; make_cases.py asserts that the pages concatenate to the unpaginated result.",
   "families": {
-    "pagination/list-scenario": "a listing read page by page: after = the previous page's last entry, continuation true; the pages concatenate to the unpaginated listing",
+    "pagination/list-scenario": "a listing read page by page: after = the cursor of the previous page's last entry; the pages concatenate to the unpaginated listing",
     "pagination/range-scenario": "a range read page by page with an exclusive start at the previous page's last key"
   },
   "cases": [
@@ -15,9 +15,10 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 0,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -41,16 +42,18 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 1,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "Lw==",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "Lw=="
+        },
         "limit": 1
       },
       "expect": {
@@ -71,16 +74,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 2,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YQ==",
-        "continuation": true,
+        "after": {
+          "key_base64": "YQ==",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -99,16 +105,18 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 3,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS8=",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "YS8="
+        },
         "limit": 1
       },
       "expect": {
@@ -129,16 +137,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 4,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YTA=",
-        "continuation": true,
+        "after": {
+          "key_base64": "YTA=",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -159,16 +170,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 5,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YWI=",
-        "continuation": true,
+        "after": {
+          "key_base64": "YWI=",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -189,16 +203,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 6,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "Yg==",
-        "continuation": true,
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -217,16 +234,18 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 7,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "Yi8=",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "Yi8="
+        },
         "limit": 1
       },
       "expect": {
@@ -247,16 +266,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 8,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "Y2Fmw6k=",
-        "continuation": true,
+        "after": {
+          "key_base64": "Y2Fmw6k=",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -275,16 +297,18 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 9,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "Y2Fmw6kv",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "Y2Fmw6kv"
+        },
         "limit": 1
       },
       "expect": {
@@ -305,16 +329,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 10,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "Y2Fmw6nDqQ==",
-        "continuation": true,
+        "after": {
+          "key_base64": "Y2Fmw6nDqQ==",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -335,16 +362,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 11,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "Y2Fmw6nDqXo=",
-        "continuation": true,
+        "after": {
+          "key_base64": "Y2Fmw6nDqXo=",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -365,16 +395,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 12,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "eP95",
-        "continuation": true,
+        "after": {
+          "key_base64": "eP95",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -395,16 +428,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 13,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "eP95/3o=",
-        "continuation": true,
+        "after": {
+          "key_base64": "eP95/3o=",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -425,16 +461,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 14,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "eP96",
-        "continuation": true,
+        "after": {
+          "key_base64": "eP96",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -455,16 +494,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 15,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "eP//",
-        "continuation": true,
+        "after": {
+          "key_base64": "eP//",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -485,16 +527,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 16,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "/w==",
-        "continuation": true,
+        "after": {
+          "key_base64": "/w==",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -513,16 +558,18 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 17,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "/y8=",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "/y8="
+        },
         "limit": 1
       },
       "expect": {
@@ -543,16 +590,19 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 18,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "//8=",
-        "continuation": true,
+        "after": {
+          "key_base64": "//8=",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -571,16 +621,18 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 19,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "//8v",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "//8v"
+        },
         "limit": 1
       },
       "expect": {
@@ -599,16 +651,18 @@
       "scenario_id": "list/delimiter/root-2f-limit1",
       "step": 20,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "////Lw==",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "////Lw=="
+        },
         "limit": 1
       },
       "expect": {
@@ -622,9 +676,10 @@
       "scenario_id": "list/delimiter/root-2f-limit3",
       "step": 0,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -658,16 +713,18 @@
       "scenario_id": "list/delimiter/root-2f-limit3",
       "step": 1,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS8=",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "YS8="
+        },
         "limit": 3
       },
       "expect": {
@@ -700,16 +757,19 @@
       "scenario_id": "list/delimiter/root-2f-limit3",
       "step": 2,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "Yg==",
-        "continuation": true,
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 0
+        },
         "limit": 3
       },
       "expect": {
@@ -738,16 +798,18 @@
       "scenario_id": "list/delimiter/root-2f-limit3",
       "step": 3,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "Y2Fmw6kv",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "Y2Fmw6kv"
+        },
         "limit": 3
       },
       "expect": {
@@ -780,16 +842,19 @@
       "scenario_id": "list/delimiter/root-2f-limit3",
       "step": 4,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "eP95",
-        "continuation": true,
+        "after": {
+          "key_base64": "eP95",
+          "offset": 0
+        },
         "limit": 3
       },
       "expect": {
@@ -822,16 +887,19 @@
       "scenario_id": "list/delimiter/root-2f-limit3",
       "step": 5,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "eP//",
-        "continuation": true,
+        "after": {
+          "key_base64": "eP//",
+          "offset": 0
+        },
         "limit": 3
       },
       "expect": {
@@ -862,16 +930,19 @@
       "scenario_id": "list/delimiter/root-2f-limit3",
       "step": 6,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "//8=",
-        "continuation": true,
+        "after": {
+          "key_base64": "//8=",
+          "offset": 0
+        },
         "limit": 3
       },
       "expect": {
@@ -894,9 +965,10 @@
       "scenario_id": "list/delimiter/root-ff-limit4",
       "step": 0,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -940,16 +1012,19 @@
       "scenario_id": "list/delimiter/root-ff-limit4",
       "step": 1,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "L2E=",
-        "continuation": true,
+        "after": {
+          "key_base64": "L2E=",
+          "offset": 0
+        },
         "limit": 4
       },
       "expect": {
@@ -988,16 +1063,19 @@
       "scenario_id": "list/delimiter/root-ff-limit4",
       "step": 2,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "YS8v",
-        "continuation": true,
+        "after": {
+          "key_base64": "YS8v",
+          "offset": 0
+        },
         "limit": 4
       },
       "expect": {
@@ -1036,16 +1114,19 @@
       "scenario_id": "list/delimiter/root-ff-limit4",
       "step": 3,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "YS9iLw==",
-        "continuation": true,
+        "after": {
+          "key_base64": "YS9iLw==",
+          "offset": 0
+        },
         "limit": 4
       },
       "expect": {
@@ -1084,16 +1165,19 @@
       "scenario_id": "list/delimiter/root-ff-limit4",
       "step": 4,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "YS9iL2Q=",
-        "continuation": true,
+        "after": {
+          "key_base64": "YS9iL2Q=",
+          "offset": 0
+        },
         "limit": 4
       },
       "expect": {
@@ -1132,16 +1216,19 @@
       "scenario_id": "list/delimiter/root-ff-limit4",
       "step": 5,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "YWI=",
-        "continuation": true,
+        "after": {
+          "key_base64": "YWI=",
+          "offset": 0
+        },
         "limit": 4
       },
       "expect": {
@@ -1180,16 +1267,19 @@
       "scenario_id": "list/delimiter/root-ff-limit4",
       "step": 6,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "Y2Fmw6k=",
-        "continuation": true,
+        "after": {
+          "key_base64": "Y2Fmw6k=",
+          "offset": 0
+        },
         "limit": 4
       },
       "expect": {
@@ -1226,16 +1316,18 @@
       "scenario_id": "list/delimiter/root-ff-limit4",
       "step": 7,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "eP8=",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "eP8="
+        },
         "limit": 4
       },
       "expect": {
@@ -1254,9 +1346,10 @@
       "scenario_id": "list/multipart/root-2f-limit2",
       "step": 0,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
@@ -1286,16 +1379,18 @@
       "scenario_id": "list/multipart/root-2f-limit2",
       "step": 1,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YXBwLw==",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "YXBwLw=="
+        },
         "limit": 2
       },
       "expect": {
@@ -1318,16 +1413,18 @@
       "scenario_id": "list/multipart/root-2f-limit2",
       "step": 2,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "dG1wLw==",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "dG1wLw=="
+        },
         "limit": 2
       },
       "expect": {
@@ -1348,9 +1445,10 @@
       "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
       "step": 0,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
@@ -1413,17 +1511,20 @@
       "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
       "step": 1,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
         "op": "list",
         "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
         "delimiter_base64": "Lw==",
-        "after_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
-        "continuation": true,
+        "after": {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+          "offset": 0
+        },
         "limit": 7
       },
       "expect": {
@@ -1480,17 +1581,20 @@
       "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
       "step": 2,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
         "op": "list",
         "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
         "delimiter_base64": "Lw==",
-        "after_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
-        "continuation": true,
+        "after": {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+          "offset": 0
+        },
         "limit": 7
       },
       "expect": {
@@ -1547,17 +1651,20 @@
       "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
       "step": 3,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
         "op": "list",
         "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
         "delimiter_base64": "Lw==",
-        "after_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
-        "continuation": true,
+        "after": {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+          "offset": 0
+        },
         "limit": 7
       },
       "expect": {
@@ -1614,17 +1721,20 @@
       "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
       "step": 4,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
         "op": "list",
         "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
         "delimiter_base64": "Lw==",
-        "after_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
-        "continuation": true,
+        "after": {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+          "offset": 0
+        },
         "limit": 7
       },
       "expect": {
@@ -1681,17 +1791,20 @@
       "scenario_id": "list/multipart/logs/2026/02/-2f-limit7",
       "step": 5,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
         "op": "list",
         "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
         "delimiter_base64": "Lw==",
-        "after_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
-        "continuation": true,
+        "after": {
+          "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+          "offset": 0
+        },
         "limit": 7
       },
       "expect": {
@@ -1736,9 +1849,10 @@
       "scenario_id": "list/multipart/logs/-2f-limit1",
       "step": 0,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
@@ -1763,17 +1877,19 @@
       "scenario_id": "list/multipart/logs/-2f-limit1",
       "step": 1,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
         "op": "list",
         "prefix_base64": "bG9ncy8=",
         "delimiter_base64": "Lw==",
-        "after_base64": "bG9ncy8yMDI2Lw==",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "bG9ncy8yMDI2Lw=="
+        },
         "limit": 1
       },
       "expect": {
@@ -1792,17 +1908,19 @@
       "scenario_id": "list/multipart/logs/-2f-limit1",
       "step": 2,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/multipart",
       "request": {
         "op": "list",
         "prefix_base64": "bG9ncy8=",
         "delimiter_base64": "Lw==",
-        "after_base64": "bG9ncy8yMDI3Lw==",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "bG9ncy8yMDI3Lw=="
+        },
         "limit": 1
       },
       "expect": {
@@ -1816,9 +1934,10 @@
       "scenario_id": "list/binary-keys/root-ff-limit5",
       "step": 0,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
@@ -1868,16 +1987,19 @@
       "scenario_id": "list/binary-keys/root-ff-limit5",
       "step": 1,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "Hw==",
-        "continuation": true,
+        "after": {
+          "key_base64": "Hw==",
+          "offset": 0
+        },
         "limit": 5
       },
       "expect": {
@@ -1922,16 +2044,19 @@
       "scenario_id": "list/binary-keys/root-ff-limit5",
       "step": 2,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDI=",
-        "continuation": true,
+        "after": {
+          "key_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMMDI=",
+          "offset": 0
+        },
         "limit": 5
       },
       "expect": {
@@ -1974,16 +2099,18 @@
       "scenario_id": "list/binary-keys/root-ff-limit5",
       "step": 3,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf8=",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf8="
+        },
         "limit": 5
       },
       "expect": {
@@ -2028,16 +2155,19 @@
       "scenario_id": "list/binary-keys/root-ff-limit5",
       "step": 4,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "YWI=",
-        "continuation": true,
+        "after": {
+          "key_base64": "YWI=",
+          "offset": 0
+        },
         "limit": 5
       },
       "expect": {
@@ -2082,16 +2212,19 @@
       "scenario_id": "list/binary-keys/root-ff-limit5",
       "step": 5,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "cHFy",
-        "continuation": true,
+        "after": {
+          "key_base64": "cHFy",
+          "offset": 0
+        },
         "limit": 5
       },
       "expect": {
@@ -2134,16 +2267,19 @@
       "scenario_id": "list/binary-keys/root-ff-limit5",
       "step": 6,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "gA==",
-        "continuation": true,
+        "after": {
+          "key_base64": "gA==",
+          "offset": 0
+        },
         "limit": 5
       },
       "expect": {
@@ -2188,16 +2324,19 @@
       "scenario_id": "list/binary-keys/root-ff-limit5",
       "step": 7,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "list",
         "delimiter_base64": "/w==",
-        "after_base64": "772e",
-        "continuation": true,
+        "after": {
+          "key_base64": "772e",
+          "offset": 0
+        },
         "limit": 5
       },
       "expect": {

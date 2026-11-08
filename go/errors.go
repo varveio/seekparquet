@@ -49,8 +49,8 @@ type RefusalError struct {
 	RowGroup int
 	// Row is the 0-based row within RowGroup, -1 when not one row's.
 	Row int64
-	// Key is the offending key (for key_order, the key at or below its
-	// predecessor), nil when none.
+	// Key is the offending key (for key_order, the key that is below the
+	// key before it, or equal to it when keys are unique), nil when none.
 	Key    []byte
 	Detail string
 }
@@ -90,11 +90,11 @@ func refusePart(code Code, part string, group int, format string, args ...any) *
 	return &RefusalError{Code: code, Part: part, RowGroup: group, Row: -1, Detail: fmt.Sprintf(format, args...)}
 }
 
-// keyOrder returns the key_order refusal of a row whose key is at or below
-// the key decoded before it.
+// keyOrder returns the key_order refusal of a row whose key breaks the
+// declared key order with the key decoded before it.
 func keyOrder(part string, group int, row int64, key []byte) *RefusalError {
 	return &RefusalError{Code: CodeKeyOrder, Part: part, RowGroup: group, Row: row, Key: bytes.Clone(key),
-		Detail: "key is not above the key before it"}
+		Detail: "the key breaks the declared key order with the key before it"}
 }
 
 // CodeOf returns err's refusal code, or "" when err is not a refusal.
@@ -139,20 +139,7 @@ func (e *UnsupportedError) Error() string {
 	return "seekparquet: unsupported (" + e.Code + "): " + e.Detail
 }
 
-// ExpectationError reports a part that does not meet a ColumnExpectation
-// the caller gave. It is the caller's policy failing, not a refusal of the
-// data: the dataset may be perfectly valid.
-type ExpectationError struct {
-	Part   string
-	Column string
-	Detail string
-}
-
-func (e *ExpectationError) Error() string {
-	return fmt.Sprintf("seekparquet: part %s: column %s: %s", e.Part, e.Column, e.Detail)
-}
-
-// ErrClosed reports a read of a closed Reader or Dataset.
+// ErrClosed reports a read of a closed Dataset.
 var ErrClosed = errors.New("seekparquet: closed")
 
 // ErrLimitExceeded reports input beyond one of the Limits (§11): a policy

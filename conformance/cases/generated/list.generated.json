@@ -3,10 +3,10 @@
   "target": "reader",
   "generated": true,
   "generator": "generators/make_cases.py",
-  "description": "Delimited listing (LIST-1 to LIST-7). Expected entries come from oracle.py.",
+  "description": "Delimited listing (LIST-2 to LIST-7). Expected entries come from oracle.py.",
   "families": {
     "list/delimiter-semantics": "rollups, rows, delimiters and prefixes on the folder-like delimiter dataset",
-    "list/bounds-and-after": "end, after and continuation applied to candidate keys",
+    "list/bounds-and-after": "end, row cursors and prefix cursors applied to candidate keys",
     "list/other-datasets": "listings over the multipart, binary-keys, shortened-bounds and empty datasets"
   },
   "cases": [
@@ -1033,14 +1033,18 @@
         "LIST-3",
         "LIST-4",
         "LIST-7",
-        "LIST-5"
+        "LIST-5",
+        "PAGE-1"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "prefix_base64": "YS8=",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS8=",
+        "after": {
+          "key_base64": "YS8=",
+          "offset": 0
+        },
         "limit": 100000
       },
       "expect": {
@@ -1076,44 +1080,6 @@
       }
     },
     {
-      "id": "list/delimiter/after-equals-prefix-continuation",
-      "family": "list/bounds-and-after",
-      "requirements": [
-        "LIST-2",
-        "LIST-3",
-        "LIST-4",
-        "LIST-7",
-        "LIST-5",
-        "LIST-6"
-      ],
-      "dataset": "datasets/delimiter",
-      "request": {
-        "op": "list",
-        "prefix_base64": "YS8=",
-        "delimiter_base64": "Lw==",
-        "after_base64": "YS9iLw==",
-        "continuation": true,
-        "limit": 100000
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "YS9iYw==",
-            "offset": 0,
-            "values": []
-          },
-          {
-            "kind": "row",
-            "key_base64": "YS9j",
-            "offset": 0,
-            "values": []
-          }
-        ]
-      }
-    },
-    {
       "id": "list/delimiter/after-past-prefix",
       "family": "list/bounds-and-after",
       "requirements": [
@@ -1121,13 +1087,17 @@
         "LIST-3",
         "LIST-4",
         "LIST-7",
-        "LIST-5"
+        "LIST-5",
+        "PAGE-1"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS96eg==",
+        "after": {
+          "key_base64": "YS96eg==",
+          "offset": 0
+        },
         "limit": 100000
       },
       "expect": {
@@ -1230,20 +1200,25 @@
     },
     {
       "id": "list/delimiter/after-empty",
-      "description": "every key is greater than the empty after",
+      "description": "every key is greater than the empty cursor key",
       "family": "list/bounds-and-after",
       "requirements": [
         "LIST-2",
         "LIST-3",
         "LIST-4",
         "LIST-7",
+        "LIST-5",
+        "PAGE-1",
         "QUERY-2"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "",
+        "after": {
+          "key_base64": "",
+          "offset": 0
+        },
         "limit": 100000
       },
       "expect": {
@@ -1366,13 +1341,17 @@
         "LIST-3",
         "LIST-4",
         "LIST-7",
-        "LIST-5"
+        "LIST-5",
+        "PAGE-1"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS8v",
+        "after": {
+          "key_base64": "YS8v",
+          "offset": 0
+        },
         "end_base64": "YS9j",
         "limit": 100000
       },
@@ -1388,20 +1367,24 @@
     },
     {
       "id": "list/list-bounds/after-a-a",
-      "description": "continuation false: a/ is returned because a/z rolls up to it",
+      "description": "row cursor a/a: a/ is returned because a/z rolls up to it",
       "family": "list/bounds-and-after",
       "requirements": [
         "LIST-2",
         "LIST-3",
         "LIST-4",
         "LIST-7",
-        "LIST-5"
+        "LIST-5",
+        "PAGE-1"
       ],
       "dataset": "datasets/list-bounds",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS9h",
+        "after": {
+          "key_base64": "YS9h",
+          "offset": 0
+        },
         "limit": 100000
       },
       "expect": {
@@ -1432,14 +1415,17 @@
         "LIST-3",
         "LIST-4",
         "LIST-7",
-        "LIST-5"
+        "LIST-5",
+        "PAGE-1",
+        "LIST-6"
       ],
       "dataset": "datasets/list-bounds",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS9h",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "YS8="
+        },
         "limit": 100000
       },
       "expect": {

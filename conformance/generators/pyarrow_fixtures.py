@@ -32,8 +32,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 import parquet_meta as pm
-from common import (CONF, DATASETS, DRAFT_REVISION, FORMAT_VERSION, ROWS, b64d, b64e, dumps, hex_f32, hex_f64,
-                    load_rows, manifest, part_entry, write_json, write_text)
+from common import (CONF, DATASETS, DEFAULT_KEY, DRAFT_REVISION, FORMAT_VERSION, ROWS, b64d, b64e, dumps, hex_f32,
+                    hex_f64, load_rows, manifest, part_entry, write_json, write_text)
 
 PRODUCER = f"pyarrow {pa.__version__}"
 COMMAND = "python generators/regenerate.py"
@@ -503,11 +503,19 @@ BASIC_VARIANTS = [
      {"version": (1, None)}),
 ]
 
-for _field in ("key_column", "key_unique"):
-    for _kind, _value in (("missing", None), ("mismatch", "other" if _field == "key_column" else "false"), ("noncanonical", "TRUE" if _field == "key_unique" else " key")):
-        BASIC_VARIANTS.append((f"stamp-{_field.replace('_', '-')}-{_kind}",
-                               f"The {_field} stamp is {_kind}.",
-                               {"stamps": {f"seekparquet.{_field}": _value}}))
+# Key stamps that are missing, differ from the manifest, or are not canonical (STAMP-2).
+BASIC_VARIANTS += [
+    ("stamp-key-column-missing", "The key_column stamp is missing.", {"stamps": {"seekparquet.key_column": None}}),
+    ("stamp-key-column-mismatch", "The key_column stamp is other, not key.",
+     {"stamps": {"seekparquet.key_column": "other"}}),
+    ("stamp-key-column-noncanonical", "The key_column stamp is ' key', with a leading space.",
+     {"stamps": {"seekparquet.key_column": " key"}}),
+    ("stamp-key-unique-missing", "The key_unique stamp is missing.", {"stamps": {"seekparquet.key_unique": None}}),
+    ("stamp-key-unique-mismatch", "The key_unique stamp is false, not true.",
+     {"stamps": {"seekparquet.key_unique": "false"}}),
+    ("stamp-key-unique-noncanonical", "The key_unique stamp is TRUE, not lowercase true.",
+     {"stamps": {"seekparquet.key_unique": "TRUE"}}),
+]
 
 
 # --------------------------------------------------------------------------
@@ -559,7 +567,7 @@ def stamps_for(doc, version=(FORMAT_VERSION, DRAFT_REVISION), override=None):
     if dr is not None:
         st["seekparquet.draft_revision"] = str(dr)
     st["seekparquet.schema_id"] = doc["schema_id"]
-    key = doc.get("key", {"column": "key", "unique": True})
+    key = doc["key"]
     st["seekparquet.key_column"] = key["column"]
     st["seekparquet.key_unique"] = str(key["unique"]).lower()
     if override is not None:
@@ -586,7 +594,7 @@ def build_table(doc, part, fault):
     else:
         kt = pa.string() if doc["key_type"] == "string" else pa.binary()
         kv = [k.decode("utf-8") for k in keys] if doc["key_type"] == "string" else keys
-        kname = "id" if key_mode == "missing" else doc.get("key", {}).get("column", "key")
+        kname = "id" if key_mode == "missing" else doc["key"]["column"]
         kfield, karr = pa.field(kname, kt, nullable=key_mode == "nullable"), pa.array(kv, kt)
     fields, arrays = [kfield], [karr]
     for n in names:
@@ -728,7 +736,7 @@ def assert_structure(data, doc, part, fault=None):
     leaves = pf.leaf_columns()
     if fault.get("key") is None:
         path, el, d, r = leaves[0]
-        assert path == (doc.get("key", {}).get("column", "key"),) and el.get(pm.SE_TYPE) == 6 and el.get(pm.SE_REPETITION) == 0
+        assert path == (doc["key"]["column"],) and el.get(pm.SE_TYPE) == 6 and el.get(pm.SE_REPETITION) == 0
     keys = [b64d(r["key_base64"]) for r in part["rows"]]
     mrpp = part["writer"]["max_rows_per_page"]
     off = 0
@@ -782,7 +790,7 @@ def assert_structure(data, doc, part, fault=None):
     if fault.get("key") is None:
         t = pq.read_table(io.BytesIO(data))
         names = part.get("columns") or [c["name"] for c in doc["columns"]]
-        key_name = doc.get("key", {}).get("column", "key")
+        key_name = doc["key"]["column"]
         assert t.column_names == [key_name] + names
         got_keys = [k if isinstance(k, bytes) else k.encode("utf-8") for k in t.column(key_name).to_pylist()]
         assert got_keys == keys
@@ -807,8 +815,8 @@ def manifest_for(doc, datas, version=(FORMAT_VERSION, DRAFT_REVISION)):
         if not mn:  # an empty first key cannot be expressed in a manifest (minLength 4)
             mn = keys[1]
         parts.append(part_entry(part["path"], len(part["rows"]), data, mn, mx, mopt.get("sha256", False)))
-    return manifest(parts, doc["schema_id"], format_version=version[0], draft_revision=version[1],
-                    extensions=mopt.get("extensions"), key=doc.get("key"))
+    return manifest(parts, doc["schema_id"], doc["key"], format_version=version[0], draft_revision=version[1],
+                    extensions=mopt.get("extensions"))
 
 
 def jsonable_rows_doc(doc):
@@ -920,7 +928,7 @@ def build():
     # 1. rows documents
     docs = [f() for f in VALID] + def_invalid_native() + [def_key_order_across_parts()] + def_inconsistent_all() + new_invalid_docs()
     for d in docs:
-        d.setdefault("key", {"column": "key", "unique": True})
+        d.setdefault("key", dict(DEFAULT_KEY))
         write_text(ROWS / f"{d['dataset']}.json", dumps(jsonable_rows_doc(d)))
 
     # 2. valid datasets, from the rows documents as written
@@ -932,7 +940,7 @@ def build():
         if name == "multipart":
             # A stray Parquet file under the root that the manifest does not list (LAYOUT-1).
             stray = {"dataset": "multipart-stray", "schema_id": doc["schema_id"], "key_type": "binary",
-                     "columns": doc["columns"],
+                     "key": doc["key"], "columns": doc["columns"],
                      "parts": [{"path": "x", "row_groups": [2], "writer": W(2),
                                 "rows": [{"key_base64": b64e(b"logs/2026/02/stray-%d.gz" % i),
                                           "values": {"size": I(1), "storage_class": NULL, "mtime": NULL}}

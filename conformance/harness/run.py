@@ -54,6 +54,22 @@ def strict_object(pairs):
     return out
 
 
+class Number:
+    """A JSON number spelled with a sign on zero, a fraction or an exponent: never a valid integer member."""
+
+    def __init__(self, text):
+        self.text = text
+
+    def __repr__(self):
+        return self.text
+
+
+def parse_response(text):
+    """Strict JSON: unique member names, and integer spellings preserved (-0 is not the integer 0)."""
+    return json.loads(text, object_pairs_hook=strict_object, parse_float=Number, parse_constant=Number,
+                      parse_int=lambda s: Number(s) if s == "-0" else int(s))
+
+
 def canon_b64(s, what):
     if not isinstance(s, str):
         raise CaseFail(f"{what}: not a string")
@@ -101,7 +117,7 @@ class Adapter:
             text = raw.decode("utf-8")
             if text.startswith("﻿"):
                 raise ValueError("byte order mark")
-            resp = json.loads(text, object_pairs_hook=strict_object)
+            resp = parse_response(text)
         except ValueError as e:
             raise Fatal(f"response to {rid} is not a JSON object line: {e}: {raw[:200]!r}") from None
         if not isinstance(resp, dict):
@@ -198,7 +214,8 @@ def norm_entries(entries, ncols, where):
                 raise CaseFail(f"{w}: unexpected members")
             offset = e.get("offset")
             if type(offset) is not int or not 0 <= offset <= (1 << 63) - 1:
-                raise CaseFail(f"{w}: invalid group offset")
+                raise CaseFail(f"{w}: offset must be an integer from 0 to 2^63-1 without sign, fraction or exponent, "
+                               f"got {offset!r}")
             out.append(("row", key, (offset, tuple(check_value(v, f"{w}.values[{j}]") for j, v in enumerate(vals)))))
     return out
 
@@ -470,15 +487,16 @@ def main(argv=None):
                            (by_part, "generated" if r["generated"] else "core")):
             table.setdefault(key, {"pass": 0, "fail": 0, "skip": 0})[r["result"]] += 1
     ok = counts["fail"] == 0 and not run_errors and counts["pass"] > 0
-    # Qualification: complete runs only; a target needs every case of itself and its dependencies.
+    # Qualification: complete runs only; a target needs cases of its own, and every case of itself and its
+    # dependencies must pass.
     tstats = {}
     for t in sorted(known_targets):
         rs = [r for r in results if r["target"] in closure([t])]
         tstats[t] = {"claimed": t in targets, "selected": t in selected,
                      "pass": sum(r["result"] == "pass" for r in rs), "fail": sum(r["result"] == "fail" for r in rs),
                      "skip": sum(r["result"] == "skip" for r in rs)}
-        tstats[t]["qualified"] = (not partial and t in targets and t in selected and not run_errors and bool(rs)
-                                  and all(r["result"] == "pass" for r in rs))
+        tstats[t]["qualified"] = (not partial and t in targets and t in selected and not run_errors
+                                  and any(r["target"] == t for r in rs) and all(r["result"] == "pass" for r in rs))
     qualified = [t for t, v in tstats.items() if v["qualified"]]
     selection = {"filter": args.filter, "subset": args.subset, "targets": args.targets, "partial": partial,
                  "selected_targets": sorted(selected)}

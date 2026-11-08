@@ -41,6 +41,8 @@ GROUP_ORDER = ["open", "range", "prefix", "list", "pagination", "projection", "r
 # Datasets that use optional features (outside ENC-1): a reader may support them or answer unsupported.
 OPTIONAL = {"optional-codecs": ["unsupported_encoding"]}
 BIG = 100000  # a limit at least the number of rows of every fixture (QUERY-3)
+# Retired cases that tested only removed request members; their ids are never reused.
+REMOVED = {"list/delimiter/continuation-without-after": "tested the removed continuation member"}
 
 
 class Group:
@@ -109,15 +111,28 @@ def rq_range(start=None, start_exclusive=None, end=None, limit=BIG, columns=None
     return r
 
 
-def rq_list(prefix=b"", delimiter=b"/", after=None, continuation=None, end=None, limit=BIG, columns=None):
+def row_cursor(key, offset=0):
+    return {"key_base64": B(key), "offset": offset}
+
+
+def prefix_cursor(prefix):
+    return {"prefix_base64": B(prefix)}
+
+
+def cursor_after(entry):
+    """The cursor of a returned entry (PAGE-1)."""
+    if entry["kind"] == "row":
+        return {"key_base64": entry["key_base64"], "offset": entry["offset"]}
+    return {"prefix_base64": entry["key_base64"]}
+
+
+def rq_list(prefix=b"", delimiter=b"/", after=None, end=None, limit=BIG, columns=None):
     r = {"op": "list"}
     if prefix:
         r["prefix_base64"] = B(prefix)
     r["delimiter_base64"] = B(delimiter)
     if after is not None:
-        r["after_base64"] = B(after)
-    if continuation is not None:
-        r["continuation"] = continuation
+        r["after"] = after
     if end is not None:
         r["end_base64"] = B(end)
     r["limit"] = limit
@@ -133,11 +148,10 @@ def run(ds, req):
     try:
         if req["op"] == "range":
             e = ds.range(prefix=dec(args.get("prefix_base64")), start=dec(args.get("start_base64")), start_exclusive=args.get("start_exclusive", False),
-                         end=dec(args.get("end_base64")), limit=args["limit"], columns=cols, after=args.get("after"))
+                         end=dec(args.get("end_base64")), limit=args.get("limit"), columns=cols, cursor=args.get("after"))
         else:
             e = ds.list(prefix=dec(args.get("prefix_base64")) or b"", delimiter=dec(args["delimiter_base64"]),
-                        after=args.get("after", dec(args.get("after_base64"))), continuation=args.get("continuation", False),
-                        end=dec(args.get("end_base64")), limit=args["limit"], columns=cols)
+                        cursor=args.get("after"), end=dec(args.get("end_base64")), limit=args.get("limit"), columns=cols)
     except oracle.InvalidRequest:
         return {"status": "invalid_request"}
     except oracle.Unsupported as u:
@@ -383,7 +397,7 @@ def prefix_group():
 
 
 def list_group():
-    g = Group("list", "reader", "Delimited listing (LIST-1 to LIST-7). Expected entries come from oracle.py.")
+    g = Group("list", "reader", "Delimited listing (LIST-2 to LIST-7). Expected entries come from oracle.py.")
 
     def add(cid, reqs, name, req, desc=None, src=None):
         ds = oracle.Dataset.load(src or name)
@@ -417,32 +431,34 @@ def list_group():
     add("delimiter/columns", L + ["RANGE-2"], D, rq_list(prefix=b"a/", columns=["size"]))
     add("delimiter/columns-root", L + ["RANGE-2"], D, rq_list(columns=["size"]))
     E = L + ["LIST-7"]
-    g.fam("bounds-and-after", "end, after and continuation applied to candidate keys")
+    g.fam("bounds-and-after", "end, row cursors and prefix cursors applied to candidate keys")
     add("delimiter/end-inside-prefix", E, D, rq_list(end=b"a/b"), "end inside the range of a/")
     add("delimiter/end-at-prefix", E, D, rq_list(prefix=b"a/", end=b"a/b/"),
         "end equal to a common prefix: the key a/b/ is not a candidate")
     add("delimiter/end-inside-a-b", E, D, rq_list(prefix=b"a/", end=b"a/b/c/"))
     add("delimiter/end-empty", E + ["QUERY-2"], D, rq_list(end=b""), "an empty end: nothing")
     add("delimiter/end-below-prefix", E, D, rq_list(prefix=b"b", end=b"a"))
-    add("delimiter/after-row", E + ["LIST-5"], D, rq_list(prefix=b"a/", after=b"a/"))
-    add("delimiter/after-inside-prefix", E + ["LIST-5"], D, rq_list(prefix=b"a/", after=b"a/b/c"),
-        "continuation false: a/b/ is returned because a/b/c/ and later keys roll up to it")
-    add("delimiter/after-inside-prefix-continuation", E + ["LIST-5", "LIST-6"], D,
-        rq_list(prefix=b"a/", after=b"a/b/c", continuation=True), "continuation true: a/b/ is not returned")
-    add("delimiter/after-equals-prefix-continuation", E + ["LIST-5", "LIST-6"], D,
-        rq_list(prefix=b"a/", after=b"a/b/", continuation=True))
-    add("delimiter/after-past-prefix", E + ["LIST-5"], D, rq_list(after=b"a/zz"))
-    add("delimiter/after-empty", E + ["QUERY-2"], D, rq_list(after=b""), "every key is greater than the empty after")
-    add("delimiter/continuation-without-after", L + ["LIST-5"], D, rq_list(prefix=b"a/", continuation=True),
-        "continuation has no effect without after")
-    add("delimiter/after-and-end", E + ["LIST-5"], D, rq_list(after=b"a//", end=b"a/c"))
+    C = E + ["LIST-5", "PAGE-1"]
+    add("delimiter/after-row", C, D, rq_list(prefix=b"a/", after=row_cursor(b"a/")))
+    add("delimiter/after-inside-prefix", C, D, rq_list(prefix=b"a/", after=row_cursor(b"a/b/c")),
+        "row cursor a/b/c: a/b/ is returned because a/b/c/ and later keys roll up to it")
+    add("delimiter/after-inside-prefix-continuation", C + ["LIST-6"], D,
+        rq_list(prefix=b"a/", after=prefix_cursor(b"a/b/")), "prefix cursor a/b/: nothing under a/b/ is returned")
+    # after-equals-prefix-continuation (the byte floor a/b/ with continuation) became the same prefix cursor as
+    # after-inside-prefix-continuation, and is retired as its duplicate.
+    add("delimiter/after-equals-prefix-continuation", C + ["LIST-6"], D,
+        rq_list(prefix=b"a/", after=prefix_cursor(b"a/b/")))
+    add("delimiter/after-past-prefix", C, D, rq_list(after=row_cursor(b"a/zz")))
+    add("delimiter/after-empty", C + ["QUERY-2"], D, rq_list(after=row_cursor(b"")),
+        "every key is greater than the empty cursor key")
+    add("delimiter/after-and-end", C, D, rq_list(after=row_cursor(b"a//"), end=b"a/c"))
     LB = "list-bounds"
     add("list-bounds/worked-example", E, LB, rq_list(end=b"a/b"), "LIST-7: a/a is a candidate, so a/ appears")
-    add("list-bounds/worked-example-without-a-a", E, LB, rq_list(after=b"a/a", end=b"a/b"),
-        "LIST-7: with a/a excluded by after, a/z alone (beyond end) does not make a/ appear")
-    add("list-bounds/after-a-a", E + ["LIST-5"], LB, rq_list(after=b"a/a"),
-        "continuation false: a/ is returned because a/z rolls up to it")
-    add("list-bounds/after-a-a-continuation", E + ["LIST-5"], LB, rq_list(after=b"a/a", continuation=True))
+    add("list-bounds/worked-example-without-a-a", E, LB, rq_list(after=row_cursor(b"a/a"), end=b"a/b"),
+        "LIST-7: with a/a excluded by the cursor, a/z alone (beyond end) does not make a/ appear")
+    add("list-bounds/after-a-a", C, LB, rq_list(after=row_cursor(b"a/a")),
+        "row cursor a/a: a/ is returned because a/z rolls up to it")
+    add("list-bounds/after-a-a-continuation", C + ["LIST-6"], LB, rq_list(after=prefix_cursor(b"a/")))
     add("list-bounds/end-c", E, LB, rq_list(end=b"c"))
     M = "multipart"
     g.fam("other-datasets", "listings over the multipart, binary-keys, shortened-bounds and empty datasets")
@@ -474,24 +490,22 @@ def pagination_group():
     configs = [("delimiter", b"", b"/", 1), ("delimiter", b"", b"/", 3), ("delimiter", b"a/", b"/", 2),
                ("delimiter", b"", b"\xff", 4), ("multipart", b"", b"/", 2), ("multipart", b"logs/2026/02/", b"/", 7),
                ("multipart", b"logs/", b"/", 1), ("binary-keys", b"", b"\xff", 5), ("list-bounds", b"", b"/", 1)]
-    g.fam("list-scenario", "a listing read page by page: after = the previous page's last entry, continuation "
-                           "true; the pages concatenate to the unpaginated listing")
+    g.fam("list-scenario", "a listing read page by page: after = the cursor of the previous page's last entry; the "
+                           "pages concatenate to the unpaginated listing")
     for name, prefix, delim, n in configs:
         ds = oracle.Dataset.load(name)
         full = ds.list(prefix=prefix, delimiter=delim, limit=BIG)
         scenario = f"list/{name}/{show(prefix) or 'root'}-{delim.hex()}-limit{n}"
         got, after, i = [], None, 0
         while True:
-            req = rq_list(prefix=prefix, delimiter=delim, after=after, continuation=True if after is not None else None,
-                          limit=n)
+            req = rq_list(prefix=prefix, delimiter=delim, after=after, limit=n)
             exp = run(ds, req)
-            reqs = ["LIST-6", "QUERY-3", "LIST-5"]
-            g.add(f"{scenario}/page-{i:02d}", reqs, name, exp, request=req,
+            g.add(f"{scenario}/page-{i:02d}", ["PAGE-1", "PAGE-2", "LIST-6", "QUERY-3"], name, exp, request=req,
                   meta={"scenario_id": scenario, "step": i})
             got += exp["entries"]
             if len(exp["entries"]) < n:
                 break
-            after = dec(exp["entries"][-1]["key_base64"])
+            after = cursor_after(exp["entries"][-1])
             i += 1
         assert got == full, f"pagination of {name} does not concatenate to the full listing"
     g.fam("range-scenario", "a range read page by page with an exclusive start at the previous page's last key")
@@ -638,7 +652,8 @@ def requests_group():
         ("list-delimiter-empty", {"op": "list", "delimiter_base64": "", "limit": 10}),
         ("list-delimiter-missing", {"op": "list", "limit": 10}),
         ("list-prefix-malformed-base64", {"op": "list", "prefix_base64": "YS8", "delimiter_base64": "Lw==", "limit": 10}),
-        ("list-after-malformed-base64", {"op": "list", "after_base64": "@@@@", "delimiter_base64": "Lw==", "limit": 10}),
+        ("list-after-malformed-base64", {"op": "list", "after": {"key_base64": "@@@@", "offset": 0},
+                                         "delimiter_base64": "Lw==", "limit": 10}),
     ]
     g.fam("malformed", "a malformed request is invalid_request")
     for cid, raw in bad:
@@ -773,9 +788,12 @@ def refusal_groups(lock):
 
 def repeated_group():
     g = Group("repeated", "reader", "Repeated groups, exact key column names, whole-group bounds and tagged continuation.")
-    for name in ("repeated-keys", "one-large-group", "named-key", "basic"):
+    names = ("repeated-keys", "one-large-group", "named-key", "basic")
+    g.fam("boundaries", "Inclusive and exclusive seeks at every group key, plus exact-group lookups and prefix reads")
+    g.fam("pagination", "Every page size 1, 2, 5, 7; row cursors resume inside groups, prefix cursors skip rollups")
+    for name in names:
         ds = oracle.Dataset.load(name)
-        g.fam("boundaries", "Inclusive and exclusive seeks at every group key, plus exact-group lookups and prefix reads")
+        g.family = "repeated/boundaries"
         for i, key in enumerate(dict.fromkeys(ds.keys())):
             for exclusive in (False, True):
                 req = rq_range(start=key, start_exclusive=exclusive, limit=BIG, columns=[ds.key_column, "size"])
@@ -783,7 +801,7 @@ def repeated_group():
             for label, req in (("lookup", rq_range(start=key, end=key+b"\x00", columns=["size"])),
                                ("prefix", rq_range(prefix=key, columns=["size"]))):
                 g.add(f"{name}/{label}-{i}", ["RANGE-1", "KEY-7", "ROUTE-1"], name, run(ds, req), request=req)
-        g.fam("pagination", "Every page size 1, 2, 5, 7; row cursors resume inside groups, prefix cursors skip rollups")
+        g.family = "repeated/pagination"
         for op in ("range", "list"):
             for size in (1, 2, 5, 7):
                 req = rq_range(limit=size, columns=["size"]) if op == "range" else rq_list(limit=size, columns=["size"])
@@ -794,9 +812,16 @@ def repeated_group():
                           meta={"scenario_id": f"{name}/{op}-{size}", "step": step})
                     if len(exp["entries"]) < size:
                         break
-                    last = exp["entries"][-1]
-                    req["after"] = ({"key_base64": last["key_base64"], "offset": last["offset"]} if last["kind"] == "row" else {"prefix_base64": last["key_base64"]})
+                    req["after"] = cursor_after(exp["entries"][-1])
                     step += 1
+    g.fam("cursor-every-row", "A row cursor at every row of the repeated layouts, limit 6: resumption at every page, "
+                              "row-group, group and part boundary, with group offsets counted across row groups")
+    for name in ("repeated-keys", "one-large-group"):
+        ds = oracle.Dataset.load(name)
+        for i, (key, offset, _v, _p) in enumerate(ds.positioned()):
+            req = rq_range(limit=6, columns=["size"])
+            req["after"] = row_cursor(key, offset)
+            g.add(f"{name}/cursor-row-{i:02d}", ["PAGE-1", "KEY-7", "ROUTE-1"], name, run(ds, req), request=req)
     g.fam("invalid-cursors", "Malformed tags, offsets and base64 are rejected")
     for i, cursor in enumerate(({}, {"key_base64": "YQ=="}, {"key_base64": "YQ==", "offset": -1},
                                 {"key_base64": "YQ==", "offset": True}, {"key_base64": "YQ==", "offset": 1.5},
@@ -834,7 +859,7 @@ def check_core_case(c, candidate):
             raise SystemExit(f"core case {c['id']} disagrees with the generator/oracle; review the core case "
                              f"(it is not rewritten)")
         return
-    req = c.get("request") or {}
+    req = c.get("request") or c.get("raw_request") or {}
     rows = c["dataset"].split("/", 1)[1]
     if req.get("op") in ("range", "list") and (HERE / "rows" / f"{rows}.json").exists():
         if run(oracle.Dataset.load(rows), req) != {k: v for k, v in c["expect"].items() if k != "accept_unsupported"}:
@@ -857,12 +882,14 @@ def build_all(lock):
     # The "start just above a key" probes are retired in favour of an identical exact-hit or boundary probe.
     ordered = [c for g in groups for c in sorted(g.cases, key=lambda c: c["family"] == "range/start-just-above-key")]
     for c in ordered:
-        if True:
-            if c["id"] in core:
-                continue
-            first = seen.setdefault(behaviour(c), c["id"])
-            if first != c["id"]:
-                retired.append({"id": c["id"], "duplicate_of": first})
+        if c["id"] in core:
+            continue
+        first = seen.setdefault(behaviour(c), c["id"])
+        if first != c["id"]:
+            retired.append({"id": c["id"], "duplicate_of": first})
+    for cid, reason in REMOVED.items():
+        assert cid not in cand and cid not in core, f"{cid} is retired"
+        retired.append({"id": cid, "reason": reason})
     retired_ids = {r["id"] for r in retired}
     generated = {g.name: [c for c in g.cases if c["id"] not in core and c["id"] not in retired_ids] for g in groups}
     return groups, core, core_files, generated, retired
@@ -908,7 +935,7 @@ def main():
     write_text(CONF / "suite.json", dumps(suite))
     write_coverage(core, generated, groups)
     print(f"{suite['totals']['core']} core + {suite['totals']['generated']} generated cases; "
-          f"{len(retired)} retired duplicates")
+          f"{len(retired)} retired ids")
 
 
 DIGEST_FILES = ["protocol.md", "case.schema.json", "capabilities.json", "fixtures.lock.json", "generators/faults.json"]

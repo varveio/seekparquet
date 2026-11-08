@@ -54,9 +54,9 @@ var ErrMalformed = errors.New("malformed thrift")
 var ErrBudget = errors.New("thrift input exceeds its memory budget")
 
 // Check walks one struct of Go type typ (a struct or a pointer to one, such
-// as *format.FileMetaData; nil when unknown) at the start of data. It returns the number of
-// bytes the struct occupies and the estimated memory a decoder will
-// allocate for it. It fails with ErrMalformed when the bytes are not a
+// as *format.FileMetaData; nil when unknown) at the start of data. It
+// returns the number of bytes the struct occupies and the estimated memory
+// a decoder will allocate for it. It fails with ErrMalformed when the bytes are not a
 // well-formed struct whose lengths fit in data, and with ErrBudget as soon
 // as the estimate exceeds budget.
 func Check(data []byte, typ reflect.Type, budget int64) (n int, cost int64, err error) {
@@ -127,9 +127,6 @@ func (w *walker) length(n uint64, min int) (int, error) {
 
 // structure walks a struct; typ is its Go type, nil when unknown.
 func (w *walker) structure(typ reflect.Type, depth int) error {
-	if depth > maxDepth {
-		return w.malformed("nesting too deep")
-	}
 	fields := fieldsOf(typ)
 	var id int64
 	for {
@@ -164,8 +161,12 @@ func (w *walker) structure(typ reflect.Type, depth int) error {
 }
 
 // value walks one value of compact type kind, decoded into Go type typ
-// (nil when unknown).
+// (nil when unknown). Every nested struct, list, set and map element is
+// walked through value, so depth bounds the recursion of every container.
 func (w *walker) value(kind byte, typ reflect.Type, depth int) error {
+	if depth > maxDepth {
+		return w.malformed("nesting too deep")
+	}
 	typ = unwrap(typ)
 	switch kind {
 	case tTrue, tFalse, tI8:

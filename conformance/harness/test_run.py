@@ -4,11 +4,13 @@
     python -m unittest discover -s harness -p 'test_*.py'      # from conformance/
 
 Each stub adapter answers just enough of the protocol to reach the behaviour under test. A passing
-reference adapter alone cannot show that the harness rejects incomplete implementations.
+reference adapter alone cannot show that the harness rejects incomplete implementations. The tests of the
+reference adapter itself run only where its dependencies (generators/requirements.txt) are installed.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -17,9 +19,18 @@ import textwrap
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 RUN = HERE / "run.py"
+sys.path.insert(0, str(HERE))
+
+import run  # noqa: E402
+
+try:
+    import reference_adapter as ra  # noqa: E402
+except ImportError:  # pyarrow or jsonschema missing
+    ra = None
 
 STUB = textwrap.dedent('''
     import json, sys, time
@@ -30,6 +41,8 @@ STUB = textwrap.dedent('''
         caps = ["open"]
     if mode == "unknown-target":
         targets = ["reader", "sorcerer"]
+    if mode == "planned":
+        targets = ["reader", "planned"]
     if mode == "validator-full":
         targets, caps = ["validator-full"], ["open", "validate:structural", "validate:profile", "validate:full"]
     n = 0
@@ -107,11 +120,45 @@ ORACLE_ADAPTER = textwrap.dedent(r'''
                 base += n
         return out
 
-    def do_range(d, ds, req, cols):
+    def row_group_starts(d):
+        """The global index of the first row of every non-empty row group, from the rows document."""
+        doc = json.loads((CONF / "generators" / "rows" / f"{rows_name(d)}.json").read_text())
+        starts, base = [], 0
+        for part in doc["parts"]:
+            for n in part["row_groups"]:
+                if n:
+                    starts.append(base)
+                base += n
+        return starts
+
+    def install_bug(d, ds, req):
+        """Apply the cursor and row-position bugs to ds; return the cursor to use."""
+        cursor = req.get("after")
+        if BUG == "ignore-offset" and isinstance(cursor, dict) and "offset" in cursor:  # BUG: (k, n) read as after k
+            cursor = dict(cursor, offset=(1 << 63) - 1)
+        if BUG == "prefix-cursor-floor" and isinstance(cursor, dict) and set(cursor) == {"prefix_base64"}:
+            cursor = {"key_base64": cursor["prefix_base64"], "offset": (1 << 63) - 1}  # BUG: c read as keys > c
+        if BUG in ("reset-offsets", "last-equal-row-group"):
+            rows, starts = list(ds.positioned()), row_group_starts(d)
+            if BUG == "reset-offsets":  # BUG: group offsets restart at every row group
+                out = []
+                for i, (k, n, v, p) in enumerate(rows):
+                    out.append((k, 0 if i in starts or not out or out[-1][0] != k else out[-1][1] + 1, v, p))
+                rows = out
+            else:  # BUG: a seek starts at the last row group whose first key is <= the sought key
+                seek = b64(req, "start_base64") or (b64(cursor, "key_base64") if isinstance(cursor, dict) else None)
+                if seek is not None and starts:
+                    i = max([j for j, s in enumerate(starts) if rows[s][0] <= seek], default=0)
+                    rows = rows[starts[i]:]
+            ds.positioned = lambda: iter(rows)
+        return cursor
+
+    def do_range(d, ds, req, cols, cursor):
         prefix, start, end = b64(req, "prefix_base64"), b64(req, "start_base64"), b64(req, "end_base64")
         excl, limit = req.get("start_exclusive", False), req["limit"]
         if BUG not in ("signed", "inclusive-end", "shortened-exact"):
-            return ds.range(prefix=prefix, start=start, start_exclusive=excl, end=end, limit=limit, columns=cols)
+            return ds.range(prefix=prefix, start=start, start_exclusive=excl, end=end, limit=limit, columns=cols,
+                            cursor=cursor)
         if not isinstance(limit, int) or limit < 1:
             raise oracle.InvalidRequest()
         rows = list(ds.rows)
@@ -178,14 +225,12 @@ ORACLE_ADAPTER = textwrap.dedent(r'''
         ds = oracle.Dataset.load(rows_name(d))
         cols = req.get("columns", [])
         try:
+            cursor = install_bug(d, ds, req)
             if req["op"] == "range":
-                entries = do_range(d, ds, req, cols)
+                entries = do_range(d, ds, req, cols, cursor)
             else:
-                after = b64(req, "after_base64")
-                cont = req.get("continuation", False) and BUG != "continuation"  # BUG: continuation ignored
                 entries = ds.list(prefix=b64(req, "prefix_base64") or b"", delimiter=b64(req, "delimiter_base64"),
-                                  after=after, continuation=cont, end=b64(req, "end_base64"), limit=req.get("limit"),
-                                  columns=cols)
+                                  cursor=cursor, end=b64(req, "end_base64"), limit=req.get("limit"), columns=cols)
         except (oracle.InvalidRequest, ValueError, KeyError, TypeError):
             return {"status": "invalid_request"}
         except oracle.Unsupported as u:
@@ -252,8 +297,17 @@ class HarnessSelfTest(unittest.TestCase):
         # the same bug is harmless where bounds are exact, so the detection comes from the shortened layout
         self.assertEqual(self.run_oracle("shortened-exact", r"^range/binary-keys/seek-")["fail"], 0)
 
-    def test_detects_wrong_continuation(self):
-        self.assert_detected("continuation", r"^(list/delimiter/after-inside-prefix-continuation|pagination/list/)")
+    def test_detects_prefix_cursor_read_as_byte_floor(self):
+        self.assert_detected("prefix-cursor-floor", r"^(list/delimiter/after-inside-prefix-continuation|pagination/list/)")
+
+    def test_detects_seek_from_last_equal_row_group(self):
+        self.assert_detected("last-equal-row-group", r"^repeated/(core/|one-large-group/seek-)")
+
+    def test_detects_offsets_reset_at_row_groups(self):
+        self.assert_detected("reset-offsets", r"^repeated/(core/|repeated-keys/cursor-row-)")
+
+    def test_detects_ignored_cursor_offsets(self):
+        self.assert_detected("ignore-offset", r"^repeated/(core/resume-|repeated-keys/cursor-row-)")
 
     def test_detects_absent_null_conflation(self):
         self.assert_detected("absent-null", r"^projection/(column/f64|columns/span-parts|col-7/)")
@@ -341,6 +395,95 @@ class HarnessSelfTest(unittest.TestCase):
         rc, rep, _ = self.run_harness("validator-full", "--targets", "validator-structural")
         self.assertTrue(rep["selection"]["partial"])
         self.assertEqual(rep["qualified_targets"], [])
+
+    def test_target_without_cases_of_its_own_never_qualifies(self):
+        # "planned" depends on reader and has no cases: passing the reader cases must not qualify it.
+        suite = Path(self.tmp.name) / "planned-suite"
+        suite.mkdir(exist_ok=True)
+        files = {
+            "suite.json": {"format_version": 0, "draft_revision": 1, "case_files": ["cases.json"],
+                           "mandatory_targets": ["reader"]},
+            "capabilities.json": {"capabilities": {c: c for c in ("open", "range", "list", "projection")},
+                                  "target_dependencies": {"planned": ["reader"]},
+                                  "targets": {"reader": ["open", "range", "list", "projection"], "planned": ["open"]}},
+            "cases.json": {"group": "open", "target": "reader", "cases": [
+                {"id": "open/any", "dataset": "datasets/any", "request": {"op": "open"}, "expect": {"status": "ok"}}]},
+        }
+        for name, doc in files.items():
+            (suite / name).write_text(json.dumps(doc), encoding="utf-8")
+        rc, rep, _ = self.run_harness("planned", "--suite", str(suite / "suite.json"))
+        self.assertEqual(rc, 0, rep)
+        self.assertFalse(rep["selection"]["partial"])
+        self.assertEqual(rep["qualified_targets"], ["reader"])
+
+
+class ResponseNumbers(unittest.TestCase):
+    """Offsets keep their JSON spelling: the object-valued cases cannot carry -0, so the parser is tested directly."""
+
+    def entries(self, offset):
+        return run.parse_response('[{"kind": "row", "key_base64": "YQ==", "offset": %s, "values": []}]' % offset)
+
+    def test_plain_integer_offsets(self):
+        for text, value in (("0", 0), ("7", 7), ("9223372036854775807", (1 << 63) - 1)):
+            self.assertEqual(run.norm_entries(self.entries(text), 0, "r"), [("row", b"a", (value, ()))])
+
+    def test_other_spellings_are_rejected(self):
+        for text in ("-0", "0.0", "0e0", "1E2", "-1", "9223372036854775808", "NaN"):
+            with self.assertRaises(run.CaseFail, msg=text):
+                run.norm_entries(self.entries(text), 0, "r")
+
+
+@unittest.skipIf(ra is None, "the reference adapter needs generators/requirements.txt")
+class ReferenceAdapter(unittest.TestCase):
+    """The reference adapter's request parsing and VAL-1 dispatch, with stubbed decoders where needed."""
+
+    BASIC = str(HERE.parent / "datasets" / "basic")
+
+    def setUp(self):
+        ra.DATASETS.clear()
+
+    def range_status(self, offset):
+        line = '{"op": "range", "dataset": %s, "limit": 1, "after": {"key_base64": "YQ==", "offset": %s}}' % (
+            json.dumps(self.BASIC), offset)
+        return ra.handle(ra.parse_request(line))["status"]
+
+    def test_offset_spellings(self):
+        self.assertEqual(self.range_status("0"), "ok")
+        for text in ("-0", "0.0", "0e0", "-1"):
+            self.assertEqual(self.range_status(text), "invalid_request", text)
+
+    def test_prefix_cursor_only_for_list(self):
+        req = {"dataset": self.BASIC, "limit": 1, "after": {"prefix_base64": "YS8="}}
+        self.assertEqual(ra.handle(dict(req, op="range"))["status"], "invalid_request")
+        self.assertEqual(ra.handle(dict(req, op="list", delimiter_base64="Lw=="))["status"], "ok")
+
+    def test_unsupported_full_decoding_is_incomplete(self):
+        with mock.patch.object(ra.pq, "read_table", side_effect=ra.pa.ArrowNotImplementedError("stub codec")):
+            levels = ra.handle({"op": "validate", "dataset": self.BASIC, "level": "full"})["levels"]
+        self.assertEqual(levels["structural"], {"result": "complete"})
+        self.assertEqual(levels["profile"], {"result": "complete"})
+        self.assertEqual(levels["full"]["result"], "incomplete")
+        self.assertTrue(levels["full"]["reason"])
+
+    def test_unsupported_profile_decoding_keeps_structural_and_blocks_full(self):
+        with mock.patch.object(ra.Part, "key_checks", side_effect=ra.NotSupported("unsupported_encoding", "stub")):
+            levels = ra.handle({"op": "validate", "dataset": self.BASIC, "level": "full"})["levels"]
+        self.assertEqual(levels["structural"], {"result": "complete"})
+        self.assertEqual([levels[x]["result"] for x in ("profile", "full")], ["incomplete", "incomplete"])
+        self.assertTrue(levels["profile"]["reason"] and levels["full"]["reason"])
+
+    def test_digest_of_a_structurally_invalid_part(self):
+        data = b"not a parquet file"
+        manifest = {"format": "seekparquet", "format_version": 0, "draft_revision": 1, "schema_id": "s",
+                    "key": {"column": "key", "unique": True},
+                    "parts": [{"path": "p.parquet", "rows": 1, "bytes": len(data), "min_key_base64": "YQ==",
+                               "max_key_base64": "YQ==", "sha256": hashlib.sha256(data).hexdigest()}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "p.parquet").write_bytes(data)
+            (Path(tmp) / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            self.assertEqual(ra.do_validate(tmp, "digest"), {"digest": {"result": "complete", "checked": 1}})
+            self.assertEqual(ra.do_validate(tmp, "structural"),
+                             {"structural": {"result": "failed", "code": "invalid_footer"}})
 
 
 if __name__ == "__main__":

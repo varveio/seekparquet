@@ -7,6 +7,7 @@
   "families": {
     "repeated/boundaries": "Inclusive and exclusive seeks at every group key, plus exact-group lookups and prefix reads",
     "repeated/pagination": "Every page size 1, 2, 5, 7; row cursors resume inside groups, prefix cursors skip rollups",
+    "repeated/cursor-every-row": "A row cursor at every row of the repeated layouts, limit 6: resumption at every page, row-group, group and part boundary, with group offsets counted across row groups",
     "repeated/invalid-cursors": "Malformed tags, offsets and base64 are rejected"
   },
   "cases": [
@@ -23669,6 +23670,3712 @@
             ]
           }
         ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-00",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YQ==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "1"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "2"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-01",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YQ==",
+          "offset": 1
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "2"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-02",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YQ==",
+          "offset": 2
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-03",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-04",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 1
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-05",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 2
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-06",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 3
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-07",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 4
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-08",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 5
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-09",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 6
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-10",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 7
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-11",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 8
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-12",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 9
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-13",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 10
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-14",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yg==",
+          "offset": 11
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-15",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yy94",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-16",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yy94",
+          "offset": 1
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-17",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yy94",
+          "offset": 2
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-18",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yy94",
+          "offset": 3
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-19",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "Yy94",
+          "offset": 4
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-20",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZA==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-21",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZA==",
+          "offset": 1
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-22",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZA==",
+          "offset": 2
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/repeated-keys/cursor-row-23",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "ZA==",
+          "offset": 3
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-00",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "1"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "2"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-01",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 1
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "2"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-02",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 2
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-03",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 3
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-04",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 4
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-05",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 5
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-06",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 6
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 12,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-07",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 7
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 12,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 13,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-08",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 8
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 12,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 13,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 14,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-09",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 9
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 12,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 13,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 14,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 15,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-10",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 10
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 12,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 13,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 14,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 15,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 16,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-11",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 11
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 12,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 13,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 14,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 15,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 16,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 17,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-12",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 12
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 13,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 14,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 15,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 16,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 17,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 18,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-13",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 13
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 14,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 15,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 16,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 17,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 18,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 19,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-14",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 14
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 15,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 16,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 17,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 18,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 19,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 20,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-15",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 15
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 16,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 17,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 18,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 19,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 20,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 21,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-16",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 16
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 17,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 18,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 19,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 20,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 21,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 22,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-17",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 17
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 18,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 19,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 20,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 21,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 22,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 23,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-18",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 18
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 19,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 20,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 21,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 22,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 23,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-19",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 19
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 20,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 21,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 22,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 23,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-20",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 20
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 21,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 22,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 23,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-21",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 21
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 22,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 23,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-22",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 22
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 23,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "repeated/one-large-group/cursor-row-23",
+      "family": "repeated/cursor-every-row",
+      "requirements": [
+        "PAGE-1",
+        "KEY-7",
+        "ROUTE-1"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "range",
+        "limit": 6,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "b25seQ==",
+          "offset": 23
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
       }
     },
     {

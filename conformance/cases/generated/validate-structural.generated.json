@@ -2704,7 +2704,7 @@
     },
     {
       "id": "validate-structural/stamp-key-column-mismatch",
-      "description": "The key_column stamp is mismatch.",
+      "description": "The key_column stamp is other, not key.",
       "family": "validate-structural/fault-at-lowest-level",
       "fault_id": "stamp-key-column-mismatch",
       "requirements": [
@@ -2732,7 +2732,7 @@
     },
     {
       "id": "validate-structural/stamp-key-column-noncanonical",
-      "description": "The key_column stamp is noncanonical.",
+      "description": "The key_column stamp is ' key', with a leading space.",
       "family": "validate-structural/fault-at-lowest-level",
       "fault_id": "stamp-key-column-noncanonical",
       "requirements": [
@@ -2815,7 +2815,7 @@
     },
     {
       "id": "validate-structural/stamp-key-unique-mismatch",
-      "description": "The key_unique stamp is mismatch.",
+      "description": "The key_unique stamp is false, not true.",
       "family": "validate-structural/fault-at-lowest-level",
       "fault_id": "stamp-key-unique-mismatch",
       "requirements": [
@@ -2843,7 +2843,7 @@
     },
     {
       "id": "validate-structural/stamp-key-unique-noncanonical",
-      "description": "The key_unique stamp is noncanonical.",
+      "description": "The key_unique stamp is TRUE, not lowercase true.",
       "family": "validate-structural/fault-at-lowest-level",
       "fault_id": "stamp-key-unique-noncanonical",
       "requirements": [

@@ -2,7 +2,7 @@
   "group": "list",
   "target": "reader",
   "generated": false,
-  "description": "Delimited listing (LIST-1 to LIST-7). Expected entries come from oracle.py. Core examples: hand-reviewed; their expectations are authoritative.",
+  "description": "Delimited listing (LIST-2 to LIST-7). Expected entries come from oracle.py. Core examples: hand-reviewed; their expectations are authoritative.",
   "cases": [
     {
       "id": "list/delimiter/root",
@@ -376,20 +376,24 @@
     },
     {
       "id": "list/delimiter/after-inside-prefix",
-      "description": "after a/b/c with continuation false: a/b/ is still returned because a/b/c/, a/b/c/d and a/b/d are candidates that roll up to it (LIST-5).",
+      "description": "Row cursor (a/b/c, 0): a/b/ is still returned, although it sorts before the cursor key, because a/b/c/, a/b/c/d and a/b/d are candidates that roll up to it (LIST-5).",
       "requirements": [
         "LIST-2",
         "LIST-3",
         "LIST-4",
         "LIST-7",
-        "LIST-5"
+        "LIST-5",
+        "PAGE-1"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "prefix_base64": "YS8=",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS9iL2M=",
+        "after": {
+          "key_base64": "YS9iL2M=",
+          "offset": 0
+        },
         "limit": 100000
       },
       "expect": {
@@ -416,13 +420,14 @@
     },
     {
       "id": "list/delimiter/after-inside-prefix-continuation",
-      "description": "Same request with continuation true: a/b/ sorts before after, so the previous page already returned it and it is suppressed.",
+      "description": "Prefix cursor a/b/: every key under a/b/ is skipped, so a/b/ is not returned again and the listing resumes at a/bc (LIST-6).",
       "requirements": [
         "LIST-2",
         "LIST-3",
         "LIST-4",
         "LIST-7",
         "LIST-5",
+        "PAGE-1",
         "LIST-6"
       ],
       "dataset": "datasets/delimiter",
@@ -430,68 +435,14 @@
         "op": "list",
         "prefix_base64": "YS8=",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS9iL2M=",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "YS9iLw=="
+        },
         "limit": 100000
       },
       "expect": {
         "status": "ok",
         "entries": [
-          {
-            "kind": "row",
-            "key_base64": "YS9iYw==",
-            "values": [],
-            "offset": 0
-          },
-          {
-            "kind": "row",
-            "key_base64": "YS9j",
-            "values": [],
-            "offset": 0
-          }
-        ]
-      }
-    },
-    {
-      "id": "list/delimiter/continuation-without-after",
-      "description": "continuation true without after has no effect: the result equals the plain listing of a/.",
-      "requirements": [
-        "LIST-2",
-        "LIST-3",
-        "LIST-4",
-        "LIST-5"
-      ],
-      "dataset": "datasets/delimiter",
-      "request": {
-        "op": "list",
-        "prefix_base64": "YS8=",
-        "delimiter_base64": "Lw==",
-        "continuation": true,
-        "limit": 100000
-      },
-      "expect": {
-        "status": "ok",
-        "entries": [
-          {
-            "kind": "row",
-            "key_base64": "YS8=",
-            "values": [],
-            "offset": 0
-          },
-          {
-            "kind": "prefix",
-            "key_base64": "YS8v"
-          },
-          {
-            "kind": "row",
-            "key_base64": "YS9i",
-            "values": [],
-            "offset": 0
-          },
-          {
-            "kind": "prefix",
-            "key_base64": "YS9iLw=="
-          },
           {
             "kind": "row",
             "key_base64": "YS9iYw==",
@@ -574,7 +525,7 @@
     },
     {
       "id": "list/list-bounds/worked-example-without-a-a",
-      "description": "With after a/a, the only remaining key under a/ is a/z, which is beyond end a/b: no entry at all (a/ must not appear).",
+      "description": "With the row cursor (a/a, 0), the only remaining key under a/ is a/z, which is beyond end a/b: no entry at all (a/ must not appear).",
       "requirements": [
         "LIST-2",
         "LIST-3",
@@ -585,7 +536,10 @@
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS9h",
+        "after": {
+          "key_base64": "YS9h",
+          "offset": 0
+        },
         "end_base64": "YS9i",
         "limit": 100000
       },

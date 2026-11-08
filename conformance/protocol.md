@@ -69,8 +69,8 @@ a description of what distinguishes a correct answer) and `cases/generated/` (ge
 for qualification; the split is about authorship, not optionality. Case ids are stable and never encode the
 split; retired ids are listed in `suite.json` and never reused.
 
-**Qualification.** A target is qualified only by a complete run: every case of the target and of its
-dependencies ran and passed, with no run error. A run narrowed by a case filter or by selecting fewer
+**Qualification.** A target is qualified only by a complete run: the target has cases of its own, and every
+case of the target and of its dependencies ran and passed, with no run error. A run narrowed by a case filter or by selecting fewer
 targets than the adapter claims, or limited to a selection (`--subset core`, or a named subset such as
 `subsets/smoke.json`), is a partial run: it reports whether the selected cases passed, and never
 reports a target as qualified. The harness records the selection in its report.
@@ -92,6 +92,7 @@ path.
 ```
 
 `prefix_base64`, `start_base64` and `end_base64` are optional (absent or null) and may be empty strings (spec QUERY-2); `start_exclusive` defaults to false; `columns` defaults to `[]`.
+`after` is optional and, for range, only a row cursor (see Continuation below).
 The adapter opens the dataset first if it has not.
 
 ### `list`
@@ -102,7 +103,8 @@ The adapter opens the dataset first if it has not.
  "end_base64": null, "limit": 100, "columns": []}
 ```
 
-`after_base64` and `end_base64` are optional (absent or null); `prefix_base64` defaults to empty; `continuation` defaults to false and has no effect without `after_base64`; `columns` defaults to `[]`.
+`end_base64` is optional (absent or null); `prefix_base64` defaults to empty; `after` is optional, a row or
+prefix cursor; `columns` defaults to `[]`.
 
 ### `validate`
 
@@ -119,10 +121,14 @@ Validation runs the requested level and its prerequisites (spec §8) and reports
 ```
 
 `result` is `complete`, `failed` (with `code`) or `incomplete` (with `reason`, a non-empty string; the
-harness rejects an `incomplete` level without one, but never compares its wording). A `validate` request never
-answers `refused`: a dataset that cannot be opened reports `structural` as `failed` with the refusal code.
-Validator targets therefore include the open-stage faults. The `digest` level adds
-`checked`, the number of digests it compared. `status` is `ok` whenever validation ran, whatever it found.
+harness rejects an `incomplete` level without one, but never compares its wording). A level that needs an
+unsupported column, encoding or codec is `incomplete`, never an `unsupported` response; lower levels keep
+their results and higher levels are `incomplete` (VAL-1). A `validate` request never answers `refused`: at
+the structural, profile and full levels, a dataset that cannot be opened reports `structural` as `failed`
+with the refusal code, so validator targets include the open-stage faults. The `digest` level has no
+prerequisite and does not open the dataset: it hashes the bytes of the parts the manifest lists, so a part
+that is not valid Parquet can still complete it. It adds `checked`, the number of digests it compared.
+`status` is `ok` whenever validation ran, whatever it found.
 
 ## Responses
 
@@ -130,7 +136,7 @@ Validator targets therefore include the open-stage faults. The `digest` level ad
 |---|---|---|
 | `ok` | `entries` for `range` and `list`; `levels` for `validate` | success |
 | `refused` | `code` | the data breaks the specification; `code` is from `spec/refusal-codes.json` |
-| `invalid_request` | `message` (optional) | the request is malformed (QUERY-1, LIST-1) |
+| `invalid_request` | `message` (optional) | the request is malformed (QUERY-1), including a malformed cursor or a prefix cursor on range |
 | `unsupported` | `code`, `message` (optional) | the data is valid but uses an unsupported feature, or the adapter does not implement the operation (`unsupported_operation`) |
 | `error` | `message` | anything else; the harness counts it as a failure |
 
@@ -163,7 +169,9 @@ otherwise the case lists every acceptable code.
 ## Malformed requests
 
 Cases that test `invalid_request` use `raw_request` instead of `request`: an object the harness sends as it
-is, adding only `id` and `dataset`, so that a fractional limit or malformed base64 can be expressed.
+is, adding only `id` and `dataset`, so that a fractional limit or malformed base64 can be expressed. A JSON
+object cannot carry the spelling `-0` through loading and re-serialization, so the offset spelling rules
+are tested directly against the harness's and the reference adapter's parsers (`harness/test_run.py`).
 
 ## Optional features
 
@@ -182,19 +190,27 @@ protocol's representational limit, not a requirement of the specification to rej
 
 - **Semantic** (this protocol): results and refusals. A reader that scans every row can pass it.
 - **Indexed access** (planned): fixtures and an instrumented source that fail a reader which reads pages it
-  should have skipped. Passing the semantic suite does not claim indexed access.
+  should have skipped. Passing the semantic suite does not claim indexed access, and no target can claim it
+  yet: it will be added to capabilities.json with its cases.
 - **Benchmarks**: outside the conformance suite.
 
-### Tagged continuation
+## Continuation
 
-Both range and list accept `after = {"key_base64": "...", "offset": n}` after a row,
-or `after = {"prefix_base64": "..."}` after a common prefix (PAGE-1/PAGE-2).
-Each row response includes `offset`, its zero-based position within its group in file order;
-it is always zero when the manifest declares unique keys. Offsets are non-negative integers
-at most 2^63-1, written without a sign, fraction or exponent. Tags have exactly the members shown, and base64 is canonical.
-A row cursor resumes at offset n+1 of that key, then later keys. A prefix cursor suppresses
-that common prefix and all earlier prefixes. Query bounds still apply to whole groups;
-a page limit may split a group. Repeating pages must equal the unpaginated result.
-`after_base64` remains a listing byte floor, with `continuation` controlling LIST-5 suppression;
-it is not a row cursor. It must not be combined with `after`.
+`after` is the only pagination member (spec PAGE-1, PAGE-2). It is one of:
+
+| Cursor | Form | Accepted by | Admits |
+|---|---|---|---|
+| row | `{"key_base64": "...", "offset": n}` | range and list | rows with key > k, and rows of key k with offset > n |
+| prefix | `{"prefix_base64": "..."}` | list only | keys > c that do not begin with c |
+
+A prefix cursor in a range request is `invalid_request`. Tags have exactly the members shown, and base64 is
+canonical (it may be empty). Each row entry includes `offset`, its zero-based position in its complete stored
+group in file order, before any query filtering; it is always 0 when the manifest declares unique keys.
+Offsets are JSON integers from 0 to 2^63-1 written without a sign, fraction or exponent (`-0`, `0.0` and
+`0e0` are malformed), in requests and in responses alike. The cursor after a row entry is its row cursor,
+and after a prefix entry its prefix cursor; repeating the same query with the cursor of each page's last
+entry must reproduce the unpaginated result. A cursor needs no existence check: an offset beyond its group
+skips the group, and a nonzero offset in unique mode means "after that key". Query bounds still apply to
+whole groups; a page limit may split a group.
+
 Lookup uses range with start k inclusive and end k followed by a zero byte; no new operation is needed.

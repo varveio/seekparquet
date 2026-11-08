@@ -15,7 +15,7 @@ python generators/regenerate.py      # from conformance/, with generators/requir
 | `mutate_metadata.py` | Derives fixtures by editing manifests, footers and page indexes, preserving data pages, recomputing index offsets, file sizes and manifest sizes, and recording every change. |
 | `faults.json` | The authored declaration of every invalid fixture's fault (reader detection, lowest validation level, codes, requirements, location, justified secondary faults). |
 | `preserved.json` | Preserved regression fixtures that regeneration must never touch (empty so far). |
-| `make_cases.py` | Writes `cases/generated/`, `suite.json` and `COVERAGE.md` from the rows (through `../oracle.py`) and `faults.json`. It checks `cases/core/` against its own candidates and the oracle, never rewrites it, and retires exact duplicates. |
+| `make_cases.py` | Writes `cases/generated/`, `suite.json` and `COVERAGE.md` from the rows (through `../oracle.py`) and `faults.json`. It checks `cases/core/` against its own candidates and the oracle, never rewrites it, and retires exact duplicates and cases of removed request members (`REMOVED`). |
 | `test_oracle.py` | Oracle property tests and hand-specified examples. |
 | `test_case_generation.py` | Generator tests: determinism, unique ids, no exact duplicates, boundary families present, one validation case per fault, the prerequisite and digest selections, honest "miss" labels. |
 | `check_reproducible.py` | Regenerates everything in a temporary directory and compares with the checked-in files. |

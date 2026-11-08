@@ -48,7 +48,7 @@
     "subsets/smoke.json"
   ],
   "case_counts": {
-    "cases/core/list.json": 14,
+    "cases/core/list.json": 13,
     "cases/core/open.json": 6,
     "cases/core/pagination.json": 8,
     "cases/core/prefix.json": 8,
@@ -56,17 +56,17 @@
     "cases/core/range.json": 20,
     "cases/core/refusals-open.json": 32,
     "cases/core/refusals-read.json": 12,
-    "cases/core/repeated.json": 29,
+    "cases/core/repeated.json": 33,
     "cases/core/requests.json": 10,
     "cases/core/validate-digest.json": 4,
     "cases/core/validate-full.json": 4,
     "cases/core/validate-profile.json": 4,
     "cases/core/validate-structural.json": 10,
-    "cases/generated/repeated.generated.json": 403,
+    "cases/generated/repeated.generated.json": 451,
     "cases/generated/open.generated.json": 17,
     "cases/generated/range.generated.json": 538,
     "cases/generated/prefix.generated.json": 43,
-    "cases/generated/list.generated.json": 39,
+    "cases/generated/list.generated.json": 38,
     "cases/generated/pagination.generated.json": 81,
     "cases/generated/projection.generated.json": 35,
     "cases/generated/requests.generated.json": 8,
@@ -78,8 +78,8 @@
     "cases/generated/validate-digest.generated.json": 2
   },
   "totals": {
-    "core": 179,
-    "generated": 1407
+    "core": 182,
+    "generated": 1454
   },
   "renamed_datasets": {
     "datasets/truncated-bounds": "datasets/binary-bounds-truncated-16-byte",
@@ -171,9 +171,17 @@
       "duplicate_of": "range/truncated-bounds-2/seek-39"
     },
     {
+      "id": "list/delimiter/after-equals-prefix-continuation",
+      "duplicate_of": "list/delimiter/after-inside-prefix-continuation"
+    },
+    {
       "id": "list/empty/root",
       "duplicate_of": "open/empty-list"
+    },
+    {
+      "id": "list/delimiter/continuation-without-after",
+      "reason": "tested the removed continuation member"
     }
   ],
-  "content_sha256": "2fb739de436d2d50e49137708642e65c6778e3c4153854102343c7898934bed5"
+  "content_sha256": "fb2201fe8bf6c6900806c0c320cc5dfdccfadf3071aef36f208d596b541d491a"
 }

@@ -10,9 +10,10 @@
       "scenario_id": "list/list-bounds/root-2f-limit1",
       "step": 0,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/list-bounds",
       "request": {
@@ -32,20 +33,22 @@
     },
     {
       "id": "pagination/list/list-bounds/root-2f-limit1/page-01",
-      "description": "Page 2: after a/ with continuation true. a/ itself is skipped and b/ is next; keys under a/ are not revisited.",
+      "description": "Page 2: the prefix cursor a/ skips every key under a/, so b/ is next and nothing under a/ is revisited.",
       "scenario_id": "list/list-bounds/root-2f-limit1",
       "step": 1,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/list-bounds",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS8=",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "YS8="
+        },
         "limit": 1
       },
       "expect": {
@@ -60,20 +63,22 @@
     },
     {
       "id": "pagination/list/list-bounds/root-2f-limit1/page-02",
-      "description": "Page 3: after b/ with continuation true returns the row c.",
+      "description": "Page 3: the prefix cursor b/ returns the row c.",
       "scenario_id": "list/list-bounds/root-2f-limit1",
       "step": 2,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/list-bounds",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "Yi8=",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "Yi8="
+        },
         "limit": 1
       },
       "expect": {
@@ -90,20 +95,23 @@
     },
     {
       "id": "pagination/list/list-bounds/root-2f-limit1/page-03",
-      "description": "Page 4: after c returns nothing; the four pages concatenate to the unpaginated listing.",
+      "description": "Page 4: the row cursor (c, 0) returns nothing; the four pages concatenate to the unpaginated listing.",
       "scenario_id": "list/list-bounds/root-2f-limit1",
       "step": 3,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/list-bounds",
       "request": {
         "op": "list",
         "delimiter_base64": "Lw==",
-        "after_base64": "Yw==",
-        "continuation": true,
+        "after": {
+          "key_base64": "Yw==",
+          "offset": 0
+        },
         "limit": 1
       },
       "expect": {
@@ -117,9 +125,10 @@
       "scenario_id": "list/delimiter/a/-2f-limit2",
       "step": 0,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -146,21 +155,23 @@
     },
     {
       "id": "pagination/list/delimiter/a/-2f-limit2/page-01",
-      "description": "Page 2: after a// with continuation true resumes past everything under a// (a///, a//b) and returns a/b and a/b/.",
+      "description": "Page 2: the prefix cursor a// skips everything under a// (a///, a//b) and returns a/b and a/b/.",
       "scenario_id": "list/delimiter/a/-2f-limit2",
       "step": 1,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "prefix_base64": "YS8=",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS8v",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "YS8v"
+        },
         "limit": 2
       },
       "expect": {
@@ -181,21 +192,23 @@
     },
     {
       "id": "pagination/list/delimiter/a/-2f-limit2/page-02",
-      "description": "Page 3: after a/b/ with continuation true skips a/b/c... and returns a/bc and a/c.",
+      "description": "Page 3: the prefix cursor a/b/ skips a/b/c... and returns a/bc and a/c.",
       "scenario_id": "list/delimiter/a/-2f-limit2",
       "step": 2,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "prefix_base64": "YS8=",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS9iLw==",
-        "continuation": true,
+        "after": {
+          "prefix_base64": "YS9iLw=="
+        },
         "limit": 2
       },
       "expect": {
@@ -218,21 +231,24 @@
     },
     {
       "id": "pagination/list/delimiter/a/-2f-limit2/page-03",
-      "description": "Page 4: after a/c returns nothing: no duplicates or gaps across the pages.",
+      "description": "Page 4: the row cursor (a/c, 0) returns nothing: no duplicates or gaps across the pages.",
       "scenario_id": "list/delimiter/a/-2f-limit2",
       "step": 3,
       "requirements": [
+        "PAGE-1",
+        "PAGE-2",
         "LIST-6",
-        "QUERY-3",
-        "LIST-5"
+        "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
       "request": {
         "op": "list",
         "prefix_base64": "YS8=",
         "delimiter_base64": "Lw==",
-        "after_base64": "YS9j",
-        "continuation": true,
+        "after": {
+          "key_base64": "YS9j",
+          "offset": 0
+        },
         "limit": 2
       },
       "expect": {

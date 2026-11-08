@@ -1,7 +1,7 @@
 # stamp-key-column-noncanonical
 
 valid: no
-description: The key_column stamp is noncanonical.
+description: The key_column stamp is ' key', with a leading space.
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/basic.json

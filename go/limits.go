@@ -9,7 +9,10 @@ import "fmt"
 // Every limit is checked against what the files declare before anything
 // is allocated for it, and exceeding one fails the operation with an error
 // wrapping ErrLimitExceeded: a policy of the caller, not a refusal of the
-// data. A zero field takes its default.
+// data. A zero field takes its default. Within a page, the counts and
+// lengths its encodings declare are checked against the page header before
+// decoding, and a page that decompresses to more or fewer bytes than its
+// header declares is refused, so a small page cannot allocate beyond them.
 type Limits struct {
 	// ManifestBytes bounds the manifest's size. Default 64 MiB.
 	ManifestBytes int64
@@ -24,13 +27,13 @@ type Limits struct {
 	// MetadataMemory bounds the estimated decoded size of one footer, page
 	// index or page header. Default 256 MiB.
 	MetadataMemory int64
-	// PageBytes bounds a page's compressed and uncompressed sizes,
-	// dictionary pages included. Default 64 MiB.
+	// PageBytes bounds a page's compressed and uncompressed sizes, and the
+	// size of its decoded values, dictionary pages included. Default 64 MiB.
 	PageBytes int64
 	// PageValues bounds the number of values in one page or dictionary.
 	// Default 16,777,216.
 	PageValues int64
-	// IndexMemory bounds the memory one Reader retains for key page
+	// IndexMemory bounds the memory one Dataset retains for key page
 	// indexes, which it keeps once loaded. Default 1 GiB.
 	IndexMemory int64
 }

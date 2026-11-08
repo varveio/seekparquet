@@ -50,7 +50,10 @@ class Generation(unittest.TestCase):
         active = {c["id"] for c in self.allgen} | set(self.core)
         for r in self.retired:
             self.assertNotIn(r["id"], active)
-            self.assertIn(r["duplicate_of"], active)
+            if "duplicate_of" in r:
+                self.assertIn(r["duplicate_of"], active)
+            else:
+                self.assertTrue(r["reason"], r["id"])
 
     def test_boundary_categories_retained(self):
         fams = {c["family"] for c in self.allgen}

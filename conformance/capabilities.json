@@ -8,21 +8,18 @@
     "validate:structural": "validation at the structural level",
     "validate:profile": "validation at the profile level",
     "validate:full": "validation at the full level",
-    "validate:digest": "validation at the digest level",
-    "indexed-access": "the indexed-access suite (planned)"
+    "validate:digest": "validation at the digest level"
   },
   "target_dependencies": {
-    "description": "A target qualifies only if every target it depends on also qualifies on the same run; claiming a target runs the cases of its dependencies too.",
+    "description": "A target qualifies only if it has cases of its own, they pass, and every target it depends on also qualifies on the same run; claiming a target runs the cases of its dependencies too.",
     "validator-profile": ["validator-structural"],
-    "validator-full": ["validator-profile"],
-    "indexed-access": ["reader"]
+    "validator-full": ["validator-profile"]
   },
   "targets": {
     "reader": ["open", "range", "list", "projection"],
     "validator-structural": ["open", "validate:structural"],
     "validator-profile": ["open", "validate:structural", "validate:profile"],
     "validator-full": ["open", "validate:structural", "validate:profile", "validate:full"],
-    "validator-digest": ["open", "validate:digest"],
-    "indexed-access": ["open", "range", "list", "indexed-access"]
+    "validator-digest": ["open", "validate:digest"]
   }
 }

@@ -1,7 +1,7 @@
 # stamp-key-column-mismatch
 
 valid: no
-description: The key_column stamp is mismatch.
+description: The key_column stamp is other, not key.
 provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/basic.json

@@ -15,6 +15,8 @@ DATASETS = CONF / "datasets"
 
 FORMAT_VERSION = 0
 DRAFT_REVISION = 1
+# The key declaration (MAN-8) of every fixture that does not declare its own.
+DEFAULT_KEY = {"column": "key", "unique": True}
 
 
 def b64e(b: bytes) -> str:
@@ -73,13 +75,13 @@ def load_rows(name: str) -> dict:
         return json.load(f)
 
 
-def manifest(parts, schema_id, *, format_version=FORMAT_VERSION, draft_revision=DRAFT_REVISION,
-             extensions=None, key=None) -> dict:
+def manifest(parts, schema_id, key, *, format_version=FORMAT_VERSION, draft_revision=DRAFT_REVISION,
+             extensions=None) -> dict:
     m = {"format": "seekparquet", "format_version": format_version}
     if draft_revision is not None:
         m["draft_revision"] = draft_revision
     m["schema_id"] = schema_id
-    m["key"] = key or {"column": "key", "unique": True}
+    m["key"] = key
     m["parts"] = parts
     if extensions is not None:
         m["extensions"] = extensions

@@ -159,15 +159,15 @@ No case. gap: no encrypted fixture yet.
 
 ## KEY-3
 
-- Evidence: 427 positive, 17 negative.
-- Core: `prefix/multipart/00`, `prefix/multipart/07`, `prefix/binary-keys/04`, `prefix/binary-keys/09`, `prefix/binary-keys/12` and 12 more
+- Evidence: 428 positive, 17 negative.
+- Core: `prefix/multipart/00`, `prefix/multipart/07`, `prefix/binary-keys/04`, `prefix/binary-keys/09`, `prefix/binary-keys/12` and 13 more
 - Generated: `prefix/prefix-only` (31), `range/boundary-part` (32), `range/boundary-row-group` (52), `range/end-at-key` (46), `range/seek-key` (135), `range/start-just-above-key` (75), `range/whole-dataset` (3), `refusals-read/fault` (4), `repeated/boundaries` (42), `validate-profile/fault-at-lowest-level` (7)
 
 ## KEY-7
 
-- Evidence: 404 positive, 2 negative.
-- Core: `repeated/core/seek-group-start`, `repeated/core/lookup-whole-group`, `repeated/core/resume-inside-group`, `repeated/core/resume-across-part`, `repeated/core/exclusive-whole-group` and 4 more
-- Generated: `repeated/boundaries` (84), `repeated/pagination` (312), `validate-structural/fault-at-lowest-level` (1)
+- Evidence: 454 positive, 2 negative.
+- Core: `repeated/core/seek-group-start`, `repeated/core/lookup-whole-group`, `repeated/core/resume-inside-group`, `repeated/core/resume-across-part`, `repeated/core/exclusive-whole-group` and 6 more
+- Generated: `repeated/boundaries` (84), `repeated/cursor-every-row` (48), `repeated/pagination` (312), `validate-structural/fault-at-lowest-level` (1)
 
 ## KEY-4
 
@@ -220,9 +220,9 @@ No case. gap: no encrypted fixture yet.
 
 ## ROUTE-1
 
-- Evidence: 92 positive, 0 negative.
+- Evidence: 140 positive, 0 negative.
 - Core: `repeated/core/seek-group-start`, `repeated/core/lookup-whole-group`, `repeated/core/resume-inside-group`, `repeated/core/resume-across-part`, `repeated/core/exclusive-whole-group` and 3 more
-- Generated: `repeated/boundaries` (84)
+- Generated: `repeated/boundaries` (84), `repeated/cursor-every-row` (48)
 
 ## COL-1
 
@@ -292,8 +292,8 @@ No case. writer's choice: not a reader obligation.
 
 ## QUERY-1
 
-- Evidence: 11 positive, 25 negative.
-- Core: `list/delimiter/ff-delim-xff`, `list/delimiter/utf8-cont-byte`, `requests/basic/range-limit-0`, `requests/basic/range-limit-negative`, `requests/basic/range-limit-fraction` and 7 more
+- Evidence: 11 positive, 26 negative.
+- Core: `list/delimiter/ff-delim-xff`, `list/delimiter/utf8-cont-byte`, `repeated/core/range-prefix-cursor-invalid`, `requests/basic/range-limit-0`, `requests/basic/range-limit-negative` and 8 more
 - Generated: `list/delimiter-semantics` (3), `list/other-datasets` (6), `repeated/invalid-cursors` (7), `requests/malformed` (8)
 
 ## QUERY-2
@@ -310,8 +310,8 @@ No case. writer's choice: not a reader obligation.
 
 ## RANGE-1
 
-- Evidence: 727 positive, 0 negative.
-- Core: `open/empty-range`, `prefix/multipart/00`, `prefix/multipart/07`, `prefix/binary-keys/04`, `prefix/binary-keys/09` and 32 more
+- Evidence: 728 positive, 0 negative.
+- Core: `open/empty-range`, `prefix/multipart/00`, `prefix/multipart/07`, `prefix/binary-keys/04`, `prefix/binary-keys/09` and 33 more
 - Generated: `pagination/range-scenario` (25), `prefix/prefix-only` (31), `prefix/prefix-with-bounds` (12), `range/boundary-page` (100), `range/boundary-part` (32), `range/boundary-row-group` (52), `range/bounds` (11), `range/end-at-key` (46), `range/seek-key` (135), `range/seek-with-columns` (77), `range/start-just-above-key` (75), `range/whole-dataset` (10), `repeated/boundaries` (84)
 
 ## RANGE-2
@@ -322,39 +322,39 @@ No case. writer's choice: not a reader obligation.
 
 ## LIST-2
 
-- Evidence: 53 positive, 0 negative.
-- Core: `list/delimiter/root`, `list/delimiter/a-slash`, `list/delimiter/a-slash-slash`, `list/delimiter/slash`, `list/delimiter/ff-delim-xff` and 9 more
-- Generated: `list/bounds-and-after` (12), `list/delimiter-semantics` (14), `list/other-datasets` (13)
+- Evidence: 51 positive, 0 negative.
+- Core: `list/delimiter/root`, `list/delimiter/a-slash`, `list/delimiter/a-slash-slash`, `list/delimiter/slash`, `list/delimiter/ff-delim-xff` and 8 more
+- Generated: `list/bounds-and-after` (11), `list/delimiter-semantics` (14), `list/other-datasets` (13)
 
 ## LIST-3
 
-- Evidence: 60 positive, 0 negative.
-- Core: `list/delimiter/root`, `list/delimiter/a-slash`, `list/delimiter/a-slash-slash`, `list/delimiter/slash`, `list/delimiter/ff-delim-xff` and 10 more
-- Generated: `list/bounds-and-after` (12), `list/delimiter-semantics` (14), `list/other-datasets` (13), `projection/absent-and-unknown` (1), `projection/annotated` (1), `projection/column-combination` (1), `projection/key-column` (3)
+- Evidence: 58 positive, 0 negative.
+- Core: `list/delimiter/root`, `list/delimiter/a-slash`, `list/delimiter/a-slash-slash`, `list/delimiter/slash`, `list/delimiter/ff-delim-xff` and 9 more
+- Generated: `list/bounds-and-after` (11), `list/delimiter-semantics` (14), `list/other-datasets` (13), `projection/absent-and-unknown` (1), `projection/annotated` (1), `projection/column-combination` (1), `projection/key-column` (3)
 
 ## LIST-4
 
-- Evidence: 55 positive, 0 negative.
-- Core: `list/delimiter/root`, `list/delimiter/a-slash`, `list/delimiter/a-slash-slash`, `list/delimiter/slash`, `list/delimiter/ff-delim-xff` and 10 more
-- Generated: `list/bounds-and-after` (12), `list/delimiter-semantics` (14), `list/other-datasets` (13), `open/empty-dataset` (1)
+- Evidence: 53 positive, 0 negative.
+- Core: `list/delimiter/root`, `list/delimiter/a-slash`, `list/delimiter/a-slash-slash`, `list/delimiter/slash`, `list/delimiter/ff-delim-xff` and 9 more
+- Generated: `list/bounds-and-after` (11), `list/delimiter-semantics` (14), `list/other-datasets` (13), `open/empty-dataset` (1)
 
 ## LIST-5
 
-- Evidence: 73 positive, 0 negative.
-- Core: `list/delimiter/after-inside-prefix`, `list/delimiter/after-inside-prefix-continuation`, `list/delimiter/continuation-without-after`, `pagination/list/list-bounds/root-2f-limit1/page-00`, `pagination/list/list-bounds/root-2f-limit1/page-01` and 6 more
-- Generated: `list/bounds-and-after` (6), `pagination/list-scenario` (56)
+- Evidence: 9 positive, 0 negative.
+- Core: `list/delimiter/after-inside-prefix`, `list/delimiter/after-inside-prefix-continuation`, `repeated/core/listing-row-cursor-inside-rollup`
+- Generated: `list/bounds-and-after` (6)
 
 ## LIST-7
 
-- Evidence: 17 positive, 0 negative.
+- Evidence: 16 positive, 0 negative.
 - Core: `list/delimiter/after-inside-prefix`, `list/delimiter/after-inside-prefix-continuation`, `list/delimiter/end-at-prefix`, `list/list-bounds/worked-example`, `list/list-bounds/worked-example-without-a-a`
-- Generated: `list/bounds-and-after` (12)
+- Generated: `list/bounds-and-after` (11)
 
 ## PAGE-1
 
-- Evidence: 322 positive, 7 negative.
-- Core: `repeated/core/seek-group-start`, `repeated/core/lookup-whole-group`, `repeated/core/resume-inside-group`, `repeated/core/resume-across-part`, `repeated/core/exclusive-whole-group` and 5 more
-- Generated: `repeated/invalid-cursors` (7), `repeated/pagination` (312)
+- Evidence: 445 positive, 8 negative.
+- Core: `list/delimiter/after-inside-prefix`, `list/delimiter/after-inside-prefix-continuation`, `pagination/list/list-bounds/root-2f-limit1/page-00`, `pagination/list/list-bounds/root-2f-limit1/page-01`, `pagination/list/list-bounds/root-2f-limit1/page-02` and 19 more
+- Generated: `list/bounds-and-after` (6), `pagination/list-scenario` (56), `repeated/cursor-every-row` (48), `repeated/invalid-cursors` (7), `repeated/pagination` (312)
 
 ## LIST-6
 
@@ -364,9 +364,9 @@ No case. writer's choice: not a reader obligation.
 
 ## PAGE-2
 
-- Evidence: 322 positive, 0 negative.
-- Core: `repeated/core/seek-group-start`, `repeated/core/lookup-whole-group`, `repeated/core/resume-inside-group`, `repeated/core/resume-across-part`, `repeated/core/exclusive-whole-group` and 5 more
-- Generated: `repeated/pagination` (312)
+- Evidence: 386 positive, 0 negative.
+- Core: `pagination/list/list-bounds/root-2f-limit1/page-00`, `pagination/list/list-bounds/root-2f-limit1/page-01`, `pagination/list/list-bounds/root-2f-limit1/page-02`, `pagination/list/list-bounds/root-2f-limit1/page-03`, `pagination/list/delimiter/a/-2f-limit2/page-00` and 13 more
+- Generated: `pagination/list-scenario` (56), `repeated/pagination` (312)
 
 ## CHECK-1
 

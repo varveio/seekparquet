@@ -36,8 +36,7 @@ class Dataset:
 
     def __init__(self, doc):
         self.name = doc["dataset"]
-        key = doc.get("key", {"column": "key", "unique": True})
-        self.key_column, self.unique = key["column"], key["unique"]
+        self.key_column, self.unique = doc["key"]["column"], doc["key"]["unique"]
         self.types = {c["name"]: c["type"] for c in doc["columns"]}
         allcols = [c["name"] for c in doc["columns"]]
         self.rows = []  # (key bytes, {column: value}, set of columns present in the row's part)
@@ -83,14 +82,14 @@ class Dataset:
             if c in self.types and self.types[c].startswith(NESTED_TYPES):
                 raise Unsupported("unsupported_projection")
 
-    def range(self, prefix=None, start=None, start_exclusive=False, end=None, limit=None, columns=(), after=None):
-        """RANGE-1, RANGE-2, QUERY-2."""
+    def range(self, prefix=None, start=None, start_exclusive=False, end=None, limit=None, columns=(), cursor=None):
+        """RANGE-1, RANGE-2, QUERY-2, PAGE-1 (row cursors only)."""
         columns = list(columns)
         self._check(limit, columns)
-        cursor_allows(after, b"", 0)  # validate even on an empty dataset
+        after = cursor_filter(cursor, prefix_ok=False)  # validated even on an empty dataset
         out = []
         for k, offset, v, present in self.positioned():
-            if not cursor_allows(after, k, offset):
+            if not after(k, offset):
                 continue
             if prefix is not None and not k.startswith(prefix):
                 continue
@@ -103,31 +102,23 @@ class Dataset:
                 break
         return out
 
-    def list(self, prefix=b"", delimiter=None, after=None, continuation=False, end=None, limit=None, columns=()):
-        """LIST-1 to LIST-7."""
+    def list(self, prefix=b"", delimiter=None, cursor=None, end=None, limit=None, columns=()):
+        """LIST-2 to LIST-7, PAGE-1."""
         columns = list(columns)
         if delimiter is None or len(delimiter) != 1:
             raise InvalidRequest("delimiter must be exactly one byte")
         self._check(limit, columns)
-        if after is not None and not isinstance(after, bytes):
-            cursor_allows(after, b"", 0)
+        after = cursor_filter(cursor, prefix_ok=True)
         out, seen = [], set()
         for k, offset, v, present in self.positioned():
-            # candidate keys (LIST-7): begin with prefix, > after, < end
-            if not k.startswith(prefix):
-                continue
-            if isinstance(after, dict) and not cursor_allows(after, k, offset):
-                continue
-            if isinstance(after, bytes) and not k > after:
+            # candidate rows (section 6.3): begin with prefix, after the cursor, < end
+            if not k.startswith(prefix) or not after(k, offset):
                 continue
             if end is not None and not k < end:
                 continue
             i = k.find(delimiter, len(prefix))
             if i >= 0:
-                cp = k[: i + 1]  # LIST-2
-                if ((continuation and isinstance(after, bytes) and cp <= after) or
-                    (isinstance(after, dict) and "prefix_base64" in after and cp <= base64.b64decode(after["prefix_base64"]))):  # LIST-5
-                    continue
+                cp = k[: i + 1]  # LIST-2; returned once if any candidate rolls up to it (LIST-5)
                 if cp in seen:
                     continue
                 seen.add(cp)
@@ -153,20 +144,26 @@ def successor(p: bytes):
     return q[:-1] + bytes([q[-1] + 1])
 
 
-def cursor_allows(after, key, offset):
-    if after is None:
-        return True
-    if not isinstance(after, dict):
+def cursor_filter(cursor, prefix_ok):
+    """PAGE-1: a predicate on (key, offset) that is true for rows after the cursor.
+
+    A row cursor (k, n) admits keys > k, and key k at offsets > n. A prefix cursor c (listings only) admits keys
+    > c that do not begin with c.
+    """
+    if cursor is None:
+        return lambda key, offset: True
+    if not isinstance(cursor, dict):
         raise InvalidRequest("cursor must be tagged")
-    if set(after) == {"key_base64", "offset"}:
-        n = after["offset"]
+    if set(cursor) == {"key_base64", "offset"}:
+        n = cursor["offset"]
         if type(n) is not int or n < 0 or n > (1 << 63) - 1:
             raise InvalidRequest("invalid cursor offset")
-        k = cursor_bytes(after["key_base64"])
-        return key > k or key == k and offset > n
-    if set(after) == {"prefix_base64"}:
-        return key > cursor_bytes(after["prefix_base64"])
-    raise InvalidRequest("invalid cursor tag")
+        k = cursor_bytes(cursor["key_base64"])
+        return lambda key, offset: key > k or key == k and offset > n
+    if set(cursor) == {"prefix_base64"} and prefix_ok:
+        c = cursor_bytes(cursor["prefix_base64"])
+        return lambda key, offset: key > c and not key.startswith(c)
+    raise InvalidRequest("invalid cursor")
 
 
 def cursor_bytes(text):

@@ -127,7 +127,10 @@
       "dataset": "datasets/basic",
       "raw_request": {
         "op": "list",
-        "after_base64": "@@@@",
+        "after": {
+          "key_base64": "@@@@",
+          "offset": 0
+        },
         "delimiter_base64": "Lw==",
         "limit": 10
       },
