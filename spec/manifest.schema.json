@@ -23,7 +23,8 @@
     },
     "draft_revision": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "maximum": 9223372036854775807
     },
     "schema_id": {
       "type": "string",

@@ -21,3 +21,8 @@ application {
     applicationName = "seekparquet-conformance"
     mainClass.set("io.varve.seekparquet.conformance.Adapter")
 }
+
+// Shared fixtures exercise adapter paging, including repeated-key and prefix cursors.
+tasks.test {
+    systemProperty("seekparquet.conformance", rootProject.projectDir.resolve("../conformance").canonicalPath)
+}
