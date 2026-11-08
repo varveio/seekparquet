@@ -14,7 +14,7 @@ package io.varve.seekparquet;
  * @param maxPageBytes the largest page, compressed or uncompressed, dictionary pages included
  * @param maxPageValues the most values in one page
  * @param maxResultEntries the most entries requested in one result
- * @param maxIndexMemoryBytes the dataset-wide retained decoded-index budget
+ * @param maxIndexMemoryBytes the dataset-wide retained decoded-index and exact-first-key budget
  */
 public record Limits(
         int maxManifestBytes, int maxParts, int maxFooterBytes, int maxIndexBytes, int maxPageBytes, int maxPageValues, int maxResultEntries, long maxIndexMemoryBytes) {
@@ -71,7 +71,7 @@ public record Limits(
      * @param maxPageBytes the largest page
      * @param maxPageValues the most values in a page
      * @param maxResultEntries the largest request limit
-     * @param maxIndexMemoryBytes the retained decoded-index budget
+     * @param maxIndexMemoryBytes the retained decoded-index and exact-first-key budget
      */
     public Limits {
         if (maxManifestBytes <= 0 || maxParts <= 0 || maxFooterBytes <= 0 || maxIndexBytes <= 0 || maxPageBytes <= 0

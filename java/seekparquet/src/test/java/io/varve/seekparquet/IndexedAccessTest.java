@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -30,6 +31,7 @@ class IndexedAccessTest {
     static final class CountingStorage implements DatasetStorage {
         final LocalStorage local;
         final AtomicInteger reads = new AtomicInteger();
+        final AtomicLong bytes = new AtomicLong();
 
         CountingStorage(Path root) {
             local = LocalStorage.of(root);
@@ -62,6 +64,7 @@ class IndexedAccessTest {
                 @Override
                 public ByteBuffer read(long position, int length, Cancellation c) throws IOException {
                     reads.incrementAndGet();
+                    bytes.addAndGet(length);
                     return inner.read(position, length, c);
                 }
 
@@ -94,8 +97,9 @@ class IndexedAccessTest {
             List<Row> rows = ds.range(RangeQuery.builder().start(Bytes.utf8("p2/dir050/file02000")).limit(1).columns("size").build());
             assertEquals(Bytes.utf8("p2/dir050/file02000"), rows.getFirst().key());
             assertEquals(new Value.Int64(2000), rows.getFirst().values().getFirst());
-            // Scan row-group upper bounds (index loads), then read a key page, value index and value page.
-            assertTrue(storage.reads.get() <= 8, "a point seek made " + storage.reads.get() + " reads");
+            // Five row-group indexes use two narrow reads each instead of overfetching the gaps;
+            // then read a key page, value index and value page.
+            assertTrue(storage.reads.get() <= 13, "a point seek made " + storage.reads.get() + " reads");
 
             // A listing of 100 directories of 40 keys each skips to each directory's successor:
             // far fewer reads than the 200 key pages of the part.

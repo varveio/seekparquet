@@ -3,8 +3,10 @@
 
 package io.varve.seekparquet;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import org.apache.parquet.column.Dictionary;
 
 /**
@@ -33,15 +35,38 @@ final class ReadContext {
         }
     }
 
-    /**
-     * The last key of the last key page decoded, in dataset order. A request decodes key pages in
-     * ascending dataset position only, so checking each new page's first key against it checks the
-     * page against every page decoded before it (CHECK-2).
-     */
-    byte[] lastKey;
+    /** Boundaries of all pages decoded by this request, including out-of-order seek probes. */
+    private final TreeMap<PagePosition, PageBounds> keyPages = new TreeMap<>();
 
-    /** Where {@link #lastKey} came from, for diagnostics. */
-    String lastKeyWhere;
+    private record PagePosition(int part, int group, int page) implements Comparable<PagePosition> {
+        @Override
+        public int compareTo(PagePosition other) {
+            int c = Integer.compare(part, other.part);
+            if (c == 0) c = Integer.compare(group, other.group);
+            return c == 0 ? Integer.compare(page, other.page) : c;
+        }
+    }
+
+    private record PageBounds(byte[] first, byte[] last) {}
+
+    void checkKeyPage(PartFile part, int group, int page, byte[][] keys) {
+        PagePosition position = new PagePosition(part.ordinal, group, page);
+        var before = keyPages.lowerEntry(position);
+        var after = keyPages.higherEntry(position);
+        byte[] first = keys[0];
+        byte[] last = keys[keys.length - 1];
+        if ((before != null && outOfOrder(before.getValue().last(), first, part.unique))
+                || (after != null && outOfOrder(last, after.getValue().first(), part.unique))) {
+            throw new RefusalException(RefusalCode.KEY_ORDER, part.name,
+                    "row group " + group + " key page " + page + " is out of order with another decoded page");
+        }
+        keyPages.put(position, new PageBounds(first, last));
+    }
+
+    private static boolean outOfOrder(byte[] a, byte[] b, boolean unique) {
+        int c = Arrays.compareUnsigned(a, b);
+        return c > 0 || (unique && c == 0);
+    }
 
     ReadContext(Cancellation cancellation, Limits limits) {
         this.cancellation = cancellation;

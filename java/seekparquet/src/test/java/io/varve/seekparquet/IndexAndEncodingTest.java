@@ -23,9 +23,10 @@ class IndexAndEncodingTest {
         OffsetIndex offsets = new OffsetIndex(List.of(new PageLocation(10, 10, 0), new PageLocation(20, 10, 1),
                 new PageLocation(30, 10, 2), new PageLocation(40, 10, 3)));
         KeyIndex index = KeyIndex.check(columns, offsets, 4, 10, 50, true);
-        assertEquals(0, index.pageFor(0, new byte[] {'c'}));
-        assertEquals(2, index.pageFor(1, new byte[] {'c'}));
-        assertEquals(4, index.pageFor(0, new byte[] {(byte) 255}));
+        assertEquals(0, index.pageFor(0, new byte[] {'c'}, false));
+        assertEquals(2, index.pageFor(1, new byte[] {'c'}, false));
+        assertEquals(3, index.pageFor(1, new byte[] {'c'}, true));
+        assertEquals(4, index.pageFor(0, new byte[] {(byte) 255}, false));
     }
 
     @Test

@@ -17,7 +17,7 @@ final class Queries {
     /**
      * RANGE-1: seeks to the effective lower bound (start intersected with the prefix) and reads
      * forward until the effective upper bound or the limit. Value pages are decoded only for the rows
-     * returned, and no key page beyond the last row returned is decoded.
+     * returned. Row-group routing may probe key pages beyond the returned interval.
      */
     static List<Row> range(PartFile[] parts, RangeQuery q, ReadContext ctx) {
         byte[] prefix = q.prefix().unsafeArray();
@@ -43,6 +43,9 @@ final class Queries {
         KeyCursor cursor = new KeyCursor(parts, ctx);
         List<Row> rows = new ArrayList<>(Math.min(q.limit(), 1024));
         boolean ok = cursor.seek(start, exclusive);
+        if (ok && after instanceof Continuation.RowPosition r) {
+            ok = cursor.resume(r);
+        }
         while (ok) {
             byte[] key = cursor.key();
             if ((end != null && Arrays.compareUnsigned(key, end) >= 0) || !startsWith(key, prefix)) {
@@ -95,6 +98,9 @@ final class Queries {
         KeyCursor cursor = new KeyCursor(parts, ctx);
         List<ListEntry> out = new ArrayList<>(Math.min(q.limit(), 1024));
         boolean ok = cursor.seek(from, exclusive);
+        if (ok && tagged instanceof Continuation.RowPosition r) {
+            ok = cursor.resume(r);
+        }
         while (ok && out.size() < q.limit()) {
             byte[] key = cursor.key();
             if ((to != null && Arrays.compareUnsigned(key, to) >= 0) || !startsWith(key, prefix)) {
