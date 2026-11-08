@@ -1,6 +1,6 @@
 # seekparquet for Go
 
-A Go reader for [SeekParquet](../spec/format-1.md) datasets: ordinary Parquet files sorted by one
+A Go reader and writer for [SeekParquet](../spec/format-1.md) datasets: ordinary Parquet files sorted by one
 byte-string key column named by the manifest, split into key-disjoint parts and committed by a
 `manifest.json`. It finds the first row at or after a key, reads key ranges and prefixes, and lists a
 prefix with delimiter rollups, by reading the manifest, the footers, the key column's page index and a
@@ -49,6 +49,28 @@ for {
 
 Runnable examples are in [example_test.go](example_test.go).
 
+## Writing
+
+```go
+schema := parquet.SchemaOf(new(Object)) // a top-level REQUIRED []byte or string key column
+err := local.WriteDir(ctx, "/data/listing", schema, sortedRows, local.DatasetOptions{
+	Part:      write.PartOptions{Key: seekparquet.Key{Column: "key", Unique: true}, SchemaID: "example/objects/v1"},
+	PartBytes: 256 << 20,
+})
+```
+
+`WriteDir` writes rows already in key order (a `parquet.RowReader`) as a new dataset: parts named
+`data/part-NNNNN.parquet`, each ended at the first new key past the size target so that a group of equal
+keys never crosses parts, each synced into place, then the manifest, with every part's SHA-256. A
+producer with its own part rotation drives the pieces itself: `write.NewPart` streams one part and
+returns its `PartInfo` from `Seal`; `local.PublishPart` installs it; `local.Commit` publishes the
+manifest. The part writer enforces the profile (key column, key order, page indexes with exact bounds,
+`sorting_columns`, stamps, column orders) and cannot be configured out of it.
+`seekparquet.MarshalManifest` and `ParseManifest` write and read a manifest; `InspectFooter` and
+`InspectKeyPages` read a part's footer and key page index without reading its pages.
+
+The recipe, the guarantees and what `WriteDir` does not do are in [docs/producing.md](../docs/producing.md).
+
 ## Keys and pagination
 
 The manifest declares `key: {"column": "<name>", "unique": true|false}`; the footer stamps must match
@@ -66,8 +88,10 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `Metadata` and `Close`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Options` and `Limits`; refusal codes and errors |
-| `internal/...` | the manifest and Thrift checkers, the test-data writer, and the conformance adapter (`internal/cmd/conformance`) for the [conformance harness](../conformance/protocol.md) |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `Metadata` and `Close`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Options` and `Limits`; refusal codes and errors; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
+| `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
+| `internal/...` | the manifest and Thrift checkers, the test-data writer, the sample datasets (`internal/samples`, written by `internal/cmd/samples`), and the conformance adapter (`internal/cmd/conformance`) for the [conformance harness](../conformance/protocol.md) |
 
 To run the conformance suite from the repository root:
 
