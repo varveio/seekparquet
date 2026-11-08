@@ -49,6 +49,8 @@ representative performance benchmark**. No files are written by this example.
 
 ## Next steps and current limits
 
+- Read [read costs and writer guidance](read-costs.md) before choosing part, row-group and page
+  sizes. This tiny example demonstrates semantics, not cold remote performance.
 - Read the [Go API and examples](../go/README.md) for ranges, projected values,
   repeated keys, limits, and refusal errors. Run the quickstart's regression test
   with `go -C go test ./examples/quickstart` from the repository root.

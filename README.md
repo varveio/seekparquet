@@ -17,7 +17,9 @@ the profile can also:
   keys under them;
 - page through results and resume exactly where a page ended;
 
-by reading the manifest, part footers, a page index and a few pages, with no query engine and no catalog.
+using the manifest, part footers and page indexes, with no query engine and no catalog. Selective reads
+can touch only a few data pages, but having an index alone does not guarantee that cost: opening checks
+every part, and coarse key bounds can require much more decoding. See [read costs and writer guidance](docs/read-costs.md).
 
 ## Try it in five minutes
 
