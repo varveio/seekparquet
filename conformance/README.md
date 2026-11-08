@@ -37,6 +37,9 @@ python3 harness/run.py --adapter "..." --subset core                            
 python3 harness/run.py --adapter "..." --json > report.json
 ```
 
+The Go adapter (`go/internal/cmd/conformance`) claims the reader target and all four validator targets, backed
+by the Go module's `Validate`; CI runs it over the full suite, so every validator case runs against it.
+
 Three selections: **smoke** (30 core ids) for bring-up, **core** (about 150) for learning and ordinary
 development, and **all** (core plus generated) for CI and qualification. Smoke and core runs, like filtered
 runs, are partial and never qualify a target. The report counts results by group, by family, by part

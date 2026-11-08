@@ -52,11 +52,12 @@ internally, external indexes over Parquet, and table formats.
 
 | Language | Status | Supports |
 |---|---|---|
-| [Go](go/README.md) | pre-release | format 1 draft revision 1: open, range, list, projection |
+| [Go](go/README.md) | pre-release | format 1 draft revision 1: open, range, list, projection; validation at the structural, profile, full and digest levels (`seekparquet validate`) |
 | [Java](java/README.md) | pre-release; not yet published | format 1 draft revision 1: open, range, list, projection |
 
-Both implementations are readers, not production dataset writers or validators (§8 of the specification).
-The shared conformance suite checks reader semantics; it does not yet certify indexed-access efficiency.
+Both implementations read; the Go module also validates (§8 of the specification) and qualifies the suite's
+four validator targets. Neither is a production dataset writer. The shared conformance suite checks reader
+semantics and validation results; it does not yet certify indexed-access efficiency.
 See the [Go usage examples](go/example_test.go) and [Java usage and build instructions](java/README.md)
 to get started, and the [Java qualification report](java/QUALIFICATION.md) for its Parquet library choice
 and limitations. Go requires Go 1.26 or later; Java requires JDK 21 or later.

@@ -1,10 +1,10 @@
 // Copyright 2026 Varve Systems Ltd
 // SPDX-License-Identifier: Apache-2.0
 
-// Package seekparquet reads SeekParquet datasets: ordinary Parquet files
-// sorted by one manifest-named byte-string key column, split into
-// key-disjoint parts and committed by a manifest.json (SeekParquet format
-// 1, draft revision 1, stamped format_version 0).
+// Package seekparquet reads and validates SeekParquet datasets: ordinary
+// Parquet files sorted by one manifest-named byte-string key column, split
+// into key-disjoint parts and committed by a manifest.json (SeekParquet
+// format 1, draft revision 1, stamped format_version 0).
 //
 // A read is routed to a part by its manifest bounds and to a row group by
 // the decoded first keys of the row groups; the key column's ColumnIndex
@@ -39,8 +39,18 @@
 //
 // What is not certified: rows a request does not decode (CHECK-4), values
 // beyond decoding them, the parts' SHA-256 digests, and that the files are
-// unchanged after opening. Full certification is validation, which this
-// package does not do.
+// unchanged after opening. Full certification is validation.
+//
+// # Validation
+//
+// Validate and ValidateDir check a dataset at the specification's levels
+// (§8): structural, profile and full, each requiring the one before, and
+// digest on its own. Every column chunk a level checks is walked page
+// header by page header from its start, and its indexes are compared with
+// the pages found, so that no index decides what is visited. The Report
+// says, per level, whether it completed, failed (with the refusal code and
+// where) or is incomplete: an unsupported feature, a limit or a storage
+// error, never a statement about the data.
 //
 // # Equal keys and pagination
 //
