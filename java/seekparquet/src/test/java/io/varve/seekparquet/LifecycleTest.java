@@ -132,7 +132,7 @@ class LifecycleTest {
     void closeCancelsRequestsInProgressAndClosesSources() throws Exception {
         GatedStorage storage = new GatedStorage(dataset(3, 4));
         Dataset ds = Dataset.open(storage);
-        assertEquals(3, storage.open.get());
+        assertEquals(0, storage.open.get());
         try (ExecutorService ex = Executors.newSingleThreadExecutor()) {
             storage.gate = new CountDownLatch(1);
             Future<List<Row>> f = ex.submit(() -> ds.range(RangeQuery.all(100)));
@@ -147,15 +147,17 @@ class LifecycleTest {
     }
 
     @Test
-    void aFailedOpenClosesEverySourceItOpened() throws Exception {
+    void aFailedVerifyClosesTheRefusedPartAndCloseTheRest() throws Exception {
         Path root = dataset(4, 3);
         java.nio.file.Files.write(root.resolve("data/part-00002.parquet"), new byte[] {0}, java.nio.file.StandardOpenOption.APPEND);
         for (int concurrency : new int[] {1, 4}) {
             GatedStorage storage = new GatedStorage(root);
-            RefusalException e = assertThrows(RefusalException.class,
-                    () -> Dataset.open(storage, OpenOptions.DEFAULT.withOpenConcurrency(concurrency), Cancellation.none()));
+            Dataset ds = Dataset.open(storage, OpenOptions.DEFAULT.withVerifyConcurrency(concurrency), Cancellation.none());
+            assertEquals(0, storage.open.get());
+            RefusalException e = assertThrows(RefusalException.class, ds::verify);
             assertEquals(RefusalCode.PART_MISMATCH, e.code());
             assertEquals(Optional.of("data/part-00002.parquet"), e.part());
+            ds.close();
             assertEquals(0, storage.open.get());
         }
     }

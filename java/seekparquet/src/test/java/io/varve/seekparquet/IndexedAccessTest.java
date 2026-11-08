@@ -27,9 +27,14 @@ class IndexedAccessTest {
     @TempDir
     Path tmp;
 
-    /** Counts the storage reads after open. */
+    /**
+     * Counts the storage reads. A part's footer reads, made when a request first touches the part
+     * (CHECK-1), are counted in {@code footers}, apart from the reads the query itself makes: the tail
+     * window, and a footer longer than it, which ends where the footer length begins.
+     */
     static final class CountingStorage implements DatasetStorage {
         final LocalStorage local;
+        final AtomicInteger footers = new AtomicInteger();
         final AtomicInteger reads = new AtomicInteger();
         final AtomicLong bytes = new AtomicLong();
 
@@ -63,6 +68,12 @@ class IndexedAccessTest {
 
                 @Override
                 public ByteBuffer read(long position, int length, Cancellation c) throws IOException {
+                    long end = position + length;
+                    if (end == inner.size() && length == Math.min(inner.size(), PartFile.TAIL_WINDOW)
+                            || end == inner.size() - 8 && length > PartFile.TAIL_WINDOW - 8) {
+                        footers.incrementAndGet();
+                        return inner.read(position, length, c);
+                    }
                     reads.incrementAndGet();
                     bytes.addAndGet(length);
                     return inner.read(position, length, c);
@@ -91,15 +102,14 @@ class IndexedAccessTest {
         spec.rowsPerGroup = 500;
         CountingStorage storage = new CountingStorage(TestDatasets.write(tmp, spec, parts));
         try (Dataset ds = Dataset.open(storage)) {
-            assertEquals(4, storage.reads.get(), "open reads one footer per part");
-
-            storage.reads.set(0);
+            assertEquals(0, storage.footers.get() + storage.reads.get(), "open reads no part");
             List<Row> rows = ds.range(RangeQuery.builder().start(Bytes.utf8("p2/dir050/file02000")).limit(1).columns("size").build());
             assertEquals(Bytes.utf8("p2/dir050/file02000"), rows.getFirst().key());
             assertEquals(new Value.Int64(2000), rows.getFirst().values().getFirst());
             // Five row-group indexes use two narrow reads each instead of overfetching the gaps;
             // then read a key page, value index and value page.
             assertTrue(storage.reads.get() <= 13, "a point seek made " + storage.reads.get() + " reads");
+            assertEquals(1, storage.footers.get(), "a point seek checks the one part it routes to");
 
             // A listing of 100 directories of 40 keys each skips to each directory's successor:
             // far fewer reads than the 200 key pages of the part.
@@ -107,6 +117,7 @@ class IndexedAccessTest {
             List<ListEntry> dirs = ds.list(ListQuery.builder((byte) '/').prefix(Bytes.utf8("p1/")).limit(1000).build());
             assertEquals(100, dirs.size());
             assertTrue(storage.reads.get() < 140, "a 100-directory listing made " + storage.reads.get() + " reads");
+            assertEquals(2, storage.footers.get(), "a listing of one part's prefix checks that part");
         }
     }
 }

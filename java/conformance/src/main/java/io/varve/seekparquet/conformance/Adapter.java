@@ -108,10 +108,18 @@ public final class Adapter {
                         }
                         out.append('}');
                     }
-                    out.append("],\"targets\":[\"reader\"],\"capabilities\":[\"open\",\"range\",\"list\",\"projection\"]}");
+                    out.append("],\"targets\":[\"reader\"],\"capabilities\":[\"open\",\"range\",\"list\",\"projection\",\"verify\"]}");
                 }
                 case "open" -> {
+                    // A fresh handle: part checks kept by an earlier one do not carry over.
+                    if (req.get("dataset") instanceof String path && open.remove(path) instanceof Dataset held) {
+                        held.close();
+                    }
                     dataset(req);
+                    out.append(response(id, "ok")).append('}');
+                }
+                case "verify" -> {
+                    dataset(req).verify();
                     out.append(response(id, "ok")).append('}');
                 }
                 case "range" -> {

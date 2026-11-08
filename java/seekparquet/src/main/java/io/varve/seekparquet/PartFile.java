@@ -38,8 +38,8 @@ import org.apache.parquet.format.SchemaElement;
 import org.apache.parquet.format.SortingColumn;
 
 /**
- * One opened part: its source, its footer checked on open (CHECK-1), and the key page index of each
- * row group, loaded and checked on first use (CHECK-2). Thread-safe: the footer is never modified
+ * One opened part: its source, its footer checked when a request first touches the part (CHECK-1),
+ * and the key page index of each row group, loaded and checked on first use (CHECK-2). Thread-safe: the footer is never modified
  * after open, and indexes are published through atomic references.
  */
 final class PartFile implements AutoCloseable {
@@ -105,7 +105,7 @@ final class PartFile implements AutoCloseable {
     }
 
     // ------------------------------------------------------------------
-    // Opening (CHECK-1)
+    // Checking on first touch (CHECK-1)
 
     /** Opens a part and applies the CHECK-1 checks that concern it alone. Closes the source on failure. */
     static PartFile open(DatasetStorage storage, Manifest manifest, int ordinal, ReadContext ctx, IndexMemory indexMemory) {
@@ -415,6 +415,16 @@ final class PartFile implements AutoCloseable {
         byte[] out = new byte[length];
         b.duplicate().get(out);
         return out;
+    }
+
+    /** COL-3: a nested, repeated or INT96 column of this part is rejected, never answered as absent. */
+    void checkProjection(List<String> columns) {
+        for (String column : columns) {
+            if (schema.byName.containsKey(column) && !projectable.containsKey(column)) {
+                throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_PROJECTION,
+                        "column " + column + " is nested, repeated, of type INT96, or not unique in part " + name);
+            }
+        }
     }
 
     @Override

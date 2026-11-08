@@ -35,7 +35,7 @@ class CorruptionTest {
         }
         Random random = new Random(name.hashCode());
         Limits small = new Limits(1 << 20, 1000, 1 << 20, 1 << 20, 4 << 20, 1 << 20);
-        OpenOptions options = OpenOptions.DEFAULT.withLimits(small).withOpenConcurrency(1);
+        OpenOptions options = OpenOptions.DEFAULT.withLimits(small).withVerifyConcurrency(1);
         for (int round = 0; round < 150; round++) {
             Path root = tmp.resolve(name + "-" + round);
             for (Path f : files) {
@@ -53,6 +53,11 @@ class CorruptionTest {
             }
             Files.write(victim, bytes);
             try (Dataset ds = Dataset.open(io.varve.seekparquet.storage.LocalStorage.of(root), options, Cancellation.none())) {
+                try {
+                    ds.verify();
+                } catch (SeekParquetException refused) {
+                    // A part's refusal is kept and ends the reads below too; a key page's is not.
+                }
                 List<String> columns = ds.columns().stream().filter(Column::projectable).map(Column::name).toList();
                 ds.range(RangeQuery.builder().limit(100_000).columns(columns).build());
                 ds.list(ListQuery.builder((byte) '/').limit(100_000).columns(columns).build());
