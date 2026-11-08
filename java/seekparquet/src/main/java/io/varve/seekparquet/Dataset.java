@@ -21,7 +21,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -133,6 +133,9 @@ public final class Dataset implements AutoCloseable {
         } catch (NoSuchFileException e) {
             throw new RefusalException(RefusalCode.NO_MANIFEST, null, "the dataset root has no manifest.json");
         } catch (InterruptedIOException e) {
+            if (e instanceof java.net.SocketTimeoutException) {
+                throw new StorageException("read manifest.json", e);
+            }
             throw PartFile.cancelled(e);
         } catch (IOException e) {
             throw new StorageException("read manifest.json", e);
@@ -157,10 +160,11 @@ public final class Dataset implements AutoCloseable {
     private static PartFile[] openParts(DatasetStorage storage, Manifest manifest, OpenOptions options, Cancellation cancellation) {
         int n = manifest.parts().size();
         PartFile[] parts = new PartFile[n];
+        IndexMemory indexMemory = new IndexMemory(options.limits().maxIndexMemoryBytes());
         if (options.openConcurrency() == 1 || n <= 1) {
             for (int i = 0; i < n; i++) {
                 try {
-                    parts[i] = PartFile.open(storage, manifest, i, new ReadContext(cancellation, options.limits()));
+                    parts[i] = PartFile.open(storage, manifest, i, new ReadContext(cancellation, options.limits()), indexMemory);
                 } catch (RuntimeException | Error e) {
                     closeAll(Arrays.asList(parts), e);
                     throw e;
@@ -168,58 +172,59 @@ public final class Dataset implements AutoCloseable {
             }
             return parts;
         }
-        // Open concurrently; report the failure of the first part in manifest order, as a
-        // sequential open would.
+        // A bounded number of workers own their results until every worker has drained.
+        // Never cancel a Future: cancellation can discard a successfully opened resource.
         Cancellation scope = Cancellation.linkedTo(cancellation);
-        Semaphore permits = new Semaphore(options.openConcurrency());
-        List<Future<PartFile>> futures = new ArrayList<>(n);
+        AtomicInteger next = new AtomicInteger();
+        List<Future<?>> futures = new ArrayList<>();
         Throwable failure = null;
+        boolean interrupted = false;
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            for (int i = 0; i < n; i++) {
-                int ordinal = i;
+            for (int worker = 0; worker < Math.min(n, options.openConcurrency()); worker++) {
                 futures.add(executor.submit(() -> {
-                    permits.acquire();
-                    try {
-                        return PartFile.open(storage, manifest, ordinal, new ReadContext(scope, options.limits()));
-                    } finally {
-                        permits.release();
+                    for (int ordinal; (ordinal = next.getAndIncrement()) < n;) {
+                        scope.throwIfCancelled();
+                        parts[ordinal] = PartFile.open(storage, manifest, ordinal, new ReadContext(scope, options.limits()), indexMemory);
                     }
                 }));
             }
-            for (int i = 0; i < n; i++) {
-                try {
-                    parts[i] = futures.get(i).get();
-                } catch (ExecutionException e) {
-                    if (failure == null) {
-                        failure = e.getCause();
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    scope.cancel();
-                    if (failure == null) {
-                        failure = new CancellationException("interrupted");
-                    }
-                    for (int j = i; j < n; j++) {
-                        try {
-                            parts[j] = futures.get(j).get();
-                        } catch (InterruptedException | ExecutionException ignored) {
-                            // Already failing.
+            for (Future<?> future : futures) {
+                boolean done = false;
+                while (!done) {
+                    try {
+                        future.get();
+                        done = true;
+                    } catch (ExecutionException e) {
+                        if (failure == null) {
+                            failure = e.getCause();
+                        }
+                        scope.cancel();
+                        done = true;
+                    } catch (InterruptedException e) {
+                        interrupted = true;
+                        scope.cancel();
+                        if (failure == null) {
+                            failure = new CancellationException("interrupted");
                         }
                     }
-                    break;
                 }
             }
         } finally {
             scope.detach();
+            if (failure != null) {
+                closeAll(Arrays.asList(parts), failure);
+            }
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        if (failure instanceof RuntimeException re) {
+            throw re;
+        }
+        if (failure instanceof Error err) {
+            throw err;
         }
         if (failure != null) {
-            closeAll(Arrays.asList(parts), failure);
-            if (failure instanceof RuntimeException re) {
-                throw re;
-            }
-            if (failure instanceof Error err) {
-                throw err;
-            }
             throw new IllegalStateException(failure);
         }
         return parts;

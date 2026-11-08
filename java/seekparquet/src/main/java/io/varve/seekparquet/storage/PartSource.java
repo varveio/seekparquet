@@ -28,7 +28,8 @@ import org.apache.parquet.io.SeekableInputStream;
  * <p><b>Cancellation.</b> A read should observe {@code cancellation}: check it before blocking, and
  * where the underlying call can be aborted, register an {@link Cancellation#onCancel} listener that
  * aborts it. A read that ends because of cancellation throws {@link
- * java.util.concurrent.CancellationException} or {@link java.io.InterruptedIOException}.
+ * java.util.concurrent.CancellationException} or a non-timeout {@link java.io.InterruptedIOException}.
+ * A {@link java.net.SocketTimeoutException} is a storage failure, not a cancellation signal.
  *
  * <p><b>Ownership.</b> The reader closes each part it opened when the dataset is closed, or at once
  * when opening the dataset fails. {@link #close()} may be called while no read is in progress only.
@@ -43,9 +44,10 @@ public interface PartSource extends InputFile, Closeable {
 
     /** Opens an independent parquet-java stream without transferring ownership of this source.
      * @return an independently positioned stream
+     * @throws IOException if opening the stream fails
      */
     @Override
-    default SeekableInputStream newStream() {
+    default SeekableInputStream newStream() throws IOException {
         return new PositionedStream(this);
     }
 

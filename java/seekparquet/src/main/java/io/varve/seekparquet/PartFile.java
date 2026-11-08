@@ -57,6 +57,7 @@ final class PartFile implements AutoCloseable {
     final ManifestPart entry;
     final String name;
     private final PartSource source;
+    private final IndexMemory indexMemory;
     final long size;
     private final FileMetaData meta;
     final PartSchema schema;
@@ -74,7 +75,8 @@ final class PartFile implements AutoCloseable {
     private final ConcurrentHashMap<Long, Optional<ValueIndex>> valueIndexes = new ConcurrentHashMap<>();
 
     private PartFile(int ordinal, ManifestPart entry, PartSource source, FileMetaData meta, PartSchema schema, int keyLeaf, boolean utf8Key,
-            int[] groups, long[] groupRows, Map<String, ColumnSpec> projectable, boolean unique) {
+            int[] groups, long[] groupRows, Map<String, ColumnSpec> projectable, boolean unique, IndexMemory indexMemory) {
+        this.indexMemory = indexMemory;
         this.ordinal = ordinal;
         this.entry = entry;
         this.name = entry.path();
@@ -104,7 +106,7 @@ final class PartFile implements AutoCloseable {
     // Opening (CHECK-1)
 
     /** Opens a part and applies the CHECK-1 checks that concern it alone. Closes the source on failure. */
-    static PartFile open(DatasetStorage storage, Manifest manifest, int ordinal, ReadContext ctx) {
+    static PartFile open(DatasetStorage storage, Manifest manifest, int ordinal, ReadContext ctx, IndexMemory indexMemory) {
         ManifestPart entry = manifest.parts().get(ordinal);
         ctx.checkCancelled();
         PartSource source;
@@ -113,12 +115,15 @@ final class PartFile implements AutoCloseable {
         } catch (NoSuchFileException e) {
             throw refuse(RefusalCode.MISSING_PART, entry.path(), "the part does not exist");
         } catch (InterruptedIOException e) {
+            if (e instanceof java.net.SocketTimeoutException) {
+                throw new StorageException("read or open part " + entry.path(), e);
+            }
             throw cancelled(e);
         } catch (IOException e) {
             throw new StorageException("open part " + entry.path(), e);
         }
         try {
-            return open(source, manifest, ordinal, entry, ctx);
+            return open(source, manifest, ordinal, entry, ctx, indexMemory);
         } catch (RuntimeException | Error e) {
             try {
                 source.close();
@@ -129,7 +134,7 @@ final class PartFile implements AutoCloseable {
         }
     }
 
-    private static PartFile open(PartSource source, Manifest manifest, int ordinal, ManifestPart entry, ReadContext ctx) {
+    private static PartFile open(PartSource source, Manifest manifest, int ordinal, ManifestPart entry, ReadContext ctx, IndexMemory indexMemory) {
         String name = entry.path();
         long size = source.size();
         if (size != entry.bytes()) {
@@ -262,7 +267,7 @@ final class PartFile implements AutoCloseable {
             }
             projectable.put(f.name(), ColumnSpec.of(f.name(), f.leaf(), f.type(), f.typeLength(), f.repetition() == Column.Repetition.OPTIONAL));
         }
-        return new PartFile(ordinal, entry, source, meta, schema, key.leaf(), utf8Key, groups, groupRows, Map.copyOf(projectable), manifest.key().unique());
+        return new PartFile(ordinal, entry, source, meta, schema, key.leaf(), utf8Key, groups, groupRows, Map.copyOf(projectable), manifest.key().unique(), indexMemory);
     }
 
     private static FileMetaData readFooter(PartSource source, String name, long size, ReadContext ctx) {
@@ -389,8 +394,11 @@ final class PartFile implements AutoCloseable {
             if (b.remaining() != length) {
                 throw new StorageException("read part " + name, new IOException("the storage returned " + b.remaining() + " bytes for " + length));
             }
-            return b;
+            return b.duplicate();
         } catch (InterruptedIOException e) {
+            if (e instanceof java.net.SocketTimeoutException) {
+                throw new StorageException("read part " + name, e);
+            }
             throw cancelled(e);
         } catch (IOException e) {
             throw new StorageException("read part " + name, e);
@@ -460,8 +468,15 @@ final class PartFile implements AutoCloseable {
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + e.getMessage());
         }
-        keyIndexes.compareAndSet(physical, null, index);
-        return keyIndexes.get(physical);
+        synchronized (indexMemory) {
+            KeyIndex previous = keyIndexes.get(physical);
+            if (previous != null) {
+                return previous;
+            }
+            indexMemory.reserve(index.memoryBytes());
+            keyIndexes.set(physical, index);
+            return index;
+        }
     }
 
     /** Reads two byte ranges, in one read when they are close together. */
@@ -618,7 +633,7 @@ final class PartFile implements AutoCloseable {
         ColumnChunk cc = rowGroup(physical).getColumns().get(leaf);
         Optional<ValueIndex> result;
         if (!cc.isSetOffset_index_offset() || !cc.isSetOffset_index_length() || cc.getOffset_index_length() == 0) {
-            result = Optional.empty();
+            return Optional.empty();
         } else {
             long off = cc.getOffset_index_offset();
             int len = cc.getOffset_index_length();
@@ -637,8 +652,15 @@ final class PartFile implements AutoCloseable {
                 throw refuse(RefusalCode.INVALID_PARQUET, where + "its OffsetIndex is invalid: " + e.getMessage());
             }
         }
-        Optional<ValueIndex> previous = valueIndexes.putIfAbsent(cacheKey, result);
-        return previous != null ? previous : result;
+        synchronized (indexMemory) {
+            Optional<ValueIndex> previous = valueIndexes.get(cacheKey);
+            if (previous != null) {
+                return previous;
+            }
+            indexMemory.reserve(result.orElseThrow().memoryBytes());
+            valueIndexes.put(cacheKey, result);
+            return result;
+        }
     }
 
     /** {@return the value of a projected column at a row of a physical row group} */

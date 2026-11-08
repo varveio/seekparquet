@@ -214,20 +214,12 @@ public final class Adapter {
         if (prefix != null) {
             b.prefix(prefix);
         }
-        Bytes after = bytes(req, "after_base64");
-        if (after != null) {
-            b.after(after);
-        }
-        b.continuation(bool(req, "continuation"));
         Bytes end = bytes(req, "end_base64");
         if (end != null) {
             b.end(end);
         }
         Continuation tagged = cursor(req);
         if (tagged != null) {
-            if (after != null) {
-                throw new BadRequest("after and after_base64 cannot be combined");
-            }
             b.after(tagged);
         }
         return b.columns(columns(req)).build();

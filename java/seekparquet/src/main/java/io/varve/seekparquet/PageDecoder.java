@@ -171,7 +171,7 @@ final class PageDecoder {
             encoding = encoding(h.getEncoding(), where);
             int rl = h.getRepetition_levels_byte_length();
             int dl = h.getDefinition_levels_byte_length();
-            if (rl < 0 || dl < 0 || (long) rl + dl > body.remaining() || (long) rl + dl > size) {
+            if (rl != 0 || dl < 0 || (!col.optional() && dl != 0) || (long) rl + dl > body.remaining() || (long) rl + dl > size) {
                 throw new DataException("level lengths outside the page");
             }
             byte[] levels = new byte[rl + dl];
@@ -186,7 +186,7 @@ final class PageDecoder {
             if (compressed) {
                 data = Codecs.decompress(codec, values, valuesSize);
             } else {
-                data = Codecs.decompress(CompressionCodec.UNCOMPRESSED, values, values.remaining());
+                data = Codecs.decompress(CompressionCodec.UNCOMPRESSED, values, valuesSize);
             }
             valuesFrom = 0;
         } else {
@@ -199,6 +199,9 @@ final class PageDecoder {
                     nonNull--;
                 }
             }
+        }
+        if (header.getType() == PageType.DATA_PAGE_V2 && header.getData_page_header_v2().getNum_nulls() != n - nonNull) {
+            throw new DataException("the v2 null count disagrees with its definition levels");
         }
         return values(col, encoding, data, valuesFrom, n, nonNull, nulls, dictionary, limits, where);
     }
@@ -287,7 +290,7 @@ final class PageDecoder {
                 deltaByteArray(data, from, to, n, nonNull, nulls, binaries, col, limits, where);
                 return new ColumnPage(type, n, nulls, bools, ints, longs, binaries);
             }
-            ValuesReader reader = reader(col, encoding, data, from, to, nonNull, dictionary);
+            ValuesReader reader = reader(col, encoding, data, from, to, nonNull, dictionary, limits, where);
             reader.initFromPage(nonNull, ByteBufferInputStream.wrap(ByteBuffer.wrap(data, from, to - from)));
             if (binaries != null && (encoding == Encoding.PLAIN_DICTIONARY || encoding == Encoding.RLE_DICTIONARY)) {
                 // Rows that share a dictionary entry share one array, so a page of many repeated
@@ -333,7 +336,7 @@ final class PageDecoder {
                     default -> throw new IllegalStateException();
                 }
             }
-        } catch (DataException | UnsupportedFeatureException | LimitExceededException e) {
+        } catch (DataException | SeekParquetException | java.util.concurrent.CancellationException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
             throw new DataException("the page values do not decode (" + encoding + ")", e);
@@ -343,7 +346,7 @@ final class PageDecoder {
 
     /** {@return parquet-java's reader for the values, after checking the encoded stream's structure} */
     private static ValuesReader reader(
-            ColumnSpec col, Encoding encoding, byte[] data, int from, int to, int nonNull, DictionarySupplier dictionary) throws DataException {
+            ColumnSpec col, Encoding encoding, byte[] data, int from, int to, int nonNull, DictionarySupplier dictionary, Limits limits, String where) throws DataException {
         Column.Type type = col.type();
         switch (encoding) {
             case PLAIN -> {
@@ -388,14 +391,14 @@ final class PageDecoder {
                 if (type != Column.Type.INT32 && type != Column.Type.INT64) {
                     throw new DataException("DELTA_BINARY_PACKED values in a " + type + " column");
                 }
-                EncodingChecks.deltaBinaryPacked(data, from, to, nonNull);
+                EncodingChecks.deltaBinaryPacked(data, from, to, nonNull, limits, where);
                 return new DeltaBinaryPackingValuesReader();
             }
             case DELTA_LENGTH_BYTE_ARRAY -> {
                 if (type != Column.Type.BYTE_ARRAY) {
                     throw new DataException("DELTA_LENGTH_BYTE_ARRAY values in a " + type + " column");
                 }
-                EncodingChecks.deltaBinaryPacked(data, from, to, nonNull);
+                EncodingChecks.deltaBinaryPacked(data, from, to, nonNull, limits, where);
                 return new DeltaLengthByteArrayValuesReader();
             }
             default -> throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCODING, "encoding " + encoding + " for values");
@@ -410,8 +413,8 @@ final class PageDecoder {
     private static void deltaByteArray(
             byte[] data, int from, int to, int n, int nonNull, boolean[] nulls, byte[][] out, ColumnSpec col, Limits limits, String where)
             throws DataException, IOException {
-        int suffixFrom = EncodingChecks.deltaBinaryPacked(data, from, to, nonNull);
-        EncodingChecks.deltaBinaryPacked(data, suffixFrom, to, nonNull);
+        int suffixFrom = EncodingChecks.deltaBinaryPacked(data, from, to, nonNull, limits, where);
+        EncodingChecks.deltaBinaryPacked(data, suffixFrom, to, nonNull, limits, where);
         ByteBufferInputStream in = ByteBufferInputStream.wrap(ByteBuffer.wrap(data, from, to - from));
         DeltaBinaryPackingValuesReader prefixes = new DeltaBinaryPackingValuesReader();
         prefixes.initFromPage(nonNull, in);

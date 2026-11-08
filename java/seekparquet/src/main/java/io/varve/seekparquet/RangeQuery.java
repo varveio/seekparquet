@@ -54,6 +54,9 @@ public record RangeQuery(
         Objects.requireNonNull(start, "start");
         Objects.requireNonNull(end, "end");
         Objects.requireNonNull(cursor, "cursor");
+        if (cursor.orElse(null) instanceof Continuation.CommonPrefix) {
+            throw new IllegalArgumentException("a range accepts only a row cursor");
+        }
         columns = List.copyOf(columns);
         if (limit <= 0) {
             throw new IllegalArgumentException("limit " + limit + " is not a positive integer");

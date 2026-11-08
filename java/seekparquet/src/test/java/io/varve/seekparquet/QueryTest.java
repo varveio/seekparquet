@@ -140,7 +140,8 @@ class QueryTest {
         Bytes p = q.prefix();
         for (TestRow r : all) {
             Bytes k = Bytes.of(r.key());
-            if (!k.startsWith(p) || (q.after().isPresent() && k.compareTo(q.after().get()) <= 0)
+            if (!k.startsWith(p) || (q.cursor().isPresent() && (k.compareTo(q.cursor().get().bytes()) <= 0
+                    || (q.cursor().get() instanceof Continuation.CommonPrefix && k.startsWith(q.cursor().get().bytes()))))
                     || (q.end().isPresent() && k.compareTo(q.end().get()) >= 0)) {
                 continue;
             }
@@ -148,9 +149,6 @@ class QueryTest {
             ListEntry e;
             if (at >= 0) {
                 Bytes common = k.slice(0, at + 1);
-                if (q.continuation() && q.after().isPresent() && common.compareTo(q.after().get()) <= 0) {
-                    continue;
-                }
                 if (!out.isEmpty() && out.getLast().bytes().equals(common)) {
                     continue;
                 }
@@ -172,7 +170,7 @@ class QueryTest {
         }
         Bytes after = maybe(random);
         if (after != null) {
-            b.after(after).continuation(random.nextBoolean());
+            b.after(random.nextBoolean() ? new Continuation.RowPosition(after, 0) : new Continuation.CommonPrefix(after));
         }
         Bytes end = maybe(random);
         if (end != null) {
@@ -188,10 +186,7 @@ class QueryTest {
 
     private static void checkPagination(Dataset ds, List<TestRow> all, Random random) {
         for (int i = 0; i < 10; i++) {
-            ListQuery full = randomList(random, Integer.MAX_VALUE).toBuilder().continuation(false).build();
-            if (full.after().isPresent()) {
-                full = full.toBuilder().after(Bytes.empty()).build();
-            }
+            ListQuery full = randomList(random, Integer.MAX_VALUE);
             List<ListEntry> want = oracleList(all, full);
             ListQuery page = full.toBuilder().limit(1 + random.nextInt(3)).build();
             List<ListEntry> got = new ArrayList<>();

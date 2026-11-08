@@ -24,25 +24,26 @@ final class EncodingChecks {
         }
         int[] pos = {from};
         long values = 0;
-        while (pos[0] < to && values < maxValues) {
+        while (pos[0] < to) {
             long header = uleb(b, pos, to);
-            if ((header & 1) == 1) {
-                long groups = header >>> 1;
-                if (groups > (maxValues - values + 7) / 8) {
-                    throw new DataException("a bit-packed run exceeds the remaining value count");
-                }
-                long count = groups * 8;
-                if (count - 7 > maxValues - values) {
-                    throw new DataException("a bit-packed run of " + count + " values where at most " + (maxValues - values) + " remain");
-                }
-                long bytes = groups * bitWidth;
-                pos[0] = (int) Math.min(to, pos[0] + bytes);
-                values += count;
-            } else {
-                long count = header >>> 1;
-                pos[0] = (int) Math.min(to, pos[0] + (bitWidth + 7) / 8L);
-                values += count;
+            long runs = header >>> 1;
+            if (runs == 0 || values >= maxValues) {
+                throw new DataException("an empty or excess RLE run");
             }
+            boolean packed = (header & 1) != 0;
+            long remaining = maxValues - values;
+            if (packed ? runs > (remaining + 7) / 8 : runs > remaining) {
+                throw new DataException("an RLE run exceeds the remaining value count");
+            }
+            long bytes = packed ? runs * bitWidth : (bitWidth + 7) / 8;
+            if (bytes > to - pos[0]) {
+                throw new DataException("a truncated RLE run body");
+            }
+            pos[0] += (int) bytes;
+            values += packed ? runs * 8 : runs;
+        }
+        if (values < maxValues) {
+            throw new DataException("an RLE stream holds fewer values than expected");
         }
     }
 
@@ -69,20 +70,28 @@ final class EncodingChecks {
      * Walks a DELTA_BINARY_PACKED stream starting at {@code b[from]} and ending no later than {@code
      * to}, holding at most {@code maxValues} values, and returns the offset just after it.
      */
-    static int deltaBinaryPacked(byte[] b, int from, int to, long maxValues) throws DataException {
+    static int deltaBinaryPacked(byte[] b, int from, int to, long maxValues, Limits limits, String where) throws DataException {
         int[] pos = {from};
         long blockSize = uleb(b, pos, to);
         long miniblocks = uleb(b, pos, to);
         long total = uleb(b, pos, to);
         skipVarint(b, pos, to); // first value, zigzag
-        if (blockSize <= 0 || blockSize % 128 != 0 || blockSize > (1 << 20) || miniblocks <= 0 || blockSize % miniblocks != 0
+        if (blockSize <= 0 || blockSize % 128 != 0 || miniblocks <= 0 || blockSize % miniblocks != 0
                 || (blockSize / miniblocks) % 32 != 0) {
             throw new DataException("a DELTA_BINARY_PACKED header with block size " + blockSize + " and " + miniblocks + " miniblocks");
         }
-        if (total > maxValues) {
+        if (total != maxValues) {
             throw new DataException("a DELTA_BINARY_PACKED stream of " + total + " values where at most " + maxValues + " are expected");
         }
         long perMiniblock = blockSize / miniblocks;
+        // parquet-java allocates a padded long buffer plus an int per miniblock, even
+        // for a one-value stream. Bound these before its int arithmetic or allocation.
+        long padded = total == 0 ? 1 : ((total - 1) / perMiniblock + 1) * perMiniblock + 1;
+        long scratch = padded > Integer.MAX_VALUE || miniblocks > Integer.MAX_VALUE || blockSize > Integer.MAX_VALUE
+                ? Long.MAX_VALUE : 32 + padded * Long.BYTES + miniblocks * Integer.BYTES;
+        if (scratch > limits.maxPageBytes()) {
+            throw new LimitExceededException("maxPageBytes", scratch, limits.maxPageBytes(), where + " (delta decoder scratch)");
+        }
         long remaining = total - 1;
         while (remaining > 0) {
             skipVarint(b, pos, to); // min delta, zigzag

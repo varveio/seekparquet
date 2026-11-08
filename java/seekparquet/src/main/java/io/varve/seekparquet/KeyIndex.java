@@ -35,6 +35,15 @@ final class KeyIndex {
         this.size = size;
     }
 
+    /** Conservative retained size: arrays, bound objects, references and cache entry. */
+    long memoryBytes() {
+        long bytes = 192L + 112L * pages();
+        for (int i = 0; i < pages(); i++) {
+            bytes += ((lo[i].length + 7L) & ~7L) + ((hi[i].length + 7L) & ~7L);
+        }
+        return bytes;
+    }
+
     int pages() {
         return lo.length;
     }

@@ -32,17 +32,7 @@ final class Queries {
             end = min(end, q.prefix().successor());
         }
         Continuation after = q.cursor().orElse(null);
-        if (after instanceof Continuation.CommonPrefix c) {
-            Optional<Bytes> successor = c.bytes().successor();
-            if (successor.isEmpty()) {
-                return List.of();
-            }
-            byte[] floor = successor.get().unsafeArray();
-            if (start == null || Arrays.compareUnsigned(start, floor) < 0) {
-                start = floor;
-                exclusive = false;
-            }
-        } else if (after != null && (start == null || Arrays.compareUnsigned(start, after.bytes().unsafeArray()) < 0)) {
+        if (after != null && (start == null || Arrays.compareUnsigned(start, after.bytes().unsafeArray()) < 0)) {
             start = after.bytes().unsafeArray();
             exclusive = false;
         }
@@ -82,13 +72,6 @@ final class Queries {
         byte delimiter = q.delimiter();
         byte[] from = prefix.length == 0 ? null : prefix;
         boolean exclusive = false;
-        boolean suppress = false;
-        byte[] after = q.after().map(Bytes::unsafeArray).orElse(null);
-        if (after != null && Arrays.compareUnsigned(after, prefix) >= 0) {
-            from = after;
-            exclusive = true;
-            suppress = q.continuation();
-        }
         Continuation tagged = q.cursor().orElse(null);
         if (tagged instanceof Continuation.CommonPrefix c) {
             Optional<Bytes> successor = c.bytes().successor();
@@ -132,9 +115,7 @@ final class Queries {
                 continue;
             }
             byte[] common = Arrays.copyOf(key, at + 1);
-            if (!(suppress && Arrays.compareUnsigned(common, after) <= 0)) {
-                out.add(new ListEntry.CommonPrefix(Bytes.wrap(common)));
-            }
+            out.add(new ListEntry.CommonPrefix(Bytes.wrap(common)));
             if (out.size() == q.limit()) {
                 break;
             }

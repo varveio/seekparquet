@@ -9,15 +9,14 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * A delimited listing (spec §6.3). The candidate keys begin with {@code prefix}, are greater than
- * {@code after} when it is given, and are less than {@code end} when it is given. A candidate whose
+ * A delimited listing (spec §6.3). The candidate keys begin with {@code prefix}, come after
+ * {@code cursor} when it is given, and are less than {@code end} when it is given. A candidate whose
  * remainder after the prefix contains the delimiter yields the common prefix up to and including the
  * first such delimiter; any other candidate yields its row. Common prefixes are distinct; repeated rows retain file order. Entries are in ascending byte
  * order, at most {@code limit} of them.
  *
  * <p>Use {@link #next(ListEntry)} to continue after the last returned entry with a tagged
- * row position or common prefix (PAGE-1/PAGE-2). Legacy byte floors are available through
- * {@link Builder#after(Bytes)} and {@link Builder#continuation(boolean)}.
+ * row position or common prefix (PAGE-1/PAGE-2).
  *
  * <pre>{@code
  * ListQuery q = ListQuery.builder((byte) '/').prefix(Bytes.utf8("photos/")).limit(100).build();
@@ -30,9 +29,6 @@ import java.util.Optional;
  *
  * @param prefix keys must begin with it; empty for no constraint
  * @param delimiter the delimiter byte
- * @param after keys must be strictly greater, when given
- * @param continuation whether this continues a listing that ended at {@code after}: a common prefix
- *     at or before {@code after} is then not returned (LIST-5); no effect without {@code after}
  * @param end keys must be strictly less, when given
  * @param limit the most entries returned; positive (QUERY-1)
  * @param cursor the tagged continuation, when present
@@ -41,8 +37,6 @@ import java.util.Optional;
 public record ListQuery(
         Bytes prefix,
         byte delimiter,
-        Optional<Bytes> after,
-        boolean continuation,
         Optional<Bytes> end,
         int limit,
         List<String> columns, Optional<Continuation> cursor) {
@@ -52,8 +46,6 @@ public record ListQuery(
      *
      * @param prefix the prefix
      * @param delimiter the delimiter byte
-     * @param after the exclusive lower bound
-     * @param continuation whether this continues a listing
      * @param end the exclusive upper bound
      * @param limit the limit
      * @param cursor the tagged continuation
@@ -62,12 +54,8 @@ public record ListQuery(
      */
     public ListQuery {
         Objects.requireNonNull(prefix, "prefix");
-        Objects.requireNonNull(after, "after");
         Objects.requireNonNull(end, "end");
         Objects.requireNonNull(cursor, "cursor");
-        if (after.isPresent() && cursor.isPresent()) {
-            throw new IllegalArgumentException("a byte floor and a tagged continuation cannot be combined");
-        }
         columns = List.copyOf(columns);
         if (limit <= 0) {
             throw new IllegalArgumentException("limit " + limit + " is not a positive integer");
@@ -88,8 +76,6 @@ public record ListQuery(
     public Builder toBuilder() {
         Builder b = new Builder(delimiter);
         b.prefix = prefix;
-        b.after = after;
-        b.continuation = continuation;
         b.end = end;
         b.limit = limit;
         b.columns = columns;
@@ -109,7 +95,6 @@ public record ListQuery(
             case ListEntry.CommonPrefix p -> new Continuation.CommonPrefix(p.prefix());
         };
         Builder b = toBuilder();
-        b.after = Optional.empty();
         return b.after(next).build();
     }
 
@@ -117,8 +102,6 @@ public record ListQuery(
     public static final class Builder {
         private final byte delimiter;
         private Bytes prefix = Bytes.empty();
-        private Optional<Bytes> after = Optional.empty();
-        private boolean continuation;
         private Optional<Bytes> end = Optional.empty();
         private int limit;
         private List<String> columns = List.of();
@@ -136,28 +119,6 @@ public record ListQuery(
          */
         public Builder prefix(Bytes prefix) {
             this.prefix = Objects.requireNonNull(prefix, "prefix");
-            return this;
-        }
-
-        /**
-         * Sets the exclusive lower bound on candidate keys.
-         *
-         * @param after the bound
-         * @return this builder
-         */
-        public Builder after(Bytes after) {
-            this.after = Optional.of(after);
-            return this;
-        }
-
-        /**
-         * Sets whether this continues a listing that ended at {@code after} (LIST-5).
-         *
-         * @param continuation whether it does
-         * @return this builder
-         */
-        public Builder continuation(boolean continuation) {
-            this.continuation = continuation;
             return this;
         }
 
@@ -220,7 +181,7 @@ public record ListQuery(
          * @throws IllegalArgumentException if the limit is not set or not positive
          */
         public ListQuery build() {
-            return new ListQuery(prefix, delimiter, after, continuation, end, limit, columns, cursor);
+            return new ListQuery(prefix, delimiter, end, limit, columns, cursor);
         }
     }
 }

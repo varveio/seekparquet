@@ -108,7 +108,7 @@ class RepeatedKeysTest {
             assertEquals("maxResultEntries", assertThrows(LimitExceededException.class, () -> ds.range(RangeQuery.all(3))).limit());
         }
         assertThrows(IllegalArgumentException.class, () -> new Continuation.RowPosition(Bytes.utf8("b"), -1));
-        assertThrows(IllegalArgumentException.class, () -> ListQuery.builder((byte) '/').limit(1)
-                .after(Bytes.utf8("a")).after(new Continuation.RowPosition(Bytes.utf8("b"), 0)).build());
+        assertThrows(IllegalArgumentException.class, () -> RangeQuery.builder().limit(1)
+                .after(new Continuation.CommonPrefix(Bytes.utf8("b"))).build());
     }
 }
