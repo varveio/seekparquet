@@ -13,7 +13,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/varveio/seekparquet/go"
+	seekparquet "github.com/varveio/seekparquet/go"
 )
 
 // Dir is a dataset root on the local filesystem. Every open goes through an

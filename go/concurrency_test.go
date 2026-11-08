@@ -16,7 +16,7 @@ import (
 	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/format"
 
-	"github.com/varveio/seekparquet/go"
+	seekparquet "github.com/varveio/seekparquet/go"
 	"github.com/varveio/seekparquet/go/seekparquettest"
 	"github.com/varveio/seekparquet/go/source/local"
 )
@@ -177,7 +177,7 @@ type boundSource struct {
 	closed               atomic.Bool
 }
 
-func (s *boundSource) Open(_ context.Context, path string) (seekparquet.Part, error) {
+func (s *boundSource) Open(_ context.Context, path string) (seekparquet.SourceFile, error) {
 	f, err := os.Open(s.dir + "/" + path)
 	if err != nil {
 		return nil, err
@@ -259,7 +259,7 @@ func TestOpenParts(t *testing.T) {
 	// Bounds given for a part are checked.
 	srcs := sources(&closed)
 	srcs[0].MinKey, srcs[0].MaxKey = []byte("a"), []byte("d")
-	if _, err := seekparquet.OpenParts(ctx, srcs, seekparquet.PartsOptions{}); seekparquet.CodeOf(err) != seekparquet.CodeBoundsMismatch {
+	if _, err := seekparquet.OpenParts(ctx, srcs, seekparquet.PartsOptions{VerifyOnOpen: true}); seekparquet.CodeOf(err) != seekparquet.CodeBoundsMismatch {
 		t.Fatalf("bounds: %v", err)
 	}
 }

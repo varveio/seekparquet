@@ -12,7 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/varveio/seekparquet/go"
+	seekparquet "github.com/varveio/seekparquet/go"
+	"github.com/varveio/seekparquet/go/internal/testutil"
 	"github.com/varveio/seekparquet/go/seekparquettest"
 )
 
@@ -306,7 +307,7 @@ func TestEmptyGroupsAndOneRowParts(t *testing.T) {
 		{Rows: seekparquettest.Rows("a", "m"), Groups: []int{0, 1, 0, 1, 0}},
 		{Rows: seekparquettest.Rows("z")},
 	}})
-	meta, err := seekparquettest.ReadFooter(dir + "/" + seekparquettest.PartPath(0))
+	meta, err := testutil.ReadFooter(dir + "/" + seekparquettest.PartPath(0))
 	if err != nil || len(meta.RowGroups) != 5 {
 		t.Fatalf("physical row groups: %v", err)
 	}

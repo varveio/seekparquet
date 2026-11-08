@@ -4,17 +4,13 @@
 package local_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 
-	"github.com/varveio/seekparquet/go"
 	"github.com/varveio/seekparquet/go/source/local"
 )
 

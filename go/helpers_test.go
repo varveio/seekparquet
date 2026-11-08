@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/varveio/seekparquet/go"
+	seekparquet "github.com/varveio/seekparquet/go"
 	"github.com/varveio/seekparquet/go/seekparquettest"
 	"github.com/varveio/seekparquet/go/source/local"
 )

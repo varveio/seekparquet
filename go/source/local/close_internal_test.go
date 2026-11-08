@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/varveio/seekparquet/go"
+	seekparquet "github.com/varveio/seekparquet/go"
 	"github.com/varveio/seekparquet/go/seekparquettest"
 )
 

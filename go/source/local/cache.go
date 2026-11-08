@@ -12,7 +12,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/varveio/seekparquet/go"
+	seekparquet "github.com/varveio/seekparquet/go"
 )
 
 // FileCache bounds the descriptors the files of one or more Dirs hold

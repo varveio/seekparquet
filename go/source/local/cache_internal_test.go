@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/varveio/seekparquet/go"
+	seekparquet "github.com/varveio/seekparquet/go"
 )
 
 // TestFileCacheBoundsHandles reads ten files concurrently through a cache
@@ -23,7 +23,7 @@ import (
 func TestFileCacheBoundsHandles(t *testing.T) {
 	dir := t.TempDir()
 	cache := NewFileCache(3)
-	var files []*local.CachedFile
+	var files []*cachedFile
 	for i := range 10 {
 		path := filepath.Join(dir, fmt.Sprintf("f%d", i))
 		if err := os.WriteFile(path, bytes.Repeat([]byte{byte('a' + i)}, 64), 0o644); err != nil {
@@ -83,4 +83,3 @@ func TestFileCacheBoundsHandles(t *testing.T) {
 		t.Fatalf("%d handles open after every file closed", st.Open)
 	}
 }
-

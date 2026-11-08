@@ -18,7 +18,6 @@ package seekparquettest
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,8 +29,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/parquet-go/parquet-go"
-	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
+
+	"github.com/varveio/seekparquet/go/internal/testutil"
 )
 
 // SchemaID is the default schema id of a written dataset.
@@ -140,7 +140,7 @@ func Write(dir string, d Dataset) error {
 		}
 		rel := PartPath(i)
 		path := filepath.Join(dir, filepath.FromSlash(rel))
-		first, last, rows, err := WritePart(path, part, stamps)
+		first, last, rows, err := writePart(path, part, stamps)
 		if err != nil {
 			return fmt.Errorf("part %d: %w", i, err)
 		}
@@ -167,48 +167,9 @@ func writeManifest(dir string, m map[string]any) error {
 	return os.WriteFile(filepath.Join(dir, "manifest.json"), raw, 0o644)
 }
 
-// EditManifest decodes dir's manifest, applies edit and writes it back.
-func EditManifest(dir string, edit func(m map[string]any)) error {
-	raw, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
-	if err != nil {
-		return err
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	var m map[string]any
-	if err := dec.Decode(&m); err != nil {
-		return err
-	}
-	edit(m)
-	return writeManifest(dir, m)
-}
-
-// ManifestPart returns part i of a decoded manifest, for EditManifest.
-func ManifestPart(m map[string]any, i int) map[string]any {
-	return m["parts"].([]any)[i].(map[string]any)
-}
-
-// SyncSizes sets every part's bytes in dir's manifest to its file's size,
-// after a test rewrote a part.
-func SyncSizes(dir string) error {
-	var err error
-	editErr := EditManifest(dir, func(m map[string]any) {
-		for _, p := range m["parts"].([]any) {
-			entry := p.(map[string]any)
-			info, statErr := os.Stat(filepath.Join(dir, filepath.FromSlash(entry["path"].(string))))
-			if statErr != nil {
-				err = statErr
-				return
-			}
-			entry["bytes"] = info.Size()
-		}
-	})
-	return errors.Join(editErr, err)
-}
-
-// WritePart writes part to path with the footer key-value metadata stamps
+// writePart writes part to path with the footer key-value metadata stamps
 // and returns its first and last keys and row count.
-func WritePart(path string, part Part, stamps map[string]string) (first, last []byte, rows int, err error) {
+func writePart(path string, part Part, stamps map[string]string) (first, last []byte, rows int, err error) {
 	rowsValue := reflect.ValueOf(part.Rows)
 	if part.Rows == nil {
 		rowsValue = reflect.ValueOf([]Row{})
@@ -329,7 +290,7 @@ func WritePart(path string, part Part, stamps map[string]string) (first, last []
 // (its column chunks empty, without page indexes) at each zero: parquet-go
 // skips empty groups when it writes, but other writers leave them.
 func insertEmptyGroups(path string, groups []int) error {
-	return RewriteFooter(path, func(meta *format.FileMetaData) error {
+	return testutil.RewriteFooter(path, func(meta *format.FileMetaData) error {
 		if len(meta.RowGroups) == 0 {
 			return errors.New("a part of empty groups only is not supported")
 		}
@@ -361,7 +322,7 @@ func insertEmptyGroups(path string, groups []int) error {
 // dropPageIndex rewrites the footer of the part at path so that leaf
 // column's chunks reference no ColumnIndex and no OffsetIndex.
 func dropPageIndex(path string, column int) error {
-	return RewriteFooter(path, func(meta *format.FileMetaData) error {
+	return testutil.RewriteFooter(path, func(meta *format.FileMetaData) error {
 		for g := range meta.RowGroups {
 			chunk := &meta.RowGroups[g].Columns[column]
 			chunk.ColumnIndexOffset, chunk.ColumnIndexLength = 0, 0
@@ -369,56 +330,6 @@ func dropPageIndex(path string, column int) error {
 		}
 		return nil
 	})
-}
-
-// RewriteFooter applies change to the footer of the Parquet file at path
-// and writes the file back with the new footer: for tests of footers no
-// writer produces. The manifest's bytes then need SyncSizes.
-func RewriteFooter(path string, change func(*format.FileMetaData) error) error {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	n := len(raw)
-	footerLen := int(binary.LittleEndian.Uint32(raw[n-8 : n-4]))
-	var protocol thrift.CompactProtocol
-	var meta format.FileMetaData
-	if err := thrift.Unmarshal(&protocol, raw[n-8-footerLen:n-8], &meta); err != nil {
-		return fmt.Errorf("read footer: %w", err)
-	}
-	if err := change(&meta); err != nil {
-		return err
-	}
-	footer, err := thrift.Marshal(&protocol, &meta)
-	if err != nil {
-		return err
-	}
-	body := append(raw[:n-8-footerLen:n-8-footerLen], footer...)
-	body = binary.LittleEndian.AppendUint32(body, uint32(len(footer)))
-	body = append(body, "PAR1"...)
-	return os.WriteFile(path, body, 0o644)
-}
-
-// ReadFooter returns the footer of the Parquet file at path.
-func ReadFooter(path string) (*format.FileMetaData, error) {
-	var meta *format.FileMetaData
-	err := rewriteNothing(path, func(m *format.FileMetaData) { meta = m })
-	return meta, err
-}
-
-func rewriteNothing(path string, see func(*format.FileMetaData)) error {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	n := len(raw)
-	footerLen := int(binary.LittleEndian.Uint32(raw[n-8 : n-4]))
-	var meta format.FileMetaData
-	if err := thrift.Unmarshal(new(thrift.CompactProtocol), raw[n-8-footerLen:n-8], &meta); err != nil {
-		return err
-	}
-	see(&meta)
-	return nil
 }
 
 // boundsNode wraps a schema so that its top-level byte-array leaves are

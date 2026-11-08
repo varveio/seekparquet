@@ -17,7 +17,8 @@ import (
 
 	"github.com/parquet-go/parquet-go/format"
 
-	"github.com/varveio/seekparquet/go"
+	seekparquet "github.com/varveio/seekparquet/go"
+	"github.com/varveio/seekparquet/go/internal/testutil"
 	"github.com/varveio/seekparquet/go/seekparquettest"
 	"github.com/varveio/seekparquet/go/source/local"
 )
@@ -36,13 +37,13 @@ func partFile(dir string, i int) string {
 // rewrite applies change to part i's footer and fixes the manifest size.
 func rewrite(t testing.TB, dir string, i int, change func(*format.FileMetaData)) {
 	t.Helper()
-	must(t, seekparquettest.RewriteFooter(partFile(dir, i), func(m *format.FileMetaData) error { change(m); return nil }))
-	must(t, seekparquettest.SyncSizes(dir))
+	must(t, testutil.RewriteFooter(partFile(dir, i), func(m *format.FileMetaData) error { change(m); return nil }))
+	must(t, testutil.SyncSizes(dir))
 }
 
 func editManifest(t testing.TB, dir string, edit func(m map[string]any)) {
 	t.Helper()
-	must(t, seekparquettest.EditManifest(dir, edit))
+	must(t, testutil.EditManifest(dir, edit))
 }
 
 func b64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
@@ -105,7 +106,7 @@ func TestOpenRefusals(t *testing.T) {
 			editManifest(t, dir, func(m map[string]any) { m["format"] = "parquet" })
 		}},
 		{"path escape", seekparquet.CodeInvalidManifest, twoParts(), func(t *testing.T, dir string) {
-			editManifest(t, dir, func(m map[string]any) { seekparquettest.ManifestPart(m, 0)["path"] = "../x.parquet" })
+			editManifest(t, dir, func(m map[string]any) { testutil.ManifestPart(m, 0)["path"] = "../x.parquet" })
 		}},
 		{"draft revision 2", seekparquet.CodeUnsupportedVersion, twoParts(), func(t *testing.T, dir string) {
 			editManifest(t, dir, func(m map[string]any) { m["draft_revision"] = 2 })
@@ -118,14 +119,14 @@ func TestOpenRefusals(t *testing.T) {
 			must(t, os.Mkdir(partFile(dir, 1), 0o755))
 		}},
 		{"wrong size", seekparquet.CodePartMismatch, twoParts(), func(t *testing.T, dir string) {
-			editManifest(t, dir, func(m map[string]any) { seekparquettest.ManifestPart(m, 0)["bytes"] = 7 })
+			editManifest(t, dir, func(m map[string]any) { testutil.ManifestPart(m, 0)["bytes"] = 7 })
 		}},
 		{"wrong rows", seekparquet.CodePartMismatch, twoParts(), func(t *testing.T, dir string) {
-			editManifest(t, dir, func(m map[string]any) { seekparquettest.ManifestPart(m, 1)["rows"] = 3 })
+			editManifest(t, dir, func(m map[string]any) { testutil.ManifestPart(m, 1)["rows"] = 3 })
 		}},
 		{"not parquet", seekparquet.CodeInvalidFooter, twoParts(), func(t *testing.T, dir string) {
 			must(t, os.WriteFile(partFile(dir, 0), bytes.Repeat([]byte("x"), 64), 0o644))
-			must(t, seekparquettest.SyncSizes(dir))
+			must(t, testutil.SyncSizes(dir))
 		}},
 		{"footer longer than the file", seekparquet.CodeInvalidFooter, twoParts(), func(t *testing.T, dir string) {
 			raw, _ := os.ReadFile(partFile(dir, 0))
@@ -137,7 +138,7 @@ func TestOpenRefusals(t *testing.T) {
 		}},
 		{"row counts do not sum", seekparquet.CodeInvalidFooter, twoParts(), func(t *testing.T, dir string) {
 			rewrite(t, dir, 0, func(m *format.FileMetaData) { m.NumRows = 5 })
-			editManifest(t, dir, func(m map[string]any) { seekparquettest.ManifestPart(m, 0)["rows"] = 5 })
+			editManifest(t, dir, func(m map[string]any) { testutil.ManifestPart(m, 0)["rows"] = 5 })
 		}},
 		{"stamp missing", seekparquet.CodeStampMismatch, stamped(map[string]string{seekparquettest.StampSchemaID: ""}), nil},
 		{"draft stamp missing", seekparquet.CodeStampMismatch, stamped(map[string]string{seekparquettest.StampDraftRevision: ""}), nil},
@@ -165,21 +166,8 @@ func TestOpenRefusals(t *testing.T) {
 			rewrite(t, dir, 0, func(m *format.FileMetaData) { m.RowGroups[1].SortingColumns[0].Descending = true })
 		}},
 		{"manifest bounds overlap", seekparquet.CodeInvalidManifest, twoParts(), func(t *testing.T, dir string) {
-			editManifest(t, dir, func(m map[string]any) { seekparquettest.ManifestPart(m, 1)["min_key_base64"] = b64("c") })
+			editManifest(t, dir, func(m map[string]any) { testutil.ManifestPart(m, 1)["min_key_base64"] = b64("c") })
 		}},
-		{"first key differs from the manifest", seekparquet.CodeBoundsMismatch, twoParts(), func(t *testing.T, dir string) {
-			editManifest(t, dir, func(m map[string]any) { seekparquettest.ManifestPart(m, 0)["min_key_base64"] = b64("\x00") })
-		}},
-		{"last key differs from the manifest", seekparquet.CodeBoundsMismatch, twoParts(), func(t *testing.T, dir string) {
-			editManifest(t, dir, func(m map[string]any) { seekparquettest.ManifestPart(m, 1)["max_key_base64"] = b64("q") })
-		}},
-		// Detected on open because opening decodes every row group's first
-		// page (CHECK-3), which the specification allows earlier than read.
-		{"no key page index", seekparquet.CodeMissingPageIndex, seekparquettest.Dataset{Parts: []seekparquettest.Part{{Rows: seekparquettest.Rows("a"), NoKeyPageIndex: true}}}, nil},
-		{"empty first key", seekparquet.CodeInvalidKey, seekparquettest.Dataset{Parts: []seekparquettest.Part{{Rows: seekparquettest.Rows("", "a")}}}, func(t *testing.T, dir string) {
-			editManifest(t, dir, func(m map[string]any) { seekparquettest.ManifestPart(m, 0)["min_key_base64"] = b64("\x00") })
-		}},
-		{"row groups out of order", seekparquet.CodeKeyOrder, seekparquettest.Dataset{Parts: []seekparquettest.Part{{Rows: seekparquettest.Rows("a", "c", "b", "d"), GroupRows: 2}}}, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -199,6 +187,47 @@ func TestOpenRefusals(t *testing.T) {
 	}
 	// The unchanged dataset opens.
 	open(t, write(t, twoParts()), seekparquet.Options{})
+}
+
+// TestVerifyOnOpen produces faults in the first and last key pages and the
+// key page index, which only VerifyOnOpen checks on open (CHECK-3): opened
+// without it the dataset opens, and a full read refuses it with the same
+// code.
+func TestVerifyOnOpen(t *testing.T) {
+	cases := []struct {
+		name    string
+		code    seekparquet.Code
+		dataset seekparquettest.Dataset
+		mutate  func(t *testing.T, dir string)
+	}{
+		{"first key differs from the manifest", seekparquet.CodeBoundsMismatch, twoParts(), func(t *testing.T, dir string) {
+			editManifest(t, dir, func(m map[string]any) { testutil.ManifestPart(m, 0)["min_key_base64"] = b64("\x00") })
+		}},
+		{"last key differs from the manifest", seekparquet.CodeBoundsMismatch, twoParts(), func(t *testing.T, dir string) {
+			editManifest(t, dir, func(m map[string]any) { testutil.ManifestPart(m, 1)["max_key_base64"] = b64("q") })
+		}},
+		{"no key page index", seekparquet.CodeMissingPageIndex, seekparquettest.Dataset{Parts: []seekparquettest.Part{{Rows: seekparquettest.Rows("a"), NoKeyPageIndex: true}}}, nil},
+		{"empty first key", seekparquet.CodeInvalidKey, seekparquettest.Dataset{Parts: []seekparquettest.Part{{Rows: seekparquettest.Rows("", "a")}}}, func(t *testing.T, dir string) {
+			editManifest(t, dir, func(m map[string]any) { testutil.ManifestPart(m, 0)["min_key_base64"] = b64("\x00") })
+		}},
+		{"row groups out of order", seekparquet.CodeKeyOrder, seekparquettest.Dataset{Parts: []seekparquettest.Part{{Rows: seekparquettest.Rows("a", "c", "b", "d"), GroupRows: 2}}}, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := write(t, c.dataset)
+			if c.mutate != nil {
+				c.mutate(t, dir)
+			}
+			_, err := openErr(dir, seekparquet.Options{VerifyOnOpen: true})
+			if seekparquet.CodeOf(err) != c.code {
+				t.Fatalf("VerifyOnOpen: %v, want %s", err, c.code)
+			}
+			d := open(t, dir, seekparquet.Options{})
+			if _, err := d.Range(ctx, seekparquet.Range{Limit: 100}, nil); seekparquet.CodeOf(err) != c.code {
+				t.Fatalf("read: %v, want %s", err, c.code)
+			}
+		})
+	}
 }
 
 func ptr[T any](v T) *T { return &v }
@@ -294,7 +323,7 @@ func TestShortenedMaximum(t *testing.T) {
 	}
 	good := parts(seekparquettest.Part{PageBytes: 512, GroupRows: 150}, keys)
 	dir := write(t, good)
-	meta, err := seekparquettest.ReadFooter(partFile(dir, 0))
+	meta, err := testutil.ReadFooter(partFile(dir, 0))
 	must(t, err)
 	if meta.RowGroups[2].Columns[0].ColumnIndexLength == 0 {
 		t.Fatal("no key column index")
@@ -332,7 +361,7 @@ func descending(n int) []string {
 // invalid_parquet (CHECK-5).
 func TestCorruptValuePage(t *testing.T) {
 	dir := write(t, parts(seekparquettest.Part{}, []string{"a", "b", "c"}))
-	meta, err := seekparquettest.ReadFooter(partFile(dir, 0))
+	meta, err := testutil.ReadFooter(partFile(dir, 0))
 	must(t, err)
 	off := meta.RowGroups[0].Columns[1].MetaData.DataPageOffset
 	raw, _ := os.ReadFile(partFile(dir, 0))
@@ -376,13 +405,13 @@ type countingSource struct {
 }
 
 type countedPart struct {
-	seekparquet.Part
+	seekparquet.SourceFile
 	src *countingSource
 }
 
-func (p countedPart) Close() error { p.src.closed.Add(1); return p.Part.Close() }
+func (p countedPart) Close() error { p.src.closed.Add(1); return p.SourceFile.Close() }
 
-func (s *countingSource) Open(c context.Context, path string) (seekparquet.Part, error) {
+func (s *countingSource) Open(c context.Context, path string) (seekparquet.SourceFile, error) {
 	p, err := s.Source.Open(c, path)
 	if err != nil {
 		return nil, err
@@ -397,18 +426,18 @@ func (s *countingSource) Open(c context.Context, path string) (seekparquet.Part,
 func TestFailedOpenClosesParts(t *testing.T) {
 	for name, mutate := range map[string]func(dir string){
 		"bounds": func(dir string) {
-			editManifest(t, dir, func(m map[string]any) { seekparquettest.ManifestPart(m, 1)["max_key_base64"] = b64("q") })
+			editManifest(t, dir, func(m map[string]any) { testutil.ManifestPart(m, 1)["max_key_base64"] = b64("q") })
 		},
 		"stamps": func(dir string) { rewrite(t, dir, 1, func(m *format.FileMetaData) { m.KeyValueMetadata = nil }) },
 		"size": func(dir string) {
-			editManifest(t, dir, func(m map[string]any) { seekparquettest.ManifestPart(m, 1)["bytes"] = 1 })
+			editManifest(t, dir, func(m map[string]any) { testutil.ManifestPart(m, 1)["bytes"] = 1 })
 		},
 		"key type": func(dir string) { rewrite(t, dir, 1, func(m *format.FileMetaData) { m.ColumnOrders = nil }) },
 	} {
 		dir := write(t, twoParts())
 		mutate(dir)
 		src := &countingSource{Source: local.NewDir(dir, nil)}
-		if _, err := seekparquet.OpenDataset(ctx, src, seekparquet.Options{}); err == nil {
+		if _, err := seekparquet.OpenDataset(ctx, src, seekparquet.Options{VerifyOnOpen: true}); err == nil {
 			t.Fatalf("%s: opened", name)
 		}
 		if src.opened.Load() == 0 || src.opened.Load() != src.closed.Load() {

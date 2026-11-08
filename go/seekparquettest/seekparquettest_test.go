@@ -15,6 +15,7 @@ import (
 	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
 
+	"github.com/varveio/seekparquet/go/internal/testutil"
 	"github.com/varveio/seekparquet/go/seekparquettest"
 )
 
@@ -51,7 +52,7 @@ func TestWriterMeetsTheProfile(t *testing.T) {
 		t.Fatalf("manifest %s: %v", raw, err)
 	}
 	path := filepath.Join(dir, filepath.FromSlash(m.Parts[0].Path))
-	meta, err := seekparquettest.ReadFooter(path)
+	meta, err := testutil.ReadFooter(path)
 	if err != nil {
 		t.Fatal(err)
 	}

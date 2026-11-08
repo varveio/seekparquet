@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/varveio/seekparquet/go"
+	seekparquet "github.com/varveio/seekparquet/go"
 )
 
 func TestSuccessorAndCommonPrefix(t *testing.T) {

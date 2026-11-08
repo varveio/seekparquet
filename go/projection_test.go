@@ -13,7 +13,7 @@ import (
 
 	"github.com/parquet-go/parquet-go"
 
-	"github.com/varveio/seekparquet/go"
+	seekparquet "github.com/varveio/seekparquet/go"
 	"github.com/varveio/seekparquet/go/seekparquettest"
 )
 
