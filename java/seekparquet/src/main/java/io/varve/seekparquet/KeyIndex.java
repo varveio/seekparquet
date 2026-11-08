@@ -118,13 +118,26 @@ final class KeyIndex {
     }
 
     /** Returns the earliest candidate; upper bounds may be non-monotone (ROUTE-1). */
-    int pageFor(int from, byte[] target) {
+    int pageFor(int from, byte[] target, boolean exclusive) {
         for (int i = from; i < pages(); i++) {
-            if (Arrays.compareUnsigned(hi[i], target) >= 0) {
+            int c = Arrays.compareUnsigned(hi[i], target);
+            if (exclusive ? c > 0 : c >= 0) {
                 return i;
             }
         }
         return pages();
+    }
+
+    /** Finds the page containing a physical row using the checked, strictly ordered OffsetIndex. */
+    int pageAt(long row) {
+        int lo = 0;
+        int hi = pages();
+        while (lo + 1 < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (firstRow[mid] <= row) lo = mid;
+            else hi = mid;
+        }
+        return lo;
     }
 
     /** {@return the maximum of the last page: an upper bound on every key of the group} */

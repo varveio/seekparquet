@@ -8,15 +8,10 @@ import java.util.Arrays;
 /**
  * Walks the dataset's keys forward, in dataset order, for one request.
  *
- * <p>Seeking routes in three steps. Parts are chosen by the manifest's exact bounds: the first part
- * whose last key reaches the target. Row groups within a part are chosen by examining the
- * upper bounds of each group in order, and pages within a row group by the
- * earliest candidate upper bound ({@link KeyIndex#pageFor}). Bounds may be shortened, so both searches may land early,
- * never late; decoding forward from there finds the first key at or after the target.
- *
- * <p>The cursor never moves backwards, so it decodes key pages in ascending dataset position, and
- * checking each page's first key against the last key decoded before it checks the page against
- * every page the request decoded (CHECK-2).
+ * <p>Parts are routed by exact manifest bounds. Large parts are routed by checked exact
+ * row-group first keys, keeping the predecessor so repeated groups are never skipped. Shortened
+ * page bounds are examined in order, never binary-searched. The request checks all decoded pages
+ * against their neighbors in dataset order, including the out-of-order routing probes.
  */
 final class KeyCursor {
 
@@ -37,6 +32,7 @@ final class KeyCursor {
     private boolean decodedLastPage;
     private int decodedPage = -1;
     private long tailOffset;
+    private byte[] tailKey;
 
     private boolean exhausted;
 
@@ -119,7 +115,7 @@ final class KeyCursor {
         int firstSlot = 0;
         if (p == part && keys != null) {
             // Later pages of the current row group first.
-            int pg = index.pageFor(page + 1, target);
+            int pg = index.pageFor(page + 1, target, exclusive);
             if (pg < index.pages()) {
                 return decodeForward(p, slot, pg, target, exclusive);
             }
@@ -128,10 +124,25 @@ final class KeyCursor {
             // The whole part is at or after the target: start at its first key.
             return decodeForward(p, 0, 0, target, exclusive);
         }
-        // Upper bounds may overlap and be non-monotone: visit the earliest candidate.
+        // Exact first-key probes are monotone in a valid sorted file. Keep the predecessor:
+        // the target can start at its tail even when the following group starts with it.
         int lo = firstSlot;
+        if (pf.groups.length - firstSlot > 8) {
+            int hi = pf.groups.length;
+            while (lo < hi) {
+                ctx.checkCancelled();
+                int mid = (lo + hi) >>> 1;
+                if (satisfies(pf.firstKey(pf.groups[mid], ctx), target, exclusive)) {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            lo = Math.max(firstSlot, lo - 1);
+        }
+        // Bounds may overlap and be non-monotone; visit the earliest remaining candidate.
         while (lo < pf.groups.length
-                && Arrays.compareUnsigned(pf.keyIndex(pf.groups[lo], ctx).upper(), target) < 0) {
+                && !satisfies(pf.keyIndex(pf.groups[lo], ctx).upper(), target, exclusive)) {
             lo++;
         }
         if (lo >= pf.groups.length) {
@@ -142,8 +153,77 @@ final class KeyCursor {
             }
             return decodeForward(p + 1, 0, 0, target, exclusive);
         }
-        int pg = pf.keyIndex(pf.groups[lo], ctx).pageFor(0, target);
+        int pg = pf.keyIndex(pf.groups[lo], ctx).pageFor(0, target, exclusive);
         return decodeForward(p, lo, Math.min(pg, pf.keyIndex(pf.groups[lo], ctx).pages() - 1), target, exclusive);
+    }
+
+    /**
+     * Skips a row continuation after seek has found the group's first row. Its logical offset
+     * becomes a physical row displacement. A stale/oversized offset may land after the group;
+     * in that case re-seek strictly after the key rather than skipping unrelated rows.
+     */
+    boolean resume(Continuation.RowPosition after) {
+        byte[] target = after.bytes().unsafeArray();
+        if (!Arrays.equals(key(), target) || offset() > after.offset()) {
+            return true;
+        }
+        if (after.offset() == Long.MAX_VALUE) {
+            return seek(target, true);
+        }
+        long displacement = after.offset() + 1 - offset();
+        int p = part;
+        int s = slot;
+        long r = row();
+        while (displacement >= parts[p].groupRows[parts[p].groups[s]] - r) {
+            ctx.checkCancelled();
+            displacement -= parts[p].groupRows[parts[p].groups[s]] - r;
+            r = 0;
+            if (++s == parts[p].groups.length) {
+                s = 0;
+                if (++p == parts.length) {
+                    return seek(target, true);
+                }
+            }
+        }
+        r += displacement;
+        KeyIndex destination = parts[p].keyIndex(parts[p].groups[s], ctx);
+        int pg = destination.pageAt(r);
+        // Save the original position so an oversized continuation can seek the real group end.
+        if (p == part && s == slot && pg == page) {
+            int next = (int) (r - index.firstRow[page]);
+            if (!Arrays.equals(keys[next], target)) {
+                return seek(target, true);
+            }
+            pos = next;
+            return true;
+        }
+        ctx.enterGroup(p, parts[p].groups[s]);
+        byte[][] decoded = parts[p].keyPage(parts[p].groups[s], destination, pg, ctx);
+        ctx.checkKeyPage(parts[p], parts[p].groups[s], pg, decoded);
+        int next = (int) (r - destination.firstRow[pg]);
+        if (!Arrays.equals(decoded[next], target)) {
+            return seek(target, true);
+        }
+        part = p;
+        slot = s;
+        physical = parts[p].groups[s];
+        index = destination;
+        page = pg;
+        keys = decoded;
+        pos = next;
+        offsets = new long[decoded.length];
+        // All rows through next belong to target (sorted order, and the original row did too).
+        offsets[next] = after.offset() + 1;
+        for (int i = next + 1; i < decoded.length; i++) {
+            offsets[i] = Arrays.equals(decoded[i - 1], decoded[i]) ? offsets[i - 1] + 1 : 0;
+        }
+        tailOffset = offsets[offsets.length - 1];
+        tailKey = decoded[decoded.length - 1];
+        decodedPart = part;
+        decodedSlot = slot;
+        decodedPage = pg;
+        decodedLastPage = pg + 1 == index.pages();
+        return true;
     }
 
     /** Decodes from (part, slot, page) forward until a key satisfies the target. */
@@ -157,7 +237,7 @@ final class KeyCursor {
                 pos = i;
                 return true;
             }
-            int next = index.pageFor(page + 1, target);
+            int next = index.pageFor(page + 1, target, exclusive);
             if (next < index.pages()) {
                 load(next);
                 continue;
@@ -214,19 +294,15 @@ final class KeyCursor {
         PartFile pf = parts[part];
         ctx.enterGroup(part, physical);
         byte[][] decoded = pf.keyPage(physical, index, pg, ctx);
-        if (ctx.lastKey != null && (Arrays.compareUnsigned(decoded[0], ctx.lastKey) < 0
-                || (pf.unique && Arrays.equals(decoded[0], ctx.lastKey)))) {
-            throw new RefusalException(RefusalCode.KEY_ORDER, pf.name, "the first key of row group " + physical + " key page " + pg
-                    + " does not sort after the last key of " + ctx.lastKeyWhere);
-        }
+        ctx.checkKeyPage(pf, physical, pg, decoded);
         boolean adjacent = decodedPart == part
                 && ((decodedSlot == slot && decodedPage + 1 == pg)
                     || (decodedSlot + 1 == slot && pg == 0 && decodedLastPage));
-        // A seek skips only pages bounded strictly below its target. A returned group
+        // A seek skips only pages bounded below its target (at or below for exclusive seeks). A returned group
         // therefore starts here unless the immediately preceding decoded page ends in it.
         offsets = new long[decoded.length];
         if (!pf.unique) {
-            offsets[0] = adjacent && Arrays.equals(decoded[0], ctx.lastKey) ? tailOffset + 1 : 0;
+            offsets[0] = adjacent && Arrays.equals(decoded[0], tailKey) ? tailOffset + 1 : 0;
             for (int i = 1; i < decoded.length; i++) {
                 offsets[i] = Arrays.equals(decoded[i - 1], decoded[i]) ? offsets[i - 1] + 1 : 0;
             }
@@ -236,8 +312,7 @@ final class KeyCursor {
         decodedSlot = slot;
         decodedLastPage = pg + 1 == index.pages();
         decodedPage = pg;
-        ctx.lastKey = decoded[decoded.length - 1];
-        ctx.lastKeyWhere = "part " + pf.name + " row group " + physical + " key page " + pg;
+        tailKey = decoded[decoded.length - 1];
         page = pg;
         keys = decoded;
         pos = 0;

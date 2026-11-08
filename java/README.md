@@ -112,7 +112,7 @@ progress, waits for them to return, then closes the part sources.
 of parts, footer, page index and page sizes, page value counts, and the maximum requested result
 entries (1,000,000 by default). Per-request dictionaries and value pages are retained only for the
 current row group. `Limits.withMaxIndexMemoryBytes(bytes)` sets a dataset-wide budget for retained
-key and value indexes (256 MiB by default), using conservative estimates of their decoded arrays,
+key and value indexes and retained exact row-group first keys (256 MiB by default), using conservative estimates of their decoded arrays,
 bounds and cache entries. Publication is charged once under a shared lock; a budget failure leaves
 already cached indexes usable. Delta decoders also check padded scratch arrays against `maxPageBytes`
 before initialization. Page and entry limits are not a total request-memory guarantee: concurrent
@@ -185,17 +185,38 @@ with a storage error; reopening after interruption uses the same pinned parent h
 
 It does not load page indexes or decode keys unless `verifyPartBounds` is set.
 
-**Reads (CHECK-2).** Requests binary-search the manifest's exact part bounds, then examine row-group
-upper bounds and page maxima in order to find the earliest candidate. Bounds may be shortened and
-non-monotone, so they are not binary-searched. This conservative route preserves groups split across
-row groups or pages; it can land early, but never skips a matching row. A request checks what it reads:
+**Reads (CHECK-2).** Requests binary-search the manifest's exact part bounds. Within large parts,
+they binary-search checked, decoded row-group first keys, retaining the predecessor so a repeated
+key that starts at the previous group's tail is not skipped. Exact first keys are cached and charged
+to `maxIndexMemoryBytes`. Small remaining sets (at most eight groups) use an index-bound scan.
+Page maxima are examined in order: shortened, overlapping, non-monotone bounds are never
+binary-searched. Broad page bounds can still require reading many pages within a candidate group.
+A request checks what it reads:
 
 - each row group's key ColumnIndex and OffsetIndex before first use (RG-2 to RG-4); the result is
   cached for the dataset;
 - each key page it decodes: the page header matches its OffsetIndex entry; the page holds one
   non-empty key per row (valid UTF-8 for string keys); keys obey the manifest's unique or grouped order, within the
-  page's bounds, and ordered consistently with every key page the request decoded before it. Equal
-  keys are accepted only in grouped mode.
+  page's bounds, and ordered consistently with every other key page the request decoded, including
+  out-of-order routing probes. Equal keys are accepted only in grouped mode.
+
+Row continuations first locate the repeated group's start, then translate the logical offset into a
+physical row and use the OffsetIndex to jump directly to its page. Oversized or stale offsets fall
+back to seeking strictly after the key, so unrelated later keys are not skipped. This avoids replaying
+all earlier pages of a large repeated group on every request. Locating the group start still depends
+on the usefulness of its page bounds, and crossing row groups uses their footer row counts.
+
+Index reads coalesce only when the gap is no larger than the useful bytes (and at most 64 KiB),
+bounding each combined read at 2× the useful index bytes rather than repeatedly fetching large overlaps.
+This can trade one wide read for two narrow reads. Routing may decode probe pages outside the result
+interval; decoded page boundaries are held for the request to check their relative key order.
+
+The deterministic `SeekCostTest` counts storage calls and requested bytes after open, independently
+of latency. With 1,000 ten-row groups, a cold final-key lookup uses 28 reads / 1,877 bytes (previously
+1,001 / 33,956,205); a warm lookup still uses one read. Paginating 10,000 identical keys in 100-row
+responses uses 219 reads / 165,479 bytes (previously 5,060 / 4,160,780). These synthetic layouts expose
+access patterns, not typical throughput. A complete lookup now uses 120 narrow reads / 84,299 bytes
+rather than 110 wider reads / 101,780 bytes.
 
 Overlapping or non-monotone bounds are valid, and `boundary_order` is never read (RG-6). Corrupt
 data in the pages a request decodes is `invalid_parquet` (CHECK-5).

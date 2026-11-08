@@ -59,6 +59,8 @@ final class TestDatasets {
         int rowsPerGroup = 4;
         boolean noteColumn;
         boolean unique = true;
+        /** Broad alternating bounds exercise routing without monotone index metadata. */
+        boolean nonMonotoneKeyBounds;
         String keyColumn = "key";
         /** Whether the key column is annotated STRING (keys must then be UTF-8). */
         boolean stringKey = true;
@@ -136,6 +138,12 @@ final class TestDatasets {
                     chunk.bytes.write(body);
                     chunk.locations.add(new PageLocation(pageOffset, h.size() + body.length, r0));
                     bounds(c, page, chunk);
+                    if (c == 0 && spec.nonMonotoneKeyBounds) {
+                        chunk.mins.set(chunk.mins.size() - 1, ByteBuffer.wrap(new byte[] {'a'}));
+                        if ((g0 / spec.rowsPerGroup + r0 / spec.rowsPerPage) % 2 == 0) {
+                            chunk.maxs.set(chunk.maxs.size() - 1, ByteBuffer.wrap(new byte[] {'z'}));
+                        }
+                    }
                 }
                 byte[] data = chunk.bytes.toByteArray();
                 out.write(data);
