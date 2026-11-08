@@ -11,6 +11,14 @@ import io.varve.seekparquet.IndexedAccessTest.CountingStorage;
 import io.varve.seekparquet.TestDatasets.TestRow;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.parquet.format.ColumnMetaData;
+import org.apache.parquet.format.FileMetaData;
+import org.apache.parquet.format.PageType;
 import java.util.Optional;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
@@ -52,6 +60,170 @@ class SeekCostTest {
                 storage.reads.set(0);
                 ds.lookup(target, 1);
                 assertEquals(1, storage.reads.get(), "checked first keys and indexes are retained");
+            }
+        }
+    }
+
+    @Test
+    void manyPartsWithLongPrefixesHaveBoundedColdAndWarmShortRangesAndLists() throws IOException {
+        String stem = "x".repeat(128) + "/";
+        List<List<TestRow>> parts = new ArrayList<>();
+        for (int p = 0; p < 16; p++) {
+            List<TestRow> rows = new ArrayList<>();
+            for (int i = 0; i < 256; i++) {
+                rows.add(TestRow.of(String.format("%sp%02d/d%02d/f%03d", stem, p, i / 16, i), i));
+            }
+            parts.add(rows);
+        }
+        TestDatasets.Spec spec = new TestDatasets.Spec();
+        spec.rowsPerGroup = 16;
+        spec.rowsPerPage = 16;
+        spec.nonMonotoneKeyBounds = true;
+        CountingStorage storage = new CountingStorage(TestDatasets.write(tmp, spec, parts));
+        for (int n : new int[] {1, 5}) {
+            try (Dataset ds = Dataset.open(storage)) {
+                // Exclude CHECK-1 open, which checks every part, from query counters.
+                for (boolean warm : new boolean[] {false, true}) {
+                    storage.reads.set(0);
+                    storage.bytes.set(0);
+                    List<Row> got = ds.range(RangeQuery.builder()
+                            .start(Bytes.wrap(parts.get(14).get(240).key())).limit(n).columns("size").build());
+                    assertEquals(n, got.size());
+                    for (int i = 0; i < n; i++) {
+                        assertEquals(Bytes.wrap(parts.get(14).get(240 + i).key()), got.get(i).key());
+                        assertEquals(new Value.Int64(240 + i), got.get(i).values().getFirst());
+                    }
+                    // Four binary probes, each an index pair and a 16-row key page,
+                    // plus selected key/value pages. Long keys dominate byte cost.
+                    assertTrue(storage.reads.get() <= 20, "reads=" + storage.reads.get());
+                    assertTrue(storage.bytes.get() <= 32 * 1024, "bytes=" + storage.bytes.get());
+                    if (warm) assertTrue(storage.reads.get() <= 3, "warm reads=" + storage.reads.get());
+                    System.out.printf("ACCESS_METRIC {\"operation\":\"range\",\"rows\":%d,\"warm\":%b,\"reads\":%d,\"requested_bytes\":%d}%n",
+                            n, warm, storage.reads.get(), storage.bytes.get());
+                }
+                for (int repeat = 0; repeat < 2; repeat++) {
+                    storage.reads.set(0);
+                    storage.bytes.set(0);
+                    List<ListEntry> got = ds.list(ListQuery.builder((byte) '/')
+                            .prefix(Bytes.utf8(stem + "p13/")).limit(100).build());
+                    assertEquals(16, got.size());
+                    for (int i = 0; i < 16; i++) {
+                        assertEquals(new ListEntry.CommonPrefix(Bytes.utf8(String.format("%sp13/d%02d/", stem, i))), got.get(i));
+                    }
+                    // One directory per group: two index reads and up to two key
+                    // reads per prefix, with space for routing probes.
+                    assertTrue(storage.reads.get() <= 80, "reads=" + storage.reads.get());
+                    assertTrue(storage.bytes.get() <= 160 * 1024, "bytes=" + storage.bytes.get());
+                    System.out.printf("ACCESS_METRIC {\"operation\":\"list\",\"warm\":%b,\"reads\":%d,\"requested_bytes\":%d}%n",
+                            repeat > 0, storage.reads.get(), storage.bytes.get());
+                }
+            }
+        }
+    }
+
+    private record ReadRange(long offset, int length) {}
+    private record PhysicalValuePage(long firstRow, long rows, ReadRange load, long headerOffset) {}
+
+    @Test
+    void sparseListingLoadsEachSelectedValuePageOnceWithAndWithoutOffsetIndex() throws IOException, DataException {
+        List<TestRow> rows = new ArrayList<>();
+        List<ListEntry> expected = new ArrayList<>();
+        List<Integer> selected = new ArrayList<>();
+        // Each 40-row block has two file rows at positions 0 and 2, then
+        // children rolled up to prefixes. Both files share one 10-row page;
+        // three intervening value pages must be skipped before the next block.
+        for (int block = 0; block < 8; block++) {
+            for (int file = 0; file < 2; file++) {
+                String key = String.format("f%04d", 2 * block + file);
+                long size = block % 3 == 0 ? -1 : rows.size();
+                selected.add(rows.size());
+                rows.add(TestRow.of(key, size));
+                expected.add(new ListEntry.RowEntry(new Row(Bytes.utf8(key), 0,
+                        List.of("size", "missing"), List.of(size < 0 ? Value.Null.INSTANCE : new Value.Int64(size), Value.Absent.INSTANCE))));
+                expected.add(new ListEntry.CommonPrefix(Bytes.utf8(key + "/")));
+                for (int child = 0; child < (file == 0 ? 1 : 37); child++) {
+                    rows.add(TestRow.of(String.format("%s/child%02d", key, child), rows.size()));
+                }
+            }
+        }
+        for (boolean indexed : new boolean[] {true, false}) {
+            TestDatasets.Spec spec = new TestDatasets.Spec();
+            spec.rowsPerGroup = 160;
+            spec.rowsPerPage = 10;
+            spec.omitValueOffsetIndexes = !indexed;
+            Path root = TestDatasets.write(tmp.resolve("sparse-" + indexed), spec, List.of(rows));
+            Manifest manifest = Manifest.parse(Files.readAllBytes(root.resolve("manifest.json")));
+            byte[] raw = Files.readAllBytes(root.resolve(manifest.parts().getFirst().path()));
+            int footerLength = ByteBuffer.wrap(raw, raw.length - 8, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
+            FileMetaData meta = Thrift.fileMetaData(Arrays.copyOfRange(raw, raw.length - 8 - footerLength, raw.length - 8));
+            List<PhysicalValuePage> pages = new ArrayList<>();
+            long groupStart = 0;
+            for (var group : meta.getRow_groups()) {
+                var column = group.getColumns().get(1);
+                assertEquals(indexed, column.isSetOffset_index_offset());
+                ColumnMetaData md = column.getMeta_data();
+                long row = groupStart;
+                long end = md.getData_page_offset() + md.getTotal_compressed_size();
+                for (long at = md.getData_page_offset(); at < end;) {
+                    int offset = Math.toIntExact(at);
+                    var header = Thrift.pageHeader(raw, offset, Math.toIntExact(end - at));
+                    assertEquals(PageType.DATA_PAGE, header.value().getType());
+                    int body = header.value().getCompressed_page_size();
+                    long count = header.value().getData_page_header().getNum_values();
+                    ReadRange load = indexed ? new ReadRange(at, header.length() + body)
+                            : new ReadRange(at + header.length(), body);
+                    pages.add(new PhysicalValuePage(row, count, load, at));
+                    row += count;
+                    at += header.length() + body;
+                }
+                assertEquals(groupStart + group.getNum_rows(), row);
+                groupStart = row;
+            }
+            assertEquals(32, pages.size(), "enumerate physical pages without consulting OffsetIndexes");
+            Map<ReadRange, Integer> loads = new HashMap<>();
+            AtomicInteger headers = new AtomicInteger();
+            LocalStorage local = LocalStorage.of(root);
+            DatasetStorage storage = new DatasetStorage() {
+                @Override public byte[] readManifest(int max, Cancellation c) throws IOException {
+                    return local.readManifest(max, c);
+                }
+                @Override public PartSource openPart(String path, long size, Cancellation c) throws IOException {
+                    PartSource inner = local.openPart(path, size, c);
+                    return new PartSource() {
+                        @Override public String path() { return inner.path(); }
+                        @Override public long size() { return inner.size(); }
+                        @Override public Optional<String> version() { return inner.version(); }
+                        @Override public void close() throws IOException { inner.close(); }
+                        @Override public ByteBuffer read(long position, int length, Cancellation token) throws IOException {
+                            ReadRange range = new ReadRange(position, length);
+                            for (PhysicalValuePage page : pages) {
+                                if (range.equals(page.load())) loads.merge(range, 1, Integer::sum);
+                                if (!indexed && position == page.headerOffset()) headers.incrementAndGet();
+                            }
+                            return inner.read(position, length, token);
+                        }
+                    };
+                }
+            };
+            try (Dataset ds = Dataset.open(storage)) {
+                loads.clear();
+                headers.set(0);
+                assertEquals(expected, ds.list(ListQuery.builder((byte) '/').limit(100)
+                        .columns("size", "missing").build()));
+                int distinct = 0;
+                for (PhysicalValuePage page : pages) {
+                    boolean touched = selected.stream().anyMatch(row -> row >= page.firstRow() && row < page.firstRow() + page.rows());
+                    int count = loads.getOrDefault(page.load(), 0);
+                    assertEquals(touched ? 1 : 0, count, "indexed=" + indexed + " page at row " + page.firstRow());
+                    if (touched) distinct++;
+                }
+                assertEquals(8, distinct);
+                if (!indexed) assertTrue(headers.get() > distinct, "skipped pages require header walking, not body loading");
+                // In these successful PLAIN requests each matched load is followed
+                // by exactly one PartFile.valuePage decode. Header-window reads
+                // are counted separately, even when they overlap page bodies.
+                System.out.printf("ACCESS_METRIC {\"operation\":\"sparse_list\",\"offset_index\":%b,\"distinct_value_pages\":%d,\"value_page_loads\":%d,\"repeated_value_page_loads\":0,\"value_header_reads\":%d}%n",
+                        indexed, distinct, loads.values().stream().mapToInt(Integer::intValue).sum(), headers.get());
             }
         }
     }

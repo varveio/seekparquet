@@ -30,8 +30,10 @@ SeekParquet follows the same approach for key order.
 
 These are storage engines. Their files belong to the engine: levels overlap and are merged on read, rows carry
 versions or tombstones, and reading the files directly can show duplicates or deleted rows. A SeekParquet
-dataset is a snapshot: parts are key-disjoint, keys are unique, every row is live, and an ordinary Parquet
-reader that reads every part gets exactly the dataset. There is no engine to run.
+dataset is a snapshot: parts are key-disjoint, keys are ordered, and every row is live. Keys are unique
+when the manifest declares `key.unique: true`; with `key.unique: false`, equal keys form contiguous groups
+that never cross parts. An ordinary Parquet reader that reads every part gets exactly the dataset. There
+is no engine to run.
 
 ## External indexes over Parquet
 

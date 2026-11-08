@@ -2,7 +2,7 @@
 
 **A sorted-key profile for Apache Parquet.**
 
-> **Status: draft.** The specification is at draft revision 1 and the Go implementation is pre-release. Files
+> **Status: draft.** The specification is at draft revision 1 and the Go and Java readers are pre-release. Files
 > written to the draft are stamped so they can never be mistaken for the final format. Expect changes.
 
 A SeekParquet dataset is a set of ordinary Parquet files sorted by one byte-string key column that the
@@ -17,7 +17,14 @@ the profile can also:
   keys under them;
 - page through results and resume exactly where a page ended;
 
-by reading the manifest, part footers, a page index and a few pages, with no query engine and no catalog.
+using the manifest, part footers and page indexes, with no query engine and no catalog. Selective reads
+can touch only a few data pages, but having an index alone does not guarantee that cost: opening checks
+every part, and coarse key bounds can require much more decoding. See [read costs and writer guidance](docs/read-costs.md).
+
+## Try it in five minutes
+
+Follow the [runnable quickstart](docs/quickstart.md) to read a checked-in sample,
+list prefixes with a delimiter, and resume a listing with a cursor. Requires Go 1.26 or later.
 
 ## What it guarantees that plain Parquet does not
 
@@ -37,16 +44,24 @@ internally, external indexes over Parquet, and table formats.
 |---|---|
 | [`spec/`](spec/) | The specification ([format-1.md](spec/format-1.md)), the manifest JSON Schema, the refusal codes, examples and proposals |
 | [`conformance/`](conformance/) | The language-neutral conformance suite: fixtures, cases, the runner protocol and harness |
-| [`go/`](go/) | The Go implementation, module `github.com/varveio/seekparquet/go` |
+| [`go/`](go/) | The Go reader, module `github.com/varveio/seekparquet/go` |
+| [`java/`](java/) | The Java reader, package `io.varve.seekparquet` |
 | [`docs/`](docs/) | Related work and guides |
 
 ## Implementations
 
 | Language | Status | Supports |
 |---|---|---|
-| Go | pre-release | format 1 draft revision 1: open, range, list, projection |
+| [Go](go/README.md) | pre-release | format 1 draft revision 1: open, range, list, projection |
+| [Java](java/README.md) | pre-release; not yet published | format 1 draft revision 1: open, range, list, projection |
 
-A Java implementation is planned. Implementations in other languages are welcome; please open an issue first.
+Both implementations are readers, not production dataset writers or validators (§8 of the specification).
+The shared conformance suite checks reader semantics; it does not yet certify indexed-access efficiency.
+See the [Go usage examples](go/example_test.go) and [Java usage and build instructions](java/README.md)
+to get started, and the [Java qualification report](java/QUALIFICATION.md) for its Parquet library choice
+and limitations. Go requires Go 1.26 or later; Java requires JDK 21 or later.
+
+Implementations in other languages are welcome; please open an issue first.
 
 ## Used by
 

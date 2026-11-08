@@ -65,6 +65,7 @@ final class TestDatasets {
         /** Whether the key column is annotated STRING (keys must then be UTF-8). */
         boolean stringKey = true;
         boolean omitKeyColumnIndex;
+        boolean omitValueOffsetIndexes;
         /** When set, the first two keys of the first page of the first part are swapped. */
         boolean swapFirstKeys;
         String schemaId = "test/v1";
@@ -180,6 +181,7 @@ final class TestDatasets {
         }
         for (int g = 0; g < groups.size(); g++) {
             for (int c = 0; c < ncols; c++) {
+                if (c > 0 && spec.omitValueOffsetIndexes) continue;
                 ByteArrayOutputStream b = new ByteArrayOutputStream();
                 Util.writeOffsetIndex(new OffsetIndex(chunkIndexes.get(g)[c].locations), b);
                 ColumnChunk cc = groups.get(g).getColumns().get(c);
