@@ -5,7 +5,7 @@ description: The part's declared min key is greater than its max key.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: bounds_mismatch, detected at the latest on open (PART-4)
+expected refusal: invalid_manifest, detected at the latest on open (PART-4, CHECK-1)
 changes:
   - manifest: parts.0.min_key_base64 "YS8xLnR4dA==" -> "enVsdQ=="
 

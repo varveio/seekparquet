@@ -1,7 +1,7 @@
 {
   "group": "validate-digest",
   "target": "validator-digest",
-  "description": "Validation at the digest level (section 8): valid datasets complete; faults in scope fail with their code.",
+  "description": "Validation at the digest level (section 8). Valid datasets complete. For an invalid dataset, validate still answers status ok and reports the level failed with the refusal code (it never answers refused); a dataset that cannot be opened reports structural failed.",
   "cases": [
     {
       "id": "validate-digest/empty",
@@ -326,14 +326,18 @@
         "validate:digest"
       ],
       "dataset": "datasets/invalid/digest-mismatch",
-      "detect": "validate:digest",
       "request": {
         "op": "validate",
         "level": "digest"
       },
       "expect": {
-        "status": "refused",
-        "code": "digest_mismatch"
+        "status": "ok",
+        "levels": {
+          "digest": {
+            "result": "failed",
+            "code": "digest_mismatch"
+          }
+        }
       }
     }
   ]

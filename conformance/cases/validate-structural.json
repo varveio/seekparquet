@@ -1,7 +1,7 @@
 {
   "group": "validate-structural",
   "target": "validator-structural",
-  "description": "Validation at the structural level (section 8): valid datasets complete; faults in scope fail with their code.",
+  "description": "Validation at the structural level (section 8). Valid datasets complete. For an invalid dataset, validate still answers status ok and reports the level failed with the refusal code (it never answers refused); a dataset that cannot be opened reports structural failed.",
   "cases": [
     {
       "id": "validate-structural/empty",
@@ -192,14 +192,70 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/missing-column-index-native",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "missing_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_page_index"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/inconsistent-column-type",
+      "description": "Column size is INT64 in part 0 and INT32 in part 1. Note: COL-5 requires the check no later than the first request that projects the column, so the read case projects size; structural validation checks all columns.",
+      "requirements": [
+        "COL-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/inconsistent-column-type",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "inconsistent_column"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/inconsistent-column-repetition",
+      "description": "Column size is REQUIRED in part 0 and OPTIONAL in part 1.",
+      "requirements": [
+        "COL-5",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/inconsistent-column-repetition",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "inconsistent_column"
+          }
+        }
       }
     },
     {
@@ -215,14 +271,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/stamp-missing",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "stamp_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
       }
     },
     {
@@ -238,14 +298,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/stamp-wrong-schema-id",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "stamp_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
       }
     },
     {
@@ -261,14 +325,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/stamp-wrong-revision",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "stamp_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
       }
     },
     {
@@ -284,14 +352,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/stamp-noncanonical-revision",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "stamp_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
       }
     },
     {
@@ -307,14 +379,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/stamp-missing-revision",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "stamp_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
       }
     },
     {
@@ -329,14 +405,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/key-nullable",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_key_column"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
       }
     },
     {
@@ -351,14 +431,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/key-int64",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_key_column"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
       }
     },
     {
@@ -373,14 +457,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/key-missing",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_key_column"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
       }
     },
     {
@@ -395,14 +483,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/key-nested",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_key_column"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
       }
     },
     {
@@ -417,14 +509,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/sorting-columns-missing",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "missing_sorting_columns"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_sorting_columns"
+          }
+        }
       }
     },
     {
@@ -439,14 +535,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/sorting-columns-descending",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "missing_sorting_columns"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_sorting_columns"
+          }
+        }
       }
     },
     {
@@ -461,14 +561,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/sorting-columns-other-first",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "missing_sorting_columns"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_sorting_columns"
+          }
+        }
       }
     },
     {
@@ -484,14 +588,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/unsupported-version-draft-2",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "unsupported_version"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "unsupported_version"
+          }
+        }
       }
     },
     {
@@ -507,14 +615,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/unsupported-version-1",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "unsupported_version"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "unsupported_version"
+          }
+        }
       }
     },
     {
@@ -639,14 +751,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/no-manifest",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "no_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "no_manifest"
+          }
+        }
       }
     },
     {
@@ -661,14 +777,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-not-json",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -683,14 +803,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-bom",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -705,14 +829,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-not-object",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -727,14 +855,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-duplicate-member",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -749,14 +881,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-duplicate-part-member",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -771,14 +907,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-unknown-member",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -793,14 +933,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-unknown-part-member",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -815,14 +959,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-extension-not-object",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -837,14 +985,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-missing-schema-id",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -859,14 +1011,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-missing-parts",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -881,14 +1037,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-rows-string",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -903,19 +1063,23 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-wrong-format",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
       "id": "validate-structural/manifest-draft-without-revision",
-      "description": "format_version is 0 but draft_revision is absent. Note: MAN-7 reads a missing draft_revision as well formed (it is optional there), so (0, none) may be reported as an unsupported version.",
+      "description": "format_version is 0 but draft_revision is absent.",
       "requirements": [
         "MAN-3",
         "MAN-4",
@@ -927,17 +1091,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-draft-without-revision",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "codes": [
-          "invalid_manifest",
-          "unsupported_version"
-        ]
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -952,14 +1117,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-bad-base64",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -974,14 +1143,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-base64-unpadded",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -996,14 +1169,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-base64-url-alphabet",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1018,14 +1195,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-path-escape",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1040,14 +1221,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-path-absolute",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1062,14 +1247,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-path-dot-segment",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1084,14 +1273,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-path-empty-segment",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1106,14 +1299,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-path-backslash",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1128,14 +1325,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-path-duplicate",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1150,14 +1351,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-rows-zero",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1172,14 +1377,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-rows-fraction",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1194,14 +1403,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-rows-exponent",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1216,14 +1429,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-bytes-too-large",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1239,14 +1456,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-format-version-fraction",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1261,14 +1482,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-base64-noncanonical",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1283,14 +1508,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-path-control-character",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1305,14 +1534,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-extensions-duplicate-member",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1327,14 +1560,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-duplicate-member-escaped",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1349,14 +1586,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/manifest-unpaired-surrogate",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_manifest"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1372,14 +1613,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/unsupported-version-2",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "unsupported_version"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "unsupported_version"
+          }
+        }
       }
     },
     {
@@ -1394,14 +1639,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/unsupported-version-2-unknown-member",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "unsupported_version"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "unsupported_version"
+          }
+        }
       }
     },
     {
@@ -1416,14 +1665,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/missing-part",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "missing_part"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_part"
+          }
+        }
       }
     },
     {
@@ -1437,14 +1690,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/part-size-larger",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "part_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "part_mismatch"
+          }
+        }
       }
     },
     {
@@ -1458,19 +1715,23 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/part-size-smaller",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "part_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "part_mismatch"
+          }
+        }
       }
     },
     {
       "id": "validate-structural/part-rows-mismatch",
-      "description": "The manifest's rows is 13; the part holds 12. Note: refusal-codes.json describes this fault under both part_mismatch and invalid_footer.",
+      "description": "The manifest's rows is 13; the part holds 12.",
       "requirements": [
         "CHECK-1",
         "VAL-1"
@@ -1479,17 +1740,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/part-rows-mismatch",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "codes": [
-          "part_mismatch",
-          "invalid_footer"
-        ]
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "part_mismatch"
+          }
+        }
       }
     },
     {
@@ -1497,20 +1759,25 @@
       "description": "The part's declared min key is greater than its max key.",
       "requirements": [
         "PART-4",
+        "CHECK-1",
         "VAL-1"
       ],
       "requires": [
         "validate:structural"
       ],
       "dataset": "datasets/invalid/bounds-min-above-max",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "bounds_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1518,20 +1785,25 @@
       "description": "The first part's declared max key is raised to the second part's min key (manifest bounds overlap).",
       "requirements": [
         "PART-4",
+        "CHECK-1",
         "VAL-1"
       ],
       "requires": [
         "validate:structural"
       ],
       "dataset": "datasets/invalid/bounds-overlap",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "bounds_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1539,20 +1811,25 @@
       "description": "The manifest lists the parts with the last part first (bounds not ascending).",
       "requirements": [
         "PART-4",
+        "CHECK-1",
         "VAL-1"
       ],
       "requires": [
         "validate:structural"
       ],
       "dataset": "datasets/invalid/bounds-parts-out-of-order",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "bounds_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
       }
     },
     {
@@ -1566,14 +1843,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/invalid-footer-magic",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_footer"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
       }
     },
     {
@@ -1587,14 +1868,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/invalid-footer-length",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_footer"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
       }
     },
     {
@@ -1608,14 +1893,43 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/invalid-footer-thrift",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_footer"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/invalid-footer-row-count",
+      "description": "FileMetaData.num_rows is 13 while its row groups hold 12 rows; the manifest says 13, matching the footer's num_rows.",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-row-count",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
       }
     },
     {
@@ -1630,14 +1944,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/invalid-footer-file-path",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_footer"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
       }
     },
     {
@@ -1652,14 +1970,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/stamp-duplicate",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "stamp_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "stamp_mismatch"
+          }
+        }
       }
     },
     {
@@ -1674,14 +1996,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/key-annotation-json",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_key_column"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
       }
     },
     {
@@ -1696,14 +2022,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/column-orders-missing",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_key_column"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_key_column"
+          }
+        }
       }
     },
     {
@@ -1718,14 +2048,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/sorting-columns-missing-second-row-group",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "missing_sorting_columns"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_sorting_columns"
+          }
+        }
       }
     },
     {
@@ -1741,14 +2075,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/missing-column-index",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "missing_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_page_index"
+          }
+        }
       }
     },
     {
@@ -1764,14 +2102,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/missing-offset-index",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "missing_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "missing_page_index"
+          }
+        }
       }
     },
     {
@@ -1787,14 +2129,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/page-index-null-page",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -1810,14 +2156,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/page-index-count-mismatch",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -1833,14 +2183,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/page-index-first-row-nonzero",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -1856,14 +2210,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/page-index-first-row-not-increasing",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -1879,14 +2237,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/page-index-first-row-out-of-range",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -1902,14 +2264,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/page-index-location-outside-file",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -1925,14 +2291,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/page-index-rows-mismatch",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -1948,14 +2318,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/page-index-list-length-mismatch",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -1971,14 +2345,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/page-index-location-mismatch",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -1995,14 +2373,18 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/page-index-empty",
-      "detect": "validate:structural",
       "request": {
         "op": "validate",
         "level": "structural"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     }
   ]

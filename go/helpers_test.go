@@ -90,16 +90,16 @@ func split(keys []string, n int) [][]string {
 func rangeOracle(keys []string, rng seekparquet.Range) []string {
 	var out []string
 	for _, k := range keys {
+		if !bytes.HasPrefix([]byte(k), rng.Prefix) {
+			continue
+		}
 		if rng.Start != nil {
 			c := bytes.Compare([]byte(k), rng.Start)
 			if c < 0 || c == 0 && rng.StartExclusive {
 				continue
 			}
 		}
-		if rng.End != nil && bytes.Compare([]byte(k), rng.End) >= 0 {
-			break
-		}
-		if len(out) == rng.Limit {
+		if rng.End != nil && bytes.Compare([]byte(k), rng.End) >= 0 || len(out) == rng.Limit {
 			break
 		}
 		out = append(out, k)

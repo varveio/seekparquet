@@ -145,10 +145,12 @@ type partInput struct {
 // key of every non-empty row group to route reads. It is the advanced
 // path: unlike OpenDataset it reads no manifest and checks no footer
 // stamps and no sorting_columns (RG-1); a caller adds such checks with
-// CheckFooter and CheckGroup. It checks the key column (KEY-1), that every
-// non-empty row group's key column has both page indexes, that the decoded
-// row-group first keys ascend strictly, and each part's MinKey and MaxKey
-// when given.
+// CheckFooter and CheckGroup. It checks that each footer is readable,
+// self-contained (FILE-1) and not encrypted (FILE-2), with row-group row
+// counts that sum to its own; the key column (KEY-1, KEY-5); that columns
+// agree across parts (COL-5); each non-empty row group's key page index
+// (RG-2 to RG-4) and first key page (CHECK-2), so that the row groups' first
+// keys ascend strictly; and each part's MinKey and MaxKey when given.
 //
 // OpenParts takes ownership of every File that implements io.Closer from
 // the call on: when it fails it closes them all before returning, and on

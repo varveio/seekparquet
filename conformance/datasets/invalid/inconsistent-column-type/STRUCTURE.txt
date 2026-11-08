@@ -6,7 +6,7 @@ provenance: native
 producer: pyarrow 26.0.1
 source rows: generators/rows/inconsistent-column-type.json
 expected refusal: inconsistent_column, detected at the latest on read (COL-5, CHECK-1)
-note: COL-5 is required on open only for projected columns, so the case projects size; an open-time refusal with this code also passes.
+note: COL-5 requires the check no later than the first request that projects the column, so the read case projects size; structural validation checks all columns.
 
 manifest: format_version 0, 2 parts
   part 0: 'data/part-00000.parquet', rows 4, bytes 1177, keys 'k00' .. 'k03'

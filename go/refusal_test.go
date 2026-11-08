@@ -164,7 +164,7 @@ func TestOpenRefusals(t *testing.T) {
 		{"sorting descending", seekparquet.CodeMissingSortingColumns, twoParts(), func(t *testing.T, dir string) {
 			rewrite(t, dir, 0, func(m *format.FileMetaData) { m.RowGroups[1].SortingColumns[0].Descending = true })
 		}},
-		{"manifest bounds overlap", seekparquet.CodeBoundsMismatch, twoParts(), func(t *testing.T, dir string) {
+		{"manifest bounds overlap", seekparquet.CodeInvalidManifest, twoParts(), func(t *testing.T, dir string) {
 			editManifest(t, dir, func(m map[string]any) { seekparquettest.ManifestPart(m, 1)["min_key_base64"] = b64("c") })
 		}},
 		{"first key differs from the manifest", seekparquet.CodeBoundsMismatch, twoParts(), func(t *testing.T, dir string) {

@@ -5,7 +5,7 @@ description: The manifest lists the parts with the last part first (bounds not a
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/multipart
-expected refusal: bounds_mismatch, detected at the latest on open (PART-4)
+expected refusal: invalid_manifest, detected at the latest on open (PART-4, CHECK-1)
 changes:
   - manifest: parts[2] moved to parts[0]
 

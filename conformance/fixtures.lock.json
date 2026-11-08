@@ -7,7 +7,7 @@
     "requirements": "generators/requirements.txt"
   },
   "reproducibility": "Byte-reproducible with the pinned pyarrow: two regenerations produce identical files (pyarrow 26.0.1 footers carry no timestamps). If a future writer is not byte-reproducible, the checked-in bytes stay authoritative and STRUCTURE.txt must remain identical.",
-  "total_bytes": 508472,
+  "total_bytes": 511397,
   "largest_file_bytes": 9076,
   "datasets": [
     {
@@ -562,7 +562,7 @@
           "CHECK-1"
         ],
         "request": "range-columns:size",
-        "note": "COL-5 is required on open only for projected columns, so the case projects size; an open-time refusal with this code also passes."
+        "note": "COL-5 requires the check no later than the first request that projects the column, so the read case projects size; structural validation checks all columns."
       },
       "files": [
         {
@@ -1969,8 +1969,7 @@
       ],
       "fault": {
         "codes": [
-          "invalid_manifest",
-          "unsupported_version"
+          "invalid_manifest"
         ],
         "detect": "open",
         "requirements": [
@@ -1978,8 +1977,7 @@
           "MAN-4",
           "MAN-7",
           "CHECK-1"
-        ],
-        "note": "MAN-7 reads a missing draft_revision as well formed (it is optional there), so (0, none) may be reported as an unsupported version."
+        ]
       },
       "files": [
         {
@@ -2984,14 +2982,12 @@
       ],
       "fault": {
         "codes": [
-          "part_mismatch",
-          "invalid_footer"
+          "part_mismatch"
         ],
         "detect": "open",
         "requirements": [
           "CHECK-1"
-        ],
-        "note": "refusal-codes.json describes this fault under both part_mismatch and invalid_footer."
+        ]
       },
       "files": [
         {
@@ -3025,11 +3021,12 @@
       ],
       "fault": {
         "codes": [
-          "bounds_mismatch"
+          "invalid_manifest"
         ],
         "detect": "open",
         "requirements": [
-          "PART-4"
+          "PART-4",
+          "CHECK-1"
         ]
       },
       "files": [
@@ -3064,11 +3061,12 @@
       ],
       "fault": {
         "codes": [
-          "bounds_mismatch"
+          "invalid_manifest"
         ],
         "detect": "open",
         "requirements": [
-          "PART-4"
+          "PART-4",
+          "CHECK-1"
         ]
       },
       "files": [
@@ -3119,11 +3117,12 @@
       ],
       "fault": {
         "codes": [
-          "bounds_mismatch"
+          "invalid_manifest"
         ],
         "detect": "open",
         "requirements": [
-          "PART-4"
+          "PART-4",
+          "CHECK-1"
         ]
       },
       "files": [
@@ -3427,6 +3426,47 @@
           "sha256": "e2a12c97ec30658bdb832d733e487bcc8aa3ad3e82d83609f6436352f81682e1",
           "producer": "generators/pyarrow_fixtures.py",
           "provenance": "generated (copied unchanged from datasets/basic)",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "invalid-footer-row-count",
+      "dir": "datasets/invalid/invalid-footer-row-count",
+      "valid": false,
+      "description": "FileMetaData.num_rows is 13 while its row groups hold 12 rows; the manifest says 13, matching the footer's num_rows.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "data/part-00000.parquet: footer: FileMetaData.num_rows 12 -> 13 (row groups still sum to 12)",
+        "data/part-00000.parquet: data pages preserved; page indexes and footer re-serialized, file size 2619 -> 2619",
+        "manifest: parts.0.rows 12 -> 13"
+      ],
+      "fault": {
+        "codes": [
+          "invalid_footer"
+        ],
+        "detect": "open",
+        "requirements": [
+          "CHECK-1"
+        ]
+      },
+      "files": [
+        {
+          "path": "datasets/invalid/invalid-footer-row-count/data/part-00000.parquet",
+          "bytes": 2619,
+          "sha256": "d3c81d6cc62262fd742ff0acb3b3914aa31c9c04a1189b1a023db5d90a0e9aec",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/invalid-footer-row-count/manifest.json",
+          "bytes": 306,
+          "sha256": "cbc593c673ab70ca41c0ff11bf0edc346da398ade629136e7a8e86f15a551be8",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
           "command": "python generators/regenerate.py"
         }
       ]

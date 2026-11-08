@@ -471,7 +471,7 @@
     },
     {
       "id": "refusals-open/manifest-draft-without-revision",
-      "description": "format_version is 0 but draft_revision is absent. Note: MAN-7 reads a missing draft_revision as well formed (it is optional there), so (0, none) may be reported as an unsupported version.",
+      "description": "format_version is 0 but draft_revision is absent.",
       "requirements": [
         "MAN-3",
         "MAN-4",
@@ -485,10 +485,7 @@
       },
       "expect": {
         "status": "refused",
-        "codes": [
-          "invalid_manifest",
-          "unsupported_version"
-        ]
+        "code": "invalid_manifest"
       }
     },
     {
@@ -901,7 +898,7 @@
     },
     {
       "id": "refusals-open/part-rows-mismatch",
-      "description": "The manifest's rows is 13; the part holds 12. Note: refusal-codes.json describes this fault under both part_mismatch and invalid_footer.",
+      "description": "The manifest's rows is 13; the part holds 12.",
       "requirements": [
         "CHECK-1"
       ],
@@ -912,17 +909,15 @@
       },
       "expect": {
         "status": "refused",
-        "codes": [
-          "part_mismatch",
-          "invalid_footer"
-        ]
+        "code": "part_mismatch"
       }
     },
     {
       "id": "refusals-open/bounds-min-above-max",
       "description": "The part's declared min key is greater than its max key.",
       "requirements": [
-        "PART-4"
+        "PART-4",
+        "CHECK-1"
       ],
       "dataset": "datasets/invalid/bounds-min-above-max",
       "detect": "open",
@@ -931,14 +926,15 @@
       },
       "expect": {
         "status": "refused",
-        "code": "bounds_mismatch"
+        "code": "invalid_manifest"
       }
     },
     {
       "id": "refusals-open/bounds-overlap",
       "description": "The first part's declared max key is raised to the second part's min key (manifest bounds overlap).",
       "requirements": [
-        "PART-4"
+        "PART-4",
+        "CHECK-1"
       ],
       "dataset": "datasets/invalid/bounds-overlap",
       "detect": "open",
@@ -947,14 +943,15 @@
       },
       "expect": {
         "status": "refused",
-        "code": "bounds_mismatch"
+        "code": "invalid_manifest"
       }
     },
     {
       "id": "refusals-open/bounds-parts-out-of-order",
       "description": "The manifest lists the parts with the last part first (bounds not ascending).",
       "requirements": [
-        "PART-4"
+        "PART-4",
+        "CHECK-1"
       ],
       "dataset": "datasets/invalid/bounds-parts-out-of-order",
       "detect": "open",
@@ -963,7 +960,7 @@
       },
       "expect": {
         "status": "refused",
-        "code": "bounds_mismatch"
+        "code": "invalid_manifest"
       }
     },
     {
@@ -1005,6 +1002,22 @@
         "CHECK-1"
       ],
       "dataset": "datasets/invalid/invalid-footer-thrift",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "refusals-open/invalid-footer-row-count",
+      "description": "FileMetaData.num_rows is 13 while its row groups hold 12 rows; the manifest says 13, matching the footer's num_rows.",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-row-count",
       "detect": "open",
       "request": {
         "op": "open"

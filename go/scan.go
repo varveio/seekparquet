@@ -45,10 +45,15 @@ func (row *Row) Value(name string) (Value, bool) {
 	return Value{}, false
 }
 
-// Range is a range request (spec §6.1): the rows whose keys are at or after
-// Start (after it, when StartExclusive) and before End, in ascending
-// unsigned byte order of their keys, at most Limit of them.
+// Range is a range request (spec §6.2): the rows whose keys begin with
+// Prefix, are at or after Start (after it, when StartExclusive) and are
+// before End, in ascending unsigned byte order of their keys, at most Limit
+// of them.
 type Range struct {
+	// Prefix, when not empty, confines the range to the keys that begin
+	// with it: it is intersected with Start and End, so the read never
+	// leaves [Prefix, Successor(Prefix)).
+	Prefix []byte
 	// Start is the lower bound; nil is unbounded below.
 	Start []byte
 	// StartExclusive excludes a key equal to Start. The default is
@@ -65,15 +70,27 @@ type Range struct {
 	Columns []string
 }
 
-// PrefixRange returns the range of the keys that begin with prefix: from
-// prefix inclusive to Successor(prefix), or unbounded above when prefix
-// has none.
+// PrefixRange returns a prefix read: the range of the keys that begin with
+// prefix, with no other bounds.
 func PrefixRange(prefix []byte, limit int, columns ...string) Range {
-	rng := Range{Start: bytes.Clone(prefix), Limit: limit, Columns: columns}
-	if end, ok := Successor(prefix); ok {
-		rng.End = end
+	return Range{Prefix: bytes.Clone(prefix), Limit: limit, Columns: columns}
+}
+
+// bounds returns the range's effective lower bound (inclusive unless
+// exclusive) and upper bound: Start and End intersected with the keys
+// that begin with Prefix.
+func (rng Range) bounds() (start []byte, exclusive bool, end []byte) {
+	start, exclusive, end = rng.Start, rng.StartExclusive, rng.End
+	if len(rng.Prefix) == 0 {
+		return start, exclusive, end
 	}
-	return rng
+	if start == nil || bytes.Compare(start, rng.Prefix) < 0 {
+		start, exclusive = rng.Prefix, false
+	}
+	if upper, ok := Successor(rng.Prefix); ok && (end == nil || bytes.Compare(upper, end) < 0) {
+		end = upper
+	}
+	return start, exclusive, end
 }
 
 // Range returns the rows of rng. It decodes key pages only from the page
@@ -152,21 +169,22 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 	if stats == nil {
 		stats = new(Stats)
 	}
-	if len(r.groups) == 0 || rng.End != nil && rng.Start != nil && bytes.Compare(rng.Start, rng.End) >= 0 {
+	start, exclusive, end := rng.bounds()
+	if len(r.groups) == 0 || end != nil && start != nil && bytes.Compare(start, end) >= 0 {
 		return nil
 	}
 	n := 0
-	from, inclusive := rng.Start, !rng.StartExclusive
+	from, inclusive := start, !exclusive
 	var log pageLog
 	for g := r.groupFor(from); g < len(r.groups) && n < rng.Limit; g++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		grp := r.groups[g]
-		if rng.End != nil && bytes.Compare(grp.first, rng.End) >= 0 {
+		if end != nil && bytes.Compare(grp.first, end) >= 0 {
 			break
 		}
-		keys, start, done, err := r.readKeys(ctx, g, from, inclusive, rng.End, rng.Limit-n, &log, stats)
+		keys, first, done, err := r.readKeys(ctx, g, from, inclusive, end, rng.Limit-n, &log, stats)
 		if err != nil {
 			return err
 		}
@@ -183,7 +201,7 @@ func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnS
 					}
 					continue
 				}
-				err := p.readColumnInto(ctx, grp.physical, column, start, len(keys), stats, func(values []parquet.Value) error { return sink.Values(c, values) })
+				err := p.readColumnInto(ctx, grp.physical, column, first, len(keys), stats, func(values []parquet.Value) error { return sink.Values(c, values) })
 				if err != nil {
 					return err
 				}

@@ -132,6 +132,21 @@
       }
     },
     {
+      "id": "requests/basic/range-prefix-malformed-base64",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "range",
+        "prefix_base64": "YS8",
+        "limit": 10
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
       "id": "requests/basic/list-limit-0",
       "requirements": [
         "QUERY-1"

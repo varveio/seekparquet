@@ -59,7 +59,7 @@ class Dataset:
     def _values(self, values, present, columns):
         out = []
         for c in columns:
-            if c not in present:
+            if c not in present:  # COL-2, and COL-7 for a column no part has
                 out.append({"absent": True})
             else:
                 out.append(values[c])
@@ -69,17 +69,17 @@ class Dataset:
         if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
             raise InvalidRequest("limit must be a positive integer")
         for c in columns:
-            if c not in self.types:
-                raise ValueError(f"column {c!r} is not in the dataset; the suite does not test that")
-            if self.types[c].startswith(NESTED_TYPES):
+            if c in self.types and self.types[c].startswith(NESTED_TYPES):
                 raise Unsupported("unsupported_projection")
 
-    def range(self, start=None, start_exclusive=False, end=None, limit=None, columns=()):
+    def range(self, prefix=None, start=None, start_exclusive=False, end=None, limit=None, columns=()):
         """RANGE-1, RANGE-2, QUERY-2."""
         columns = list(columns)
         self._check(limit, columns)
         out = []
         for k, v, present in self.rows:
+            if prefix is not None and not k.startswith(prefix):
+                continue
             if start is not None and (k < start or (start_exclusive and k == start)):
                 continue
             if end is not None and not k < end:

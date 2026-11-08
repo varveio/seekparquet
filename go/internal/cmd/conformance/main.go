@@ -156,6 +156,9 @@ func (a *adapter) rangeOp(ctx context.Context, req map[string]json.RawMessage) r
 		return invalid(err)
 	}
 	var rng seekparquet.Range
+	if rng.Prefix, err = bytesField(req, "prefix_base64"); err != nil {
+		return invalid(err)
+	}
 	if rng.Start, err = bytesField(req, "start_base64"); err != nil {
 		return invalid(err)
 	}

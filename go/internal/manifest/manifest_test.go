@@ -80,6 +80,7 @@ func TestParseRefusals(t *testing.T) {
 		{"draft revision 2", edit(`"draft_revision": 1,`, `"draft_revision": 2,`), CodeUnsupportedVersion},
 		{"format_version 1", edit(`"format_version": 0,
   "draft_revision": 1,`, `"format_version": 1,`), CodeUnsupportedVersion},
+		{"format_version 1 with a draft revision", edit(`"format_version": 0,`, `"format_version": 1,`), CodeInvalidManifest},
 		{"format_version 2 with new members", edit(`"format_version": 0,
   "draft_revision": 1,`, `"format_version": 2, "new_member": true,`), CodeUnsupportedVersion},
 		{"undefined member", edit(`"parts"`, `"created_at": "now", "parts"`), CodeInvalidManifest},
@@ -114,8 +115,8 @@ func TestParseRefusals(t *testing.T) {
 		{"backslash", edit(`"data/part-00000.parquet"`, `"data\\part.parquet"`), CodeInvalidManifest},
 		{"control character", edit(`"data/part-00000.parquet"`, `"data/\u007fpart.parquet"`), CodeInvalidManifest},
 		{"duplicate path", edit(`"data/part-00001.parquet"`, `"data/part-00000.parquet"`), CodeInvalidManifest},
-		{"min above max", edit(`"bG9ncy8yMDI2LzAxL2EuZ3o="`, `"enp6"`), CodeBoundsMismatch},
-		{"parts overlap", edit(`"bG9ncy8yMDI2LzAyL2EuZ3o="`, `"bG9ncy8yMDI2LzAxL3ouZ3o="`), CodeBoundsMismatch},
+		{"min above max", edit(`"bG9ncy8yMDI2LzAxL2EuZ3o="`, `"enp6"`), CodeInvalidManifest},
+		{"parts overlap", edit(`"bG9ncy8yMDI2LzAyL2EuZ3o="`, `"bG9ncy8yMDI2LzAxL3ouZ3o="`), CodeInvalidManifest},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

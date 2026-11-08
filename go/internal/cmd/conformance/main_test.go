@@ -55,7 +55,7 @@ func TestAdapter(t *testing.T) {
 		`{"id":"2","op":"open",`+ds+`}`,
 		`{"id":"3","op":"range",`+ds+`,"limit":10,"columns":["size","name","nope"]}`,
 		`{"id":"4","op":"range",`+ds+`,"start_base64":"YQ==","start_exclusive":true,"end_base64":null,"limit":1}`,
-		`{"id":"5","op":"list",`+ds+`,"prefix_base64":"YQ==","delimiter_base64":"Lw==","limit":10}`,
+		`{"id":"5","op":"list",`+ds+`,"prefix_base64":"YS8=","delimiter_base64":"Lw==","limit":10}`,
 		`{"id":"6","op":"range",`+ds+`,"limit":1.5}`,
 		`{"id":"7","op":"range",`+ds+`,"limit":0}`,
 		`{"id":"8","op":"range",`+ds+`,"limit":1,"start_base64":"!!"}`,

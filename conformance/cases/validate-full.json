@@ -1,7 +1,7 @@
 {
   "group": "validate-full",
   "target": "validator-full",
-  "description": "Validation at the full level (section 8): valid datasets complete; faults in scope fail with their code.",
+  "description": "Validation at the full level (section 8). Valid datasets complete. For an invalid dataset, validate still answers status ok and reports the level failed with the refusal code (it never answers refused); a dataset that cannot be opened reports structural failed.",
   "cases": [
     {
       "id": "validate-full/empty",
@@ -378,14 +378,24 @@
         "validate:full"
       ],
       "dataset": "datasets/invalid/invalid-parquet-page",
-      "detect": "validate:full",
       "request": {
         "op": "validate",
         "level": "full"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_parquet"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "failed",
+            "code": "invalid_parquet"
+          }
+        }
       }
     }
   ]

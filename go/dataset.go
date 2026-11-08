@@ -141,15 +141,17 @@ func (m Metadata) clone() Metadata {
 
 // OpenDataset opens the dataset at src (CHECK-1). It reads and validates
 // the manifest (§3); opens every part, requiring it to exist and have the
-// manifest's size; reads every footer, requiring the seekparquet.* stamps
-// to agree with the manifest, the row count to equal the manifest's, a
-// valid key column (KEY-1), and key ascending as the first sorting column
-// of every non-empty row group (RG-1). It also checks, beyond CHECK-1, that
-// every non-empty row group's key column has both page indexes, that the
-// first key of every non-empty row group (decoded from its page) ascends
-// strictly, and that each part's decoded first and last keys equal the
-// manifest's bounds (bounds_mismatch). It does not read every row: rows it
-// does not decode are not certified (CHECK-4).
+// manifest's size; reads every footer, requiring it to be self-contained
+// and unencrypted (FILE-1, FILE-2), the seekparquet.* stamps to agree with
+// the manifest (STAMP-2), the row count to equal the manifest's, a valid
+// key column (KEY-1, KEY-5), consistent columns across parts (COL-5), and
+// key ascending as the first sorting column of every non-empty row group
+// (RG-1). Beyond CHECK-1 (as CHECK-3 allows) it checks every non-empty row
+// group's key page index and decodes its first key page, and decodes each
+// part's last key page, so that the row groups' first keys ascend strictly
+// and each part's first and last keys equal the manifest's bounds
+// (bounds_mismatch). It does not read every row: rows it does not decode
+// are not certified (CHECK-4).
 //
 // A dataset that breaks the specification is refused with a
 // *RefusalError (see CodeOf); a part that fails an expectation, with an

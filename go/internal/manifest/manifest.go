@@ -25,7 +25,6 @@ const Format = "seekparquet"
 const (
 	CodeInvalidManifest    = "invalid_manifest"
 	CodeUnsupportedVersion = "unsupported_version"
-	CodeBoundsMismatch     = "bounds_mismatch"
 )
 
 // Version is a (format_version, draft_revision) pair. DraftRevision is 0
@@ -81,7 +80,7 @@ type Part struct {
 // version pair (MAN-4, VER-1), before any other member, so that a manifest
 // of a later revision is refused as unsupported rather than invalid; then
 // every member (MAN-3, PART-1 to PART-3); and last the order of the bounds
-// (PART-4, bounds_mismatch).
+// (PART-4).
 func Parse(raw []byte) (*Manifest, error) {
 	if bytes.HasPrefix(raw, []byte("\xef\xbb\xbf")) {
 		return nil, invalid("the manifest begins with a byte order mark")
@@ -155,10 +154,10 @@ func Parse(raw []byte) (*Manifest, error) {
 	}
 	for i, part := range m.Parts {
 		if bytes.Compare(part.MinKey, part.MaxKey) > 0 {
-			return nil, refuse(CodeBoundsMismatch, "part %d (%s): min_key is above max_key", i, part.Path)
+			return nil, invalid("part %d (%s): min_key is above max_key", i, part.Path)
 		}
 		if i > 0 && bytes.Compare(m.Parts[i-1].MaxKey, part.MinKey) >= 0 {
-			return nil, refuse(CodeBoundsMismatch, "part %d (%s) does not start after part %d ends", i, part.Path, i-1)
+			return nil, invalid("part %d (%s) does not start after part %d ends", i, part.Path, i-1)
 		}
 	}
 	return m, nil
@@ -173,8 +172,10 @@ func prefix(err error, format string, args ...any) error {
 }
 
 // parseVersion reads format_version and draft_revision and requires a
-// supported pair. Well-typed but unknown pairs are unsupported_version;
-// ill-typed members are invalid_manifest.
+// supported pair (MAN-7). Well-formed but unknown pairs are
+// unsupported_version; ill-typed members, a format_version 0 without a
+// draft_revision and a draft_revision on another format_version are
+// invalid_manifest.
 func parseVersion(top map[string]json.RawMessage) (Version, error) {
 	rawVersion, ok := top["format_version"]
 	if !ok {
@@ -192,13 +193,16 @@ func parseVersion(top map[string]json.RawMessage) (Version, error) {
 		}
 		v.DraftRevision = draft
 	}
+	if v.FormatVersion == 0 && v.DraftRevision == 0 {
+		return Version{}, invalid("format_version 0 requires a draft_revision")
+	}
+	if v.FormatVersion != 0 && v.DraftRevision != 0 {
+		return Version{}, invalid("draft_revision is present on format_version %d", v.FormatVersion)
+	}
 	for _, s := range Supported {
 		if s == v {
 			return v, nil
 		}
-	}
-	if v.FormatVersion == 0 && v.DraftRevision == 0 {
-		return Version{}, invalid("format_version 0 requires a draft_revision")
 	}
 	return Version{}, refuse(CodeUnsupportedVersion, "format_version %d, draft_revision %d is not supported", v.FormatVersion, v.DraftRevision)
 }

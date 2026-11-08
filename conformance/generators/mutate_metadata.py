@@ -494,8 +494,7 @@ def build():
     R.append(derive("manifest-wrong-format", "basic", "format is \"parquet\".",
                     mi(["MAN-4"]), manifest=set_member(["format"], "parquet")))
     R.append(derive("manifest-draft-without-revision", "basic", "format_version is 0 but draft_revision is absent.",
-                    mi(["MAN-3", "MAN-4", "MAN-7"], codes=["invalid_manifest", "unsupported_version"],
-                       note="MAN-7 reads a missing draft_revision as well formed (it is optional there), so (0, none) may be reported as an unsupported version."),
+                    mi(["MAN-3", "MAN-4", "MAN-7"]),
                     manifest=del_member(["draft_revision"])))
     R.append(derive("manifest-bad-base64", "basic", "min_key_base64 contains characters outside the base64 alphabet.",
                     mi(["PART-3"]), manifest=set_member(["parts", 0, "min_key_base64"], "YS8x!nR4dA==")))
@@ -566,19 +565,18 @@ def build():
                     F("part_mismatch", open_, ["CHECK-1"]),
                     manifest=lambda m, ch: set_member(["parts", 0, "bytes"], m["parts"][0]["bytes"] - 1)(m, ch)))
     R.append(derive("part-rows-mismatch", "basic", "The manifest's rows is 13; the part holds 12.",
-                    F("part_mismatch", open_, ["CHECK-1"], codes=["part_mismatch", "invalid_footer"],
-                      note="refusal-codes.json describes this fault under both part_mismatch and invalid_footer."),
+                    F("part_mismatch", open_, ["CHECK-1"]),
                     manifest=set_member(["parts", 0, "rows"], 13)))
     R.append(derive("bounds-min-above-max", "basic", "The part's declared min key is greater than its max key.",
-                    F("bounds_mismatch", open_, ["PART-4"]),
+                    F("invalid_manifest", open_, ["PART-4", "CHECK-1"]),
                     manifest=set_member(["parts", 0, "min_key_base64"], b64e(b"zulu"))))
     R.append(derive("bounds-overlap", "multipart",
                     "The first part's declared max key is raised to the second part's min key (manifest bounds overlap).",
-                    F("bounds_mismatch", open_, ["PART-4"]),
+                    F("invalid_manifest", open_, ["PART-4", "CHECK-1"]),
                     manifest=lambda m, ch: set_member(["parts", 0, "max_key_base64"], m["parts"][1]["min_key_base64"])(m, ch)))
     R.append(derive("bounds-parts-out-of-order", "multipart",
                     "The manifest lists the parts with the last part first (bounds not ascending).",
-                    F("bounds_mismatch", open_, ["PART-4"]),
+                    F("invalid_manifest", open_, ["PART-4", "CHECK-1"]),
                     manifest=lambda m, ch: (m["parts"].insert(0, m["parts"].pop()),
                                             ch.append("manifest: parts[2] moved to parts[0]"))))
     R.append(derive("bounds-first-key-differs", "multipart",
@@ -600,6 +598,11 @@ def build():
                              "footer length field -> file size + 10"))
     R.append(derive_raw_part("invalid-footer-thrift", "The footer bytes are overwritten with 0xFF (same length).",
                              lambda d: _ff_footer(d), "FileMetaData bytes replaced by 0xFF"))
+    R.append(derive("invalid-footer-row-count", "basic",
+                    "FileMetaData.num_rows is 13 while its row groups hold 12 rows; the manifest says 13, matching "
+                    "the footer's num_rows.",
+                    F("invalid_footer", open_, ["CHECK-1"]), parts={B: set_num_rows(1)},
+                    manifest=set_member(["parts", 0, "rows"], 13)))
     R.append(derive("invalid-footer-file-path", "basic",
                     "Row group 0's key column chunk sets file_path (a reference to another file).",
                     F("invalid_footer", open_, ["FILE-1", "CHECK-1"]), parts={B: set_file_path(0, 0, b"other.parquet")}))

@@ -58,8 +58,10 @@ def B(b):
     return None if b is None else b64e(b)
 
 
-def rq_range(start=None, start_exclusive=None, end=None, limit=BIG, columns=None, null_bounds=False):
+def rq_range(start=None, start_exclusive=None, end=None, limit=BIG, columns=None, null_bounds=False, prefix=None):
     r = {"op": "range"}
+    if prefix is not None:
+        r["prefix_base64"] = B(prefix)
     if start is not None or null_bounds:
         r["start_base64"] = B(start)
     if start_exclusive is not None:
@@ -95,7 +97,7 @@ def run(ds, req):
     cols = args.get("columns") or []
     try:
         if req["op"] == "range":
-            e = ds.range(start=dec(args.get("start_base64")), start_exclusive=args.get("start_exclusive", False),
+            e = ds.range(prefix=dec(args.get("prefix_base64")), start=dec(args.get("start_base64")), start_exclusive=args.get("start_exclusive", False),
                          end=dec(args.get("end_base64")), limit=args["limit"], columns=cols)
         else:
             e = ds.list(prefix=dec(args.get("prefix_base64")) or b"", delimiter=dec(args["delimiter_base64"]),
@@ -250,25 +252,54 @@ def range_group():
 
 
 def prefix_group():
-    g = Group("prefix", "reader", "Prefix reads: the range from p to successor(p), or unbounded above when p "
-                                  "has no successor (section 6.2). The protocol has no prefix operation, so "
-                                  "these are range requests whose end is computed by the suite.")
+    g = Group("prefix", "reader", "Prefix reads: range requests with prefix_base64 (RANGE-1), alone and "
+                                  "intersected with start and end. A prefix read of p equals the range from p to "
+                                  "successor(p), or unbounded above when p has no successor (section 6.2).")
     cases = [
-        ("multipart", [b"logs/2026/02/", b"logs/", b"logs/2026/", b"app/v1/obj-00", b"tmp/", b"zz", b"nothing"]),
-        ("binary-keys", [b"a", b"a\x00", b"\x00", b"\x7f", b"\xc3", b"p", b"pq", b"L" * 30, b"\xff", b"\xff\xff",
-                         b"\xff" * 80, b"\xfe\xff"]),
-        ("truncated-bounds-2", [b"\xff", b"\xff\xff", b"L" * 30, b"M" * 70 + b"\xff" * 10, b"a"]),
-        ("delimiter", [b"a/b/", b"a/", b"caf\xc3\xa9", b"x\xff", b"\xff", b"\xff\xff"]),
+        ("multipart", [b"logs/2026/02/", b"logs/", b"logs/2026/", b"app/v1/obj-00", b"tmp/", b"zz", b"nothing", b""]),
+        ("binary-keys", [b"a", b"a\x00", b"\x00", b"\x7f", b"\x7f\xff", b"\xc3", b"p", b"pq", b"L" * 30, b"\xff",
+                         b"\xff\xff", b"\xff" * 80, b"\xff" * 81, b"\xff" * 82, b"\xfe\xff", b"M" * 70 + b"\xff" * 10]),
+        ("truncated-bounds-2", [b"\xff", b"\xff\xff", b"\xff" * 80, b"L" * 30, b"M" * 70 + b"\xff" * 10, b"a"]),
+        ("delimiter", [b"a/b/", b"a/", b"caf\xc3\xa9", b"x\xff", b"\xff", b"\xff\xff", b"\xff\xff\xff"]),
     ]
     for name, prefixes in cases:
         src = "binary-keys" if name.startswith("truncated") else name
         ds = oracle.Dataset.load(src)
         for i, p in enumerate(prefixes):
             s = oracle.successor(p)
-            req = rq_range(start=p, end=s)
-            reqs = ["RANGE-1", "KEY-3"]
-            g.add(f"{name}/{i:02d}", reqs, name, run(ds, req), request=req,
-                  desc=f"prefix {show(p)}" + ("" if s is not None else " (no successor: unbounded above)"))
+            req = rq_range(prefix=p)
+            exp = run(ds, req)
+            # The definition: the same rows as the range p .. successor(p).
+            assert exp == run(ds, rq_range(start=p, end=s)), (name, p)
+            g.add(f"{name}/{i:02d}", ["RANGE-1", "KEY-3"] + (["QUERY-2"] if p == b"" else []), name, exp,
+                  request=req, desc=f"prefix {show(p) or '(empty)'}" +
+                  ("" if s is not None or p == b"" else " (all 0xFF bytes: no successor)") +
+                  (" (ends in 0xFF)" if p.endswith(b"\xff") and p.strip(b"\xff") else ""))
+    combos = [
+        ("multipart", b"logs/2026/02/", dict(start=b"logs/2026/02/f010")),
+        ("multipart", b"logs/2026/02/", dict(start=b"logs/2026/02/f010", start_exclusive=True, limit=3)),
+        ("multipart", b"logs/2026/02/", dict(end=b"logs/2026/02/f007")),
+        ("multipart", b"logs/2026/02/", dict(start=b"app/", end=b"logs/2026/02/f002"), "start below the prefix"),
+        ("multipart", b"logs/2026/02/", dict(start=b"logs/2026/03/"), "start above every key with the prefix"),
+        ("multipart", b"logs/2026/02/", dict(end=b"logs/2026/02/"), "end equal to the prefix: nothing"),
+        ("multipart", b"logs/2026/02/", dict(start=b"logs/2026/02/", start_exclusive=True, limit=2),
+         "exclusive start equal to the prefix"),
+        ("multipart", b"logs/", dict(start=b"logs/2026/02/f038", end=b"logs/2026/03/f002"), "spans a part boundary"),
+        ("binary-keys", b"\xff", dict(start=b"\xff\xfe")),
+        ("binary-keys", b"\xff", dict(start=b"\xff\xff", start_exclusive=True, end=b"\xff" * 81)),
+        ("binary-keys", b"\xff\xff", dict(end=b"\xff\xff\xff\xff")),
+        ("truncated-bounds-2", b"\xff", dict(start=b"\xff" * 80 + b"\x01", start_exclusive=True)),
+        ("binary-keys", b"a", dict(start=b"", end=b"")),
+        ("binary-keys", b"", dict(start=b"\x7f", limit=4)),
+    ]
+    for i, c in enumerate(combos):
+        name, p, kw = c[0], c[1], dict(c[2])
+        src = "binary-keys" if name.startswith("truncated") else name
+        ds = oracle.Dataset.load(src)
+        kw.setdefault("limit", BIG)
+        req = rq_range(prefix=p, **kw)
+        g.add(f"{name}/with-bounds-{i:02d}", ["RANGE-1"] + (["QUERY-2"] if b"" in (kw.get("start"), kw.get("end")) else []),
+              name, run(ds, req), request=req, desc=(c[3] + "; " if len(c) > 3 else "") + "prefix intersected with start/end")
     return g
 
 
@@ -417,6 +448,15 @@ def projection_group():
     req = rq_list(prefix=b"row-1", delimiter=b"-", columns=["i64", "f64"])
     g.add("list/columns", ["LIST-3", "RANGE-2", "COL-2"], P, run(ds, req), request=req,
           desc="the delimiter occurs only inside the prefix, so every candidate is a row")
+    for cid, cols in (("unknown", ["no_such_column"]), ("unknown-mixed", ["i32", "no_such_column", "req"])):
+        req = rq_range(columns=cols)
+        g.add(f"col-7/{cid}", ["COL-7", "RANGE-2"], P, run(ds, req), request=req,
+              desc="a column no part has is absent in every row, not an error")
+    req = rq_list(delimiter=b"-", columns=["no_such_column"])
+    g.add("col-7/list", ["COL-7", "LIST-3"], P, run(ds, req), request=req)
+    req = rq_range(columns=["a"])
+    g.add("col-6/no-path-lookup", ["COL-6", "COL-7"], P, run(ds, req), request=req,
+          desc="'a' is not a field; the column 'a.b' does not make it one")
     for c in ("meta", "tags"):
         req = rq_range(columns=["i32", c])
         g.add(f"nested/{c}", ["COL-3"], P, run(ds, req), request=req,
@@ -450,6 +490,7 @@ def requests_group():
         ("range-start-malformed-base64", {"op": "range", "start_base64": "YQ", "limit": 10}),
         ("range-start-bad-alphabet", {"op": "range", "start_base64": "Y!==", "limit": 10}),
         ("range-end-noncanonical-base64", {"op": "range", "end_base64": "YR==", "limit": 10}),
+        ("range-prefix-malformed-base64", {"op": "range", "prefix_base64": "YS8", "limit": 10}),
         ("list-limit-0", {"op": "list", "delimiter_base64": "Lw==", "limit": 0}),
         ("list-limit-fraction", {"op": "list", "delimiter_base64": "Lw==", "limit": 2.5}),
         ("list-delimiter-two-bytes", {"op": "list", "delimiter_base64": "Ly8=", "limit": 10}),
@@ -477,6 +518,8 @@ def fault_level(f):
         return det.split(":")[1]
     if det == "open":
         return "structural"
+    if "inconsistent_column" in codes:
+        return "structural"  # COL-5: structural validation checks all columns
     if codes <= STRUCTURAL_READ or ("invalid_page_index" in codes and set(f["requirements"]) & {"RG-3", "RG-4"}
                                     and not set(f["requirements"]) & {"RG-5", "KEY-6"}):
         return "structural"
@@ -504,8 +547,10 @@ def refusal_groups(lock):
                                               "data (detect: read). Each request is an unbounded range whose limit "
                                               "covers every row, so it decodes the faulty page under any correct "
                                               "access path.")
-    gv = {lvl: Group(f"validate-{lvl}", f"validator-{lvl}", f"Validation at the {lvl} level (section 8): valid "
-                                                            "datasets complete; faults in scope fail with their code.")
+    gv = {lvl: Group(f"validate-{lvl}", f"validator-{lvl}", f"Validation at the {lvl} level (section 8). Valid "
+                                                            "datasets complete. For an invalid dataset, validate still answers status ok and reports "
+                                                            "the level failed with the refusal code (it never answers refused); a dataset that "
+                                                            "cannot be opened reports structural failed.")
           for lvl in ("structural", "profile", "full", "digest")}
     order = ["structural", "profile", "full"]
     for d in lock["datasets"]:
@@ -531,13 +576,17 @@ def refusal_groups(lock):
             g_read.add(d["name"], f["requirements"], d["dir"], exp, request=read_request(
                 {"request": "range-columns:size"} if "invalid_parquet" in codes else f), detect="read", desc=desc)
         lvl = fault_level(f)
-        if "inconsistent_column" in codes:
-            continue  # COL-5 is only required for projected columns; validators SHOULD check it
-        reqs = f["requirements"] + ["VAL-1"]
+        reqs = f["requirements"] + (["VAL-2"] if lvl == "digest" else ["VAL-1"])
+        failed = {"result": "failed", **({"code": codes[0]} if len(codes) == 1 else {"codes": codes})}
         if lvl == "digest":
-            reqs = f["requirements"] + ["VAL-2"]
-        gv[lvl].add(d["name"], reqs, d["dir"], exp, request={"op": "validate", "level": lvl},
-                    detect=f"validate:{lvl}", requires=[f"validate:{lvl}"], desc=desc)
+            levels = {"digest": failed}
+        else:
+            levels = {x: {"result": "complete"} for x in order[: order.index(lvl)]}
+            levels[lvl] = failed
+        # validate never answers refused: the report shows the level failed (an unopenable dataset fails
+        # structural with the refusal code).
+        gv[lvl].add(d["name"], reqs, d["dir"], {"status": "ok", "levels": levels},
+                    request={"op": "validate", "level": lvl}, requires=[f"validate:{lvl}"], desc=desc)
     return [g_open, g_read] + [gv[x] for x in ("structural", "profile", "full", "digest")]
 
 

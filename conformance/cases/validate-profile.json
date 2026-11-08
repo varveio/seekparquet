@@ -1,7 +1,7 @@
 {
   "group": "validate-profile",
   "target": "validator-profile",
-  "description": "Validation at the profile level (section 8): valid datasets complete; faults in scope fail with their code.",
+  "description": "Validation at the profile level (section 8). Valid datasets complete. For an invalid dataset, validate still answers status ok and reports the level failed with the refusal code (it never answers refused); a dataset that cannot be opened reports structural failed.",
   "cases": [
     {
       "id": "validate-profile/empty",
@@ -215,14 +215,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/key-order-within-page",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "key_order"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
       }
     },
     {
@@ -237,14 +244,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/key-order-duplicate",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "key_order"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
       }
     },
     {
@@ -259,14 +273,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/key-order-across-pages",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "key_order"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
       }
     },
     {
@@ -281,14 +302,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/key-order-across-row-groups",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "key_order"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
       }
     },
     {
@@ -303,14 +331,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/key-order-duplicate-across-row-groups",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "key_order"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "key_order"
+          }
+        }
       }
     },
     {
@@ -325,17 +360,24 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/invalid-key-empty",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "codes": [
-          "invalid_key",
-          "bounds_mismatch"
-        ]
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "codes": [
+              "invalid_key",
+              "bounds_mismatch"
+            ]
+          }
+        }
       }
     },
     {
@@ -351,17 +393,24 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/key-order-across-parts",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "codes": [
-          "key_order",
-          "bounds_mismatch"
-        ]
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "codes": [
+              "key_order",
+              "bounds_mismatch"
+            ]
+          }
+        }
       }
     },
     {
@@ -500,14 +549,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/bounds-first-key-differs",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "bounds_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "bounds_mismatch"
+          }
+        }
       }
     },
     {
@@ -521,14 +577,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/bounds-last-key-differs",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "bounds_mismatch"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "bounds_mismatch"
+          }
+        }
       }
     },
     {
@@ -543,14 +606,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/invalid-key-utf8",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_key"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_key"
+          }
+        }
       }
     },
     {
@@ -566,14 +636,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/page-index-bound-not-utf8",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -589,14 +666,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/page-index-min-above-first-key",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -612,14 +696,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/page-index-max-below-last-key",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     },
     {
@@ -635,14 +726,21 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/page-index-shortened-ff-max",
-      "detect": "validate:profile",
       "request": {
         "op": "validate",
         "level": "profile"
       },
       "expect": {
-        "status": "refused",
-        "code": "invalid_page_index"
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_page_index"
+          }
+        }
       }
     }
   ]

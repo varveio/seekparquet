@@ -726,8 +726,8 @@ def build():
                                         {"expect_no_column_index_rg": 1}),
         "inconsistent-column-type": ({"codes": ["inconsistent_column"], "detect": "read", "requirements": ["COL-5", "CHECK-1"],
                                       "request": "range-columns:size",
-                                      "note": "COL-5 is required on open only for projected columns, so the case "
-                                              "projects size; an open-time refusal with this code also passes."}, {}),
+                                      "note": "COL-5 requires the check no later than the first request that projects "
+                                              "the column, so the read case projects size; structural validation checks all columns."}, {}),
         "inconsistent-column-repetition": ({"codes": ["inconsistent_column"], "detect": "read", "requirements": ["COL-5", "CHECK-1"],
                                             "request": "range-columns:size"}, {}),
         "key-order-across-parts": ({"codes": ["key_order", "bounds_mismatch"], "detect": "read",

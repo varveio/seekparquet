@@ -5,8 +5,7 @@ description: The manifest's rows is 13; the part holds 12.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: part_mismatch or invalid_footer, detected at the latest on open (CHECK-1)
-note: refusal-codes.json describes this fault under both part_mismatch and invalid_footer.
+expected refusal: part_mismatch, detected at the latest on open (CHECK-1)
 changes:
   - manifest: parts.0.rows 12 -> 13
 

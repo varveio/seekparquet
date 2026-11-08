@@ -135,7 +135,7 @@
     },
     {
       "id": "refusals-read/inconsistent-column-type",
-      "description": "Column size is INT64 in part 0 and INT32 in part 1. Note: COL-5 is required on open only for projected columns, so the case projects size; an open-time refusal with this code also passes.",
+      "description": "Column size is INT64 in part 0 and INT32 in part 1. Note: COL-5 requires the check no later than the first request that projects the column, so the read case projects size; structural validation checks all columns.",
       "requirements": [
         "COL-5",
         "CHECK-1"

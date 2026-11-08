@@ -1,7 +1,7 @@
 {
   "group": "prefix",
   "target": "reader",
-  "description": "Prefix reads: the range from p to successor(p), or unbounded above when p has no successor (section 6.2). The protocol has no prefix operation, so these are range requests whose end is computed by the suite.",
+  "description": "Prefix reads: range requests with prefix_base64 (RANGE-1), alone and intersected with start and end. A prefix read of p equals the range from p to successor(p), or unbounded above when p has no successor (section 6.2).",
   "cases": [
     {
       "id": "prefix/multipart/00",
@@ -13,8 +13,7 @@
       "dataset": "datasets/multipart",
       "request": {
         "op": "range",
-        "start_base64": "bG9ncy8yMDI2LzAyLw==",
-        "end_base64": "bG9ncy8yMDI2LzAyMA==",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
         "limit": 100000
       },
       "expect": {
@@ -233,8 +232,7 @@
       "dataset": "datasets/multipart",
       "request": {
         "op": "range",
-        "start_base64": "bG9ncy8=",
-        "end_base64": "bG9nczA=",
+        "prefix_base64": "bG9ncy8=",
         "limit": 100000
       },
       "expect": {
@@ -853,8 +851,7 @@
       "dataset": "datasets/multipart",
       "request": {
         "op": "range",
-        "start_base64": "bG9ncy8yMDI2Lw==",
-        "end_base64": "bG9ncy8yMDI2MA==",
+        "prefix_base64": "bG9ncy8yMDI2Lw==",
         "limit": 100000
       },
       "expect": {
@@ -1373,8 +1370,7 @@
       "dataset": "datasets/multipart",
       "request": {
         "op": "range",
-        "start_base64": "YXBwL3YxL29iai0wMA==",
-        "end_base64": "YXBwL3YxL29iai0wMQ==",
+        "prefix_base64": "YXBwL3YxL29iai0wMA==",
         "limit": 100000
       },
       "expect": {
@@ -1443,8 +1439,7 @@
       "dataset": "datasets/multipart",
       "request": {
         "op": "range",
-        "start_base64": "dG1wLw==",
-        "end_base64": "dG1wMA==",
+        "prefix_base64": "dG1wLw==",
         "limit": 100000
       },
       "expect": {
@@ -1473,8 +1468,7 @@
       "dataset": "datasets/multipart",
       "request": {
         "op": "range",
-        "start_base64": "eno=",
-        "end_base64": "ens=",
+        "prefix_base64": "eno=",
         "limit": 100000
       },
       "expect": {
@@ -1498,13 +1492,702 @@
       "dataset": "datasets/multipart",
       "request": {
         "op": "range",
-        "start_base64": "bm90aGluZw==",
-        "end_base64": "bm90aGluaA==",
+        "prefix_base64": "bm90aGluZw==",
         "limit": 100000
       },
       "expect": {
         "status": "ok",
         "entries": []
+      }
+    },
+    {
+      "id": "prefix/multipart/07",
+      "description": "prefix (empty)",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3",
+        "QUERY-2"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "UkVBRE1F",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDA=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDE=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDI=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDM=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDQ=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDU=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDY=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDc=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDg=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDk=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "dG1wLw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "dG1wL3g=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "enotbGFzdA==",
+            "values": []
+          }
+        ]
       }
     },
     {
@@ -1517,8 +2200,7 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "YQ==",
-        "end_base64": "Yg==",
+        "prefix_base64": "YQ==",
         "limit": 100000
       },
       "expect": {
@@ -1572,8 +2254,7 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "YQA=",
-        "end_base64": "YQE=",
+        "prefix_base64": "YQA=",
         "limit": 100000
       },
       "expect": {
@@ -1602,8 +2283,7 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "AA==",
-        "end_base64": "AQ==",
+        "prefix_base64": "AA==",
         "limit": 100000
       },
       "expect": {
@@ -1637,8 +2317,7 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "fw==",
-        "end_base64": "gA==",
+        "prefix_base64": "fw==",
         "limit": 100000
       },
       "expect": {
@@ -1659,6 +2338,30 @@
     },
     {
       "id": "prefix/binary-keys/04",
+      "description": "prefix 0x7fff (ends in 0xFF)",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "f/8=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "f/8=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/binary-keys/05",
       "description": "prefix 0xc3",
       "requirements": [
         "RANGE-1",
@@ -1667,8 +2370,7 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "ww==",
-        "end_base64": "xA==",
+        "prefix_base64": "ww==",
         "limit": 100000
       },
       "expect": {
@@ -1688,7 +2390,7 @@
       }
     },
     {
-      "id": "prefix/binary-keys/05",
+      "id": "prefix/binary-keys/06",
       "description": "prefix p",
       "requirements": [
         "RANGE-1",
@@ -1697,8 +2399,7 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "cA==",
-        "end_base64": "cQ==",
+        "prefix_base64": "cA==",
         "limit": 100000
       },
       "expect": {
@@ -1728,7 +2429,7 @@
       }
     },
     {
-      "id": "prefix/binary-keys/06",
+      "id": "prefix/binary-keys/07",
       "description": "prefix pq",
       "requirements": [
         "RANGE-1",
@@ -1737,8 +2438,7 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "cHE=",
-        "end_base64": "cHI=",
+        "prefix_base64": "cHE=",
         "limit": 100000
       },
       "expect": {
@@ -1763,7 +2463,7 @@
       }
     },
     {
-      "id": "prefix/binary-keys/07",
+      "id": "prefix/binary-keys/08",
       "description": "prefix 4c4c4c4c4c4c4c4c..(30B)",
       "requirements": [
         "RANGE-1",
@@ -1772,8 +2472,7 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExM",
-        "end_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExN",
+        "prefix_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExM",
         "limit": 100000
       },
       "expect": {
@@ -1818,8 +2517,8 @@
       }
     },
     {
-      "id": "prefix/binary-keys/08",
-      "description": "prefix 0xff (no successor: unbounded above)",
+      "id": "prefix/binary-keys/09",
+      "description": "prefix 0xff (all 0xFF bytes: no successor)",
       "requirements": [
         "RANGE-1",
         "KEY-3"
@@ -1827,7 +2526,7 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "/w==",
+        "prefix_base64": "/w==",
         "limit": 100000
       },
       "expect": {
@@ -1877,8 +2576,8 @@
       }
     },
     {
-      "id": "prefix/binary-keys/09",
-      "description": "prefix 0xffff (no successor: unbounded above)",
+      "id": "prefix/binary-keys/10",
+      "description": "prefix 0xffff (all 0xFF bytes: no successor)",
       "requirements": [
         "RANGE-1",
         "KEY-3"
@@ -1886,7 +2585,7 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "//8=",
+        "prefix_base64": "//8=",
         "limit": 100000
       },
       "expect": {
@@ -1921,8 +2620,8 @@
       }
     },
     {
-      "id": "prefix/binary-keys/10",
-      "description": "prefix ffffffffffffffff..(80B) (no successor: unbounded above)",
+      "id": "prefix/binary-keys/11",
+      "description": "prefix ffffffffffffffff..(80B) (all 0xFF bytes: no successor)",
       "requirements": [
         "RANGE-1",
         "KEY-3"
@@ -1930,7 +2629,7 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8=",
+        "prefix_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8=",
         "limit": 100000
       },
       "expect": {
@@ -1955,8 +2654,8 @@
       }
     },
     {
-      "id": "prefix/binary-keys/11",
-      "description": "prefix 0xfeff",
+      "id": "prefix/binary-keys/12",
+      "description": "prefix ffffffffffffffff..(81B) (all 0xFF bytes: no successor)",
       "requirements": [
         "RANGE-1",
         "KEY-3"
@@ -1964,8 +2663,31 @@
       "dataset": "datasets/binary-keys",
       "request": {
         "op": "range",
-        "start_base64": "/v8=",
-        "end_base64": "/w==",
+        "prefix_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/binary-keys/13",
+      "description": "prefix ffffffffffffffff..(82B) (all 0xFF bytes: no successor)",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "/////////////////////////////////////////////////////////////////////////////////////////////////////////////w==",
         "limit": 100000
       },
       "expect": {
@@ -1974,8 +2696,55 @@
       }
     },
     {
+      "id": "prefix/binary-keys/14",
+      "description": "prefix 0xfeff (ends in 0xFF)",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "/v8=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "prefix/binary-keys/15",
+      "description": "prefix 4d4d4d4d4d4d4d4d..(80B) (ends in 0xFF)",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8C",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
       "id": "prefix/truncated-bounds-2/00",
-      "description": "prefix 0xff (no successor: unbounded above)",
+      "description": "prefix 0xff (all 0xFF bytes: no successor)",
       "requirements": [
         "RANGE-1",
         "KEY-3"
@@ -1983,7 +2752,7 @@
       "dataset": "datasets/truncated-bounds-2",
       "request": {
         "op": "range",
-        "start_base64": "/w==",
+        "prefix_base64": "/w==",
         "limit": 100000
       },
       "expect": {
@@ -2034,7 +2803,7 @@
     },
     {
       "id": "prefix/truncated-bounds-2/01",
-      "description": "prefix 0xffff (no successor: unbounded above)",
+      "description": "prefix 0xffff (all 0xFF bytes: no successor)",
       "requirements": [
         "RANGE-1",
         "KEY-3"
@@ -2042,7 +2811,7 @@
       "dataset": "datasets/truncated-bounds-2",
       "request": {
         "op": "range",
-        "start_base64": "//8=",
+        "prefix_base64": "//8=",
         "limit": 100000
       },
       "expect": {
@@ -2078,6 +2847,40 @@
     },
     {
       "id": "prefix/truncated-bounds-2/02",
+      "description": "prefix ffffffffffffffff..(80B) (all 0xFF bytes: no successor)",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "prefix_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/truncated-bounds-2/03",
       "description": "prefix 4c4c4c4c4c4c4c4c..(30B)",
       "requirements": [
         "RANGE-1",
@@ -2086,8 +2889,7 @@
       "dataset": "datasets/truncated-bounds-2",
       "request": {
         "op": "range",
-        "start_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExM",
-        "end_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExN",
+        "prefix_base64": "TExMTExMTExMTExMTExMTExMTExMTExMTExMTExM",
         "limit": 100000
       },
       "expect": {
@@ -2132,8 +2934,8 @@
       }
     },
     {
-      "id": "prefix/truncated-bounds-2/03",
-      "description": "prefix 4d4d4d4d4d4d4d4d..(80B)",
+      "id": "prefix/truncated-bounds-2/04",
+      "description": "prefix 4d4d4d4d4d4d4d4d..(80B) (ends in 0xFF)",
       "requirements": [
         "RANGE-1",
         "KEY-3"
@@ -2141,8 +2943,7 @@
       "dataset": "datasets/truncated-bounds-2",
       "request": {
         "op": "range",
-        "start_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8=",
-        "end_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTg==",
+        "prefix_base64": "TU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTf////////////8=",
         "limit": 100000
       },
       "expect": {
@@ -2162,7 +2963,7 @@
       }
     },
     {
-      "id": "prefix/truncated-bounds-2/04",
+      "id": "prefix/truncated-bounds-2/05",
       "description": "prefix a",
       "requirements": [
         "RANGE-1",
@@ -2171,8 +2972,7 @@
       "dataset": "datasets/truncated-bounds-2",
       "request": {
         "op": "range",
-        "start_base64": "YQ==",
-        "end_base64": "Yg==",
+        "prefix_base64": "YQ==",
         "limit": 100000
       },
       "expect": {
@@ -2226,8 +3026,7 @@
       "dataset": "datasets/delimiter",
       "request": {
         "op": "range",
-        "start_base64": "YS9iLw==",
-        "end_base64": "YS9iMA==",
+        "prefix_base64": "YS9iLw==",
         "limit": 100000
       },
       "expect": {
@@ -2271,8 +3070,7 @@
       "dataset": "datasets/delimiter",
       "request": {
         "op": "range",
-        "start_base64": "YS8=",
-        "end_base64": "YTA=",
+        "prefix_base64": "YS8=",
         "limit": 100000
       },
       "expect": {
@@ -2351,8 +3149,7 @@
       "dataset": "datasets/delimiter",
       "request": {
         "op": "range",
-        "start_base64": "Y2Fmw6k=",
-        "end_base64": "Y2Fmw6o=",
+        "prefix_base64": "Y2Fmw6k=",
         "limit": 100000
       },
       "expect": {
@@ -2383,7 +3180,7 @@
     },
     {
       "id": "prefix/delimiter/03",
-      "description": "prefix 0x78ff",
+      "description": "prefix 0x78ff (ends in 0xFF)",
       "requirements": [
         "RANGE-1",
         "KEY-3"
@@ -2391,8 +3188,7 @@
       "dataset": "datasets/delimiter",
       "request": {
         "op": "range",
-        "start_base64": "eP8=",
-        "end_base64": "eQ==",
+        "prefix_base64": "eP8=",
         "limit": 100000
       },
       "expect": {
@@ -2423,7 +3219,7 @@
     },
     {
       "id": "prefix/delimiter/04",
-      "description": "prefix 0xff (no successor: unbounded above)",
+      "description": "prefix 0xff (all 0xFF bytes: no successor)",
       "requirements": [
         "RANGE-1",
         "KEY-3"
@@ -2431,7 +3227,7 @@
       "dataset": "datasets/delimiter",
       "request": {
         "op": "range",
-        "start_base64": "/w==",
+        "prefix_base64": "/w==",
         "limit": 100000
       },
       "expect": {
@@ -2472,7 +3268,7 @@
     },
     {
       "id": "prefix/delimiter/05",
-      "description": "prefix 0xffff (no successor: unbounded above)",
+      "description": "prefix 0xffff (all 0xFF bytes: no successor)",
       "requirements": [
         "RANGE-1",
         "KEY-3"
@@ -2480,7 +3276,7 @@
       "dataset": "datasets/delimiter",
       "request": {
         "op": "range",
-        "start_base64": "//8=",
+        "prefix_base64": "//8=",
         "limit": 100000
       },
       "expect": {
@@ -2499,6 +3295,627 @@
           {
             "kind": "row",
             "key_base64": "////L3g=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/delimiter/06",
+      "description": "prefix 0xffffff (all 0xFF bytes: no successor)",
+      "requirements": [
+        "RANGE-1",
+        "KEY-3"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "range",
+        "prefix_base64": "////",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "////L3g=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/multipart/with-bounds-00",
+      "description": "prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "start_base64": "bG9ncy8yMDI2LzAyL2YwMTA=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzYuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzcuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/multipart/with-bounds-01",
+      "description": "prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "start_base64": "bG9ncy8yMDI2LzAyL2YwMTA=",
+        "start_exclusive": true,
+        "limit": 3
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/multipart/with-bounds-02",
+      "description": "prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "end_base64": "bG9ncy8yMDI2LzAyL2YwMDc=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/multipart/with-bounds-03",
+      "description": "start below the prefix; prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "start_base64": "YXBwLw==",
+        "end_base64": "bG9ncy8yMDI2LzAyL2YwMDI=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/multipart/with-bounds-04",
+      "description": "start above every key with the prefix; prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "start_base64": "bG9ncy8yMDI2LzAzLw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "prefix/multipart/with-bounds-05",
+      "description": "end equal to the prefix: nothing; prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "end_base64": "bG9ncy8yMDI2LzAyLw==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "prefix/multipart/with-bounds-06",
+      "description": "exclusive start equal to the prefix; prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "bG9ncy8yMDI2LzAyLw==",
+        "start_base64": "bG9ncy8yMDI2LzAyLw==",
+        "start_exclusive": true,
+        "limit": 2
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/multipart/with-bounds-07",
+      "description": "spans a part boundary; prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "range",
+        "prefix_base64": "bG9ncy8=",
+        "start_base64": "bG9ncy8yMDI2LzAyL2YwMzg=",
+        "end_base64": "bG9ncy8yMDI2LzAzL2YwMDI=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDAuZ3o=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDEuZ3o=",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/binary-keys/with-bounds-08",
+      "description": "prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "/w==",
+        "start_base64": "//4=",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "//4=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/binary-keys/with-bounds-09",
+      "description": "prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "/w==",
+        "start_base64": "//8=",
+        "start_exclusive": true,
+        "end_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "////",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/binary-keys/with-bounds-10",
+      "description": "prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "//8=",
+        "end_base64": "/////w==",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "//8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/truncated-bounds-2/with-bounds-11",
+      "description": "prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/truncated-bounds-2",
+      "request": {
+        "op": "range",
+        "prefix_base64": "/w==",
+        "start_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8B",
+        "start_exclusive": true,
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "//////////////////////////////////////////////////////////////////////////////////////////////////////////8C",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "////////////////////////////////////////////////////////////////////////////////////////////////////////////",
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "prefix/binary-keys/with-bounds-12",
+      "description": "prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1",
+        "QUERY-2"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "YQ==",
+        "start_base64": "",
+        "end_base64": "",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": []
+      }
+    },
+    {
+      "id": "prefix/binary-keys/with-bounds-13",
+      "description": "prefix intersected with start/end",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "dataset": "datasets/binary-keys",
+      "request": {
+        "op": "range",
+        "prefix_base64": "",
+        "start_base64": "fw==",
+        "limit": 4
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "fw==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "f/8=",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "gA==",
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "gAA=",
             "values": []
           }
         ]

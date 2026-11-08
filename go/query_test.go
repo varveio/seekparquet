@@ -59,6 +59,17 @@ func TestRangeMatchesOracle(t *testing.T) {
 			check(seekparquet.Range{Start: b, StartExclusive: true, End: bounds[j], Limit: 3})
 		}
 	}
+	// A prefix intersected with the start and the end (RANGE-1).
+	for _, prefix := range []string{"d01/", "d01/s01/", "long/", "\xff", "zz", "nothing/"} {
+		for i := 0; i < len(bounds); i += 9 {
+			for _, exclusive := range []bool{false, true} {
+				check(seekparquet.Range{Prefix: []byte(prefix), Start: bounds[i], StartExclusive: exclusive, Limit: 50})
+				check(seekparquet.Range{Prefix: []byte(prefix), End: bounds[i], Limit: 50})
+				check(seekparquet.Range{Prefix: []byte(prefix), Start: bounds[i], End: bounds[min(i+30, len(bounds)-1)], Limit: 1000})
+			}
+		}
+		check(seekparquet.PrefixRange([]byte(prefix), 1000))
+	}
 	check(seekparquet.Range{Limit: math.MaxInt})
 	check(seekparquet.Range{Start: []byte{}, Limit: 5})                       // an empty start includes every key
 	check(seekparquet.Range{Start: []byte{}, StartExclusive: true, Limit: 5}) // and so does an exclusive one

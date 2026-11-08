@@ -5,8 +5,7 @@ description: format_version is 0 but draft_revision is absent.
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/basic
-expected refusal: invalid_manifest or unsupported_version, detected at the latest on open (MAN-3, MAN-4, MAN-7, CHECK-1)
-note: MAN-7 reads a missing draft_revision as well formed (it is optional there), so (0, none) may be reported as an unsupported version.
+expected refusal: invalid_manifest, detected at the latest on open (MAN-3, MAN-4, MAN-7, CHECK-1)
 changes:
   - manifest: draft_revision removed
 

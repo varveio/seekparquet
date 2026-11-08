@@ -176,7 +176,7 @@ def load_manifest(root: Path):
         bounds.append((lo, hi))
     for i, (lo, hi) in enumerate(bounds):
         if lo > hi or (i and bounds[i - 1][1] >= lo):
-            raise Refusal("bounds_mismatch", f"part {i}")
+            raise Refusal("invalid_manifest", f"part bounds not ascending and disjoint at part {i} (PART-4)")
     return m, bounds
 
 
@@ -240,8 +240,11 @@ class Part:
                 if cc.has(pm.CC_FILE_PATH):
                     raise Refusal("invalid_footer", "file_path set (FILE-1)")
         rows = sum(rg.get(pm.RG_NUM_ROWS, 0) for rg in self.pf.row_groups)
-        if rows != entry["rows"]:
-            raise Refusal("part_mismatch", f"{rel}: rows {rows} != {entry['rows']}")
+        num_rows = self.pf.meta.get(pm.FMD_NUM_ROWS)
+        if rows != num_rows:
+            raise Refusal("invalid_footer", f"{rel}: row groups hold {rows} rows, footer says {num_rows}")
+        if num_rows != entry["rows"]:
+            raise Refusal("part_mismatch", f"{rel}: rows {num_rows} != {entry['rows']}")
         self.check_stamps(manifest)
         self.check_key()
         for ri, rg in enumerate(self.pf.row_groups):
@@ -533,6 +536,7 @@ def project(ds, values, cols):
 
 def do_range(ds, req):
     limit, cols = common_args(req)
+    prefix = b64arg(req, "prefix_base64")
     start, end = b64arg(req, "start_base64"), b64arg(req, "end_base64")
     excl = req.get("start_exclusive", False)
     for c in cols:
@@ -547,6 +551,8 @@ def do_range(ds, req):
             continue
         if end is not None and k >= end:
             break
+        if prefix is not None and not k.startswith(prefix):
+            continue
         entries.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "values": project(ds, v, cols)})
     return entries
 
@@ -587,8 +593,9 @@ def do_validate(path, level):
     if level == "digest":
         try:
             ds = get_dataset(path)
-        except Refusal as r:
-            return {"digest": {"result": "failed", "code": r.code}}
+        except Refusal as r:  # unopenable: structural fails with the refusal code
+            return {"structural": {"result": "failed", "code": r.code},
+                    "digest": {"result": "incomplete", "reason": "the dataset cannot be opened"}}
         checked = 0
         for p in ds.parts:
             if "sha256" in p.entry:
@@ -636,7 +643,7 @@ def handle(req):
             return {"status": "ok"}
         if op == "range":
             common_args(req)
-            b64arg(req, "start_base64"), b64arg(req, "end_base64")
+            b64arg(req, "prefix_base64"), b64arg(req, "start_base64"), b64arg(req, "end_base64")
             return {"status": "ok", "entries": do_range(get_dataset(path), req)}
         if op == "list":
             common_args(req)

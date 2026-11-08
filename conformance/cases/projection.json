@@ -4882,6 +4882,690 @@
       }
     },
     {
+      "id": "projection/col-7/unknown",
+      "description": "a column no part has is absent in every row, not an error",
+      "requirements": [
+        "COL-7",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "no_such_column"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/col-7/unknown-mixed",
+      "description": "a column no part has is absent in every row, not an error",
+      "requirements": [
+        "COL-7",
+        "RANGE-2"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "i32",
+          "no_such_column",
+          "req"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "int": "0"
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "1000"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "int": "-1"
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "999"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "int": "2147483647"
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "998"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "int": "-2147483648"
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "997"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "996"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "int": "0"
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "995"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "int": "-1"
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "int": "2147483647"
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "int": "-2147483648"
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "int": "0"
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "int": "-1"
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "int": "2147483647"
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "988"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "int": "-2147483648"
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "987"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "986"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "int": "0"
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "985"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "int": "-1"
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "984"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "int": "2147483647"
+              },
+              {
+                "absent": true
+              },
+              {
+                "int": "983"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/col-7/list",
+      "requirements": [
+        "COL-7",
+        "LIST-3"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "list",
+        "delimiter_base64": "LQ==",
+        "limit": 100000,
+        "columns": [
+          "no_such_column"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "cm93LQ=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "projection/col-6/no-path-lookup",
+      "description": "'a' is not a field; the column 'a.b' does not make it one",
+      "requirements": [
+        "COL-6",
+        "COL-7"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "a"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAw",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAx",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE0",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE1",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE2",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTE3",
+            "values": [
+              {
+                "absent": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "id": "projection/nested/meta",
       "description": "projecting a nested or repeated column is rejected, never answered as absent",
       "requirements": [
