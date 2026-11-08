@@ -325,9 +325,6 @@ func (r *reader) groupFor(ctx context.Context, from []byte, log *pageLog, st *st
 	lo, hi := 0, len(r.groups)
 	if r.bounded {
 		i := sort.Search(len(r.parts), func(i int) bool { return bytes.Compare(r.parts[i].maxKey, from) >= 0 })
-		for i < len(r.parts) && r.parts[i].endGroup == r.parts[i].firstGroup {
-			i++
-		}
 		if i == len(r.parts) {
 			return len(r.groups), nil
 		}

@@ -6,364 +6,225 @@ package seekparquet
 import (
 	"bytes"
 	"context"
-	"errors"
-	"slices"
-
-	"github.com/parquet-go/parquet-go"
 )
 
-// Value is one projected value of a row. Values are parquet-go values
-// (parquet.Value): this package commits to parquet-go's value types rather
-// than inventing its own, so a value's Kind is its column's physical type
-// in the row's part.
-type Value struct {
-	// Absent reports that the row's part has no such column (COL-2). An
-	// absent value is also null (IsNull is true), so check Absent first
-	// where the two must be told apart.
-	Absent bool
-	parquet.Value
+// scan is one request's forward walk over the key column in dataset
+// order, the one traversal behind Range and List. It positions at the
+// first row at or after a key, or after a cursor, and steps row by row
+// across row groups. It is the only place offsets are counted: a row's
+// offset in its equal-key group (PAGE-1) is its dataset ordinal minus that
+// of the group's first row. Every seek to a key lands on a group's first
+// row, and a cursor resumes inside a group whose first row it has found.
+type scan struct {
+	ctx   context.Context
+	r     *reader
+	end   []byte // the exclusive upper bound, nil for none
+	log   pageLog
+	stats *stats
+	kp    *keyPages // the walker on row group g, nil before the first seek
+	g     int
+	// key is the current row's key, nil once the scan is exhausted; row
+	// is its position in row group g.
+	key []byte
+	row int64
+	// groupKey and groupStart are the current key's group: its key and the
+	// dataset ordinal of its first row.
+	groupKey   []byte
+	groupStart int64
 }
 
-// Row is one row of a result: its key and the values of the projected
-// columns, in request order. A Row owns its key and value bytes. Columns
-// is the result's own copy of the projected names, shared by the rows of
-// one result: do not modify it.
-type Row struct {
-	// Offset is the zero-based position within this key's group in file order.
-	Offset  int64
-	Key     []byte
-	Columns []string
-	Values  []Value
+func (r *reader) newScan(ctx context.Context, end []byte, st *stats) *scan {
+	return &scan{ctx: ctx, r: r, end: end, log: pageLog{unique: r.key.Unique}, stats: st}
 }
 
-// Value returns the value of the named column, and false when the read did
-// not project it.
-func (row *Row) Value(name string) (Value, bool) {
-	for i, column := range row.Columns {
-		if column == name {
-			return row.Values[i], true
+// offset returns the current row's offset in its group.
+func (s *scan) offset() int64 { return s.ordinal() - s.groupStart }
+
+func (s *scan) ordinal() int64 { return s.r.groups[s.g].start + s.row }
+
+// at returns the current row's position, for reading its values.
+func (s *scan) at() position { return position{s.g, s.row} }
+
+// position is a row's row group and its row within it.
+type position struct {
+	g   int
+	row int64
+}
+
+// start positions the scan at the first row at or after from (after it
+// when exclusive), or after cur when that is later.
+func (s *scan) start(from []byte, exclusive bool, cur *Cursor) error {
+	if cur != nil && cur.Key != nil {
+		if cmp := bytes.Compare(cur.Key, from); from == nil || cmp > 0 || cmp == 0 && !exclusive {
+			return s.resume(cur.Key, cur.Offset)
 		}
 	}
-	return Value{}, false
+	return s.seek(from, !exclusive)
 }
 
-// Range is a range request (spec §6.2): the rows whose keys begin with
-// Prefix, are at or after Start (after it, when StartExclusive) and are
-// before End, in ascending unsigned byte order of their keys, at most Limit
-// of them.
-type Range struct {
-	// Cursor resumes after a row returned by this query.
-	Cursor *Cursor
-	// Prefix, when not empty, confines the range to the keys that begin
-	// with it: it is intersected with Start and End, so the read never
-	// leaves [Prefix, Successor(Prefix)).
-	Prefix []byte
-	// Start is the lower bound; nil is unbounded below.
-	Start []byte
-	// StartExclusive excludes a key equal to Start. The default is
-	// inclusive.
-	StartExclusive bool
-	// End is the exclusive upper bound; nil is unbounded above. A non-nil
-	// empty End selects nothing, since every key is non-empty.
-	End []byte
-	// Limit is the most rows returned. It must be positive (QUERY-1).
-	Limit int
-	// Columns names the columns to project for each row, in order: their
-	// values, null, or absent. No other column's pages are read. Empty
-	// reads keys only.
-	Columns []string
-}
-
-// PrefixRange returns a prefix read: the range of the keys that begin with
-// prefix, with no other bounds.
-func PrefixRange(prefix []byte, limit int, columns ...string) Range {
-	return Range{Prefix: bytes.Clone(prefix), Limit: limit, Columns: columns}
-}
-
-// KeyRange returns a lookup of exactly key's group. Its limit may split
-// the group; resume with the last row's Cursor as with any range.
-func KeyRange(key []byte, limit int, columns ...string) Range {
-	return Range{Start: bytes.Clone(key), End: append(bytes.Clone(key), 0), Limit: limit, Columns: columns}
-}
-
-// bounds returns the range's effective lower bound (inclusive unless
-// exclusive) and upper bound: Start and End intersected with the keys
-// that begin with Prefix.
-func (rng Range) bounds() (start []byte, exclusive bool, end []byte) {
-	start, exclusive, end = rng.Start, rng.StartExclusive, rng.End
-	if rng.Cursor != nil {
-		floor, excl := rng.Cursor.floor()
-		if start == nil || bytes.Compare(floor, start) > 0 {
-			start, exclusive = floor, excl
+// seek positions the scan at the first row at or after from (after it
+// unless inclusive), which is the first row of its group. It continues
+// forward from the current row when no earlier row can qualify, and
+// otherwise routes through groupFor.
+func (s *scan) seek(from []byte, inclusive bool) error {
+	g, err := s.r.groupFor(s.ctx, from, &s.log, s.stats)
+	if err != nil {
+		return err
+	}
+	switch {
+	case s.kp == nil || g > s.g:
+	case s.key != nil && before(s.key, from, inclusive):
+		g = s.g // continue from the current row
+	case g == s.g:
+		s.kp.rewind()
+	}
+	if ok, err := s.open(g); !ok || err != nil {
+		return err
+	}
+	for {
+		key, row, ok, err := s.kp.seek(from, inclusive)
+		if err != nil {
+			return err
+		}
+		if ok {
+			s.land(key, row)
+			if s.key != nil {
+				s.groupKey, s.groupStart = s.key, s.ordinal()
+			}
+			return nil
+		}
+		if ok, err := s.open(s.g + 1); !ok || err != nil {
+			return err
 		}
 	}
-	if len(rng.Prefix) == 0 {
-		return start, exclusive, end
-	}
-	if start == nil || bytes.Compare(start, rng.Prefix) < 0 {
-		start, exclusive = rng.Prefix, false
-	}
-	if upper, ok := Successor(rng.Prefix); ok && (end == nil || bytes.Compare(upper, end) < 0) {
-		end = upper
-	}
-	return start, exclusive, end
 }
 
-// Range returns the rows of rng. It decodes key pages only from the page
-// that can hold Start, and value pages only for the rows it returns. A
-// limit that is not positive is ErrInvalidRequest; projecting a nested or
-// repeated column is an *UnsupportedError; a key page that breaks the
-// specification ends the read with a *RefusalError.
-func (r *Reader) Range(ctx context.Context, rng Range, stats *Stats) ([]Row, error) {
-	sink := &rowSink{columns: slices.Clone(rng.Columns), unique: r.key.Unique}
-	if rng.Cursor != nil && rng.Cursor.Key != nil {
-		sink.position.key, sink.position.offset = bytes.Clone(rng.Cursor.Key), rng.Cursor.Offset
+// before reports whether key, and so every row up to it, precedes the
+// first row at or after from (after it unless inclusive).
+func before(key, from []byte, inclusive bool) bool {
+	cmp := bytes.Compare(key, from)
+	return cmp < 0 || cmp == 0 && !inclusive
+}
+
+// resume positions the scan after the row at offset n of key k's group:
+// at the row after it when the group has one, else at the first key after
+// k. It decodes the page holding the group's first row and the page
+// holding the row after the cursor, through the OffsetIndex row
+// positions, and none between them, so resuming deep inside a large group
+// costs a few pages, not the rows before the cursor.
+func (s *scan) resume(k []byte, n int64) error {
+	if err := s.seek(k, true); err != nil || s.key == nil || !bytes.Equal(s.key, k) {
+		return err
 	}
-	if err := r.Scan(ctx, rng, stats, sink); err != nil {
+	start := s.groupStart
+	if n < s.r.rows-start-1 { // the row after the cursor is in the dataset
+		if err := s.seekOrdinal(start + n + 1); err != nil {
+			return err
+		}
+		if s.key != nil && bytes.Equal(s.key, k) {
+			s.groupKey, s.groupStart = s.key, start
+			return nil
+		}
+	}
+	// The group ends at or before the cursor's row.
+	return s.seek(k, false)
+}
+
+// seekOrdinal positions the scan at a dataset row ordinal below the
+// dataset's row count.
+func (s *scan) seekOrdinal(ordinal int64) error {
+	g := s.r.groupAt(ordinal)
+	if ok, err := s.open(g); !ok || err != nil {
+		return err
+	}
+	row := ordinal - s.r.groups[g].start
+	key, err := s.kp.seekRow(row)
+	if err != nil {
+		return err
+	}
+	s.land(key, row)
+	return nil
+}
+
+// next moves to the row after the current one.
+func (s *scan) next() error {
+	key, row, ok, err := s.kp.advance()
+	for err == nil && !ok {
+		if ok, err := s.open(s.g + 1); !ok || err != nil {
+			return err
+		}
+		key, row, ok, err = s.kp.seek(nil, true)
+	}
+	if err != nil {
+		return err
+	}
+	s.land(key, row)
+	if s.key != nil && !bytes.Equal(s.key, s.groupKey) {
+		s.groupKey, s.groupStart = s.key, s.ordinal()
+	}
+	return nil
+}
+
+// land makes key, at row of the current row group, the current row, or
+// exhausts the scan when key reaches the upper bound.
+func (s *scan) land(key []byte, row int64) {
+	s.key, s.row = key, row
+	if s.end != nil && bytes.Compare(key, s.end) >= 0 {
+		s.key = nil
+	}
+}
+
+// open moves the scan to row group g, and reports false, exhausting the
+// scan, when there is no such group or it is known to begin at or after
+// the upper bound.
+func (s *scan) open(g int) (bool, error) {
+	if s.kp != nil && s.g == g {
+		return true, nil
+	}
+	if g >= len(s.r.groups) || s.end != nil && s.r.startsAtOrAfter(g, s.end) {
+		s.key = nil
+		return false, nil
+	}
+	if err := s.ctx.Err(); err != nil {
+		return false, err
+	}
+	kp, err := s.r.keyPages(s.ctx, g, &s.log, s.stats)
+	if err != nil {
+		return false, err
+	}
+	s.kp, s.g = kp, g
+	return true, nil
+}
+
+// shortcut reports the common prefix that the row group a seek to from
+// lands in holds whole: its first key and the next group's share one
+// common prefix, so every key between them, and so every candidate key of
+// the group at or after from, rolls up to it (keys between two keys that
+// begin with a prefix begin with it too), and the next group's first key
+// is a candidate witness for it below the upper bound. The listing then
+// emits the prefix without reading the group. It is taken once the
+// group's first key is known (decoded by an earlier read, a routing probe,
+// or VerifyOnOpen).
+func (s *scan) shortcut(from, prefix []byte, delim byte) ([]byte, error) {
+	g, err := s.r.groupFor(s.ctx, from, &s.log, s.stats)
+	if err != nil || g+1 >= len(s.r.groups) {
 		return nil, err
 	}
-	sink.flush()
-	return sink.rows, nil
-}
-
-// ColumnSink receives the rows of a Scan column by column, one run of
-// consecutive rows of a row group at a time: Keys starts a run, then each
-// column of Range.Columns, in order, is given by one or more Values calls
-// or by one Absent call.
-//
-// Calls are synchronous, on the goroutine that called Scan. A callback
-// that returns an error ends the scan, and Scan returns that error as is;
-// a run may then be incomplete. A sink must not call the Reader's Close
-// (the scan holds the read lease Close waits for, so it would deadlock).
-type ColumnSink interface {
-	// Keys starts a run with its rows' keys, which the sink may keep:
-	// they are newly allocated for each run.
-	Keys(keys [][]byte) error
-	// Values gives the next values of column c (an index into
-	// Range.Columns) for the run's rows, in row order. The values are
-	// borrowed: they alias page buffers and are valid only until the call
-	// returns, so a sink copies (Value.Clone) what it keeps.
-	Values(c int, values []parquet.Value) error
-	// Absent reports that the run's part has no column c (COL-2).
-	Absent(c int) error
-}
-
-// Scan reads the rows of rng as Range does and hands them to sink, without
-// cloning a value or building a row.
-func (r *Reader) Scan(ctx context.Context, rng Range, stats *Stats, sink ColumnSink) error {
-	if err := rng.Cursor.check(); err != nil {
-		return err
+	first := s.r.groups[g].first.Load()
+	if first == nil {
+		return nil, nil
 	}
-	if rng.Limit <= 0 {
-		return invalidRequest("limit %d is not positive", rng.Limit)
+	whole := commonPrefix(*first, prefix, delim)
+	if whole == nil {
+		return nil, nil
 	}
-	if err := r.checkProjection(rng.Columns); err != nil {
-		return err
-	}
-	rctx, end, err := r.begin(ctx)
+	next, err := s.r.first(s.ctx, g+1, &s.log, s.stats)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer end()
-	err = r.scan(rctx, rng, stats, sink)
-	var sinkErr errSink
-	if errors.As(err, &sinkErr) {
-		return sinkErr.err
+	if !bytes.Equal(whole, commonPrefix(next, prefix, delim)) || s.end != nil && bytes.Compare(next, s.end) >= 0 {
+		return nil, nil
 	}
-	return finish(ctx, rctx, err)
-}
-
-// checkProjection rejects a request for a column that some part holds as
-// a nested or repeated column (COL-3).
-func (r *Reader) checkProjection(columns []string) error {
-	for _, name := range columns {
-		for _, p := range r.parts {
-			if p.unsupported[name] {
-				return &UnsupportedError{Code: UnsupportedProjection,
-					Detail: "column " + name + " is nested or repeated in part " + p.name}
-			}
-		}
-	}
-	return nil
-}
-
-func (r *Reader) scan(ctx context.Context, rng Range, stats *Stats, sink ColumnSink) error {
-	if stats == nil {
-		stats = new(Stats)
-	}
-	start, exclusive, end := rng.bounds()
-	if len(r.groups) == 0 || end != nil && start != nil && bytes.Compare(start, end) >= 0 {
-		return nil
-	}
-	n := 0
-	var position groupPosition
-	from, inclusive := start, !exclusive
-	var log pageLog
-	g, err := r.groupFor(ctx, from, &log, stats)
-	if err != nil {
-		return err
-	}
-	for ; g < len(r.groups) && n < rng.Limit; g++ {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		grp := r.groups[g]
-		if end != nil && r.startsAtOrAfter(g, end) {
-			break
-		}
-		keys, first, done, err := r.readKeys(ctx, g, from, inclusive, end, rng.Limit-n, &log, stats, &position, rng.Cursor)
-		if err != nil {
-			return err
-		}
-		if len(keys) > 0 {
-			if err := sink.Keys(keys); err != nil {
-				return errSink{err}
-			}
-			p := r.parts[grp.part]
-			for c, name := range rng.Columns {
-				column, ok := p.leaves[name]
-				if !ok {
-					if err := sink.Absent(c); err != nil {
-						return errSink{err}
-					}
-					continue
-				}
-				err := p.readColumnInto(ctx, grp.physical, column, first, len(keys), stats, func(values []parquet.Value) error { return sink.Values(c, values) })
-				if err != nil {
-					return err
-				}
-			}
-			n += len(keys)
-		}
-		if done {
-			break
-		}
-		// Later groups are read from their first row.
-		if r.key.Unique {
-			from, inclusive = nil, true
-		}
-	}
-	return nil
-}
-
-// startsAtOrAfter reports whether row group g is known, without reading
-// it, to begin at or after key: its first key, or its part's minimum key
-// when it is the part's first group, is at or after key.
-func (r *Reader) startsAtOrAfter(g int, key []byte) bool {
-	if first := r.groups[g].first.Load(); first != nil {
-		return bytes.Compare(*first, key) >= 0
-	}
-	p := r.parts[r.groups[g].part]
-	return g == p.firstGroup && p.minKey != nil && bytes.Compare(p.minKey, key) >= 0
-}
-
-// readKeys reads the keys of up to want rows of one row group at or after
-// from and below end, and the row of the first; done reports that end was
-// reached. The keys share one new allocation, each capped at its own end.
-func (r *Reader) readKeys(ctx context.Context, g int, from []byte, inclusive bool, end []byte, want int, log *pageLog, stats *Stats, position *groupPosition, after *Cursor) ([][]byte, int64, bool, error) {
-	cursor, err := r.cursor(ctx, g, log, stats)
-	if err != nil {
-		return nil, 0, false, err
-	}
-	defer cursor.close()
-	key, row, ok, err := cursor.seek(from, inclusive)
-	if err != nil {
-		return nil, 0, false, err
-	}
-	start := row
-	var arena []byte
-	var ends []int
-	done := false
-	for ok && len(ends) < want {
-		if end != nil && bytes.Compare(key, end) >= 0 {
-			done = true
-			break
-		}
-		offset := int64(0)
-		if after != nil && !r.key.Unique {
-			offset = position.next(key)
-		}
-		if !after.allows(key, offset) {
-			key, row, ok, err = cursor.advance()
-			if err != nil {
-				return nil, 0, false, err
-			}
-			continue
-		}
-		if len(ends) == 0 {
-			start = row
-		}
-		arena = append(arena, key...)
-		ends = append(ends, len(arena))
-		if len(ends) == want {
-			break
-		}
-		key, row, ok, err = cursor.advance()
-		if err != nil {
-			return nil, 0, false, err
-		}
-	}
-	keys := make([][]byte, len(ends))
-	for i, e := range ends {
-		begin := 0
-		if i > 0 {
-			begin = ends[i-1]
-		}
-		keys[i] = arena[begin:e:e]
-	}
-	return keys, start, done, nil
-}
-
-// rowSink builds Range's rows, cloning each value out of its page.
-type rowSink struct {
-	position groupPosition
-	unique   bool
-	columns  []string
-	rows     []Row
-	keys     [][]byte
-	values   [][]parquet.Value
-}
-
-func (s *rowSink) Keys(keys [][]byte) error {
-	s.flush()
-	s.keys, s.values = keys, make([][]parquet.Value, len(s.columns))
-	return nil
-}
-
-func (s *rowSink) Values(c int, values []parquet.Value) error {
-	if s.values[c] == nil {
-		s.values[c] = make([]parquet.Value, 0, len(s.keys))
-	}
-	for _, v := range values {
-		s.values[c] = append(s.values[c], v.Clone())
-	}
-	return nil
-}
-
-func (s *rowSink) Absent(int) error { return nil }
-
-// flush adds the run's rows.
-func (s *rowSink) flush() {
-	for i := range s.keys {
-		offset := int64(0)
-		if !s.unique {
-			offset = s.position.next(s.keys[i])
-		}
-		s.rows = append(s.rows, Row{Key: s.keys[i], Offset: offset, Columns: s.columns, Values: rowValues(s.values, i)})
-	}
-	s.keys, s.values = nil, nil
-}
-
-// rowValues returns row i of column-major values, absent where a column
-// was not read.
-func rowValues(values [][]parquet.Value, i int) []Value {
-	row := make([]Value, len(values))
-	for c := range row {
-		if values[c] == nil {
-			row[c] = Value{Absent: true}
-			continue
-		}
-		row[c] = Value{Value: values[c][i]}
-	}
-	return row
+	s.stats.shortcuts++
+	return bytes.Clone(whole), nil
 }
