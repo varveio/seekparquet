@@ -1,0 +1,52 @@
+# Changelog
+
+All notable changes to the Java implementation are recorded here. Versions follow `java/v…` tags,
+independent of the specification's draft revisions.
+
+## Unreleased
+
+### Completed
+
+- Named manifest keys (`KeyDefinition`) and exact `key_column`/`key_unique` footer stamps.
+- Repeated-key groups with non-decreasing order, stable file order, group offsets on `Row`, and
+  lookup through `RangeQuery.lookup` or `Dataset.lookup`.
+- Tagged `Continuation.RowPosition` and `Continuation.CommonPrefix` cursors, including exact range
+  and listing pagination inside groups and across row groups.
+- Earliest-candidate routing through non-monotone page and row-group bounds.
+- Parquet `InputFile` interoperability in `PartSource`, independent `SeekableInputStream` views,
+  and an adapter for existing `InputFile` implementations. Local files remain the only supplied storage.
+- Footer schema/path checks before value decoding, exact Thrift structure boundaries, and refusal
+  of every `file_path` reference, including an empty one.
+- Configurable result-entry limits and request caches scoped to the current row group.
+- One pagination cursor per query: ranges accept a row cursor and listings accept a row or prefix
+  cursor. The conformance adapter rejects signed, fractional and exponent-form offsets.
+- Strict RLE run validation and configured limits on padded delta-decoder scratch allocations.
+- Preservation of dictionary storage failures, cancellation and storage timeouts.
+- Bounded parallel-open workers that drain all opened sources before restoring interruption.
+- A dataset-wide budget for retained key and value indexes, including concurrent publication.
+- Shared storage buffers remain untouched, including when reading large footers.
+- Local part paths use secure directory handles and reject symlinks; interrupted readers leave
+  channel repair to surviving requests.
+- Updated fixtures and regression tests for grouped pagination, footer validation, storage
+  interoperability, resource limits, and optional eager checks. Lazy CHECK-1 opening remains the default.
+- Passes the conformance suite's `reader` target.
+
+### Added
+
+- A reader for SeekParquet format 1, draft revision 1 (on disk: `format_version` 0,
+  `draft_revision` 1), in `io.varve.seekparquet`:
+  - `Dataset`: opens a dataset with the CHECK-1 checks, and answers range and prefix reads
+    (`RangeQuery`) and delimited listings with a tagged cursor (`ListQuery`). It checks
+    each row group's key page index and each decoded key page as a request reads them (CHECK-2).
+  - Immutable value types: `Bytes`, `Row`, `Value` (sealed: `Absent`, `Null` and the physical
+    types), `ListEntry` (sealed: `RowEntry`, `CommonPrefix`), `Manifest`, `ManifestPart`,
+    `FormatVersion`, `Column`.
+  - A closed, unchecked exception hierarchy: `RefusalException` (with `RefusalCode`),
+    `UnsupportedFeatureException` (with `UnsupportedCode`), `LimitExceededException`,
+    `StorageException`.
+  - Explicit cancellation (`Cancellation`) and configurable limits (`Limits`, `OpenOptions`).
+- A storage boundary in `io.varve.seekparquet.storage`: `DatasetStorage`, `PartSource`,
+  `PartChangedException`, and `LocalStorage` for local directories.
+- A conformance adapter (`./gradlew :conformance:installDist`) that claims the `reader` target.
+- Parquet access through parquet-java 1.18.1's Hadoop-free modules, with pure-Java decompression
+  (see QUALIFICATION.md).

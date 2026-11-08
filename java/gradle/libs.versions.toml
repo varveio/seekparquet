@@ -1,0 +1,18 @@
+# Copyright 2026 Varve Systems Ltd
+# SPDX-License-Identifier: Apache-2.0
+
+[versions]
+parquet = "1.18.1"
+aircompressor = "2.0.3"
+junit = "5.13.4"
+slf4j = "1.7.36"
+
+[libraries]
+parquet-common = { module = "org.apache.parquet:parquet-common", version.ref = "parquet" }
+parquet-column = { module = "org.apache.parquet:parquet-column", version.ref = "parquet" }
+parquet-format-structures = { module = "org.apache.parquet:parquet-format-structures", version.ref = "parquet" }
+aircompressor = { module = "io.airlift:aircompressor", version.ref = "aircompressor" }
+slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
