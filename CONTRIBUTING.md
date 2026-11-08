@@ -23,7 +23,7 @@ Questions go in GitHub issues for now.
   against the Go adapter with:
 
   ```bash
-  python3 conformance/harness/run.py --adapter "go run ./go/internal/cmd/conformance"
+  python3 conformance/harness/run.py --adapter "go -C go run ./internal/cmd/conformance"
   ```
 
 Changing fixture bytes needs a reason in the pull request; see [conformance/README.md](conformance/README.md).

@@ -13,8 +13,8 @@ Any Parquet reader (DuckDB, Spark, pyarrow, Trino) reads the files as an ordinar
 the profile can also:
 
 - find the first row at or after a key, read a key range, or read a prefix;
-- list a prefix with a delimiter, S3 style, rolling keys up into common prefixes without reading the keys
-  under them;
+- list a prefix with a delimiter, S3 style, rolling keys up into common prefixes and skipping the pages of
+  keys under them;
 - page through results and resume exactly where a page ended;
 
 by reading the manifest, part footers, a page index and a few pages, with no query engine and no catalog.

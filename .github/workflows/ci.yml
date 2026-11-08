@@ -99,9 +99,23 @@ jobs:
     needs: [changes, go, conformance]
     runs-on: ubuntu-latest
     steps:
-      - name: all required jobs passed or were not needed
+      - name: every job that was needed succeeded
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          GO_NEEDED: ${{ needs.changes.outputs.go }}
+          CONTRACT_NEEDED: ${{ needs.changes.outputs.contract }}
+          GO_RESULT: ${{ needs.go.result }}
+          CONFORMANCE_RESULT: ${{ needs.conformance.result }}
         run: |
-          for r in "${{ needs.changes.result }}" "${{ needs.go.result }}" "${{ needs.conformance.result }}"; do
-            case "$r" in success|skipped) ;; *) echo "a required job ended with: $r"; exit 1;; esac
-          done
-          [ "${{ needs.changes.result }}" = "success" ] || { echo "change detection did not succeed"; exit 1; }
+          [ "$CHANGES" = "success" ] || { echo "change detection ended with: $CHANGES"; exit 1; }
+          case "$GO_NEEDED/$CONTRACT_NEEDED" in
+            true/true|true/false|false/true|false/false) ;;
+            *) echo "change detection gave unexpected outputs: go=$GO_NEEDED contract=$CONTRACT_NEEDED"; exit 1;;
+          esac
+          if [ "$GO_NEEDED" = "true" ] || [ "$CONTRACT_NEEDED" = "true" ]; then
+            [ "$GO_RESULT" = "success" ] || { echo "go was needed and ended with: $GO_RESULT"; exit 1; }
+            [ "$CONFORMANCE_RESULT" = "success" ] || { echo "conformance was needed and ended with: $CONFORMANCE_RESULT"; exit 1; }
+          else
+            [ "$GO_RESULT" = "skipped" ] || { echo "go was not needed but ended with: $GO_RESULT"; exit 1; }
+            [ "$CONFORMANCE_RESULT" = "skipped" ] || { echo "conformance was not needed but ended with: $CONFORMANCE_RESULT"; exit 1; }
+          fi

@@ -10,8 +10,10 @@ Each component is versioned and released on its own. One commit may carry severa
 
 ## Gates
 
-- An implementation release declares the format versions it supports and the conformance revision it passed,
-  and must pass that revision.
+- An implementation release declares, in its changelog entry, the format versions and draft revisions it
+  supports, the conformance revision it passed (`conformance/suite.json`), and the targets it qualified for,
+  with the harness's `--json` report attached to the release. A run limited by `--filter` or `--targets` is not
+  a qualification.
 - A release claiming a new specification draft or format must pass the conformance revision that goes with it.
 - Releases are tagged on `main` from a commit whose CI passed. Tags are protected.
 

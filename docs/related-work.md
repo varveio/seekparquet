@@ -43,16 +43,19 @@ sorted by one key. Prefer an external index for point lookups over data you cann
 
 ## SSTables on other containers
 
-Hadoop's `MapFile` (a sorted SequenceFile plus an index file), Avro's `SortedKeyValueFile` and HBase's HFile
-apply the same idea to row-oriented containers. They need a separate index per file and are not read
-directly by today's analytics engines. Parquet keeps the index inside the file and stores data by column.
+Hadoop's `MapFile` (a sorted SequenceFile plus a separate index file) and Avro's `SortedKeyValueFile` (a
+sorted data file plus an index file) apply the same idea to row-oriented containers. HBase's
+[HFile](https://hbase.apache.org/docs/hfile-format/) keeps its block index inside the file. All three are
+row-oriented and are not read directly by today's analytics engines; Parquet stores data by column and is.
 
 ## Table formats
 
 Apache Iceberg, Delta Lake and Apache Hudi manage tables: snapshots, schema evolution, deletes, catalogs.
-Their sort orders are advisory, and their readers prune whole files rather than seeking to a page. They solve
-a broader problem. SeekParquet files are valid Parquet data files, so a table format can reference them, as
-long as nothing rewrites them outside the profile.
+Their sort orders are advisory and their metadata prunes whole files; page-level skipping, where it happens,
+is up to the engine reading the Parquet files (Trino, for example, uses Parquet page indexes). They solve a
+broader problem, and no table format guarantees key order across files or defines listing semantics.
+SeekParquet files are valid Parquet data files, so a table format can reference them, as long as nothing
+rewrites them outside the profile.
 
 ## What SeekParquet adds
 

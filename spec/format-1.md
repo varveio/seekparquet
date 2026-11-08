@@ -64,8 +64,9 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
   this document are not allowed, at the top level or in a part, except inside `extensions` (§3.4). A reader
   MUST refuse a manifest with an undefined member (`invalid_manifest`). New members arrive only with a new
   format version or draft revision.
-- [MAN-6] Integer members are written as JSON numbers with no fraction, exponent or leading zeros, and lie
-  between 0 and 2^63 − 1. A reader MUST parse them exactly, without rounding, and refuse any other spelling
+- [MAN-6] The integer members this document defines (`format_version`, `draft_revision`, `rows`, `bytes`)
+  are written as JSON numbers with no fraction, exponent or leading zeros, and lie between 0 and 2^63 − 1.
+  Numbers inside `extensions` are ordinary JSON numbers and are not constrained. A reader MUST parse them exactly, without rounding, and refuse any other spelling
   or range (`invalid_manifest`).
 - [MAN-7] A reader determines the version before anything else. It first reads `format`, `format_version`
   and `draft_revision`. If `format` is not `"seekparquet"`, if `format_version` is missing or not an
