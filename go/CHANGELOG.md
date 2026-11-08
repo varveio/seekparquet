@@ -5,6 +5,10 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- `Range.Stats` and `List.Stats` take a `*ReadStats` that the reader fills with the request's exact
+  counts: key and value pages decoded, keys decoded, row groups opened, key page index loads, page-index
+  seeks, prefix resumes, row groups skipped whole, and `Source` reads and requested bytes.
+
 ## v0.1.0 (2026-11-08)
 
 First public version. Implements format 1 draft revision 1; passes conformance revision `0.1.0-draft.4`.

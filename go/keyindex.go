@@ -57,7 +57,7 @@ func (index *groupIndex) pageAt(row int64) int {
 // group, loading it on first use (RG-2 to RG-4), within the limits on page
 // indexes and on the memory the Dataset retains for them. Concurrent first
 // uses may both load it; one result is kept.
-func (p *part) keyIndex(ctx context.Context, physical int) (*groupIndex, error) {
+func (p *part) keyIndex(ctx context.Context, physical int, st *ReadStats) (*groupIndex, error) {
 	if index := p.index[physical].Load(); index != nil {
 		return index, nil
 	}
@@ -69,7 +69,7 @@ func (p *part) keyIndex(ctx context.Context, physical int) (*groupIndex, error) 
 	if !ok || end > p.size {
 		return nil, refusePart(CodeInvalidFooter, p.name, physical, "column chunk %d lies outside the file", p.key.index)
 	}
-	raw, err := p.readIndexBytes(ctx, physical, meta.ColumnIndexOffset, meta.ColumnIndexLength)
+	raw, err := p.readIndexBytes(ctx, physical, meta.ColumnIndexOffset, meta.ColumnIndexLength, st)
 	if err != nil {
 		return nil, p.indexError(ctx, physical, "ColumnIndex", err)
 	}
@@ -77,7 +77,7 @@ func (p *part) keyIndex(ctx context.Context, physical int) (*groupIndex, error) 
 	if _, err := decodeBounded(raw, &columns, p.r.limits.MetadataMemory); err != nil {
 		return nil, p.indexError(ctx, physical, "ColumnIndex", err)
 	}
-	offsets, err := p.loadOffsetIndex(ctx, physical, p.key.index)
+	offsets, err := p.loadOffsetIndex(ctx, physical, p.key.index, st)
 	if err != nil {
 		return nil, p.indexError(ctx, physical, "OffsetIndex", err)
 	}
@@ -95,6 +95,7 @@ func (p *part) keyIndex(ctx context.Context, physical int) (*groupIndex, error) 
 	if err := p.r.reserveIndex(index.size); err != nil {
 		return nil, err
 	}
+	st.IndexLoads++
 	p.index[physical].Store(index)
 	return index, nil
 }

@@ -124,7 +124,7 @@ func TestIndexedAccessRepeatedListingResume(t *testing.T) {
 	seen := 0
 	var total, maxPages int64
 	for {
-		var st stats
+		var st ReadStats
 		entries, err := d.r.readList(ctx, req, &st)
 		must(t, err)
 		for _, entry := range entries {
@@ -133,12 +133,12 @@ func TestIndexedAccessRepeatedListingResume(t *testing.T) {
 			}
 			seen++
 		}
-		total += st.pages
-		maxPages = max(maxPages, st.pages)
+		total += st.KeyPagesDecoded + st.ValuePagesDecoded
+		maxPages = max(maxPages, st.KeyPagesDecoded+st.ValuePagesDecoded)
 		// The group's first page, cursor page and selected key/value pages,
 		// plus boundary probes: independent of the cursor's depth in the group.
-		if st.pages > 12 {
-			t.Fatalf("after %d rows decoded %d pages", seen, st.pages)
+		if st.KeyPagesDecoded+st.ValuePagesDecoded > 12 {
+			t.Fatalf("after %d rows decoded %d pages", seen, st.KeyPagesDecoded+st.ValuePagesDecoded)
 		}
 		if len(entries) < req.Limit {
 			break
@@ -170,7 +170,7 @@ func TestIndexedAccessNonMonotoneScaling(t *testing.T) {
 			target := len(keys) - 8
 			for _, warm := range []bool{false, true} {
 				src.reset()
-				var st stats
+				var st ReadStats
 				got, err := d.r.readRange(ctx, Range{Start: []byte(keys[target]), Limit: 5}, &st)
 				must(t, err)
 				if len(got) != 5 {
@@ -187,10 +187,10 @@ func TestIndexedAccessNonMonotoneScaling(t *testing.T) {
 				for n := groups; n > 0; n >>= 1 {
 					logarithm++
 				}
-				if st.pages > int64(logarithm+20) || src.reads.Load() > int64(6*logarithm+40) || src.bytes.Load() > int64(5000*logarithm+20000) {
-					t.Fatalf("warm=%v pages=%d reads=%d bytes=%d", warm, st.pages, src.reads.Load(), src.bytes.Load())
+				if st.KeyPagesDecoded+st.ValuePagesDecoded > int64(logarithm+20) || src.reads.Load() > int64(6*logarithm+40) || src.bytes.Load() > int64(5000*logarithm+20000) {
+					t.Fatalf("warm=%v pages=%d reads=%d bytes=%d", warm, st.KeyPagesDecoded+st.ValuePagesDecoded, src.reads.Load(), src.bytes.Load())
 				}
-				accessMetric(t, map[string]any{"operation": "nonmonotone_range", "groups": groups, "warm": warm, "decoded_pages": st.pages, "reads": src.reads.Load(), "requested_bytes": src.bytes.Load()})
+				accessMetric(t, map[string]any{"operation": "nonmonotone_range", "groups": groups, "warm": warm, "decoded_pages": st.KeyPagesDecoded + st.ValuePagesDecoded, "reads": src.reads.Load(), "requested_bytes": src.bytes.Load()})
 			}
 		})
 	}

@@ -340,7 +340,7 @@ func (d *Dataset) Metadata() Metadata { return d.meta.clone() }
 // column is an *UnsupportedError; a page that breaks the specification
 // ends the read with a *RefusalError.
 func (d *Dataset) Range(ctx context.Context, rng Range) ([]Row, error) {
-	return d.r.readRange(ctx, rng, nil)
+	return d.r.readRange(ctx, rng, rng.Stats)
 }
 
 // List returns the entries of req. After a common prefix it continues at
@@ -350,7 +350,7 @@ func (d *Dataset) Range(ctx context.Context, rng Range) ([]Row, error) {
 // a read. Keys under a prefix that share a page with the keys around them
 // are decoded. Errors are those of Range.
 func (d *Dataset) List(ctx context.Context, req List) ([]Entry, error) {
-	return d.r.readList(ctx, req, nil)
+	return d.r.readList(ctx, req, req.Stats)
 }
 
 // Close ends the reads in progress as soon as they reach a cancellation

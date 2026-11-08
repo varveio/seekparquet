@@ -45,7 +45,7 @@ func (r *indexBarrierReader) Close() error {
 func TestConcurrentIndexAdmission(t *testing.T) {
 	dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
 	warm := open(t, dir, Options{})
-	idx, err := warm.r.parts[0].keyIndex(ctx, 0)
+	idx, err := warm.r.parts[0].keyIndex(ctx, 0, new(ReadStats))
 	must(t, err)
 	d := open(t, dir, Options{Limits: Limits{IndexMemory: idx.size}})
 	p := d.r.parts[0]
@@ -53,7 +53,7 @@ func TestConcurrentIndexAdmission(t *testing.T) {
 	p.file = &indexBarrierReader{ReaderAt: p.file, at: offset, gate: make(chan struct{})}
 	errs := make(chan error, 2)
 	for range 2 {
-		go func() { _, err := p.keyIndex(ctx, 0); errs <- err }()
+		go func() { _, err := p.keyIndex(ctx, 0, new(ReadStats)); errs <- err }()
 	}
 	successes, failures := 0, 0
 	for range 2 {

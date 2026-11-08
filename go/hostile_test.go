@@ -343,7 +343,7 @@ func TestDecompressIsBounded(t *testing.T) {
 // payloads directly.
 func testChunk(typ parquet.Type) *chunk {
 	r := &reader{limits: Limits{}.withDefaults()}
-	return &chunk{ctx: ctx, p: &part{r: r, name: "test"}, col: leaf{index: 1, typ: typ}, codec: format.Uncompressed, code: CodeInvalidParquet, stats: new(stats)}
+	return &chunk{ctx: ctx, p: &part{r: r, name: "test"}, col: leaf{index: 1, typ: typ}, codec: format.Uncompressed, code: CodeInvalidParquet, stats: new(ReadStats), pages: new(int64)}
 }
 
 // TestEncodedCountsAreChecked decodes small page payloads whose encodings

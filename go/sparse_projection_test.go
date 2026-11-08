@@ -26,7 +26,7 @@ func TestSparseListingDecodesValuePageOnce(t *testing.T) {
 				dropValueOffsets(t, dir)
 			}
 			d := open(t, dir, Options{})
-			var st stats
+			var st ReadStats
 			entries, err := d.r.readList(ctx, List{Delimiter: '/', Limit: 1000, Columns: []string{"size"}}, &st)
 			must(t, err)
 			if len(entries) != 200 {
@@ -41,10 +41,10 @@ func TestSparseListingDecodesValuePageOnce(t *testing.T) {
 					t.Fatalf("prefix %d: %+v", i, entry)
 				}
 			}
-			if st.pages != 2 {
-				t.Fatalf("decoded %d pages, want one key page plus one value page", st.pages)
+			if st.KeyPagesDecoded+st.ValuePagesDecoded != 2 {
+				t.Fatalf("decoded %d pages, want one key page plus one value page", st.KeyPagesDecoded+st.ValuePagesDecoded)
 			}
-			t.Logf("200 entries, %d decoded pages", st.pages)
+			t.Logf("200 entries, %d decoded pages", st.KeyPagesDecoded+st.ValuePagesDecoded)
 		})
 	}
 }
@@ -88,7 +88,7 @@ func TestSparseProjectionSkipsPages(t *testing.T) {
 			var wantPages int64
 			for g := range 2 {
 				for _, name := range columns[:2] {
-					index, err := p.loadOffsetIndex(ctx, g, p.leaves[name].index)
+					index, err := p.loadOffsetIndex(ctx, g, p.leaves[name].index, nil)
 					must(t, err)
 					if len(index.PageLocations) < 4 {
 						t.Fatalf("fixture %s has only %d pages", name, len(index.PageLocations))
@@ -116,10 +116,10 @@ func TestSparseProjectionSkipsPages(t *testing.T) {
 			for i := range out {
 				out[i] = &Row{}
 			}
-			var st stats
+			var st ReadStats
 			must(t, d.r.project(ctx, out, selected, columns, &st))
-			if st.pages != wantPages {
-				t.Fatalf("decoded %d pages, want %d distinct selected pages", st.pages, wantPages)
+			if st.KeyPagesDecoded+st.ValuePagesDecoded != wantPages {
+				t.Fatalf("decoded %d pages, want %d distinct selected pages", st.KeyPagesDecoded+st.ValuePagesDecoded, wantPages)
 			}
 			for i, at := range selected {
 				source := records[at.g*200+int(at.row)]
@@ -139,7 +139,7 @@ func TestSparseProjectionSkipsPages(t *testing.T) {
 			// or another result, and the next request gets independent values.
 			out[0].Values[0].ByteArray()[0] = 'X'
 			again := []*Row{{}}
-			must(t, d.r.project(ctx, again, selected[:1], columns, &stats{}))
+			must(t, d.r.project(ctx, again, selected[:1], columns, &ReadStats{}))
 			if string(again[0].Values[0].ByteArray()) != *records[0].Name {
 				t.Fatal("projected bytes alias retained dictionary data")
 			}

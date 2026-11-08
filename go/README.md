@@ -170,3 +170,10 @@ hold its start, and value pages only for the rows it returns; a value column wit
 page headers walked from the start of its chunk, decoding only the pages it returns rows from. A listing
 resumes after each common prefix at the prefix's successor, skipping the pages wholly under it, but the page
 it lands on, and the pages around a prefix's boundaries, still decode some of the keys under it.
+
+**Read statistics.** Set `Range.Stats` or `List.Stats` to a `*ReadStats` to see what one request did: key and
+value pages decoded, keys decoded, row groups opened and key page indexes loaded, page-index seeks and prefix
+resumes, row groups a listing skipped whole, and the `Source` reads and requested bytes made on its behalf.
+The counts are exact for the request, are filled whether it succeeds or fails, and cost one integer increment
+per event. They are diagnostics of this reader's access path, not part of the format; the caller owns a
+`ReadStats` for the duration of the call and must not share it between concurrent requests.

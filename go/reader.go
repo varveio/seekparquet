@@ -205,7 +205,7 @@ func (r *reader) checkBounds(i int) error {
 // last key page, in dataset order, as one request.
 func (r *reader) verify(ctx context.Context) error {
 	log := pageLog{unique: r.key.Unique}
-	var st stats
+	var st ReadStats
 	for g := range r.groups {
 		if _, err := r.first(ctx, g, &log, &st); err != nil {
 			return err
@@ -271,7 +271,7 @@ func (r *reader) openPart(ctx context.Context, in partInput) (*part, error) {
 // first returns the first key of row group g, decoding its first key page
 // (with the group's key page index, CHECK-2) when no read has yet. The
 // page joins the request's log.
-func (r *reader) first(ctx context.Context, g int, log *pageLog, st *stats) ([]byte, error) {
+func (r *reader) first(ctx context.Context, g int, log *pageLog, st *ReadStats) ([]byte, error) {
 	if k := r.groups[g].first.Load(); k != nil {
 		return *k, nil
 	}
@@ -344,7 +344,7 @@ func (r *reader) reserveIndex(size int64) error {
 // their bounds when every part has them; row groups by binary search over
 // their first keys, decoding a group's first key page the first time a
 // search needs it.
-func (r *reader) groupFor(ctx context.Context, from []byte, inclusive bool, log *pageLog, st *stats) (int, error) {
+func (r *reader) groupFor(ctx context.Context, from []byte, inclusive bool, log *pageLog, st *ReadStats) (int, error) {
 	if from == nil || len(r.groups) == 0 {
 		return 0, nil
 	}
@@ -415,8 +415,10 @@ func bind(ctx context.Context, file io.ReaderAt) io.ReaderAt {
 }
 
 // at returns the part's file for reads under ctx, its errors marked as
-// the source's own.
-func (p *part) at(ctx context.Context) io.ReaderAt { return storageReader{bind(ctx, p.file)} }
+// the source's own, its calls counted in st.
+func (p *part) at(ctx context.Context, st *ReadStats) io.ReaderAt {
+	return storageReader{r: bind(ctx, p.file), st: st}
+}
 
 // begin takes a read lease that close waits for, and returns the request's
 // context: it ends with ctx, or with close (cause ErrClosed).
