@@ -65,11 +65,15 @@ func TestAdapter(t *testing.T) {
 		`{"id":"10","op":"open","dataset":`+quote(refused)+`}`,
 		`{"id":"11","op":"validate",`+ds+`,"level":"profile"}`,
 		`{"id":"12","op":"range",`+ds+`,"end_base64":"","limit":5}`,
+		`{"id":"13","op":"validate","dataset":`+quote(refused)+`,"level":"full"}`,
+		`{"id":"14","op":"validate",`+ds+`,"level":"digest"}`,
+		`{"id":"15","op":"validate",`+ds+`,"level":"deep"}`,
 		`not json`,
 	)
 	hello := resps[0]
 	if hello["id"] != "1" || hello["status"] != "ok" || hello["implementation"] != "seekparquet-go" ||
-		jsonString(hello["targets"]) != `["reader"]` || jsonString(hello["capabilities"]) != `["open","range","list","projection"]` ||
+		jsonString(hello["targets"]) != `["reader","validator-structural","validator-profile","validator-full","validator-digest"]` ||
+		jsonString(hello["capabilities"]) != `["open","range","list","projection","validate:structural","validate:profile","validate:full","validate:digest"]` ||
 		jsonString(hello["supports"]) != `[{"draft_revision":1,"format_version":0}]` {
 		t.Fatalf("hello %v", hello)
 	}
@@ -88,7 +92,7 @@ func TestAdapter(t *testing.T) {
 	if got := jsonString(resps[4]["entries"]); got != `[{"key_base64":"YS9i","kind":"row","offset":0,"values":[]},{"key_base64":"YS9jLw==","kind":"prefix"}]` {
 		t.Fatalf("list: %s", got)
 	}
-	for _, i := range []int{5, 6, 7, 8, 12} {
+	for _, i := range []int{5, 6, 7, 8, 14, 15} {
 		if resps[i]["status"] != "invalid_request" {
 			t.Fatalf("request %d: %v", i+1, resps[i])
 		}
@@ -96,8 +100,15 @@ func TestAdapter(t *testing.T) {
 	if resps[9]["status"] != "refused" || resps[9]["code"] != "invalid_manifest" {
 		t.Fatalf("refused open: %v", resps[9])
 	}
-	if resps[10]["status"] != "unsupported" {
-		t.Fatalf("validate: %v", resps[10])
+	if got := jsonString(resps[10]); got != `{"id":"11","levels":{"profile":{"result":"complete"},"structural":{"result":"complete"}},"status":"ok"}` {
+		t.Fatalf("validate: %s", got)
+	}
+	if got := jsonString(resps[12]["levels"]); !strings.Contains(got, `"structural":{"code":"invalid_manifest"`) ||
+		!strings.Contains(got, `"full":{"reason":"its prerequisite profile is incomplete","result":"incomplete"}`) {
+		t.Fatalf("validate refused: %s", got)
+	}
+	if got := jsonString(resps[13]["levels"]); got != `{"digest":{"checked":0,"result":"complete"}}` {
+		t.Fatalf("validate digest: %s", got)
 	}
 	if resps[11]["status"] != "ok" || jsonString(resps[11]["entries"]) != "[]" {
 		t.Fatalf("empty end: %v", resps[11])

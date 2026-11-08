@@ -102,8 +102,9 @@ func (a *adapter) dispatch(ctx context.Context, req map[string]json.RawMessage) 
 			"implementation": "seekparquet-go",
 			"version":        version,
 			"supports":       supports(),
-			"targets":        []string{"reader"},
-			"capabilities":   []string{"open", "range", "list", "projection"},
+			"targets":        []string{"reader", "validator-structural", "validator-profile", "validator-full", "validator-digest"},
+			"capabilities": []string{"open", "range", "list", "projection",
+				"validate:structural", "validate:profile", "validate:full", "validate:digest"},
 		}
 	case "open":
 		path, err := datasetPath(req)
@@ -123,10 +124,49 @@ func (a *adapter) dispatch(ctx context.Context, req map[string]json.RawMessage) 
 	case "list":
 		return a.listOp(ctx, req)
 	case "validate":
-		return response{"status": "unsupported", "code": "unsupported_operation", "message": "this adapter does not validate"}
+		return validateOp(ctx, req)
 	default:
 		return response{"status": "invalid_request", "message": fmt.Sprintf("unknown op %q", op)}
 	}
+}
+
+// validateOp validates a dataset at the requested level and reports each
+// level attempted (protocol.md, validate).
+func validateOp(ctx context.Context, req map[string]json.RawMessage) response {
+	path, err := datasetPath(req)
+	if err != nil {
+		return invalid(err)
+	}
+	var level string
+	if err := field(req, "level", &level); err != nil {
+		return invalid(err)
+	}
+	switch seekparquet.Level(level) {
+	case seekparquet.LevelStructural, seekparquet.LevelProfile, seekparquet.LevelFull, seekparquet.LevelDigest:
+	default:
+		return invalid(fmt.Errorf("unknown level %q", level))
+	}
+	report, err := seekparquet.ValidateDir(ctx, path, seekparquet.ValidateOptions{Level: seekparquet.Level(level)})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "conformance:", err)
+		return response{"status": "error", "message": err.Error()}
+	}
+	levels := map[string]any{}
+	for _, lr := range report.Levels {
+		out := map[string]any{"result": string(lr.Result)}
+		switch lr.Result {
+		case seekparquet.Failed:
+			out["code"] = string(lr.Failure.Code)
+			out["message"] = lr.Failure.Error()
+		case seekparquet.Incomplete:
+			out["reason"] = lr.Reason
+		}
+		if lr.Level == seekparquet.LevelDigest {
+			out["checked"] = lr.Checked.Digests
+		}
+		levels[string(lr.Level)] = out
+	}
+	return response{"status": "ok", "levels": levels}
 }
 
 func supports() []map[string]int64 {

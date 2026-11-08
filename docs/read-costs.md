@@ -70,4 +70,4 @@ limit and cache state. Compare the same workload against a suitable baseline. Ti
 probes expose an access pattern; they do not establish production throughput or cloud latency.
 
 The [quickstart](quickstart.md) is a semantic example using checked-in fixtures. A production
-writer, validator and representative remote qualification remain separate work.
+writer and representative remote qualification remain separate work.

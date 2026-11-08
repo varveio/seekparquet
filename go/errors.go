@@ -14,8 +14,8 @@ import (
 // are stable; the text of an error is not.
 type Code string
 
-// The refusal codes of format 1, draft revision 1, that a reader reports.
-// (digest_mismatch belongs to validation, which this package does not do.)
+// The refusal codes of format 1, draft revision 1. digest_mismatch is
+// reported only by validation at the digest level (Validate).
 const (
 	CodeNoManifest            Code = "no_manifest"
 	CodeInvalidManifest       Code = "invalid_manifest"
@@ -33,6 +33,7 @@ const (
 	CodeKeyOrder              Code = "key_order"
 	CodeInvalidParquet        Code = "invalid_parquet"
 	CodeBoundsMismatch        Code = "bounds_mismatch"
+	CodeDigestMismatch        Code = "digest_mismatch"
 )
 
 // RefusalError reports data that breaks the specification: a dataset

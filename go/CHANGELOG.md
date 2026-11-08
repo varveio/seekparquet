@@ -8,6 +8,12 @@ versioning; while it is v0, minor versions may change the API.
 - `Range.Stats` and `List.Stats` take a `*ReadStats` that the reader fills with the request's exact
   counts: key and value pages decoded, keys decoded, row groups opened, key page index loads, page-index
   seeks, prefix resumes, row groups skipped whole, and `Source` reads and requested bytes.
+- Validation at the specification's four levels: `Validate` over a `Source`, `ValidateDir` over a local
+  directory, with `ValidateOptions{Level, Limits}` and a `Report` of each level's result, refusal code and
+  location, or the reason it is incomplete. Profile and full validation walk every column chunk page by
+  page from its start and compare the indexes with the pages found. `CodeDigestMismatch` is new.
+- Command `cmd/seekparquet`: `seekparquet validate [--level LEVEL] [--json] DIR`.
+- The conformance adapter claims the four validator targets.
 
 ## v0.1.0 (2026-11-08)
 
