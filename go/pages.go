@@ -355,6 +355,20 @@ func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.
 	if err := checkCounts(enc, data, n); err != nil {
 		return none, c.corrupt(err)
 	}
+	// The dependency's Boolean hybrid decoder copies a repeated bit as a byte,
+	// which turns a run of true into true,false,... . Expand into a bounded
+	// bitmap ourselves, including runs that begin between byte boundaries.
+	if c.col.typ.Kind() == parquet.Boolean && enc == format.RLE {
+		size := (n + 7) / 8
+		if int64(size) > c.p.r.limits.PageBytes {
+			return none, exceeded("Boolean page decoding to %d bytes", size)
+		}
+		bits, err := decodeBooleanRLE(data, n)
+		if err != nil {
+			return none, c.corrupt(err)
+		}
+		return c.col.typ.NewValues(bits, nil), nil
+	}
 	typ, e := c.col.typ, parquet.LookupEncoding(enc)
 	size := typ.EstimateDecodeSize(n, data, e)
 	if size < 0 {
@@ -737,4 +751,42 @@ func (p *part) readColumn(ctx context.Context, physical int, col leaf, selected 
 		off += length + int64(h.CompressedPageSize)
 	}
 	return nil
+}
+
+// decodeBooleanRLE accepts only final bit-packed padding (at most seven bits).
+// checkCounts bounds declared counts before any output allocation.
+func decodeBooleanRLE(data []byte, n int) ([]byte, error) {
+	if err := checkCounts(format.RLE, data, n); err != nil {
+		return nil, err
+	}
+	src := data[4 : 4+binary.LittleEndian.Uint32(data)]
+	out := make([]byte, (n+7)/8)
+	at := 0
+	for len(src) > 0 {
+		h, k := binary.Uvarint(src)
+		src = src[k:]
+		count := int(h >> 1)
+		packed := h&1 != 0
+		size := 1
+		if packed {
+			size = count
+			count *= 8
+		}
+		if count == 0 || at >= n || (!packed && count > n-at) || (packed && count > n-at && len(src) != size) {
+			return nil, errors.New("invalid Boolean run count or padding")
+		}
+		for i := 0; i < count && at+i < n; i++ {
+			bit := src[0] & 1
+			if packed {
+				bit = (src[i/8] >> uint(i%8)) & 1
+			}
+			out[(at+i)/8] |= bit << uint((at+i)%8)
+		}
+		at += count
+		src = src[size:]
+	}
+	if at < n {
+		return nil, errors.New("Boolean stream holds fewer values than the page")
+	}
+	return out, nil
 }
