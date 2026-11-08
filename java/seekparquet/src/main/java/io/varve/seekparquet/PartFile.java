@@ -72,6 +72,7 @@ final class PartFile implements AutoCloseable {
     /** The projectable columns (COL-3) by name, the key included. */
     final Map<String, ColumnSpec> projectable;
     private final AtomicReferenceArray<KeyIndex> keyIndexes;
+    private final AtomicReferenceArray<byte[]> firstKeys;
     private final ConcurrentHashMap<Long, Optional<ValueIndex>> valueIndexes = new ConcurrentHashMap<>();
 
     private PartFile(int ordinal, ManifestPart entry, PartSource source, FileMetaData meta, PartSchema schema, int keyLeaf, boolean utf8Key,
@@ -92,6 +93,7 @@ final class PartFile implements AutoCloseable {
         this.groupRows = groupRows;
         this.projectable = projectable;
         this.keyIndexes = new AtomicReferenceArray<>(groupRows.length);
+        this.firstKeys = new AtomicReferenceArray<>(groupRows.length);
     }
 
     private RefusalException refuse(RefusalCode code, String detail) {
@@ -479,7 +481,27 @@ final class PartFile implements AutoCloseable {
         }
     }
 
-    /** Reads two byte ranges, in one read when they are close together. */
+    /** Exact first keys, unlike shortened index bounds, are safe for row-group routing. */
+    byte[] firstKey(int physical, ReadContext ctx) {
+        byte[] first = firstKeys.get(physical);
+        if (first != null) {
+            return first;
+        }
+        ctx.enterGroup(ordinal, physical);
+        byte[][] decoded = keyPage(physical, keyIndex(physical, ctx), 0, ctx);
+        ctx.checkKeyPage(this, physical, 0, decoded);
+        synchronized (indexMemory) {
+            first = firstKeys.get(physical);
+            if (first == null) {
+                indexMemory.reserve(32L + ((decoded[0].length + 7L) & ~7L));
+                first = decoded[0];
+                firstKeys.set(physical, first);
+            }
+        }
+        return first;
+    }
+
+    /** Coalesces only when the unused gap is no larger than the useful index bytes. */
     private byte[][] readTwo(long aOff, int aLen, long bOff, int bLen, ReadContext ctx) {
         if (aLen > ctx.limits.maxIndexBytes() || bLen > ctx.limits.maxIndexBytes()) {
             int len = Math.max(aLen, bLen);
@@ -487,7 +509,7 @@ final class PartFile implements AutoCloseable {
         }
         long from = Math.min(aOff, bOff);
         long to = Math.max(aOff + aLen, bOff + bLen);
-        if (to - from <= Integer.MAX_VALUE && to - from <= (long) aLen + bLen + 64 * 1024) {
+        if (to - from <= Integer.MAX_VALUE && to - from <= (long) aLen + bLen + Math.min((long) aLen + bLen, 64 * 1024)) {
             byte[] span = readBytes(from, (int) (to - from), ctx);
             return new byte[][] {
                 Arrays.copyOfRange(span, (int) (aOff - from), (int) (aOff - from) + aLen),

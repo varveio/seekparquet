@@ -305,7 +305,13 @@ public final class Dataset implements AutoCloseable {
         return manifest;
     }
 
-    /** {@return the number of rows in the dataset, as the manifest records it} */
+    /**
+     * Returns the number of rows recorded by the manifest as a signed 64-bit integer.
+     *
+     * @return the dataset row total
+     * @throws ArithmeticException if the total exceeds {@link Long#MAX_VALUE}; use
+     *     {@code manifest().rowsExact()} for the exact total
+     */
     public long rows() {
         return manifest.rows();
     }

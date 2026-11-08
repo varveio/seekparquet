@@ -4,6 +4,13 @@
 package io.varve.seekparquet.conformance;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import io.varve.seekparquet.Dataset;
+import io.varve.seekparquet.Limits;
+import io.varve.seekparquet.LimitExceededException;
+import io.varve.seekparquet.RangeQuery;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,6 +20,68 @@ import org.junit.jupiter.api.io.TempDir;
 
 class AdapterTest {
     @TempDir Path tmp;
+
+    private static String request(String op, String dataset, String limit, String extra) {
+        StringBuilder path = new StringBuilder();
+        MiniJson.quote(path, Path.of(System.getProperty("seekparquet.conformance"), "datasets", dataset).toString());
+        return "{\"id\":\"limits\",\"op\":\"" + op + "\",\"dataset\":" + path
+                + ",\"limit\":" + limit + ",\"delimiter_base64\":\"Lw==\"" + extra + "}";
+    }
+
+    @Test
+    void oversizedLimitsReadAllMatchingEntriesWithoutChangingLibraryDefaults() {
+        Adapter adapter = new Adapter();
+        Adapter paged = new Adapter(2);
+        for (String dataset : new String[] {"empty", "repeated-keys", "delimiter"}) {
+            for (String op : new String[] {"range", "list"}) {
+                String expected = adapter.handle(request(op, dataset, "1000", ""));
+                assertTrue(expected.contains("\"status\":\"ok\""), expected);
+                for (String limit : new String[] {"1000001", "2147483647", "2147483648",
+                        "9223372036854775808", "999999999999999999999999999999999999"}) {
+                    assertEquals(expected, adapter.handle(request(op, dataset, limit, "")));
+                    assertEquals(expected, paged.handle(request(op, dataset, limit, "")));
+                }
+            }
+        }
+        assertEquals(1_000_000, Limits.DEFAULT.maxResultEntries());
+        Path empty = Path.of(System.getProperty("seekparquet.conformance"), "datasets", "empty");
+        try (Dataset dataset = Dataset.open(empty)) {
+            assertThrows(LimitExceededException.class,
+                    () -> dataset.range(RangeQuery.builder().limit(1_000_001).build()));
+        }
+    }
+
+    @Test
+    void internalPagesPreserveLimitsBoundsProjectionAndTaggedContinuations() {
+        Adapter adapter = new Adapter();
+        Adapter paged = new Adapter(2);
+        for (String op : new String[] {"range", "list"}) {
+            for (String limit : new String[] {"1", "2", "3", "4", "5", "15", "24", "25"}) {
+                for (String extra : new String[] {"", ",\"columns\":[\"size\"]",
+                        ",\"prefix_base64\":\"YQ==\"", ",\"end_base64\":\"Yw==\"",
+                        ",\"after\":{\"key_base64\":\"YQ==\",\"offset\":1}"}) {
+                    String req = request(op, "repeated-keys", limit, extra);
+                    String expected = adapter.handle(req);
+                    assertTrue(expected.contains("\"status\":\"ok\""), expected);
+                    assertEquals(expected, paged.handle(req), req);
+                }
+            }
+        }
+        String req = request("list", "delimiter", "100",
+                ",\"after\":{\"prefix_base64\":\"YS8=\"}");
+        assertEquals(new Adapter().handle(req), new Adapter(1).handle(req));
+    }
+
+    @Test
+    void invalidLimitsStillFailBeforeOpeningDataset() {
+        for (String op : new String[] {"range", "list"}) {
+            for (String limit : new String[] {"0", "-1", "1.5", "1e3", "null", "\"1\""}) {
+                String response = new Adapter().handle("{\"op\":\"" + op + "\",\"limit\":" + limit + "}");
+                assertTrue(response.contains("\"status\":\"invalid_request\""), response);
+                assertTrue(response.contains("limit"), response);
+            }
+        }
+    }
 
     @Test
     void cursorOffsetsRejectSignsFractionsExponentsAndOverflow() {

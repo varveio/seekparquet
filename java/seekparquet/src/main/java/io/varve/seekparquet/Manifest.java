@@ -3,6 +3,7 @@
 
 package io.varve.seekparquet;
 
+import java.math.BigInteger;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -57,11 +58,32 @@ public record Manifest(FormatVersion version, String schemaId, KeyDefinition key
         return ManifestParser.parse(json);
     }
 
-    /** {@return the total number of rows in the parts} */
+    /**
+     * Returns the total number of rows as a signed 64-bit integer.
+     *
+     * <p>The format does not cap the sum at this range. Use {@link #rowsExact()} for larger
+     * totals. Overflow here does not make the manifest invalid or prevent opening or querying it.
+     *
+     * @return the total number of rows in the parts
+     * @throws ArithmeticException if the total exceeds {@link Long#MAX_VALUE}
+     */
     public long rows() {
         long total = 0;
         for (ManifestPart part : parts) {
             total = Math.addExact(total, part.rows());
+        }
+        return total;
+    }
+
+    /**
+     * Returns the exact total number of rows, including totals beyond the range of {@link #rows()}.
+     *
+     * @return the sum of the per-part row counts, or zero for an empty dataset
+     */
+    public BigInteger rowsExact() {
+        BigInteger total = BigInteger.ZERO;
+        for (ManifestPart part : parts) {
+            total = total.add(BigInteger.valueOf(part.rows()));
         }
         return total;
     }

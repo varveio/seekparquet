@@ -7,6 +7,7 @@ import io.varve.seekparquet.Bytes;
 import io.varve.seekparquet.Continuation;
 import io.varve.seekparquet.Dataset;
 import io.varve.seekparquet.FormatVersion;
+import io.varve.seekparquet.Limits;
 import io.varve.seekparquet.ListEntry;
 import io.varve.seekparquet.ListQuery;
 import io.varve.seekparquet.RangeQuery;
@@ -35,7 +36,19 @@ public final class Adapter {
 
     private final Map<String, Dataset> open = new HashMap<>();
 
-    Adapter() {}
+    private final int pageLimit;
+
+    Adapter() {
+        this(Limits.DEFAULT.maxResultEntries());
+    }
+
+    // A smaller page size lets tests exercise continuations without huge fixtures.
+    Adapter(int pageLimit) {
+        if (pageLimit <= 0 || pageLimit > Limits.DEFAULT.maxResultEntries()) {
+            throw new IllegalArgumentException("page limit exceeds the library default");
+        }
+        this.pageLimit = pageLimit;
+    }
 
     /**
      * Runs the adapter until stdin closes.
@@ -102,29 +115,51 @@ public final class Adapter {
                     out.append(response(id, "ok")).append('}');
                 }
                 case "range" -> {
-                    RangeQuery q = rangeQuery(req);
-                    List<Row> rows = dataset(req).range(q);
+                    BigInteger remaining = limit(req);
+                    RangeQuery q = rangeQuery(req, pageSize(remaining));
+                    Dataset d = dataset(req);
                     out.append(response(id, "ok")).append(",\"entries\":[");
-                    for (int i = 0; i < rows.size(); i++) {
-                        if (i > 0) {
-                            out.append(',');
+                    boolean first = true;
+                    while (true) {
+                        List<Row> rows = d.range(q);
+                        for (Row r : rows) {
+                            if (!first) {
+                                out.append(',');
+                            }
+                            first = false;
+                            row(out, r);
                         }
-                        row(out, rows.get(i));
+                        remaining = remaining.subtract(BigInteger.valueOf(rows.size()));
+                        if (rows.size() < q.limit() || remaining.signum() == 0) {
+                            break;
+                        }
+                        q = q.next(rows.getLast()).toBuilder().limit(pageSize(remaining)).build();
                     }
                     out.append("]}");
                 }
                 case "list" -> {
-                    ListQuery q = listQuery(req);
-                    List<ListEntry> entries = dataset(req).list(q);
+                    BigInteger remaining = limit(req);
+                    ListQuery q = listQuery(req, pageSize(remaining));
+                    Dataset d = dataset(req);
                     out.append(response(id, "ok")).append(",\"entries\":[");
-                    for (int i = 0; i < entries.size(); i++) {
-                        if (i > 0) {
-                            out.append(',');
+                    boolean first = true;
+                    while (true) {
+                        List<ListEntry> entries = d.list(q);
+                        for (ListEntry entry : entries) {
+                            if (!first) {
+                                out.append(',');
+                            }
+                            first = false;
+                            switch (entry) {
+                                case ListEntry.RowEntry r -> row(out, r.row());
+                                case ListEntry.CommonPrefix p -> out.append("{\"kind\":\"prefix\",\"key_base64\":\"").append(p.prefix().toBase64()).append("\"}");
+                            }
                         }
-                        switch (entries.get(i)) {
-                            case ListEntry.RowEntry r -> row(out, r.row());
-                            case ListEntry.CommonPrefix p -> out.append("{\"kind\":\"prefix\",\"key_base64\":\"").append(p.prefix().toBase64()).append("\"}");
+                        remaining = remaining.subtract(BigInteger.valueOf(entries.size()));
+                        if (entries.size() < q.limit() || remaining.signum() == 0) {
+                            break;
                         }
+                        q = q.next(entries.getLast()).toBuilder().limit(pageSize(remaining)).build();
                     }
                     out.append("]}");
                 }
@@ -177,8 +212,8 @@ public final class Adapter {
         return d;
     }
 
-    private static RangeQuery rangeQuery(Map<String, Object> req) throws BadRequest {
-        RangeQuery.Builder b = RangeQuery.builder().limit(limit(req));
+    private static RangeQuery rangeQuery(Map<String, Object> req, int limit) throws BadRequest {
+        RangeQuery.Builder b = RangeQuery.builder().limit(limit);
         Bytes prefix = bytes(req, "prefix_base64");
         if (prefix != null) {
             b.prefix(prefix);
@@ -204,12 +239,12 @@ public final class Adapter {
         return b.columns(columns(req)).build();
     }
 
-    private static ListQuery listQuery(Map<String, Object> req) throws BadRequest {
+    private static ListQuery listQuery(Map<String, Object> req, int limit) throws BadRequest {
         Bytes delimiter = bytes(req, "delimiter_base64");
         if (delimiter == null || delimiter.length() != 1) {
             throw new BadRequest("the delimiter is not exactly one byte");
         }
-        ListQuery.Builder b = ListQuery.builder(delimiter.byteAt(0)).limit(limit(req));
+        ListQuery.Builder b = ListQuery.builder(delimiter.byteAt(0)).limit(limit);
         Bytes prefix = bytes(req, "prefix_base64");
         if (prefix != null) {
             b.prefix(prefix);
@@ -257,7 +292,7 @@ public final class Adapter {
         }
     }
 
-    private static int limit(Map<String, Object> req) throws BadRequest {
+    private static BigInteger limit(Map<String, Object> req) throws BadRequest {
         if (!(req.get("limit") instanceof MiniJson.Number n) || !n.isInteger()) {
             throw new BadRequest("limit is not an integer");
         }
@@ -265,7 +300,11 @@ public final class Adapter {
         if (v.signum() <= 0) {
             throw new BadRequest("limit is not positive");
         }
-        return v.min(BigInteger.valueOf(Integer.MAX_VALUE)).intValue();
+        return v;
+    }
+
+    private int pageSize(BigInteger remaining) {
+        return remaining.min(BigInteger.valueOf(pageLimit)).intValueExact();
     }
 
     /** Returns the decoded member, or null when absent or JSON null. */
