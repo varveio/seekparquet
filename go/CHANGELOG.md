@@ -5,6 +5,12 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- `RangePlan.Split(ctx, n)` divides a selection plan into at most `n` shards along row-group boundaries,
+  never inside a group of equal keys, for a caller to scan concurrently: the shards' scans together yield the
+  plan's rows, each once, and their `Count` and `ProjectedBytes` add up to the plan's. Boundaries balance the
+  projected bytes when exact, else the rows. Unique keys split without reading; repeated keys decode the two
+  key pages around each boundary inside a part. No goroutines in the package and no format change: splitting
+  is a Go convenience, not part of the specification or the conformance protocol.
 - `Entry.Exact`: a common prefix entry carries its exact row (spec LIST-8), the first candidate row of the
   request that rolls up to the prefix when that row's key is the prefix itself, with its offset and projected
   values; nil otherwise. A listing pairs a prefix with the row stored at its exact key (an S3-style folder

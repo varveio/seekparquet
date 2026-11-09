@@ -92,7 +92,7 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `PlanRanges`, `Verify`, `Metadata`, `Columns` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Column`, a part's column as its footer declares it; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `PlanRanges`, `Verify`, `Metadata`, `Columns` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan`, `Split` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Column`, a part's column as its footer declares it; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
 | `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
 | `cmd/seekparquet` | the `seekparquet validate` command |
@@ -259,6 +259,16 @@ rows in dataset order with their values, reading each counted extent in one requ
 page it decodes, reading a chunk's dictionary before its first page whether or not the pages use it. A page an
 OffsetIndex locates is read in one request of exactly its extent, by `Range` and `List` too; they read a
 dictionary only for a page that uses it.
+
+`plan.Split(ctx, n)` divides a plan into at most `n` shards for a whole scan on several cores: each shard is a
+`RangePlan` over consecutive rows of the plan, and the shards' `Scan`s, run on the caller's goroutines with
+their own `ReadStats`, together yield the plan's rows, each once, shard by shard in dataset order. Boundaries
+fall at the first row of a row group and balance `ProjectedBytes` when the plan's bytes are exact, else the row
+count; in repeated-key mode a boundary never divides a group of equal keys, and moves past a group that
+continues from the row group before, after decoding the two key pages around it (unique keys need no read).
+The shards' counts and projected bytes add up to the plan's, since each row group's pages and dictionaries
+belong to one shard. Splitting is a convenience of this reader, not part of the format or the conformance
+protocol.
 
 **Read statistics.** Set `Range.Stats` or `List.Stats` to a `*ReadStats` to see what one request did: key and
 value pages decoded, keys decoded, row groups opened and key page indexes loaded, page-index seeks and prefix
