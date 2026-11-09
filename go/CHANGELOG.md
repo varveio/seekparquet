@@ -5,6 +5,11 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- `Dataset.Columns(ctx, i)` returns part `i`'s top-level columns as `[]Column` (name, physical type and
+  `FIXED_LEN_BYTE_ARRAY` length, logical type with a legacy converted type normalized into it,
+  repetition, nested or not, key or not) from the footer the dataset checked and holds for the part,
+  checking the part as a first read would if none has, so a caller never reopens a part to learn its
+  types. `Footer.Schema` carries the same from `InspectFooter`. No format change.
 - Selection planning: `Dataset.PlanRanges(ctx, ranges, columns)` returns a `RangePlan` for every row of a set
   of ranges. `Count()` is its row count, from the key pages at the ends, row-group row counts and OffsetIndex
   row positions, and reports whether it is exact (every part holding a row checked). `ProjectedBytes()` is the
