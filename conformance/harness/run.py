@@ -281,7 +281,9 @@ class Runner:
         if exp["status"] != "ok":
             return
         op = req.get("op")
-        if op in ("range", "list"):
+        if op == "plan":
+            self.compare_plan(req, resp, exp)
+        elif op in ("range", "list"):
             ncols = len(req.get("columns") or [])
             if "entries" not in exp:
                 raise CaseFail("the case has no expected entries (suite error)")
@@ -292,6 +294,19 @@ class Runner:
             if not exp.get("levels"):
                 raise CaseFail("the case has no expected levels (suite error)")
             self.compare_levels(resp, exp["levels"])
+
+    def compare_plan(self, req, resp, exp):
+        ncols = len(req.get("columns") or [])
+        got = norm_entries(resp.get("entries"), ncols, "response.entries")
+        if any(kind != "row" for kind, _k, _v in got):
+            raise CaseFail("a plan scans rows only")
+        compare_entries(got, norm_entries(exp["entries"], ncols, "expected.entries"))
+        for name, kind in (("count", int), ("count_exact", bool), ("projected_bytes", int), ("projected_bytes_exact", bool)):
+            v = resp.get(name)
+            if type(v) is not kind or (kind is int and v < 0):
+                raise CaseFail(f"{name} must be a{' non-negative integer' if kind is int else ' boolean'}, got {v!r}")
+            if name in exp and v != exp[name]:
+                raise CaseFail(f"{name}: expected {exp[name]!r}, got {v!r}")
 
     def compare_levels(self, resp, want):
         levels = resp.get("levels")
@@ -393,6 +408,7 @@ def main(argv=None):
     sdir = suite_path.parent
     caps_doc = json.loads((sdir / "capabilities.json").read_text(encoding="utf-8"))
     known_caps, known_targets = set(caps_doc["capabilities"]), caps_doc["targets"]
+    optional_caps = set(caps_doc.get("optional_capabilities", {}).get("capabilities", []))
     deps = {k: v for k, v in caps_doc.get("target_dependencies", {}).items() if k in known_targets}
 
     def closure(ts):
@@ -479,7 +495,10 @@ def main(argv=None):
                     rec.update(result="skip", message=f"target {doc['target']} not claimed or not selected")
                 else:
                     lacking = [c for c in case.get("requires", []) if c not in caps]
-                    if lacking:
+                    if lacking and all(c in optional_caps for c in lacking):
+                        rec.update(result="skip", optional=True,
+                                   message=f"optional capabilities {lacking} not claimed")
+                    elif lacking:
                         rec.update(result="fail", message=f"target {doc['target']} claimed but capabilities "
                                                           f"{lacking} not reported")
                     else:
@@ -518,7 +537,8 @@ def main(argv=None):
                      "pass": sum(r["result"] == "pass" for r in rs), "fail": sum(r["result"] == "fail" for r in rs),
                      "skip": sum(r["result"] == "skip" for r in rs)}
         tstats[t]["qualified"] = (not partial and t in targets and t in selected and not run_errors
-                                  and any(r["target"] == t for r in rs) and all(r["result"] == "pass" for r in rs))
+                                  and any(r["target"] == t for r in rs)
+                                  and all(r["result"] == "pass" or r.get("optional") for r in rs))
     qualified = [t for t, v in tstats.items() if v["qualified"]]
     selection = {"filter": args.filter, "subset": args.subset, "targets": args.targets, "partial": partial,
                  "selected_targets": sorted(selected)}

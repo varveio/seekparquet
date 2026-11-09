@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
 
 /**
  * An open SeekParquet dataset: a manifest and its parts, ready for range reads and delimited
@@ -227,11 +228,14 @@ public final class Dataset implements AutoCloseable {
 
     /**
      * {@return the top-level columns of the parts checked so far, the key included} They are in the
-     * order they first appear, parts taken in manifest order. After {@link #verify()} every part is
-     * checked.
+     * order they first appear, parts taken in manifest order, with the logical type of the first checked
+     * part that has the column (COL-5 does not compare logical types). It checks no part: after {@link
+     * #verify()} every part is checked. {@link #columns(int)} describes one part from its own footer,
+     * checking it first if no read has.
      */
     public List<Column> columns() {
         Map<String, Column> columns = new LinkedHashMap<>();
+        String key = manifest.key().column();
         for (int i = 0; i < parts.size(); i++) {
             PartFile part = parts.checked(i);
             if (part == null) {
@@ -239,10 +243,57 @@ public final class Dataset implements AutoCloseable {
             }
             for (PartSchema.Field f : part.schema.byName.values()) {
                 Column prior = columns.get(f.name());
-                columns.put(f.name(), new Column(f.name(), f.type(), f.typeLength(), f.repetition(), prior == null ? 1 : prior.parts() + 1));
+                Column c = prior != null ? prior : PartSchema.column(f, key);
+                columns.put(f.name(), new Column(c.name(), c.type(), c.typeLength(), c.logicalType(), c.repetition(), c.key(),
+                        prior == null ? 1 : prior.parts() + 1));
             }
         }
         return List.copyOf(columns.values());
+    }
+
+    /**
+     * Returns the top-level columns of part {@code part}; see {@link #columns(int, Cancellation)}.
+     *
+     * @param part an index into {@code manifest().parts()}
+     * @return the part's columns, in schema order
+     * @throws IndexOutOfBoundsException if {@code part} is not an index of the manifest's parts
+     * @throws RefusalException if the part breaks the specification
+     * @throws UnsupportedFeatureException if the part uses a feature this reader does not implement
+     * @throws LimitExceededException if the part declares a size above the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public List<Column> columns(int part) {
+        return columns(part, Cancellation.none());
+    }
+
+    /**
+     * Returns the top-level columns of part {@code part}, an index into {@code manifest().parts()}, in
+     * schema order, from the footer the dataset checked and holds for that part: if no read has checked
+     * the part yet, this checks it as the first read to touch it would (CHECK-1), so the answer always
+     * comes from a checked part, and every later read of the part reads that same file. Each column has
+     * {@code parts} 1. COL-5 holds a column's physical type, repetition and nesting equal in every
+     * checked part that has it; a part may lack a column (COL-2), and logical annotations are not
+     * compared, so a caller that needs a column in every part asks for each part.
+     *
+     * @param part an index into {@code manifest().parts()}
+     * @param cancellation the request's cancellation
+     * @return the part's columns, in schema order
+     * @throws IndexOutOfBoundsException if {@code part} is not an index of the manifest's parts
+     * @throws RefusalException if the part breaks the specification
+     * @throws UnsupportedFeatureException if the part uses a feature this reader does not implement
+     * @throws LimitExceededException if the part declares a size above the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public List<Column> columns(int part, Cancellation cancellation) {
+        java.util.Objects.checkIndex(part, parts.size());
+        try (Request request = begin(cancellation)) {
+            PartFile p = parts.get(part, request.ctx);
+            String key = manifest.key().column();
+            return p.schema.fields.stream().map(f -> PartSchema.column(f, key)).toList();
+        }
     }
 
     /**
@@ -291,10 +342,99 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<Row> range(RangeQuery query, Cancellation cancellation) {
-        checkResultLimit(query.limit());
-        checkProjection(query.columns());
+        return range(query, cancellation, stats -> {});
+    }
+
+    /**
+     * Reads a range (spec §6.2), ending early when {@code cancellation} is cancelled, and hands the
+     * request's read statistics to {@code stats} when it ends, whether it succeeds or fails. A
+     * request that fails before it reads (a limit or projection error, a cancellation, a closed dataset)
+     * delivers zero counts.
+     *
+     * @param query the query
+     * @param cancellation the request's cancellation
+     * @param stats receives the request's read statistics
+     * @return the rows, in ascending key order, at most {@code query.limit()}
+     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
+     * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
+     *     codec or encoding this reader does not implement
+     * @throws LimitExceededException if a page declares a size above the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public List<Row> range(RangeQuery query, Cancellation cancellation, Consumer<? super ReadStats> stats) {
+        Request started;
+        try {
+            checkResultLimit(query.limit());
+            checkProjection(query.columns());
+            started = begin(cancellation);
+        } catch (RuntimeException e) {
+            throw notStarted(stats, e);
+        }
+        try (Request request = started) {
+            try {
+                return Queries.range(parts, query, request.ctx);
+            } finally {
+                stats.accept(request.ctx.stats.snapshot());
+            }
+        }
+    }
+
+    /**
+     * Plans reading the rows of {@code ranges}; see {@link #planRanges(List, List, Cancellation)}.
+     *
+     * @param ranges the ranges, read whole
+     * @param columns the columns to project, by exact top-level name, in order
+     * @return the plan
+     * @throws IllegalArgumentException if a range projects columns of its own
+     * @throws RefusalException if data planning decodes, or a part it touches, breaks the specification
+     * @throws UnsupportedFeatureException if a projected column cannot be projected, or uses a codec this
+     *     reader does not implement
+     * @throws LimitExceededException if a page or index declares a size above the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public RangePlan planRanges(List<RangeQuery> ranges, List<String> columns) {
+        return planRanges(ranges, columns, Cancellation.none());
+    }
+
+    /**
+     * Plans reading the rows of {@code ranges}, with the values of {@code columns} (as a range read's
+     * columns). It reads each range's prefix, bounds and cursor; a planned range is read whole, so its
+     * limit is not applied, and a range with columns of its own is rejected, the plan's columns applying
+     * to every range. Rows that several ranges select are one row of the plan.
+     *
+     * <p>Planning decodes what a range read starting at each end would: the key pages that locate the
+     * first row of the range and the first row after it, through the routing and the key page index,
+     * and no part known from the manifest bounds to begin after the range. With columns, it also checks
+     * every part holding a selected row and reads the OffsetIndex of each projected column chunk the rows
+     * span, but no data page. Errors are those of a range read.
+     *
+     * @param ranges the ranges, read whole
+     * @param columns the columns to project, by exact top-level name, in order
+     * @param cancellation the request's cancellation
+     * @return the plan, bound to this dataset
+     * @throws IllegalArgumentException if a range projects columns of its own
+     * @throws RefusalException if data planning decodes, or a part it touches, breaks the specification
+     * @throws UnsupportedFeatureException if a projected column cannot be projected, or uses a codec this
+     *     reader does not implement
+     * @throws LimitExceededException if a page or index declares a size above the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws ArithmeticException if the dataset holds more than {@link Long#MAX_VALUE} rows
+     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public RangePlan planRanges(List<RangeQuery> ranges, List<String> columns, Cancellation cancellation) {
+        for (RangeQuery q : ranges) {
+            if (!q.columns().isEmpty()) {
+                throw new IllegalArgumentException("a planned range takes no columns: the plan's columns apply to every range");
+            }
+        }
+        List<String> projected = List.copyOf(columns);
+        checkProjection(projected);
         try (Request request = begin(cancellation)) {
-            return Queries.range(parts, query, request.ctx);
+            return RangePlan.plan(this, parts, List.copyOf(ranges), projected, request.ctx);
         }
     }
 
@@ -330,10 +470,41 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<ListEntry> list(ListQuery query, Cancellation cancellation) {
-        checkResultLimit(query.limit());
-        checkProjection(query.columns());
-        try (Request request = begin(cancellation)) {
-            return Queries.list(parts, query, request.ctx);
+        return list(query, cancellation, stats -> {});
+    }
+
+    /**
+     * Lists keys with delimiter rollups (spec §6.3), ending early when {@code cancellation} is cancelled,
+     * and hands the request's read statistics to {@code stats} when it ends, whether it succeeds or
+     * fails; a request that fails before it reads delivers zero counts.
+     *
+     * @param query the query
+     * @param cancellation the request's cancellation
+     * @param stats receives the request's read statistics
+     * @return the entries, in ascending byte order, at most {@code query.limit()}
+     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
+     * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
+     *     codec or encoding this reader does not implement
+     * @throws LimitExceededException if a page declares a size above the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public List<ListEntry> list(ListQuery query, Cancellation cancellation, Consumer<? super ReadStats> stats) {
+        Request started;
+        try {
+            checkResultLimit(query.limit());
+            checkProjection(query.columns());
+            started = begin(cancellation);
+        } catch (RuntimeException e) {
+            throw notStarted(stats, e);
+        }
+        try (Request request = started) {
+            try {
+                return Queries.list(parts, query, request.ctx);
+            } finally {
+                stats.accept(request.ctx.stats.snapshot());
+            }
         }
     }
 
@@ -368,7 +539,7 @@ public final class Dataset implements AutoCloseable {
     }
 
     /** A request in progress: it holds a read lease that close waits for. */
-    private final class Request implements AutoCloseable {
+    final class Request implements AutoCloseable {
         final ReadContext ctx;
         final Cancellation cancellation;
 
@@ -384,7 +555,34 @@ public final class Dataset implements AutoCloseable {
         }
     }
 
-    private Request begin(Cancellation caller) {
+    /** {@return the dataset's parts} */
+    Parts parts() {
+        return parts;
+    }
+
+    /**
+     * Begins a request that reports its read statistics to {@code stats}: a request that fails to start
+     * (cancelled already, or on a closed dataset) reports zero counts, and throws as {@link #begin} does.
+     */
+    Request begin(Cancellation caller, Consumer<? super ReadStats> stats) {
+        try {
+            return begin(caller);
+        } catch (RuntimeException e) {
+            throw notStarted(stats, e);
+        }
+    }
+
+    /** Reports zero counts for a request that failed to start with {@code e}, and {@return e}. */
+    private static RuntimeException notStarted(Consumer<? super ReadStats> stats, RuntimeException e) {
+        try {
+            stats.accept(ReadStats.NONE);
+        } catch (RuntimeException suppressed) {
+            e.addSuppressed(suppressed);
+        }
+        return e;
+    }
+
+    Request begin(Cancellation caller) {
         caller.throwIfCancelled();
         lifecycle.readLock().lock();
         if (closed) {

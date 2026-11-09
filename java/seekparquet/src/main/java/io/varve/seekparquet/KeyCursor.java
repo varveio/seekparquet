@@ -42,6 +42,8 @@ final class KeyCursor {
     private byte[] tailKey;
 
     private boolean exhausted;
+    /** Once exhausted, the dataset ordinal of the first row the cursor did not reach. */
+    private long bound;
 
     long offset() {
         return offsets[pos];
@@ -71,6 +73,26 @@ final class KeyCursor {
     /** The row of the current key within its row group. */
     long row() {
         return index.firstRow[page] + pos;
+    }
+
+    /** {@return the dataset ordinal of the current key: its row counted from the dataset's first} */
+    long ordinal() {
+        return parts.start(part) + pf.groupStart[physical] + row();
+    }
+
+    /**
+     * {@return once a seek or next returned false, the dataset ordinal of the first row the cursor did
+     * not reach}: the first row of the first part known from its manifest bounds to begin at or after the
+     * upper bound, or the dataset's row count.
+     */
+    long bound() {
+        return bound;
+    }
+
+    private boolean exhaust(int p) {
+        exhausted = true;
+        bound = parts.start(p);
+        return false;
     }
 
     private static boolean satisfies(byte[] key, byte[] target, boolean exclusive) {
@@ -116,8 +138,7 @@ final class KeyCursor {
             p = lo;
         }
         if (p >= parts.size() || (p != part && beyondEnd(p))) {
-            exhausted = true;
-            return false;
+            return exhaust(p);
         }
         int firstSlot = 0;
         if (p == part && keys != null) {
@@ -149,20 +170,20 @@ final class KeyCursor {
             lo = Math.max(firstSlot, lo - 1);
         }
         // Bounds may overlap and be non-monotone; visit the earliest remaining candidate.
+        KeyIndex probe = null;
         while (lo < candidate.groups.length
-                && !satisfies(candidate.keyIndex(candidate.groups[lo], ctx).upper(), target, exclusive)) {
+                && !satisfies((probe = candidate.keyIndex(candidate.groups[lo], ctx)).upper(), target, exclusive)) {
             lo++;
         }
         if (lo >= candidate.groups.length) {
             // No row group of the part reaches it: continue at the next part's first key.
             if (p + 1 >= parts.size()) {
-                exhausted = true;
-                return false;
+                return exhaust(p + 1);
             }
             return decodeForward(p + 1, 0, 0, target, exclusive);
         }
-        int pg = candidate.keyIndex(candidate.groups[lo], ctx).pageFor(0, target, exclusive);
-        return decodeForward(p, lo, Math.min(pg, candidate.keyIndex(candidate.groups[lo], ctx).pages() - 1), target, exclusive);
+        int pg = probe.pageFor(0, target, exclusive);
+        return decodeForward(p, lo, Math.min(pg, probe.pages() - 1), target, exclusive);
     }
 
     /**
@@ -202,6 +223,7 @@ final class KeyCursor {
             pos = next;
             return true;
         }
+        countSeek(s, pg);
         ctx.enterGroup(part, pf.groups[s]);
         byte[][] decoded = pf.keyPage(pf.groups[s], destination, pg, ctx);
         ctx.checkKeyPage(pf, pf.groups[s], pg, decoded);
@@ -276,28 +298,30 @@ final class KeyCursor {
         if (part + 1 < parts.size()) {
             return enter(part + 1, 0, 0);
         }
-        exhausted = true;
-        return false;
+        return exhaust(part + 1);
     }
 
     private boolean enter(int p, int s, int pg) {
         if (p >= parts.size() || (p != part && beyondEnd(p))) {
-            exhausted = true;
-            return false;
+            return exhaust(p);
         }
         if (p != part) {
             pf = parts.get(p, ctx);
             part = p;
+            index = null;
         }
-        slot = s;
-        physical = pf.groups[s];
-        index = pf.keyIndex(physical, ctx);
+        if (index == null || s != slot) {
+            slot = s;
+            physical = pf.groups[s];
+            index = pf.keyIndex(physical, ctx);
+        }
         load(pg);
         return true;
     }
 
     /** Decodes a key page of the current row group and checks its order against the last page decoded. */
     private void load(int pg) {
+        countSeek(slot, pg);
         ctx.enterGroup(part, physical);
         byte[][] decoded = pf.keyPage(physical, index, pg, ctx);
         ctx.checkKeyPage(pf, physical, pg, decoded);
@@ -322,6 +346,17 @@ final class KeyCursor {
         page = pg;
         keys = decoded;
         pos = 0;
+    }
+
+    /**
+     * Counts a page index seek when decoding page {@code pg} of row group slot {@code s} of the current
+     * part skips a page: one after the page decoded last in the same group, or a group's first.
+     */
+    private void countSeek(int s, int pg) {
+        boolean next = decodedPart == part && decodedSlot == s ? pg == decodedPage + 1 : pg == 0;
+        if (!next) {
+            ctx.stats.pageIndexSeeks++;
+        }
     }
 
     /** {@return whether part p holds no key below the upper bound, by its manifest minimum key} */

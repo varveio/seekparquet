@@ -88,6 +88,61 @@ prefix skips its subtree. Ranges accept only row cursors; listings accept either
 The adapter accepts only unsigned decimal integer offsets in the range 0 through 2^63-1;
 spellings such as `-0`, `0.0` and `0e0` are rejected.
 
+### Planning a selection
+
+`Dataset.planRanges(ranges, columns)` plans reading every row of a set of ranges before reading it. A
+`RangePlan` holds the selected rows (rows several ranges select are one row), their `count()`, and the
+`projectedBytes()` a scan of the projected columns will request; `scan(...)` then hands every row, with its
+values, to a callback in dataset order.
+
+```java
+RangePlan plan = dataset.planRanges(List.of(
+        RangeQuery.builder().prefix(Bytes.utf8("photos/2024/")).limit(1).build(),
+        RangeQuery.builder().start(Bytes.utf8("logs/")).end(Bytes.utf8("logs0")).limit(1).build()),
+        List.of("size"));
+long rows = plan.count();                   // exact when plan.countExact()
+long bytes = plan.projectedBytes();         // exact when plan.projectedBytesExact()
+plan.scan(cancel, stats -> log(stats), row -> process(row));
+```
+
+Planning decodes the key pages at the two ends of each range, as a range read would, and adds up row
+counts from footers and OffsetIndex row positions; with columns it checks every part holding a selected
+row and reads each projected chunk's OffsetIndex, but no data page. Without columns, a count across a part
+no read has checked rests on the manifest's row count, and `countExact()` is false. `projectedBytes()` is,
+per column chunk the rows span, the extents of the pages holding them and of the dictionary page (the bytes
+before the first data page), each counted once; a scan reads each counted extent in one request and no
+other byte of those chunks. A chunk without an OffsetIndex (COL-4) is omitted and `projectedBytesExact()`
+is false. A plan is immutable, bound to its dataset, and its scan fails once the dataset is closed.
+
+### Typed columns
+
+`Dataset.columns(part)` returns one part's top-level columns, in schema order, from the footer the dataset
+checked and holds for that part, checking the part first if no read has. Each `Column` has its physical type
+and `FIXED_LEN_BYTE_ARRAY` length, its `LogicalType` (the `logical_type` annotation, or else the legacy
+`converted_type` normalized into one), repetition, and whether it is the key. `Dataset.columns()` still
+describes the parts checked so far without checking any, merged by name with the number of parts that
+have each column.
+
+### Read statistics
+
+`range`, `list` and `RangePlan.scan` accept a `Consumer<ReadStats>` that receives the request's counts when
+it ends, whether it succeeds or fails: parts opened, key and value pages decoded, keys decoded, row-group key
+indexes taken and loaded, page index seeks, prefix skips, and the storage reads and bytes requested.
+`RangePlan.stats()` holds planning's. They describe this reader's access path, not the format.
+
+### Parity with the Go reader
+
+| Go | Java | Difference |
+|---|---|---|
+| `Dataset.PlanRanges(ctx, ranges, columns)` | `Dataset.planRanges(ranges, columns, cancellation)` | A Java `RangeQuery` always has a positive limit, so a planned range's limit is ignored rather than rejected; a range with columns is rejected (`IllegalArgumentException`), as in Go. |
+| `RangePlan.Count() (n, exact)` | `count()`, `countExact()` | |
+| `RangePlan.ProjectedBytes() (n, exact)` | `projectedBytes()`, `projectedBytesExact()` | The key column, when projected, counts nothing: Java takes its values from the key pages the scan decodes, where Go reads its chunk. A column projected twice counts once, as the scan reads it once. |
+| `RangePlan.Scan(ctx, st, fn)` | `scan(cancellation, stats, action)` | `action` stops the scan by throwing. A closed dataset is `IllegalStateException`. |
+| `RangePlan.Stats()` | `stats()` | |
+| `Dataset.Columns(ctx, i)` | `columns(i, cancellation)` | An index outside the parts is `IndexOutOfBoundsException`; `Column.parts()` is 1. |
+| `Column{Logical *format.LogicalType}` | `Column.logicalType()`: `Optional<LogicalType>` | `LogicalType` is a sealed interface of records, so the API does not expose parquet-java's Thrift classes. |
+| `ReadStats` via `Range.Stats`, `List.Stats` | `ReadStats` via a `Consumer<ReadStats>` argument | Same fields and counting rules. `groupsSkipped` is always 0: Java's listing has no row-group shortcut. The access paths differ, so counts for the same request can differ. |
+
 ### Options, limits and cancellation
 
 ```java
@@ -273,8 +328,8 @@ assemble one protocol response, stopping at the requested limit or exhaustion. I
 the requested total to Java's `int` range, and it leaves the library defaults unchanged. The full
 JSON response is still buffered in memory; internal paging is not a total response-memory bound.
 
-The adapter claims the `reader` target and must pass every case of it; validator targets are not claimed
-yet, so the harness skips their cases. Run the build and harness commands above for Java verification.
+The adapter claims the `reader` target and must pass every case of it, and the optional `verify` and
+`planning` capabilities; validator targets are not claimed yet, so the harness skips their cases. Run the build and harness commands above for Java verification.
 The [CI workflow](../.github/workflows/ci.yml) runs the Java build, unit tests and reader conformance
 suite for changes under `java/`, `spec/`, `conformance/` or `.github/`. Its `ci-ok` job requires the
 Java job to succeed whenever those paths make it necessary.

@@ -7,6 +7,9 @@ independent of the specification's draft revisions.
 
 ### Changed
 
+- A value column chunk's dictionary is read in one request of the bytes before the first data page its
+  OffsetIndex locates, instead of a header window and then the body.
+- `Column` is `(name, type, typeLength, logicalType, repetition, key, parts)`.
 - `ListEntry.CommonPrefix` is `(prefix, exact)`: a common prefix carries its exact row (spec LIST-8),
   the first candidate row that rolls up to it when that row's key is the prefix itself, with its
   projected values, or empty. `new CommonPrefix(prefix)` makes one without. The conformance adapter
@@ -52,6 +55,16 @@ independent of the specification's draft revisions.
 
 ### Added
 
+- Selection planning: `Dataset.planRanges(ranges, columns[, cancellation])` returns a `RangePlan` with
+  `count()`/`countExact()`, `projectedBytes()`/`projectedBytesExact()`, `stats()` and `scan(...)`, which
+  hands every selected row to a callback in dataset order, the semantics of the Go reader's `PlanRanges`
+  (see README, Parity with the Go reader).
+- `Dataset.columns(part[, cancellation])`: one part's top-level columns from the footer the dataset checked
+  and holds for it. `Column` gains `logicalType()` (`LogicalType`, a sealed interface; legacy converted types
+  normalized into it) and `key()`.
+- `ReadStats`, per-request read statistics, delivered to a `Consumer<ReadStats>` by new `range` and `list`
+  overloads and by `RangePlan.scan`, with the Go reader's fields and counting rules.
+- The conformance adapter claims the optional `planning` capability and answers `plan`.
 - A reader for SeekParquet format 1, draft revision 1 (on disk: `format_version` 0,
   `draft_revision` 1), in `io.varve.seekparquet`:
   - `Dataset`: opens a dataset with the CHECK-1 checks, and answers range and prefix reads

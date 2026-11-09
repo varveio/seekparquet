@@ -5,6 +5,8 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- The conformance adapter claims the optional `planning` capability: it answers `plan` (PlanRanges, then
+  Scan, Count and ProjectedBytes) for the conformance suite's planning cases.
 - `RangePlan.Split(ctx, n)` divides a selection plan into at most `n` shards along row-group boundaries,
   never inside a group of equal keys, for a caller to scan concurrently: the shards' scans together yield the
   plan's rows, each once, and their `Count` and `ProjectedBytes` add up to the plan's. Boundaries balance the

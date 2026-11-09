@@ -258,7 +258,10 @@ share them; it is not exact when a projected chunk has no OffsetIndex. `Scan(ctx
 rows in dataset order with their values, reading each counted extent in one request, and checks every key
 page it decodes, reading a chunk's dictionary before its first page whether or not the pages use it. A page an
 OffsetIndex locates is read in one request of exactly its extent, by `Range` and `List` too; they read a
-dictionary only for a page that uses it.
+dictionary only for a page that uses it. A projected key column is read as a value column and its chunk counts
+in `ProjectedBytes`; the Java reader takes key values from its key pages and counts nothing for it (see
+[java/README.md](../java/README.md#parity-with-the-go-reader)), so the conformance planning cases never
+project the key.
 
 `plan.Split(ctx, n)` divides a plan into at most `n` shards for a whole scan on several cores: each shard is a
 `RangePlan` over consecutive rows of the plan, and the shards' `Scan`s, run on the caller's goroutines with

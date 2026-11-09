@@ -69,6 +69,11 @@ narrower than what the adapter claims, is a partial run: the harness reports whe
 passed, records the selection (`selection` in `--json` output), and never reports qualification. The exit
 status is 0 when every selected case passed and there was no run error (including a non-zero adapter exit).
 
+**Optional capabilities.** `verify` and `planning` are capabilities no target requires. The `planning` cases
+(`cases/generated/planning.generated.json`) run only against an adapter that claims it, and are otherwise
+skipped without counting against `reader` qualification. Their rows come from the oracle; their projected
+bytes are computed by `make_cases.py` from the fixtures' OffsetIndex page locations, never from a reader.
+
 **Optional features.** Cases on `optional-codecs` (LZ4_RAW and BROTLI value columns) accept the values or
 `unsupported` (`unsupported_encoding`); full validation of it may be `complete` or `incomplete`, never
 `failed`.

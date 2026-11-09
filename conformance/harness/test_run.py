@@ -43,6 +43,8 @@ STUB = textwrap.dedent('''
         targets = ["reader", "sorcerer"]
     if mode == "planned":
         targets = ["reader", "planned"]
+    if mode == "planner":
+        caps = caps + ["planning"]
     if mode == "validator-full":
         targets, caps = ["validator-full"], ["open", "validate:structural", "validate:profile", "validate:full"]
     n = 0
@@ -61,6 +63,9 @@ STUB = textwrap.dedent('''
             resp = {"status": "ok", "entries": []}
         elif req["op"] == "validate":
             resp = {"status": "ok", "levels": {"structural": {"result": "complete"}}}
+        elif req["op"] == "plan":
+            resp = {"status": "ok", "entries": [], "count": 0, "count_exact": True, "projected_bytes": 0,
+                    "projected_bytes_exact": True}
         else:
             resp = {"status": "invalid_request"}
         resp["id"] = "bogus" if (mode == "wrong-id" and n >= 2) else req["id"]
@@ -356,6 +361,18 @@ class HarnessSelfTest(unittest.TestCase):
         self.assertFalse(rep["selection"]["partial"])
         self.assertEqual(rep["qualified_targets"], [])
         self.assertGreater(rep["counts"]["fail"], 100)
+
+    def test_unclaimed_optional_capability_is_skipped(self):
+        rc, rep, _ = self.run_harness("good", "--filter", "^planning/basic/")
+        self.assertEqual(rep["counts"]["fail"], 0, rep)
+        self.assertGreater(rep["counts"]["skip"], 0)
+        self.assertTrue(all(r["result"] == "skip" and r.get("optional") for r in rep["results"]))
+
+    def test_plan_answers_are_compared(self):
+        rc, rep, _ = self.run_harness("planner", "--filter", "^planning/basic/(all|empty)$")
+        self.assertEqual(rc, 1)
+        results = {r["id"]: r["result"] for r in rep["results"]}
+        self.assertEqual(results, {"planning/basic/all": "fail", "planning/basic/empty": "pass"})
 
     def test_nonzero_exit_is_a_run_error(self):
         rc, rep, _ = self.run_harness("nonzero-exit", "--filter", "^open/basic$")

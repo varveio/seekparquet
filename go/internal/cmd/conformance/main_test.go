@@ -75,7 +75,7 @@ func TestAdapter(t *testing.T) {
 	hello := resps[0]
 	if hello["id"] != "1" || hello["status"] != "ok" || hello["implementation"] != "seekparquet-go" ||
 		jsonString(hello["targets"]) != `["reader","validator-structural","validator-profile","validator-full","validator-digest"]` ||
-		jsonString(hello["capabilities"]) != `["open","range","list","projection","verify","validate:structural","validate:profile","validate:full","validate:digest"]` ||
+		jsonString(hello["capabilities"]) != `["open","range","list","projection","verify","planning","validate:structural","validate:profile","validate:full","validate:digest"]` ||
 		jsonString(hello["supports"]) != `[{"draft_revision":1,"format_version":0}]` {
 		t.Fatalf("hello %v", hello)
 	}

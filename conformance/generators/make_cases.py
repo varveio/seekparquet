@@ -36,7 +36,7 @@ RENAMED = {"truncated-bounds": "binary-bounds-truncated-16-byte",
 # Valid datasets with nested or repeated columns (projection fixtures): a validator that does not support
 # such columns reports the full level incomplete (VAL-1), so full validation accepts complete or incomplete.
 NESTED_COLUMNS = {"projection": "meta (struct) and tags (list)", "key-legacy-utf8": "meta (struct) and tags (list)"}
-GROUP_ORDER = ["open", "range", "prefix", "list", "pagination", "projection", "requests", "refusals-open",
+GROUP_ORDER = ["open", "range", "prefix", "list", "pagination", "projection", "planning", "requests", "refusals-open",
                "refusals-read", "validate-structural", "validate-profile", "validate-full", "validate-digest"]
 # Datasets that use optional features (outside ENC-1): a reader may support them or answer unsupported.
 OPTIONAL = {"optional-codecs": ["unsupported_encoding"]}
@@ -634,6 +634,144 @@ def projection_group():
     return g
 
 
+def plan_expect(ds, dataset, ranges, columns):
+    """The expected answer of a plan request: the rows its ranges select (from the oracle), their count, and the
+    projected bytes, computed from the dataset's Parquet metadata (OffsetIndex page locations), never from a
+    reader."""
+    import parquet_meta as pm
+    selected = set()
+    for r in ranges:
+        rows = ds.range(prefix=dec(r.get("prefix_base64")), start=dec(r.get("start_base64")),
+                        start_exclusive=r.get("start_exclusive", False), end=dec(r.get("end_base64")), limit=BIG,
+                        cursor=r.get("after"))
+        selected |= {(e["key_base64"], e["offset"]) for e in rows}
+    entries = [e for e in ds.range(limit=BIG, columns=columns) if (e["key_base64"], e["offset"]) in selected]
+    ordinals = [i for i, (k, o, _v, _p) in enumerate(ds.positioned()) if (oracle.b64(k), o) in selected]
+    root = CONF / "datasets" / dataset
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    total, partial, start = 0, False, 0
+    for part in manifest["parts"]:
+        pf = pm.read_parquet((root / part["path"]).read_bytes())
+        leaves = {path[0]: i for i, (path, _el, _d, _r) in enumerate(pf.leaf_columns()) if len(path) == 1}
+        group_start = start
+        for g, rg in enumerate(pf.row_groups):
+            n = rg.get(pm.RG_NUM_ROWS)
+            rows = [o - group_start for o in ordinals if group_start <= o < group_start + n]
+            group_start += n
+            if not rows:
+                continue
+            for c in columns:
+                if c not in leaves:  # absent (COL-2)
+                    continue
+                cc = pm.column_chunk(pf, g, leaves[c])
+                oi = pm.read_index(pf, cc, "offset")
+                if oi is None:  # COL-4: walked through page headers, not counted
+                    partial = True
+                    continue
+                md = cc.get(pm.CC_META)
+                begin = md.get(pm.CMD_DATA_PAGE_OFFSET)
+                dictionary = md.get(pm.CMD_DICT_PAGE_OFFSET)
+                if dictionary and dictionary < begin:
+                    begin = dictionary
+                locs = [(loc.get(pm.PL_OFFSET), loc.get(pm.PL_SIZE), loc.get(pm.PL_FIRST_ROW))
+                        for loc in oi.items_of(pm.OI_PAGE_LOCATIONS)]
+                total += locs[0][0] - begin  # the dictionary page's extent, 0 without one
+                for i, (_off, size, first) in enumerate(locs):
+                    end = locs[i + 1][2] if i + 1 < len(locs) else n
+                    if any(first <= r < end for r in rows):
+                        total += size
+        start += part["rows"]
+    exp = {"status": "ok", "entries": entries, "count": len(entries)}
+    if columns or len(manifest["parts"]) == 1:
+        exp["count_exact"] = True  # every part holding a selected row is checked
+    exp["projected_bytes"] = total
+    exp["projected_bytes_exact"] = not partial
+    return exp
+
+
+def planning_group():
+    g = Group("planning", "reader", "Selection planning (optional capability planning): the rows a set of ranges "
+                                    "selects, scanned in dataset order once each, their count, and the compressed "
+                                    "bytes of the projected columns' pages and dictionaries that the scan requests.")
+    g.fam("plan", "ranges alone and in overlapping or disjoint sets, with and without columns, over one and several "
+                  "parts, dictionaries, cursors in equal-key groups, absent columns and chunks without an OffsetIndex")
+
+    def rng(start=None, end=None, prefix=None, exclusive=None, after=None):
+        r = {}
+        if prefix is not None:
+            r["prefix_base64"] = B(prefix)
+        if start is not None:
+            r["start_base64"] = B(start)
+        if exclusive is not None:
+            r["start_exclusive"] = exclusive
+        if end is not None:
+            r["end_base64"] = B(end)
+        if after is not None:
+            r["after"] = after
+        return r
+
+    def add(cid, dataset, rows_name, ranges, columns, reqs, desc=None):
+        req = {"op": "plan", "ranges": ranges}
+        if columns:
+            req["columns"] = list(columns)
+        reqs = ["RANGE-1"] + (["RANGE-2"] if columns else []) + reqs
+        g.add(cid, reqs, dataset, plan_expect(oracle.Dataset.load(rows_name), dataset, ranges, list(columns)),
+              request=req, desc=desc, requires=["planning"])
+
+    every = [rng()]
+    add("basic/all", "basic", "basic", every, ["size"], [])
+    add("basic/all-two-columns", "basic", "basic", every, ["etag", "size"], [])
+    add("basic/keys-only", "basic", "basic", every, [], [], desc="no columns: no projected bytes")
+    add("basic/prefix", "basic", "basic", [rng(prefix=b"a/")], ["size"], [])
+    add("basic/overlapping", "basic", "basic", [rng(start=b"a/", end=b"b"), rng(start=b"a/b/", end=b"bravo")],
+        ["size"], [], desc="rows two ranges select are one row of the plan, and their pages are counted once")
+    add("basic/disjoint", "basic", "basic", [rng(end=b"a/2.txt"), rng(start=b"b", exclusive=True)], ["size", "etag"], [])
+    add("basic/empty", "basic", "basic", [rng(start=b"b", end=b"b"), rng(end=b""), rng(prefix=b"nothing")], ["size"],
+        ["QUERY-2"], desc="empty ranges select nothing and project no bytes")
+    add("basic/cursor", "basic", "basic", [rng(after=row_cursor(b"a/b/3.txt"))], ["size"], ["PAGE-1"])
+    m = "multipart"
+    add("multipart/all", m, m, every, ["size", "mtime"], ["ENC-1"],
+        desc="three parts with empty row groups, codecs, dictionaries and data page v2")
+    add("multipart/across-parts", m, m, [rng(start=b"app/v1/obj-010", end=b"logs/2027/")], [], [],
+        desc="without columns: the count may rest on a part no read has checked, so its exactness is not asserted")
+    add("multipart/across-parts-columns", m, m, [rng(start=b"app/v1/obj-010", end=b"logs/2027/")],
+        ["storage_class"], [])
+    add("multipart/lookups", m, m, [rng(start=k, end=k + b"\x00") for k in (b"README", b"logs/2026/01/f025.gz",
+                                                                            b"logs/2026/01/f026.gz")], ["mtime"], [])
+    e = "encodings"
+    add("encodings/shared-dictionary", e, e, [rng(start=k, end=k + b"\x00") for k in (b"enc/000", b"enc/004")],
+        ["i64"], ["ENC-1"], desc="two lookups in one dictionary-encoded row group count its dictionary once")
+    add("encodings/one-page", e, e, [rng(start=k, end=k + b"\x00") for k in (b"enc/000", b"enc/001", b"enc/002")],
+        ["i64"], ["ENC-1"], desc="three lookups in one page count it once")
+    add("encodings/all", e, e, every, ["i32", "i64", "s"], ["ENC-1"])
+    add("no-value-page-index/all", "no-value-page-index", "basic", every, ["size"], ["COL-4"],
+        desc="a chunk without an OffsetIndex is omitted from the projected bytes, which are then not exact")
+    add("projection/absent", "projection", "projection", [rng(start=b"row-02", end=b"row-14")],
+        ["f64", "req", "extra"], ["COL-2"], desc="a column a part lacks contributes no bytes")
+    r = "repeated-keys"
+    rk = oracle.Dataset.load(r)
+    for i, (key, offset, _v, _p) in enumerate(rk.positioned()):
+        if i % 4 == 1:
+            add(f"repeated-keys/cursor-{i:02d}", r, r, [rng(after=row_cursor(key, offset))], ["size"], ["PAGE-1", "KEY-7"])
+    add("repeated-keys/lookups", r, r, [rng(start=k, end=k + b"\x00") for k in dict.fromkeys(rk.keys())], ["size"],
+        ["KEY-7"])
+    o = "one-large-group"
+    for n in (0, 5, 11, 22):
+        add(f"one-large-group/cursor-{n}", o, o, [rng(after=row_cursor(b"only", n))], ["size"], ["PAGE-1", "KEY-7"])
+    g.fam("invalid", "malformed plan requests: ranges missing or not an array, a range that is not an object, a "
+                     "range with a member a planned range does not take (limit, columns), a prefix cursor")
+    for cid, raw in (("no-ranges", {"op": "plan"}),
+                     ("ranges-not-array", {"op": "plan", "ranges": {}}),
+                     ("range-null", {"op": "plan", "ranges": [None]}),
+                     ("range-not-object", {"op": "plan", "ranges": [[]]}),
+                     ("range-limit", {"op": "plan", "ranges": [{"limit": 1}]}),
+                     ("range-columns", {"op": "plan", "ranges": [{"columns": ["size"]}], "columns": ["size"]}),
+                     ("range-prefix-cursor", {"op": "plan", "ranges": [{"after": prefix_cursor(b"a/")}]})):
+        g.add(f"invalid/{cid}", ["QUERY-1"], "basic", {"status": "invalid_request"}, raw_request=raw,
+              requires=["planning"])
+    return g
+
+
 def requests_group():
     g = Group("requests", "reader", "Malformed requests are invalid requests, not empty results (QUERY-1). "
                                     "raw_request is sent as is, plus id and dataset.")
@@ -877,7 +1015,7 @@ def check_core_case(c, candidate):
 
 def build_all(lock):
     groups = [repeated_group(), open_group(lock), range_group(), prefix_group(), list_group(), pagination_group(),
-              projection_group(), requests_group()] + refusal_groups(lock)
+              projection_group(), planning_group(), requests_group()] + refusal_groups(lock)
     core, core_files = load_core()
     cand = {c["id"]: c for g in groups for c in g.cases}
     for cid, (_doc, c) in core.items():

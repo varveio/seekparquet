@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.parquet.format.FieldRepetitionType;
 import org.apache.parquet.format.SchemaElement;
@@ -79,6 +80,86 @@ final class PartSchema {
             throw new DataException("the schema holds " + (schema.size() - w.pos) + " elements outside its tree");
         }
         return new PartSchema(List.copyOf(fields), Collections.unmodifiableMap(byName), Set.copyOf(duplicates), List.copyOf(w.leaves), List.copyOf(w.leafPaths));
+    }
+
+    /**
+     * {@return a top-level field as a {@link Column} of one part}: a group has no physical type, length
+     * or logical type; a leaf's logical type is its {@code logical_type}, or else its legacy {@code
+     * converted_type} normalized into one.
+     */
+    static Column column(Field f, String keyColumn) {
+        boolean group = f.type() == Column.Type.GROUP;
+        Optional<LogicalType> logical = group ? Optional.empty() : logicalType(f.element());
+        return new Column(f.name(), f.type(), f.typeLength(), logical, f.repetition(), f.name().equals(keyColumn), 1);
+    }
+
+    /**
+     * {@return a schema element's logical type}: its {@code logical_type} when set, else its {@code
+     * converted_type} as Parquet's LogicalTypes.md maps it (time and timestamp adjusted to UTC); empty
+     * for neither, and for {@code INTERVAL} and the group annotations, which have no leaf logical type.
+     */
+    static Optional<LogicalType> logicalType(SchemaElement se) {
+        if (se.isSetLogicalType()) {
+            org.apache.parquet.format.LogicalType lt = se.getLogicalType();
+            return Optional.ofNullable(switch (lt.getSetField()) {
+                case STRING -> new LogicalType.StringType();
+                case MAP -> new LogicalType.MapType();
+                case LIST -> new LogicalType.ListType();
+                case ENUM -> new LogicalType.EnumType();
+                case DECIMAL -> new LogicalType.DecimalType(lt.getDECIMAL().getPrecision(), lt.getDECIMAL().getScale());
+                case DATE -> new LogicalType.DateType();
+                case TIME -> unit(lt.getTIME().getUnit())
+                        .<LogicalType>map(u -> new LogicalType.TimeType(u, lt.getTIME().isIsAdjustedToUTC())).orElse(null);
+                case TIMESTAMP -> unit(lt.getTIMESTAMP().getUnit())
+                        .<LogicalType>map(u -> new LogicalType.TimestampType(u, lt.getTIMESTAMP().isIsAdjustedToUTC())).orElse(null);
+                case INTEGER -> new LogicalType.IntType(lt.getINTEGER().getBitWidth(), lt.getINTEGER().isIsSigned());
+                case UNKNOWN -> new LogicalType.UnknownType();
+                case JSON -> new LogicalType.JsonType();
+                case BSON -> new LogicalType.BsonType();
+                case UUID -> new LogicalType.UuidType();
+                case FLOAT16 -> new LogicalType.Float16Type();
+                case VARIANT -> new LogicalType.VariantType(lt.getVARIANT().isSetSpecification_version()
+                        ? Optional.of((int) lt.getVARIANT().getSpecification_version()) : Optional.empty());
+                case GEOMETRY -> new LogicalType.GeometryType(Optional.ofNullable(lt.getGEOMETRY().getCrs()));
+                case GEOGRAPHY -> new LogicalType.GeographyType(Optional.ofNullable(lt.getGEOGRAPHY().getCrs()),
+                        Optional.ofNullable(lt.getGEOGRAPHY().getAlgorithm()).map(Enum::name));
+            });
+        }
+        if (!se.isSetConverted_type()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(switch (se.getConverted_type()) {
+            case UTF8 -> new LogicalType.StringType();
+            case ENUM -> new LogicalType.EnumType();
+            case JSON -> new LogicalType.JsonType();
+            case BSON -> new LogicalType.BsonType();
+            case DATE -> new LogicalType.DateType();
+            case TIME_MILLIS -> new LogicalType.TimeType(LogicalType.TimeUnit.MILLIS, true);
+            case TIME_MICROS -> new LogicalType.TimeType(LogicalType.TimeUnit.MICROS, true);
+            case TIMESTAMP_MILLIS -> new LogicalType.TimestampType(LogicalType.TimeUnit.MILLIS, true);
+            case TIMESTAMP_MICROS -> new LogicalType.TimestampType(LogicalType.TimeUnit.MICROS, true);
+            case INT_8 -> new LogicalType.IntType(8, true);
+            case INT_16 -> new LogicalType.IntType(16, true);
+            case INT_32 -> new LogicalType.IntType(32, true);
+            case INT_64 -> new LogicalType.IntType(64, true);
+            case UINT_8 -> new LogicalType.IntType(8, false);
+            case UINT_16 -> new LogicalType.IntType(16, false);
+            case UINT_32 -> new LogicalType.IntType(32, false);
+            case UINT_64 -> new LogicalType.IntType(64, false);
+            case DECIMAL -> new LogicalType.DecimalType(se.getPrecision(), se.getScale());
+            case INTERVAL, MAP, MAP_KEY_VALUE, LIST -> null;
+        });
+    }
+
+    private static Optional<LogicalType.TimeUnit> unit(org.apache.parquet.format.TimeUnit unit) {
+        if (unit == null || unit.getSetField() == null) {
+            return Optional.empty();
+        }
+        return Optional.of(switch (unit.getSetField()) {
+            case MILLIS -> LogicalType.TimeUnit.MILLIS;
+            case MICROS -> LogicalType.TimeUnit.MICROS;
+            case NANOS -> LogicalType.TimeUnit.NANOS;
+        });
     }
 
     private static final class Walker {

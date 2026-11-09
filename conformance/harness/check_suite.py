@@ -8,7 +8,7 @@ Checks that:
 - case ids are unique; every case's dataset exists;
 - requirement ids exist as [XXX-N] in spec/format-1.md;
 - refusal codes exist in spec/refusal-codes.json, unsupported codes among its non-refusal codes;
-- target and capability names exist in capabilities.json, and a case's requires are part of its target;
+- target and capability names exist in capabilities.json, and a case's requires are part of its target or optional;
 - every valid dataset's manifest validates against spec/manifest.schema.json;
 - fixtures.lock.json lists exactly the fixture files on disk, with matching SHA-256 and size, within the
   size policy (1 MiB per file, 10 MiB in total).
@@ -62,6 +62,9 @@ def main(argv=None):
             continue
         if t not in caps["targets"] or any(d not in caps["targets"] for d in ds):
             bad(f"capabilities.json: target_dependencies names an unknown target ({t}: {ds})")
+    for c in caps.get("optional_capabilities", {}).get("capabilities", []):
+        if c not in caps["capabilities"] or any(c in tcaps for tcaps in caps["targets"].values()):
+            bad(f"capabilities.json: optional capability {c} is unknown or required by a target")
     for t in suite.get("mandatory_targets", []):
         if t not in caps["targets"]:
             bad(f"suite.json: unknown mandatory target {t}")
@@ -116,7 +119,8 @@ def main(argv=None):
             for cap in c.get("requires", []):
                 if cap not in caps["capabilities"]:
                     bad(f"{where}: unknown capability {cap!r}")
-                elif target in caps["targets"] and cap not in caps["targets"][target]:
+                elif (target in caps["targets"] and cap not in caps["targets"][target]
+                      and cap not in caps.get("optional_capabilities", {}).get("capabilities", [])):
                     bad(f"{where}: requires {cap!r}, which target {target!r} does not include")
             if not (conf / c.get("dataset", "")).is_dir():
                 bad(f"{where}: dataset {c.get('dataset')} does not exist")
@@ -135,7 +139,7 @@ def main(argv=None):
             if det.startswith("validate:") and f"{det}" not in c.get("requires", []):
                 bad(f"{where}: detect {det} but requires does not list {det}")
             op = c.get("request", {}).get("op")
-            if exp.get("status") == "ok" and op in ("range", "list") and "entries" not in exp:
+            if exp.get("status") == "ok" and op in ("range", "list", "plan") and "entries" not in exp:
                 bad(f"{where}: an ok {op} expectation needs entries")
             if op == "validate" and (exp.get("status") != "ok" or not exp.get("levels")):
                 bad(f"{where}: a validate expectation must be status ok with levels")

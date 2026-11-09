@@ -10,6 +10,7 @@ import io.varve.seekparquet.FormatVersion;
 import io.varve.seekparquet.Limits;
 import io.varve.seekparquet.ListEntry;
 import io.varve.seekparquet.ListQuery;
+import io.varve.seekparquet.RangePlan;
 import io.varve.seekparquet.RangeQuery;
 import io.varve.seekparquet.RefusalException;
 import io.varve.seekparquet.Row;
@@ -30,9 +31,14 @@ import java.util.Map;
 /**
  * The conformance adapter (conformance/protocol.md): reads one JSON request per line on stdin and
  * writes one JSON response per line on stdout, driving the library as an application would. It
- * claims the {@code reader} target. Diagnostics go to stderr.
+ * claims the {@code reader} target and the optional {@code verify} and {@code planning} capabilities.
+ * Diagnostics go to stderr.
  */
 public final class Adapter {
+
+    /** The members of a planned range (protocol.md, plan). */
+    private static final java.util.Set<String> PLANNED_RANGE =
+            java.util.Set.of("prefix_base64", "start_base64", "start_exclusive", "end_base64", "after");
 
     private final Map<String, Dataset> open = new HashMap<>();
 
@@ -108,7 +114,7 @@ public final class Adapter {
                         }
                         out.append('}');
                     }
-                    out.append("],\"targets\":[\"reader\"],\"capabilities\":[\"open\",\"range\",\"list\",\"projection\",\"verify\"]}");
+                    out.append("],\"targets\":[\"reader\"],\"capabilities\":[\"open\",\"range\",\"list\",\"projection\",\"verify\",\"planning\"]}");
                 }
                 case "open" -> {
                     // A fresh handle: part checks kept by an earlier one do not carry over.
@@ -178,6 +184,37 @@ public final class Adapter {
                         q = q.next(entries.getLast()).toBuilder().limit(pageSize(remaining)).build();
                     }
                     out.append("]}");
+                }
+                case "plan" -> {
+                    if (!(req.get("ranges") instanceof List<?> rawRanges)) {
+                        throw new BadRequest("ranges is not an array");
+                    }
+                    List<RangeQuery> ranges = new ArrayList<>(rawRanges.size());
+                    for (Object r : rawRanges) {
+                        if (!(r instanceof Map<?, ?> m)) {
+                            throw new BadRequest("a range is not an object");
+                        }
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> range = (Map<String, Object>) m;
+                        // A planned range has bounds and a cursor only: no limit, no columns of its own.
+                        if (!PLANNED_RANGE.containsAll(range.keySet())) {
+                            throw new BadRequest("a planned range has undefined members");
+                        }
+                        ranges.add(rangeQuery(range, 1));
+                    }
+                    RangePlan plan = dataset(req).planRanges(ranges, columns(req));
+                    StringBuilder entries = new StringBuilder();
+                    plan.scan(row -> {
+                        if (!entries.isEmpty()) {
+                            entries.append(',');
+                        }
+                        row(entries, row);
+                    });
+                    out.append(response(id, "ok")).append(",\"entries\":[").append(entries)
+                            .append("],\"count\":").append(plan.count())
+                            .append(",\"count_exact\":").append(plan.countExact())
+                            .append(",\"projected_bytes\":").append(plan.projectedBytes())
+                            .append(",\"projected_bytes_exact\":").append(plan.projectedBytesExact()).append('}');
                 }
                 default -> {
                     out.append(response(id, "unsupported")).append(",\"code\":\"unsupported_operation\",\"message\":");

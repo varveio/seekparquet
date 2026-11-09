@@ -21,38 +21,25 @@ final class Queries {
      */
     static List<Row> range(Parts parts, RangeQuery q, ReadContext ctx) {
         byte[] prefix = q.prefix().unsafeArray();
-        byte[] start = q.start().map(Bytes::unsafeArray).orElse(null);
-        boolean exclusive = q.startExclusive();
-        byte[] end = q.end().map(Bytes::unsafeArray).orElse(null);
-        if (prefix.length > 0) {
-            if (start == null || Arrays.compareUnsigned(start, prefix) < 0) {
-                start = prefix;
-                exclusive = false;
-            }
-            end = min(end, q.prefix().successor());
-        }
-        Continuation after = q.cursor().orElse(null);
-        if (after != null && (start == null || Arrays.compareUnsigned(start, after.bytes().unsafeArray()) < 0)) {
-            start = after.bytes().unsafeArray();
-            exclusive = false;
-        }
-        if (parts.size() == 0 || (end != null && start != null && Arrays.compareUnsigned(start, end) >= 0) || (end != null && end.length == 0)) {
+        Bounds b = Bounds.of(q);
+        byte[] end = b.end();
+        Continuation.RowPosition after = b.after();
+        if (parts.size() == 0 || b.empty()) {
             return List.of();
         }
         List<String> columns = q.columns();
         KeyCursor cursor = new KeyCursor(parts, end, ctx);
         List<Row> rows = new ArrayList<>(Math.min(q.limit(), 1024));
-        boolean ok = cursor.seek(start, exclusive);
-        if (ok && after instanceof Continuation.RowPosition r) {
-            ok = cursor.resume(r);
+        boolean ok = cursor.seek(b.start(), b.exclusive());
+        if (ok && after != null) {
+            ok = cursor.resume(after);
         }
         while (ok) {
             byte[] key = cursor.key();
             if ((end != null && Arrays.compareUnsigned(key, end) >= 0) || !startsWith(key, prefix)) {
                 break;
             }
-            if (after instanceof Continuation.RowPosition r
-                    && Arrays.equals(key, r.bytes().unsafeArray()) && cursor.offset() <= r.offset()) {
+            if (b.before(key, cursor.offset())) {
                 ok = cursor.next();
                 continue;
             }
@@ -131,12 +118,70 @@ final class Queries {
             if (next.isEmpty()) {
                 break;
             }
+            ctx.stats.prefixSkips++;
             ok = cursor.seek(next.get().unsafeArray(), false);
         }
         return Collections.unmodifiableList(out);
     }
 
-    private static Row row(KeyCursor cursor, List<String> columns, ReadContext ctx) {
+    /**
+     * A range's effective bounds (RANGE-1): its start intersected with its prefix and raised to its
+     * cursor's key, and its end intersected with the prefix's successor.
+     *
+     * @param start the first key, or null for the dataset's first
+     * @param exclusive whether a key equal to start is excluded
+     * @param end the exclusive upper bound, or null for none
+     * @param after the row cursor, or null: rows of its key at or before its offset are excluded
+     */
+    record Bounds(byte[] start, boolean exclusive, byte[] end, Continuation.RowPosition after) {
+
+        static Bounds of(RangeQuery q) {
+            byte[] prefix = q.prefix().unsafeArray();
+            byte[] start = q.start().map(Bytes::unsafeArray).orElse(null);
+            boolean exclusive = q.startExclusive();
+            byte[] end = q.end().map(Bytes::unsafeArray).orElse(null);
+            if (prefix.length > 0) {
+                if (start == null || Arrays.compareUnsigned(start, prefix) < 0) {
+                    start = prefix;
+                    exclusive = false;
+                }
+                end = min(end, q.prefix().successor());
+            }
+            Continuation.RowPosition after = (Continuation.RowPosition) q.cursor().orElse(null);
+            if (after != null && (start == null || Arrays.compareUnsigned(start, after.bytes().unsafeArray()) < 0)) {
+                start = after.bytes().unsafeArray();
+                exclusive = false;
+            }
+            return new Bounds(start, exclusive, end, after);
+        }
+
+        /** {@return whether the bounds admit no key} */
+        boolean empty() {
+            return end != null && (end.length == 0 || (start != null && Arrays.compareUnsigned(start, end) >= 0));
+        }
+
+        /** {@return whether the row at {@code key} and group {@code offset} is at or before the cursor} */
+        boolean before(byte[] key, long offset) {
+            return after != null && Arrays.equals(key, after.bytes().unsafeArray()) && offset <= after.offset();
+        }
+
+        /**
+         * Positions {@code cursor} at the first row within these bounds' start and cursor. {@return false
+         * when there is none}
+         */
+        boolean position(KeyCursor cursor) {
+            boolean ok = cursor.seek(start, exclusive);
+            if (ok && after != null) {
+                ok = cursor.resume(after);
+            }
+            while (ok && before(cursor.key(), cursor.offset())) {
+                ok = cursor.next();
+            }
+            return ok;
+        }
+    }
+
+    static Row row(KeyCursor cursor, List<String> columns, ReadContext ctx) {
         Bytes key = Bytes.wrap(cursor.key());
         if (columns.isEmpty()) {
             return new Row(key, cursor.offset(), columns, List.of());
