@@ -114,6 +114,25 @@ before the first data page), each counted once; a scan reads each counted extent
 other byte of those chunks. A chunk without an OffsetIndex (COL-4) is omitted and `projectedBytesExact()`
 is false. A plan is immutable, bound to its dataset, and its scan fails once the dataset is closed.
 
+`plan.split(n)` divides a plan into at most `n` shards for a whole scan on several cores: each shard is a
+`RangePlan` over consecutive rows of the plan, and the shards' scans, run on the caller's threads (the
+library starts none), together yield the plan's rows, each once. A boundary is a selected row that begins a
+row group (or a part no read has checked yet), never inside a group of equal keys: with repeated keys,
+splitting decodes the two key pages around each boundary inside a part and moves a boundary that would divide
+a group. Boundaries balance `projectedBytes()` when the plan has columns and exact bytes, else the rows. The
+shards' counts and projected bytes add up to the plan's, each row group's bytes counted in the one shard
+holding it; the first shard keeps the plan's start bounds and cursors, the last its end. A shard's `stats()`
+are the reads that placed its end.
+
+```java
+List<RangePlan> shards = plan.split(Runtime.getRuntime().availableProcessors());
+try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+    for (RangePlan shard : shards) {
+        executor.submit(() -> shard.scan(cancel, row -> process(row)));
+    }
+}
+```
+
 ### Typed columns
 
 `Dataset.columns(part)` returns one part's top-level columns, in schema order, from the footer the dataset
@@ -139,6 +158,7 @@ indexes taken and loaded, page index seeks, prefix skips, and the storage reads 
 | `RangePlan.ProjectedBytes() (n, exact)` | `projectedBytes()`, `projectedBytesExact()` | The key column, when projected, counts nothing: Java takes its values from the key pages the scan decodes, where Go reads its chunk. A column projected twice counts once, as the scan reads it once. |
 | `RangePlan.Scan(ctx, st, fn)` | `scan(cancellation, stats, action)` | `action` stops the scan by throwing. A closed dataset is `IllegalStateException`. |
 | `RangePlan.Stats()` | `stats()` | |
+| `RangePlan.Split(ctx, n)` | `split(n, cancellation)` | No shard is an empty list, not nil. |
 | `Dataset.Columns(ctx, i)` | `columns(i, cancellation)` | An index outside the parts is `IndexOutOfBoundsException`; `Column.parts()` is 1. |
 | `Column{Logical *format.LogicalType}` | `Column.logicalType()`: `Optional<LogicalType>` | `LogicalType` is a sealed interface of records, so the API does not expose parquet-java's Thrift classes. |
 | `ReadStats` via `Range.Stats`, `List.Stats` | `ReadStats` via a `Consumer<ReadStats>` argument | Same fields and counting rules. `groupsSkipped` is always 0: Java's listing has no row-group shortcut. The access paths differ, so counts for the same request can differ. |

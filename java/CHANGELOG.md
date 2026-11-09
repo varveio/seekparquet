@@ -59,6 +59,12 @@ independent of the specification's draft revisions.
   `count()`/`countExact()`, `projectedBytes()`/`projectedBytesExact()`, `stats()` and `scan(...)`, which
   hands every selected row to a callback in dataset order, the semantics of the Go reader's `PlanRanges`
   (see README, Parity with the Go reader).
+- `RangePlan.split(n[, cancellation])` divides a plan into at most `n` shards at selected rows that begin
+  a row group, never inside a group of equal keys (repeated keys decode the key pages around each
+  boundary), balancing projected bytes when exact, else rows; the shards' counts and projected bytes add up
+  to the plan's, and each shard's `stats()` are the reads that placed its end. It starts no thread. Go's
+  `RangePlan.Split` semantics, except that an empty plan or `n` below 1 returns an empty list where Go
+  returns nil.
 - `Dataset.columns(part[, cancellation])`: one part's top-level columns from the footer the dataset checked
   and holds for it. `Column` gains `logicalType()` (`LogicalType`, a sealed interface; legacy converted types
   normalized into it) and `key()`.
