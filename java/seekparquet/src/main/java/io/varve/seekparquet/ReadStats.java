@@ -57,6 +57,9 @@ public record ReadStats(
         long sourceReads,
         long sourceBytes) {
 
+    /** Zero counts: a request that failed before it read. */
+    static final ReadStats NONE = new ReadStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
     /** The counts of a request in progress. Confined to the request's thread. */
     static final class Counter {
         long partsOpened;

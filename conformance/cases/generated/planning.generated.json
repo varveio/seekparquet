@@ -5,7 +5,8 @@
   "generator": "generators/make_cases.py",
   "description": "Selection planning (optional capability planning): the rows a set of ranges selects, scanned in dataset order once each, their count, and the compressed bytes of the projected columns' pages and dictionaries that the scan requests.",
   "families": {
-    "planning/plan": "ranges alone and in overlapping or disjoint sets, with and without columns, over one and several parts, dictionaries, cursors in equal-key groups, absent columns and chunks without an OffsetIndex"
+    "planning/plan": "ranges alone and in overlapping or disjoint sets, with and without columns, over one and several parts, dictionaries, cursors in equal-key groups, absent columns and chunks without an OffsetIndex",
+    "planning/invalid": "malformed plan requests: ranges missing or not an array, a range that is not an object, a range with a member a planned range does not take (limit, columns), a prefix cursor"
   },
   "cases": [
     {
@@ -7253,6 +7254,154 @@
         "count_exact": true,
         "projected_bytes": 33,
         "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/invalid/no-ranges",
+      "family": "planning/invalid",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "plan"
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "planning/invalid/ranges-not-array",
+      "family": "planning/invalid",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "plan",
+        "ranges": {}
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "planning/invalid/range-null",
+      "family": "planning/invalid",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "plan",
+        "ranges": [
+          null
+        ]
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "planning/invalid/range-not-object",
+      "family": "planning/invalid",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "plan",
+        "ranges": [
+          []
+        ]
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "planning/invalid/range-limit",
+      "family": "planning/invalid",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "limit": 1
+          }
+        ]
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "planning/invalid/range-columns",
+      "family": "planning/invalid",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "columns": [
+              "size"
+            ]
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "invalid_request"
+      }
+    },
+    {
+      "id": "planning/invalid/range-prefix-cursor",
+      "family": "planning/invalid",
+      "requirements": [
+        "QUERY-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "raw_request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "prefix_base64": "YS8="
+            }
+          }
+        ]
+      },
+      "expect": {
+        "status": "invalid_request"
       }
     }
   ]

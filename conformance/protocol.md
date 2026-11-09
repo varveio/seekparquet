@@ -133,8 +133,9 @@ prefix cursor; `columns` defaults to `[]`.
 
 Plans reading the rows of `ranges`, then reads them. Each range has the bound and cursor members of a `range`
 request (`prefix_base64`, `start_base64`, `start_exclusive`, `end_base64`, `after`, a row cursor) and no
-`limit` or `columns`: a planned range is read whole, and the request's `columns` apply to every range. A
-row several ranges select is one row of the plan. The answer has:
+`limit` or `columns`: a planned range is read whole, and the request's `columns` apply to every range.
+`ranges` missing or not an array, a range that is not an object or has any other member, and a prefix cursor
+are `invalid_request`. A row several ranges select is one row of the plan. The answer has:
 
 - `entries`: every selected row, once, in dataset order, with its offset and the values of `columns`, as a
   `range` entry has them;

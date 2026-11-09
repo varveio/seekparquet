@@ -758,6 +758,17 @@ def planning_group():
     o = "one-large-group"
     for n in (0, 5, 11, 22):
         add(f"one-large-group/cursor-{n}", o, o, [rng(after=row_cursor(b"only", n))], ["size"], ["PAGE-1", "KEY-7"])
+    g.fam("invalid", "malformed plan requests: ranges missing or not an array, a range that is not an object, a "
+                     "range with a member a planned range does not take (limit, columns), a prefix cursor")
+    for cid, raw in (("no-ranges", {"op": "plan"}),
+                     ("ranges-not-array", {"op": "plan", "ranges": {}}),
+                     ("range-null", {"op": "plan", "ranges": [None]}),
+                     ("range-not-object", {"op": "plan", "ranges": [[]]}),
+                     ("range-limit", {"op": "plan", "ranges": [{"limit": 1}]}),
+                     ("range-columns", {"op": "plan", "ranges": [{"columns": ["size"]}], "columns": ["size"]}),
+                     ("range-prefix-cursor", {"op": "plan", "ranges": [{"after": prefix_cursor(b"a/")}]})):
+        g.add(f"invalid/{cid}", ["QUERY-1"], "basic", {"status": "invalid_request"}, raw_request=raw,
+              requires=["planning"])
     return g
 
 

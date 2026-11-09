@@ -347,8 +347,9 @@ public final class Dataset implements AutoCloseable {
 
     /**
      * Reads a range (spec §6.2), ending early when {@code cancellation} is cancelled, and hands the
-     * request's read statistics to {@code stats} when it ends, whether it succeeds or fails. A query
-     * rejected before the request begins (a limit or projection error) delivers none.
+     * request's read statistics to {@code stats} when it ends, whether it succeeds or fails. A
+     * request that fails before it reads (a limit or projection error, a cancellation, a closed dataset)
+     * delivers zero counts.
      *
      * @param query the query
      * @param cancellation the request's cancellation
@@ -363,9 +364,15 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<Row> range(RangeQuery query, Cancellation cancellation, Consumer<? super ReadStats> stats) {
-        checkResultLimit(query.limit());
-        checkProjection(query.columns());
-        try (Request request = begin(cancellation)) {
+        Request started;
+        try {
+            checkResultLimit(query.limit());
+            checkProjection(query.columns());
+            started = begin(cancellation);
+        } catch (RuntimeException e) {
+            throw notStarted(stats, e);
+        }
+        try (Request request = started) {
             try {
                 return Queries.range(parts, query, request.ctx);
             } finally {
@@ -469,7 +476,7 @@ public final class Dataset implements AutoCloseable {
     /**
      * Lists keys with delimiter rollups (spec §6.3), ending early when {@code cancellation} is cancelled,
      * and hands the request's read statistics to {@code stats} when it ends, whether it succeeds or
-     * fails. A query rejected before the request begins delivers none.
+     * fails; a request that fails before it reads delivers zero counts.
      *
      * @param query the query
      * @param cancellation the request's cancellation
@@ -484,9 +491,15 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<ListEntry> list(ListQuery query, Cancellation cancellation, Consumer<? super ReadStats> stats) {
-        checkResultLimit(query.limit());
-        checkProjection(query.columns());
-        try (Request request = begin(cancellation)) {
+        Request started;
+        try {
+            checkResultLimit(query.limit());
+            checkProjection(query.columns());
+            started = begin(cancellation);
+        } catch (RuntimeException e) {
+            throw notStarted(stats, e);
+        }
+        try (Request request = started) {
             try {
                 return Queries.list(parts, query, request.ctx);
             } finally {
@@ -545,6 +558,28 @@ public final class Dataset implements AutoCloseable {
     /** {@return the dataset's parts} */
     Parts parts() {
         return parts;
+    }
+
+    /**
+     * Begins a request that reports its read statistics to {@code stats}: a request that fails to start
+     * (cancelled already, or on a closed dataset) reports zero counts, and throws as {@link #begin} does.
+     */
+    Request begin(Cancellation caller, Consumer<? super ReadStats> stats) {
+        try {
+            return begin(caller);
+        } catch (RuntimeException e) {
+            throw notStarted(stats, e);
+        }
+    }
+
+    /** Reports zero counts for a request that failed to start with {@code e}, and {@return e}. */
+    private static RuntimeException notStarted(Consumer<? super ReadStats> stats, RuntimeException e) {
+        try {
+            stats.accept(ReadStats.NONE);
+        } catch (RuntimeException suppressed) {
+            e.addSuppressed(suppressed);
+        }
+        return e;
     }
 
     Request begin(Cancellation caller) {

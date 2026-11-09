@@ -445,6 +445,37 @@ class RangePlanTest {
         }
     }
 
+    /**
+     * A request that fails to start, cancelled already or on a closed dataset, delivers zero counts in
+     * place of whatever the consumer held, and throws its own exception.
+     */
+    @Test
+    void statsOfARequestThatFailsToStart() throws IOException {
+        TestDatasets.Spec spec = new TestDatasets.Spec();
+        Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(8, 1)));
+        RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size"));
+        ReadStats earlier = d.planRanges(List.of(RangeQuery.all(1)), List.of("size")).stats();
+        ReadStats zero = new ReadStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        Cancellation cancelled = Cancellation.create();
+        cancelled.cancel();
+        for (boolean closed : new boolean[] {false, true}) {
+            if (closed) {
+                d.close();
+            }
+            Cancellation c = closed ? Cancellation.none() : cancelled;
+            Class<? extends RuntimeException> failure = closed ? IllegalStateException.class : java.util.concurrent.CancellationException.class;
+            AtomicReference<ReadStats> stats = new AtomicReference<>(earlier);
+            assertThrows(failure, () -> d.range(RangeQuery.all(10), c, stats::set));
+            assertEquals(zero, stats.get(), "range, closed " + closed);
+            stats.set(earlier);
+            assertThrows(failure, () -> d.list(ListQuery.builder((byte) '/').limit(10).build(), c, stats::set));
+            assertEquals(zero, stats.get(), "list, closed " + closed);
+            stats.set(earlier);
+            assertThrows(failure, () -> plan.scan(c, stats::set, row -> {}));
+            assertEquals(zero, stats.get(), "scan, closed " + closed);
+        }
+    }
+
     /** A failing request still delivers what it read. */
     @Test
     void statsOfAFailingRequest() throws IOException {

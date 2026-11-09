@@ -126,7 +126,8 @@ public final class RangePlan {
      * checking every key page it decodes (CHECK-2).
      *
      * @param cancellation the scan's cancellation
-     * @param stats receives the scan's read statistics when it ends, whether it succeeds or fails
+     * @param stats receives the scan's read statistics when it ends, whether it succeeds or fails (zero
+     *     counts when it fails to start)
      * @param action receives each row
      * @throws RefusalException if data the scan decodes breaks the specification
      * @throws UnsupportedFeatureException if a page uses a codec or encoding this reader does not implement
@@ -136,7 +137,7 @@ public final class RangePlan {
      * @throws IllegalStateException if the dataset is closed
      */
     public void scan(Cancellation cancellation, Consumer<? super ReadStats> stats, Consumer<? super Row> action) {
-        try (Dataset.Request request = dataset.begin(cancellation)) {
+        try (Dataset.Request request = dataset.begin(cancellation, stats)) {
             ReadContext ctx = request.ctx;
             try {
                 ReadContext values = ctx.forPlannedValues();

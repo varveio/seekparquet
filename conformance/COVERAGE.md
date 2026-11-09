@@ -292,9 +292,9 @@ No case. writer's choice: not a reader obligation.
 
 ## QUERY-1
 
-- Evidence: 11 positive, 26 negative.
+- Evidence: 11 positive, 33 negative.
 - Core: `list/delimiter/ff-delim-xff`, `list/delimiter/utf8-cont-byte`, `repeated/core/range-prefix-cursor-invalid`, `requests/basic/range-limit-0`, `requests/basic/range-limit-negative` and 8 more
-- Generated: `list/delimiter-semantics` (3), `list/other-datasets` (6), `repeated/invalid-cursors` (7), `requests/malformed` (8)
+- Generated: `list/delimiter-semantics` (3), `list/other-datasets` (6), `planning/invalid` (7), `repeated/invalid-cursors` (7), `requests/malformed` (8)
 
 ## QUERY-2
 

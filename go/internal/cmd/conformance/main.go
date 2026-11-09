@@ -264,6 +264,16 @@ func (a *adapter) planOp(ctx context.Context, req map[string]json.RawMessage) re
 	}
 	ranges := make([]seekparquet.Range, len(raw))
 	for i, r := range raw {
+		if r == nil {
+			return invalid(fmt.Errorf("range %d is not an object", i))
+		}
+		for name := range r {
+			switch name {
+			case "prefix_base64", "start_base64", "start_exclusive", "end_base64", "after":
+			default: // a planned range has bounds and a cursor only: no limit, no columns of its own
+				return invalid(fmt.Errorf("range %d has the undefined member %q", i, name))
+			}
+		}
 		rng := &ranges[i]
 		if rng.Prefix, err = bytesField(r, "prefix_base64"); err != nil {
 			return invalid(err)

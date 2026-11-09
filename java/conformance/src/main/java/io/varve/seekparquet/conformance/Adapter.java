@@ -36,6 +36,10 @@ import java.util.Map;
  */
 public final class Adapter {
 
+    /** The members of a planned range (protocol.md, plan). */
+    private static final java.util.Set<String> PLANNED_RANGE =
+            java.util.Set.of("prefix_base64", "start_base64", "start_exclusive", "end_base64", "after");
+
     private final Map<String, Dataset> open = new HashMap<>();
 
     private final int pageLimit;
@@ -192,7 +196,10 @@ public final class Adapter {
                         }
                         @SuppressWarnings("unchecked")
                         Map<String, Object> range = (Map<String, Object>) m;
-                        // A planned range is read whole: its limit is not applied.
+                        // A planned range has bounds and a cursor only: no limit, no columns of its own.
+                        if (!PLANNED_RANGE.containsAll(range.keySet())) {
+                            throw new BadRequest("a planned range has undefined members");
+                        }
                         ranges.add(rangeQuery(range, 1));
                     }
                     RangePlan plan = dataset(req).planRanges(ranges, columns(req));

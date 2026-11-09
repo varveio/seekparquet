@@ -70,7 +70,7 @@
     "cases/generated/list.generated.json": 38,
     "cases/generated/pagination.generated.json": 81,
     "cases/generated/projection.generated.json": 35,
-    "cases/generated/planning.generated.json": 28,
+    "cases/generated/planning.generated.json": 35,
     "cases/generated/requests.generated.json": 8,
     "cases/generated/refusals-open.generated.json": 39,
     "cases/generated/refusals-read.generated.json": 19,
@@ -81,7 +81,7 @@
   },
   "totals": {
     "core": 185,
-    "generated": 1482
+    "generated": 1489
   },
   "renamed_datasets": {
     "datasets/truncated-bounds": "datasets/binary-bounds-truncated-16-byte",
@@ -185,5 +185,5 @@
       "reason": "tested the removed continuation member"
     }
   ],
-  "content_sha256": "d56408354a47177433865ff0a1cbf0e03f3654bcad92645db073179921b40a46"
+  "content_sha256": "d778aeab0fe2134dc9987dbb0f335e54df7345b7192b192188d42860ab942070"
 }
