@@ -321,6 +321,32 @@ func (d *Dataset) Verify(ctx context.Context) (err error) {
 	return finish(ctx, rctx, d.r.verify(rctx))
 }
 
+// Columns returns the top-level columns of part i, an index into
+// Metadata().Parts, in schema order, from the footer the dataset checked
+// and holds for that part: if no read has checked the part yet, Columns
+// checks it as the first read to touch it would (CHECK-1), so the answer
+// always comes from a checked part, and every later read of the part reads
+// that same file. COL-5 holds a column's physical type, repetition and
+// nesting equal in every checked part that has it; a part may lack a
+// column (COL-2), and logical annotations are not compared, so a caller
+// that needs a column in every part asks for each part, after Verify or
+// not. An index outside the parts is ErrInvalidRequest.
+func (d *Dataset) Columns(ctx context.Context, i int) ([]Column, error) {
+	if i < 0 || i >= len(d.r.parts) {
+		return nil, invalidRequest("part %d of %d", i, len(d.r.parts))
+	}
+	rctx, end, err := d.r.begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer end()
+	p, err := d.r.part(rctx, i, new(ReadStats))
+	if err != nil {
+		return nil, finish(ctx, rctx, err)
+	}
+	return columnsOf(p.footer.Metadata().Schema, d.r.key.Column), nil
+}
+
 // Range returns the rows of rng. It decodes key pages only from the page
 // that can hold its start, or the cursor's row, and value pages only for
 // the rows it returns. A limit that is not positive, or a malformed or

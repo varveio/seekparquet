@@ -464,6 +464,43 @@ func topLevel(schema []format.SchemaElement) (map[string]element, map[string]boo
 	return out, dup
 }
 
+// columnsOf returns the top-level columns of a checked schema in schema
+// order, keyColumn marked as the key. Logical annotations are copied, so
+// that a caller cannot change the retained footer.
+func columnsOf(schema []format.SchemaElement, keyColumn string) []Column {
+	n, _ := schema[0].NumChildren.Get()
+	out := make([]Column, 0, n)
+	var skip func(pos int) int
+	skip = func(pos int) int {
+		children, _ := schema[pos].NumChildren.Get()
+		pos++
+		for range children {
+			pos = skip(pos)
+		}
+		return pos
+	}
+	for pos := 1; len(out) < int(n); pos = skip(pos) {
+		se := &schema[pos]
+		c := Column{Name: se.Name, Key: se.Name == keyColumn}
+		c.Repetition, _ = se.RepetitionType.Get()
+		if children, ok := se.NumChildren.Get(); ok && children > 0 {
+			c.Group = true
+		} else {
+			c.Type, _ = se.Type.Get()
+			if c.Type == format.FixedLenByteArray {
+				c.Length = se.TypeLength.V
+			}
+		}
+		if v := se.LogicalType.Value; v != nil {
+			copied := reflect.New(reflect.TypeOf(v).Elem())
+			copied.Elem().Set(reflect.ValueOf(v).Elem())
+			c.Logical = &format.LogicalType{Value: copied.Interface().(format.LogicalTypeValue)}
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
 // checkKeyColumn applies KEY-1 and KEY-5 and reports whether the key is
 // annotated as a string (KEY-6). leaves is the schema's leaf count.
 func checkKeyColumn(name string, meta *format.FileMetaData, top map[string]element, dup map[string]bool, leaves int, keyColumn string) (utf8Key bool, err error) {

@@ -24,6 +24,9 @@
 // parts already checked (COL-5). A part that fails is refused by every
 // read that touches it. Dataset.Verify checks every part at once, and
 // also every row group's first key page and each part's last (CHECK-3).
+// Dataset.Columns returns a part's top-level columns (physical and logical
+// type, repetition, the key) from the footer the dataset checked and
+// holds for it, checking the part first if no read has.
 //
 // Every size a file declares is checked against Options.Limits before
 // anything is allocated for it, and so are the value counts and decoded

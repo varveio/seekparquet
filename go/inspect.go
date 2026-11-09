@@ -9,18 +9,40 @@ import (
 	"strconv"
 
 	"github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go/format"
 )
 
 // Footer is what one part's footer says: its row count, its top-level
-// columns in schema order, its created_by, and the version, schema id and
-// key declaration of its seekparquet.* stamps (STAMP-1).
+// columns in schema order, by name (Columns) and as declared (Schema), its
+// created_by, and the version, schema id and key declaration of its
+// seekparquet.* stamps (STAMP-1).
 type Footer struct {
 	Rows      int64
 	Columns   []string
+	Schema    []Column
 	CreatedBy string
 	Version   Version
 	SchemaID  string
 	Key       Key
+}
+
+// Column is one top-level column of a part as its footer's schema element
+// declares it.
+type Column struct {
+	Name string
+	// Group reports a column with nested fields, which has no physical
+	// type: Type and Length are then zero.
+	Group bool
+	// Type is the physical type, and Length a FIXED_LEN_BYTE_ARRAY's
+	// type_length (0 for every other type).
+	Type   format.Type
+	Length int32
+	// Logical is the logical_type annotation, nil when the column has none.
+	// A legacy converted_type is not reported.
+	Logical    *format.LogicalType
+	Repetition format.FieldRepetitionType
+	// Key reports the dataset's key column.
+	Key bool
 }
 
 // KeyPage is one data page of a part's key column, as the row group's
@@ -113,6 +135,7 @@ func inspect(r io.ReaderAt, size int64) (*reader, Footer, error) {
 	for _, f := range footer.Schema().Fields() {
 		ft.Columns = append(ft.Columns, f.Name())
 	}
+	ft.Schema = columnsOf(footer.Metadata().Schema, ft.Key.Column)
 	return rd, ft, nil
 }
 
