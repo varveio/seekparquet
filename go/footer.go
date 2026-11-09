@@ -465,8 +465,7 @@ func topLevel(schema []format.SchemaElement) (map[string]element, map[string]boo
 }
 
 // columnsOf returns the top-level columns of a checked schema in schema
-// order, keyColumn marked as the key. Logical annotations are copied, so
-// that a caller cannot change the retained footer.
+// order, keyColumn marked as the key.
 func columnsOf(schema []format.SchemaElement, keyColumn string) []Column {
 	n, _ := schema[0].NumChildren.Get()
 	out := make([]Column, 0, n)
@@ -480,25 +479,70 @@ func columnsOf(schema []format.SchemaElement, keyColumn string) []Column {
 		return pos
 	}
 	for pos := 1; len(out) < int(n); pos = skip(pos) {
-		se := &schema[pos]
-		c := Column{Name: se.Name, Key: se.Name == keyColumn}
-		c.Repetition, _ = se.RepetitionType.Get()
-		if children, ok := se.NumChildren.Get(); ok && children > 0 {
-			c.Group = true
-		} else {
-			c.Type, _ = se.Type.Get()
-			if c.Type == format.FixedLenByteArray {
-				c.Length = se.TypeLength.V
-			}
-		}
-		if v := se.LogicalType.Value; v != nil {
-			copied := reflect.New(reflect.TypeOf(v).Elem())
-			copied.Elem().Set(reflect.ValueOf(v).Elem())
-			c.Logical = &format.LogicalType{Value: copied.Interface().(format.LogicalTypeValue)}
-		}
-		out = append(out, c)
+		out = append(out, columnOf(&schema[pos], keyColumn))
 	}
 	return out
+}
+
+// columnOf describes one top-level schema element. Its logical type is
+// copied, so that a caller cannot change the retained footer.
+func columnOf(se *format.SchemaElement, keyColumn string) Column {
+	c := Column{Name: se.Name, Key: se.Name == keyColumn}
+	c.Repetition, _ = se.RepetitionType.Get()
+	if children, ok := se.NumChildren.Get(); ok && children > 0 {
+		c.Group = true
+		return c
+	}
+	c.Type, _ = se.Type.Get()
+	if c.Type == format.FixedLenByteArray {
+		c.Length = se.TypeLength.V
+	}
+	if v := se.LogicalType.Value; v != nil {
+		copied := reflect.New(reflect.TypeOf(v).Elem())
+		copied.Elem().Set(reflect.ValueOf(v).Elem())
+		c.Logical = &format.LogicalType{Value: copied.Interface().(format.LogicalTypeValue)}
+	} else if ct, ok := se.ConvertedType.Get(); ok {
+		c.Logical = convertedLogical(ct, se)
+	}
+	return c
+}
+
+// convertedLogical returns the logical type a leaf's legacy converted_type
+// stands for, as Parquet's LogicalTypes.md maps it (time and timestamp
+// adjusted to UTC), or nil for INTERVAL, which has none.
+func convertedLogical(ct deprecated.ConvertedType, se *format.SchemaElement) *format.LogicalType {
+	millis := format.TimeUnit{Value: &format.MilliSeconds{}}
+	micros := format.TimeUnit{Value: &format.MicroSeconds{}}
+	var v format.LogicalTypeValue
+	switch ct {
+	case deprecated.UTF8:
+		v = &format.StringType{}
+	case deprecated.Enum:
+		v = &format.EnumType{}
+	case deprecated.Json:
+		v = &format.JsonType{}
+	case deprecated.Bson:
+		v = &format.BsonType{}
+	case deprecated.Date:
+		v = &format.DateType{}
+	case deprecated.TimeMillis:
+		v = &format.TimeType{IsAdjustedToUTC: true, Unit: millis}
+	case deprecated.TimeMicros:
+		v = &format.TimeType{IsAdjustedToUTC: true, Unit: micros}
+	case deprecated.TimestampMillis:
+		v = &format.TimestampType{IsAdjustedToUTC: true, Unit: millis}
+	case deprecated.TimestampMicros:
+		v = &format.TimestampType{IsAdjustedToUTC: true, Unit: micros}
+	case deprecated.Int8, deprecated.Int16, deprecated.Int32, deprecated.Int64:
+		v = &format.IntType{BitWidth: int8(8 << (ct - deprecated.Int8)), IsSigned: true}
+	case deprecated.Uint8, deprecated.Uint16, deprecated.Uint32, deprecated.Uint64:
+		v = &format.IntType{BitWidth: int8(8 << (ct - deprecated.Uint8))}
+	case deprecated.Decimal:
+		v = &format.DecimalType{Precision: se.Precision.V, Scale: se.Scale.V}
+	default:
+		return nil
+	}
+	return &format.LogicalType{Value: v}
 }
 
 // checkKeyColumn applies KEY-1 and KEY-5 and reports whether the key is

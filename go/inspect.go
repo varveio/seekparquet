@@ -37,8 +37,9 @@ type Column struct {
 	// type_length (0 for every other type).
 	Type   format.Type
 	Length int32
-	// Logical is the logical_type annotation, nil when the column has none.
-	// A legacy converted_type is not reported.
+	// Logical is the logical type, nil when the column has none: the
+	// logical_type field, or else the legacy converted_type normalized into
+	// it as Parquet's LogicalTypes.md maps it (INTERVAL has no logical type).
 	Logical    *format.LogicalType
 	Repetition format.FieldRepetitionType
 	// Key reports the dataset's key column.

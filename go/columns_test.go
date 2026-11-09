@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
 
 	"github.com/varveio/seekparquet/go/internal/testutil"
@@ -125,4 +127,61 @@ func TestColumnsConcurrent(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+// TestColumnsConvertedType: a leaf with only a legacy converted_type
+// describes as the same leaf with the logical type it stands for; with
+// both, the logical type is kept.
+func TestColumnsConvertedType(t *testing.T) {
+	ms := format.TimeUnit{Value: &format.MilliSeconds{}}
+	us := format.TimeUnit{Value: &format.MicroSeconds{}}
+	cases := []struct {
+		typ       format.Type
+		converted deprecated.ConvertedType
+		logical   format.LogicalTypeValue
+	}{
+		{format.ByteArray, deprecated.UTF8, &format.StringType{}},
+		{format.ByteArray, deprecated.Enum, &format.EnumType{}},
+		{format.ByteArray, deprecated.Json, &format.JsonType{}},
+		{format.ByteArray, deprecated.Bson, &format.BsonType{}},
+		{format.Int32, deprecated.Date, &format.DateType{}},
+		{format.Int32, deprecated.TimeMillis, &format.TimeType{IsAdjustedToUTC: true, Unit: ms}},
+		{format.Int64, deprecated.TimeMicros, &format.TimeType{IsAdjustedToUTC: true, Unit: us}},
+		{format.Int64, deprecated.TimestampMillis, &format.TimestampType{IsAdjustedToUTC: true, Unit: ms}},
+		{format.Int64, deprecated.TimestampMicros, &format.TimestampType{IsAdjustedToUTC: true, Unit: us}},
+		{format.Int32, deprecated.Int8, &format.IntType{BitWidth: 8, IsSigned: true}},
+		{format.Int32, deprecated.Int16, &format.IntType{BitWidth: 16, IsSigned: true}},
+		{format.Int32, deprecated.Int32, &format.IntType{BitWidth: 32, IsSigned: true}},
+		{format.Int64, deprecated.Int64, &format.IntType{BitWidth: 64, IsSigned: true}},
+		{format.Int32, deprecated.Uint8, &format.IntType{BitWidth: 8}},
+		{format.Int32, deprecated.Uint16, &format.IntType{BitWidth: 16}},
+		{format.Int32, deprecated.Uint32, &format.IntType{BitWidth: 32}},
+		{format.Int64, deprecated.Uint64, &format.IntType{BitWidth: 64}},
+		{format.Int64, deprecated.Decimal, &format.DecimalType{Precision: 18, Scale: 4}},
+		{format.FixedLenByteArray, deprecated.Interval, nil},
+	}
+	for _, c := range cases {
+		se := format.SchemaElement{Name: "v", Type: thrift.New(c.typ), RepetitionType: thrift.New(format.Optional),
+			ConvertedType: thrift.New(c.converted)}
+		if c.typ == format.FixedLenByteArray {
+			se.TypeLength = thrift.New[int32](12)
+		}
+		if c.converted == deprecated.Decimal {
+			se.Precision, se.Scale = thrift.New[int32](18), thrift.New[int32](4)
+		}
+		modern := se
+		modern.ConvertedType = thrift.Null[deprecated.ConvertedType]{}
+		if c.logical != nil {
+			modern.LogicalType = format.LogicalType{Value: c.logical}
+		}
+		if got, want := columnOf(&se, "key"), columnOf(&modern, "key"); !reflect.DeepEqual(got, want) {
+			t.Errorf("converted type %d: %+v, want %+v", c.converted, got, want)
+		}
+	}
+	both := format.SchemaElement{Name: "v", Type: thrift.New(format.Int64), RepetitionType: thrift.New(format.Optional),
+		ConvertedType: thrift.New(deprecated.TimestampMicros),
+		LogicalType:   format.LogicalType{Value: &format.TimestampType{Unit: us}}}
+	if got := columnOf(&both, "key").Logical; !reflect.DeepEqual(got, &format.LogicalType{Value: &format.TimestampType{Unit: us}}) {
+		t.Errorf("both: %+v, want the logical type", got)
+	}
 }
