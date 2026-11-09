@@ -34,15 +34,30 @@ type RangePlan struct {
 	// projected column chunk has no OffsetIndex, whose pages bytes omits.
 	bytes   int64
 	partial bool
-	stats   ReadStats
+	// groups are the projected bytes counted in each row group holding a
+	// row of the plan, in dataset order.
+	groups []groupBytes
+	stats  ReadStats
+}
+
+// groupBytes is the projected bytes a plan counts in one row group: its
+// pages holding the plan's rows and its dictionaries. partial is set when
+// a projected chunk of the group has no OffsetIndex.
+type groupBytes struct {
+	start   int64 // the dataset ordinal of the group's first row
+	bytes   int64
+	partial bool
 }
 
 // span is the dataset rows [start, end), and where a scan finds start: the
-// first row at or after from (after it when exclusive), or after cursor.
+// first row at or after from (after it when exclusive), or after cursor;
+// or, when ordinal is set, start itself, the first row of its key group (a
+// shard boundary).
 type span struct {
 	from       []byte
 	exclusive  bool
 	cursor     *Cursor
+	ordinal    bool
 	start, end int64
 }
 
@@ -80,7 +95,8 @@ func (plan *RangePlan) Count() (n int64, exact bool) { return plan.rows, plan.ex
 // OffsetIndex (COL-4): Scan walks its page headers, and n omits it.
 func (plan *RangePlan) ProjectedBytes() (n int64, exact bool) { return plan.bytes, !plan.partial }
 
-// Stats returns the read statistics of planning.
+// Stats returns the read statistics of planning, or of a shard Split
+// made, the reads that placed its end.
 func (plan *RangePlan) Stats() ReadStats { return plan.stats }
 
 // Scan hands fn every row of the plan, with its projected values, in
@@ -147,7 +163,12 @@ func (plan *RangePlan) Scan(ctx context.Context, st *ReadStats, fn func(Row) err
 	}
 	page := -1
 	for _, sp := range plan.spans {
-		if err := s.start(sp.from, sp.exclusive, sp.cursor); err != nil {
+		if sp.ordinal {
+			if err := s.seekOrdinal(sp.start); err != nil {
+				return err
+			}
+			s.groupKey, s.groupStart = s.key, sp.start
+		} else if err := s.start(sp.from, sp.exclusive, sp.cursor); err != nil {
 			return err
 		}
 		for o := sp.start; o < sp.end && s.key != nil; o++ {
@@ -267,6 +288,7 @@ func (plan *RangePlan) planColumns(ctx context.Context) error {
 				from, to := max(sp.start, grp.start), min(sp.end, grp.start+grp.rows)
 				if g := (groupRef{i, j}); g != current {
 					current, chunks = g, make([]planned, len(plan.columns))
+					plan.groups = append(plan.groups, groupBytes{start: grp.start})
 					for c, name := range plan.columns {
 						cp, err := p.openColumn(ctx, grp.physical, name, st)
 						if err != nil {
@@ -275,25 +297,30 @@ func (plan *RangePlan) planColumns(ctx context.Context) error {
 						chunks[c] = planned{cp: cp, last: -1}
 					}
 				}
+				gb := &plan.groups[len(plan.groups)-1]
 				for c := range chunks {
 					pc := &chunks[c]
 					switch {
 					case pc.cp == nil: // absent (COL-2)
 						continue
 					case pc.cp.locs == nil:
-						plan.partial = true
+						gb.partial = true
 						continue
 					case pc.last < 0:
-						plan.bytes += pc.cp.dictionaryBytes()
+						gb.bytes += pc.cp.dictionaryBytes()
 					}
 					first, last := pc.cp.pages(from-grp.start, to-grp.start)
 					for k := max(first, pc.last+1); k <= last; k++ {
-						plan.bytes += pc.cp.locs[k].size
+						gb.bytes += pc.cp.locs[k].size
 					}
 					pc.last = max(pc.last, last)
 				}
 			}
 		}
+	}
+	for _, gb := range plan.groups {
+		plan.bytes += gb.bytes
+		plan.partial = plan.partial || gb.partial
 	}
 	return nil
 }

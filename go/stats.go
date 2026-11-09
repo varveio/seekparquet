@@ -71,3 +71,21 @@ func resetStats(st *ReadStats) *ReadStats {
 	*st = ReadStats{}
 	return st
 }
+
+// minus returns the counts of st beyond o, for a request that reports the
+// reads of its steps apart.
+func (st ReadStats) minus(o ReadStats) ReadStats {
+	return ReadStats{
+		PartsOpened:       st.PartsOpened - o.PartsOpened,
+		KeyPagesDecoded:   st.KeyPagesDecoded - o.KeyPagesDecoded,
+		ValuePagesDecoded: st.ValuePagesDecoded - o.ValuePagesDecoded,
+		KeysDecoded:       st.KeysDecoded - o.KeysDecoded,
+		RowGroupsOpened:   st.RowGroupsOpened - o.RowGroupsOpened,
+		IndexLoads:        st.IndexLoads - o.IndexLoads,
+		PageIndexSeeks:    st.PageIndexSeeks - o.PageIndexSeeks,
+		PrefixSkips:       st.PrefixSkips - o.PrefixSkips,
+		GroupsSkipped:     st.GroupsSkipped - o.GroupsSkipped,
+		SourceReads:       st.SourceReads - o.SourceReads,
+		SourceBytes:       st.SourceBytes - o.SourceBytes,
+	}
+}

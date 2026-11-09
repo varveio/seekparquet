@@ -71,6 +71,15 @@
 // rows in dataset order, checking every key page it decodes. A count
 // certifies only the rows at the ends it decoded (CHECK-4).
 //
+// RangePlan.Split divides a plan into shards along row-group boundaries,
+// never inside a group of equal keys, balanced by projected bytes (or rows
+// without exact bytes), for a caller to scan concurrently with its own
+// goroutines: the shards' scans together yield the plan's rows, each once,
+// and their counts and bytes add up to the plan's. Splitting is a
+// convenience of this package over the query model, not a format rule: the
+// specification and the conformance protocol do not define it, and the
+// Java reader does not have it.
+//
 // # Equal keys and pagination
 //
 // When the manifest declares keys not unique, consecutive rows with equal
