@@ -3,7 +3,7 @@
   "target": "reader",
   "generated": true,
   "generator": "generators/make_cases.py",
-  "description": "Delimited listing (LIST-2 to LIST-7). Expected entries come from oracle.py.",
+  "description": "Delimited listing (LIST-2 to LIST-8). Expected entries come from oracle.py.",
   "families": {
     "list/delimiter-semantics": "rollups, rows, delimiters and prefixes on the folder-like delimiter dataset",
     "list/bounds-and-after": "end, row cursors and prefix cursors applied to candidate keys",
@@ -17,7 +17,8 @@
       "requirements": [
         "LIST-2",
         "LIST-3",
-        "LIST-4"
+        "LIST-4",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -37,7 +38,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS8="
+            "key_base64": "YS8=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -61,7 +66,8 @@
       "requirements": [
         "LIST-2",
         "LIST-3",
-        "LIST-4"
+        "LIST-4",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -87,7 +93,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS9iL2Mv"
+            "key_base64": "YS9iL2Mv",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -104,7 +114,8 @@
       "requirements": [
         "LIST-2",
         "LIST-3",
-        "LIST-4"
+        "LIST-4",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -124,7 +135,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS9iL2Mv"
+            "key_base64": "YS9iL2Mv",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           }
         ]
       }
@@ -191,7 +206,8 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
-        "QUERY-1"
+        "QUERY-1",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -370,7 +386,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "/w=="
+            "key_base64": "/w==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           }
         ]
       }
@@ -470,7 +490,8 @@
       "requirements": [
         "LIST-2",
         "LIST-3",
-        "LIST-4"
+        "LIST-4",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -501,11 +522,19 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "L2E="
+            "key_base64": "L2E=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "prefix",
-            "key_base64": "YQ=="
+            "key_base64": "YQ==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -561,7 +590,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "/y9h"
+            "key_base64": "/y9h",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -577,7 +610,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "//8vYQ=="
+            "key_base64": "//8vYQ==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -621,7 +658,8 @@
       "requirements": [
         "LIST-2",
         "LIST-3",
-        "LIST-4"
+        "LIST-4",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -634,7 +672,11 @@
         "entries": [
           {
             "kind": "prefix",
-            "key_base64": "Lw=="
+            "key_base64": "Lw==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -652,7 +694,8 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
-        "RANGE-2"
+        "RANGE-2",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -679,7 +722,15 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS8v"
+            "key_base64": "YS8v",
+            "exact": {
+              "offset": 0,
+              "values": [
+                {
+                  "int": "70"
+                }
+              ]
+            }
           },
           {
             "kind": "row",
@@ -693,7 +744,15 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS9iLw=="
+            "key_base64": "YS9iLw==",
+            "exact": {
+              "offset": 0,
+              "values": [
+                {
+                  "int": "110"
+                }
+              ]
+            }
           },
           {
             "kind": "row",
@@ -725,7 +784,8 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
-        "RANGE-2"
+        "RANGE-2",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -741,7 +801,15 @@
         "entries": [
           {
             "kind": "prefix",
-            "key_base64": "Lw=="
+            "key_base64": "Lw==",
+            "exact": {
+              "offset": 0,
+              "values": [
+                {
+                  "int": "0"
+                }
+              ]
+            }
           },
           {
             "kind": "row",
@@ -755,7 +823,15 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS8="
+            "key_base64": "YS8=",
+            "exact": {
+              "offset": 0,
+              "values": [
+                {
+                  "int": "60"
+                }
+              ]
+            }
           },
           {
             "kind": "row",
@@ -789,7 +865,15 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "Yi8="
+            "key_base64": "Yi8=",
+            "exact": {
+              "offset": 0,
+              "values": [
+                {
+                  "int": "210"
+                }
+              ]
+            }
           },
           {
             "kind": "row",
@@ -908,7 +992,8 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
-        "LIST-7"
+        "LIST-7",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -922,7 +1007,11 @@
         "entries": [
           {
             "kind": "prefix",
-            "key_base64": "Lw=="
+            "key_base64": "Lw==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -932,7 +1021,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS8="
+            "key_base64": "YS8=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           }
         ]
       }
@@ -944,7 +1037,8 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
-        "LIST-7"
+        "LIST-7",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -965,7 +1059,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS8v"
+            "key_base64": "YS8v",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -975,7 +1073,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS9iLw=="
+            "key_base64": "YS9iLw==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           }
         ]
       }
@@ -1034,7 +1136,8 @@
         "LIST-4",
         "LIST-7",
         "LIST-5",
-        "PAGE-1"
+        "PAGE-1",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -1052,7 +1155,11 @@
         "entries": [
           {
             "kind": "prefix",
-            "key_base64": "YS8v"
+            "key_base64": "YS8v",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -1062,7 +1169,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS9iLw=="
+            "key_base64": "YS9iLw==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -1088,7 +1199,8 @@
         "LIST-4",
         "LIST-7",
         "LIST-5",
-        "PAGE-1"
+        "PAGE-1",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -1123,7 +1235,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "Yi8="
+            "key_base64": "Yi8=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -1209,7 +1325,8 @@
         "LIST-7",
         "LIST-5",
         "PAGE-1",
-        "QUERY-2"
+        "QUERY-2",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -1226,7 +1343,11 @@
         "entries": [
           {
             "kind": "prefix",
-            "key_base64": "Lw=="
+            "key_base64": "Lw==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -1236,7 +1357,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS8="
+            "key_base64": "YS8=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -1258,7 +1383,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "Yi8="
+            "key_base64": "Yi8=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -1480,7 +1609,8 @@
       "requirements": [
         "LIST-2",
         "LIST-3",
-        "LIST-4"
+        "LIST-4",
+        "LIST-8"
       ],
       "dataset": "datasets/multipart",
       "request": {
@@ -1507,7 +1637,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "dG1wLw=="
+            "key_base64": "dG1wLw==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -2286,7 +2420,8 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
-        "QUERY-1"
+        "QUERY-1",
+        "LIST-8"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
@@ -2299,7 +2434,11 @@
         "entries": [
           {
             "kind": "prefix",
-            "key_base64": "AA=="
+            "key_base64": "AA==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -2387,7 +2526,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YQA="
+            "key_base64": "YQA=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -2463,7 +2606,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "gAA="
+            "key_base64": "gAA=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -2509,7 +2656,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "/wA="
+            "key_base64": "/wA=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -2557,7 +2708,8 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
-        "QUERY-1"
+        "QUERY-1",
+        "LIST-8"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
@@ -2577,7 +2729,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YQA="
+            "key_base64": "YQA=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -2613,7 +2769,8 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
-        "QUERY-1"
+        "QUERY-1",
+        "LIST-8"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
@@ -2792,7 +2949,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "f/8="
+            "key_base64": "f/8=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -2844,7 +3005,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "/w=="
+            "key_base64": "/w==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           }
         ]
       }
@@ -2856,7 +3021,8 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
-        "QUERY-1"
+        "QUERY-1",
+        "LIST-8"
       ],
       "dataset": "datasets/binary-keys",
       "request": {
@@ -2888,7 +3054,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "//8="
+            "key_base64": "//8=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           }
         ]
       }
@@ -3160,7 +3330,8 @@
         "LIST-3",
         "LIST-4",
         "QUERY-1",
-        "RG-6"
+        "RG-6",
+        "LIST-8"
       ],
       "dataset": "datasets/binary-bounds-truncated-2-byte",
       "request": {
@@ -3192,7 +3363,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "//8="
+            "key_base64": "//8=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           }
         ]
       }

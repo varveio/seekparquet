@@ -103,7 +103,7 @@ class Dataset:
         return out
 
     def list(self, prefix=b"", delimiter=None, cursor=None, end=None, limit=None, columns=()):
-        """LIST-2 to LIST-7, PAGE-1."""
+        """LIST-2 to LIST-8, PAGE-1."""
         columns = list(columns)
         if delimiter is None or len(delimiter) != 1:
             raise InvalidRequest("delimiter must be exactly one byte")
@@ -122,7 +122,10 @@ class Dataset:
                 if cp in seen:
                     continue
                 seen.add(cp)
-                out.append({"kind": "prefix", "key_base64": b64(cp)})
+                entry = {"kind": "prefix", "key_base64": b64(cp)}
+                if k == cp:  # LIST-8: the first candidate under cp is its exact row
+                    entry["exact"] = {"offset": offset, "values": self._values(k, v, present, columns)}
+                out.append(entry)
             else:  # LIST-3
                 out.append({"kind": "row", "key_base64": b64(k), "offset": offset, "values": self._values(k, v, present, columns)})
             if len(out) == limit:

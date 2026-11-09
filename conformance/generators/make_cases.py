@@ -70,6 +70,8 @@ class Group:
         c["family"] = self.family
         for k, v in (meta or {}).items():
             c[k] = v
+        if any("exact" in e for e in expect.get("entries", [])):
+            reqs = reqs + ["LIST-8"]  # a common prefix carries its exact row
         c["requirements"] = sorted(set(reqs), key=reqs.index)
         if requires:
             c["requires"] = requires
@@ -397,7 +399,7 @@ def prefix_group():
 
 
 def list_group():
-    g = Group("list", "reader", "Delimited listing (LIST-2 to LIST-7). Expected entries come from oracle.py.")
+    g = Group("list", "reader", "Delimited listing (LIST-2 to LIST-8). Expected entries come from oracle.py.")
 
     def add(cid, reqs, name, req, desc=None, src=None):
         ds = oracle.Dataset.load(src or name)

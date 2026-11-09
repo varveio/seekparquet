@@ -5,6 +5,7 @@ package seekparquet
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -221,7 +222,8 @@ func rangeOracle(keys []string, rng Range) []string {
 
 // listOracle answers a list request over sorted distinct keys by the
 // definition of §6.3: candidates, their entries, distinct, ascending, at
-// most limit. Rows are spelled "r:" and prefixes "p:".
+// most limit. Rows are spelled "r:" and prefixes "p:", or "P:" when the
+// prefix's first candidate key is the prefix itself (its exact row, LIST-8).
 func listOracle(keys []string, req List) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -230,13 +232,16 @@ func listOracle(keys []string, req List) []string {
 		if !bytes.HasPrefix(key, req.Prefix) || !afterCursor(req.Cursor, key, 0) || req.End != nil && bytes.Compare(key, req.End) >= 0 {
 			continue
 		}
-		entry := "r:" + k
+		entry, spelling := "r:"+k, ""
 		if cp := commonPrefix(key, req.Prefix, req.Delimiter); cp != nil {
-			entry = "p:" + string(cp)
+			entry, spelling = "p:"+string(cp), "p:"+string(cp)
+			if k == string(cp) {
+				spelling = "P:" + k
+			}
 		}
 		if !seen[entry] {
 			seen[entry] = true
-			out = append(out, entry)
+			out = append(out, cmp.Or(spelling, entry))
 		}
 	}
 	slices.SortFunc(out, func(a, b string) int { return strings.Compare(a[2:], b[2:]) })
@@ -249,9 +254,14 @@ func listOracle(keys []string, req List) []string {
 func entriesOf(entries []Entry) []string {
 	out := make([]string, len(entries))
 	for i, e := range entries {
-		if e.IsPrefix() {
+		switch {
+		case e.IsPrefix() && e.Exact == nil:
 			out[i] = "p:" + string(e.CommonPrefix)
-		} else {
+		case e.IsPrefix() && bytes.Equal(e.Exact.Key, e.CommonPrefix) && e.Exact.Offset == 0:
+			out[i] = "P:" + string(e.CommonPrefix)
+		case e.IsPrefix():
+			out[i] = fmt.Sprintf("p:%s with exact row %q/%d", e.CommonPrefix, e.Exact.Key, e.Exact.Offset)
+		default:
 			out[i] = "r:" + string(e.Row.Key)
 		}
 	}

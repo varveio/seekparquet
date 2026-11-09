@@ -80,9 +80,12 @@ The qualifier compares each page to a direct source-row model and concatenates
 results through exhaustion. Cursors come from the actual preceding response,
 including repeated-key ordinals and delimiter prefixes. It uses both one-entry
 pages and a changing 7/2/129/3/17 limit schedule, with prefix/end bounds and
-repeated delimiters. Hand-derived model tests and deliberately broken adapters
-check duplicate-offset and prefix-repeat failure sensitivity independently of
-the existing conformance oracle. Both real adapters execute this check in CI.
+repeated delimiters. A listing with delimiter `b` rolls the repeated `b` rows up
+to the prefix `b`, which carries its exact row (LIST-8), and a request after the
+row cursor `(b, 8)` must carry `(b, 9)` with its values. Hand-derived model tests
+and deliberately broken adapters check duplicate-offset, prefix-repeat, missing
+exact row and group-start exact row failure sensitivity independently of the
+existing conformance oracle. Both real adapters execute this check in CI.
 
 This qualifies these producer/version/geometry combinations, not every legal
 Parquet encoding, dictionary width, delta block geometry, codec, or optional-page

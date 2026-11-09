@@ -2,7 +2,7 @@
   "group": "list",
   "target": "reader",
   "generated": false,
-  "description": "Delimited listing (LIST-2 to LIST-7). Expected entries come from oracle.py. Core examples: hand-reviewed; their expectations are authoritative.",
+  "description": "Delimited listing (LIST-2 to LIST-8). Expected entries come from oracle.py. Core examples: hand-reviewed; their expectations are authoritative.",
   "cases": [
     {
       "id": "list/delimiter/root",
@@ -10,7 +10,8 @@
       "requirements": [
         "LIST-2",
         "LIST-3",
-        "LIST-4"
+        "LIST-4",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -23,7 +24,11 @@
         "entries": [
           {
             "kind": "prefix",
-            "key_base64": "Lw=="
+            "key_base64": "Lw==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -33,7 +38,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS8="
+            "key_base64": "YS8=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -55,7 +64,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "Yi8="
+            "key_base64": "Yi8=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -136,7 +149,8 @@
       "requirements": [
         "LIST-2",
         "LIST-3",
-        "LIST-4"
+        "LIST-4",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -156,7 +170,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS8v"
+            "key_base64": "YS8v",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -166,7 +184,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS9iLw=="
+            "key_base64": "YS9iLw==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -189,7 +211,8 @@
       "requirements": [
         "LIST-2",
         "LIST-3",
-        "LIST-4"
+        "LIST-4",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -209,7 +232,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS8vLw=="
+            "key_base64": "YS8vLw==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -226,7 +253,8 @@
       "requirements": [
         "LIST-2",
         "LIST-3",
-        "LIST-4"
+        "LIST-4",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -246,7 +274,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "Ly8="
+            "key_base64": "Ly8=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -268,6 +300,7 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
+        "LIST-8",
         "QUERY-1"
       ],
       "dataset": "datasets/delimiter",
@@ -298,7 +331,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "eP//"
+            "key_base64": "eP//",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           }
         ]
       }
@@ -310,6 +347,7 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
+        "LIST-8",
         "QUERY-1"
       ],
       "dataset": "datasets/delimiter",
@@ -324,7 +362,11 @@
         "entries": [
           {
             "kind": "prefix",
-            "key_base64": "Y2Fmw6k="
+            "key_base64": "Y2Fmw6k=",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           }
         ]
       }
@@ -465,7 +507,8 @@
         "LIST-2",
         "LIST-3",
         "LIST-4",
-        "LIST-7"
+        "LIST-7",
+        "LIST-8"
       ],
       "dataset": "datasets/delimiter",
       "request": {
@@ -486,7 +529,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS8v"
+            "key_base64": "YS8v",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           },
           {
             "kind": "row",
@@ -577,6 +624,145 @@
           {
             "kind": "prefix",
             "key_base64": "bG9ncy8yMDI2LzAzLw=="
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/exact/row-cursor-inside-prefix",
+      "description": "Prefix a/, delimiter '/', after the row cursor (a/b/, 0): the key a/b/ is no longer a candidate, so the common prefix a/b/, which a/b/c and the keys after it roll up to, carries no exact row (LIST-5, LIST-8).",
+      "requirements": [
+        "LIST-5",
+        "LIST-8",
+        "PAGE-1"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "limit": 100,
+        "columns": [
+          "size"
+        ],
+        "after": {
+          "key_base64": "YS9iLw==",
+          "offset": 0
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw=="
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "160"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "list/exact/projected",
+      "description": "Prefix a/, delimiter '/', projecting size: the common prefixes a// and a/b/ carry their exact rows (the rows keyed a// and a/b/) with their projected values, and a row entry keeps its own (LIST-3, LIST-8).",
+      "requirements": [
+        "LIST-3",
+        "LIST-8"
+      ],
+      "dataset": "datasets/delimiter",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YS8=",
+        "delimiter_base64": "Lw==",
+        "limit": 100,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "60"
+              }
+            ]
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS8v",
+            "exact": {
+              "offset": 0,
+              "values": [
+                {
+                  "int": "70"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9i",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          },
+          {
+            "kind": "prefix",
+            "key_base64": "YS9iLw==",
+            "exact": {
+              "offset": 0,
+              "values": [
+                {
+                  "int": "110"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iYw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "160"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9j",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
           }
         ]
       }

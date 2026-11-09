@@ -48,7 +48,7 @@
     "subsets/smoke.json"
   ],
   "case_counts": {
-    "cases/core/list.json": 13,
+    "cases/core/list.json": 15,
     "cases/core/open.json": 6,
     "cases/core/pagination.json": 8,
     "cases/core/prefix.json": 8,
@@ -56,7 +56,7 @@
     "cases/core/range.json": 20,
     "cases/core/refusals-open.json": 32,
     "cases/core/refusals-read.json": 12,
-    "cases/core/repeated.json": 33,
+    "cases/core/repeated.json": 34,
     "cases/core/requests.json": 10,
     "cases/core/validate-digest.json": 4,
     "cases/core/validate-full.json": 4,
@@ -78,7 +78,7 @@
     "cases/generated/validate-digest.generated.json": 2
   },
   "totals": {
-    "core": 182,
+    "core": 185,
     "generated": 1454
   },
   "renamed_datasets": {
@@ -183,5 +183,5 @@
       "reason": "tested the removed continuation member"
     }
   ],
-  "content_sha256": "070f7377694f9630f19cda72129235a9590c7f0e354d5ffb62faebeadad39dae"
+  "content_sha256": "e92f53a3730df75119dac2ff199816b186d0455249aef01fa35e4e732239ce19"
 }

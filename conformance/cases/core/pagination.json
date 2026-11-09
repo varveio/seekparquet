@@ -125,9 +125,10 @@
       "scenario_id": "list/delimiter/a/-2f-limit2",
       "step": 0,
       "requirements": [
+        "LIST-6",
+        "LIST-8",
         "PAGE-1",
         "PAGE-2",
-        "LIST-6",
         "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
@@ -148,7 +149,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS8v"
+            "key_base64": "YS8v",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           }
         ]
       }
@@ -159,9 +164,10 @@
       "scenario_id": "list/delimiter/a/-2f-limit2",
       "step": 1,
       "requirements": [
+        "LIST-6",
+        "LIST-8",
         "PAGE-1",
         "PAGE-2",
-        "LIST-6",
         "QUERY-3"
       ],
       "dataset": "datasets/delimiter",
@@ -185,7 +191,11 @@
           },
           {
             "kind": "prefix",
-            "key_base64": "YS9iLw=="
+            "key_base64": "YS9iLw==",
+            "exact": {
+              "offset": 0,
+              "values": []
+            }
           }
         ]
       }

@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
@@ -152,7 +153,8 @@ class QueryTest {
                 if (!out.isEmpty() && out.getLast().bytes().equals(common)) {
                     continue;
                 }
-                e = new ListEntry.CommonPrefix(common);
+                e = new ListEntry.CommonPrefix(common,
+                        k.equals(common) ? Optional.of(new Row(k, 0, List.of(), List.of())) : Optional.empty());
             } else {
                 e = new ListEntry.RowEntry(new Row(k, 0, List.of(), List.of()));
             }

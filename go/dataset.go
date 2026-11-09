@@ -361,8 +361,11 @@ func (d *Dataset) Range(ctx context.Context, rng Range) ([]Row, error) {
 // the prefix's successor through the routing index and the page index
 // instead of decoding the keys under it, and a row group whose first key
 // and the next group's first key share a common prefix is skipped without
-// a read. Keys under a prefix that share a page with the keys around them
-// are decoded. Errors are those of Range.
+// decoding its keys; when that first key is the prefix's exact row
+// (Entry.Exact), only the row's projected value pages are read. Keys under
+// a prefix that share a page with the keys around them are decoded. Value
+// pages are read only for row entries and exact rows. Errors are those of
+// Range.
 func (d *Dataset) List(ctx context.Context, req List) ([]Entry, error) {
 	return d.r.readList(ctx, req, req.Stats)
 }

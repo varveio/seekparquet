@@ -158,7 +158,11 @@ Entries (a row always has `values`, empty when no columns were requested; a pref
 ```json
 {"kind": "row", "key_base64": "Yg==", "offset": 0, "values": [{"int": "12"}]}
 {"kind": "prefix", "key_base64": "YS8="}
+{"kind": "prefix", "key_base64": "Yi8=", "exact": {"offset": 0, "values": [{"int": "7"}]}}
 ```
+
+A prefix has `exact` exactly when it carries its exact row (spec LIST-8): the row's offset and values, as a row
+entry has them; its key is the prefix.
 
 ## How the harness judges refusals
 

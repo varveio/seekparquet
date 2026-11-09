@@ -121,7 +121,9 @@ final class Queries {
                 continue;
             }
             byte[] common = Arrays.copyOf(key, at + 1);
-            out.add(new ListEntry.CommonPrefix(Bytes.wrap(common)));
+            // LIST-8: the first candidate under the prefix is its exact row when its key is the prefix.
+            Optional<Row> exact = at + 1 == key.length ? Optional.of(row(cursor, columns, ctx)) : Optional.empty();
+            out.add(new ListEntry.CommonPrefix(Bytes.wrap(common), exact));
             if (out.size() == q.limit()) {
                 break;
             }

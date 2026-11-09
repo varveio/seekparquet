@@ -221,7 +221,7 @@ func (s *scan) open(g groupRef) (bool, error) {
 }
 
 // shortcut reports the common prefix that the row group a seek to from
-// lands in holds whole: its first key and the next group's share one
+// lands in holds whole, and that group: its first key and the next group's share one
 // common prefix, so every key between them, and so every candidate key of
 // the group at or after from, rolls up to it (keys between two keys that
 // begin with a prefix begin with it too), and the next group's first key
@@ -230,36 +230,36 @@ func (s *scan) open(g groupRef) (bool, error) {
 // group's first key is known (decoded by an earlier read, a routing probe,
 // or Verify). A group, or a next group, in a part known from its bounds to
 // begin at or after the upper bound is not touched.
-func (s *scan) shortcut(from, prefix []byte, delim byte) ([]byte, error) {
+func (s *scan) shortcut(from, prefix []byte, delim byte) ([]byte, groupRef, error) {
 	g, err := s.r.groupFor(s.ctx, from, true, &s.log, s.stats)
 	if err != nil || g.part >= len(s.r.parts) || s.end != nil && s.r.startsAtOrAfter(g, s.end) {
-		return nil, err // the seek after it applies the upper bound without touching the part
+		return nil, g, err // the seek after it applies the upper bound without touching the part
 	}
 	if _, err := s.r.part(s.ctx, g.part, s.stats); err != nil || g.index >= len(s.r.parts[g.part].groups) {
-		return nil, err
+		return nil, g, err
 	}
 	first := s.r.group(g).first.Load()
 	if first == nil {
-		return nil, nil
+		return nil, g, nil
 	}
 	whole := commonPrefix(*first, prefix, delim)
 	if whole == nil {
-		return nil, nil
+		return nil, g, nil
 	}
 	after, ok := s.r.adjacent(g, 1)
 	if !ok { // the last group of its part, or of the dataset
 		if g.part+1 >= len(s.r.parts) || s.end != nil && s.r.startsAtOrAfter(groupRef{g.part + 1, 0}, s.end) {
-			return nil, nil
+			return nil, g, nil
 		}
 		after = groupRef{g.part + 1, 0}
 	}
 	next, err := s.r.first(s.ctx, after, &s.log, s.stats)
 	if err != nil {
-		return nil, err
+		return nil, g, err
 	}
 	if !bytes.Equal(whole, commonPrefix(next, prefix, delim)) || s.end != nil && bytes.Compare(next, s.end) >= 0 {
-		return nil, nil
+		return nil, g, nil
 	}
 	s.stats.GroupsSkipped++
-	return bytes.Clone(whole), nil
+	return bytes.Clone(whole), g, nil
 }

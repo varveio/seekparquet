@@ -31,7 +31,10 @@ def expected(keys, values, prefix=b'', end=None, delimiter=None):
             if split >= 0:
                 folder = key[:split + len(delimiter)]
                 if folder not in seen:
-                    result.append({'kind': 'prefix', 'key_base64': b64(folder)})
+                    entry = {'kind': 'prefix', 'key_base64': b64(folder)}
+                    if key == folder:  # LIST-8: the folder's first row is its exact row
+                        entry['exact'] = {'offset': offset, 'values': value}
+                    result.append(entry)
                     seen.add(folder)
             else:
                 result.append({'kind': 'row', 'key_base64': b64(key), 'offset': offset,
@@ -68,6 +71,19 @@ def paginate(send, root, model, prefix=b'', end=None, delimiter=None):
                      {'key_base64': last['key_base64'], 'offset': last['offset']})
         else:
             raise AssertionError('continuation failed to terminate')
+
+
+def exact_after(send, root, keys, values, key=b'b', offset=8):
+    """LIST-8 after a row cursor inside a repeated group: with the delimiter equal to the key's first byte,
+    key rolls up to itself, and the common prefix carries the first row after (key, offset) as its exact row."""
+    first = keys.index(key)
+    assert keys[first + offset + 1] == key, 'the group must hold a row after the cursor'
+    request = {'op': 'list', 'dataset': str(root), 'delimiter_base64': b64(key[:1]), 'limit': 1,
+               'columns': ['n', 'blob', 'nil'], 'after': {'key_base64': b64(key), 'offset': offset}}
+    response = send(request)
+    want = [{'kind': 'prefix', 'key_base64': b64(key),
+             'exact': {'offset': offset + 1, 'values': values[first + offset + 1]}}]
+    assert response.get('status') == 'ok' and response.get('entries') == want, (request, response)
 
 
 def fixture(root, version, codec, mode):
@@ -158,11 +174,14 @@ def check(adapter):
                     root = Path(directory) / f'{version}-{codec}-{mode}'
                     root.mkdir()
                     keys, values = fixture(root, version, codec, mode)
+                    # Delimiter b below c: the repeated b rows roll up to the prefix b, which carries
+                    # the first of them as its exact row (LIST-8).
                     for prefix, end, delimiter in ((b'', None, None), (b'a', b'd', None),
                                                     (b'', None, b'/'), (b'c/', None, b'/'),
-                                                    (b'a/', b'a/0300', b'/')):
+                                                    (b'a/', b'a/0300', b'/'), (b'', b'c', b'b')):
                         model = expected(keys, values, prefix, end, delimiter)
                         paginate(send, root, model, prefix, end, delimiter)
+                    exact_after(send, root, keys, values)
                 process.stdin.close()
                 assert process.wait(timeout=20) == 0
             finally:

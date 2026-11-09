@@ -164,8 +164,8 @@ type List struct {
 	Cursor *Cursor
 	// Limit is the most entries returned. It must be positive (QUERY-1).
 	Limit int
-	// Columns names the columns projected for each row entry, as
-	// Range.Columns.
+	// Columns names the columns projected for each row entry and each
+	// exact row (Entry.Exact), as Range.Columns.
 	Columns []string
 	// Stats receives the request's read statistics, as Range.Stats.
 	Stats *ReadStats
@@ -175,6 +175,15 @@ type List struct {
 type Entry struct {
 	CommonPrefix []byte
 	Row          *Row
+	// Exact is, for a common prefix, its exact row (LIST-8): the first
+	// candidate row of this request that rolls up to the prefix, when that
+	// row's key is the prefix itself, with its projected values; nil
+	// otherwise, and always nil for a row entry. Without a cursor, or after
+	// a prefix cursor, it is the first row stored at the prefix's exact key
+	// whenever one is a candidate, so a listing pairs a prefix with the row
+	// at its exact key (an S3-style "a/" folder object) without another
+	// request. Its values cost the value pages a row entry's would.
+	Exact *Row
 }
 
 // IsPrefix reports whether the entry is a common prefix.
@@ -310,61 +319,88 @@ func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Ent
 		return nil, nil
 	}
 	s := r.newScan(ctx, end, st)
-	var out []Entry
-	var rows []*Row
-	var at []position
+	var l listing
 	if req.Cursor != nil && req.Cursor.Key != nil {
 		err = s.start(from, false, req.Cursor)
 	} else {
-		err = s.seekList(from, req, &out)
+		err = s.seekList(from, req, &l)
 	}
 	if err != nil {
 		return nil, err
 	}
-	for s.key != nil && len(out) < req.Limit {
+	for s.key != nil && len(l.out) < req.Limit {
 		if prefix := commonPrefix(s.key, req.Prefix, req.Delimiter); prefix != nil {
-			out = append(out, Entry{CommonPrefix: bytes.Clone(prefix)})
+			l.prefix(bytes.Clone(prefix), bytes.Equal(s.key, prefix), s.offset(), s.at())
 			next, ok := successor(prefix)
-			if !ok || len(out) == req.Limit {
+			if !ok || len(l.out) == req.Limit {
 				break
 			}
 			st.PrefixSkips++
-			if err := s.seekList(next, req, &out); err != nil {
+			if err := s.seekList(next, req, &l); err != nil {
 				return nil, err
 			}
 			continue
 		}
-		row := &Row{Key: bytes.Clone(s.key), Offset: s.offset()}
-		out = append(out, Entry{Row: row})
-		rows, at = append(rows, row), append(at, s.at())
-		if len(out) == req.Limit {
+		l.out = append(l.out, Entry{Row: l.row(s.key, s.offset(), s.at())})
+		if len(l.out) == req.Limit {
 			break
 		}
 		if err := s.next(); err != nil {
 			return nil, err
 		}
 	}
-	return out, r.project(ctx, rows, at, slices.Clone(req.Columns), st)
+	return l.out, r.project(ctx, l.rows, l.at, slices.Clone(req.Columns), st)
 }
 
-// seekList seeks to from for a listing, first adding to out the common
+// listing collects a listing's entries, and the rows to project with the
+// positions a scan found them at, in dataset order.
+type listing struct {
+	out  []Entry
+	rows []*Row
+	at   []position
+}
+
+// row adds a row to project and returns it.
+func (l *listing) row(key []byte, offset int64, at position) *Row {
+	row := &Row{Key: bytes.Clone(key), Offset: offset}
+	l.rows, l.at = append(l.rows, row), append(l.at, at)
+	return row
+}
+
+// prefix adds the common prefix entry of a first candidate row at at, with
+// that row as its exact row when exact (its key is the prefix).
+func (l *listing) prefix(prefix []byte, exact bool, offset int64, at position) {
+	e := Entry{CommonPrefix: prefix}
+	if exact {
+		e.Exact = l.row(prefix, offset, at)
+	}
+	l.out = append(l.out, e)
+}
+
+// seekList seeks to from for a listing, first adding to l the common
 // prefix of each row group the seek would land in that holds only keys
 // rolling up to it (scan.shortcut), and moving past it.
-func (s *scan) seekList(from []byte, req List, out *[]Entry) error {
-	for len(*out) < req.Limit {
-		whole, err := s.shortcut(from, req.Prefix, req.Delimiter)
+func (s *scan) seekList(from []byte, req List, l *listing) error {
+	for len(l.out) < req.Limit {
+		whole, g, err := s.shortcut(from, req.Prefix, req.Delimiter)
 		if err != nil {
 			return err
 		}
 		if whole == nil {
 			return s.seek(from, true)
 		}
-		*out = append(*out, Entry{CommonPrefix: whole})
+		// The group's first key is its first candidate when it is at or
+		// after from: no earlier group holds a key at or after from
+		// (groupFor), and the row's offset is zero, since only a part's
+		// first group, or a group of unique keys, can begin at or after
+		// from here. A first key equal to whole is then its exact row.
+		first := *s.r.group(g).first.Load()
+		l.prefix(whole, bytes.Equal(first, whole) && bytes.Compare(first, from) >= 0, 0, position{g, 0})
 		next, ok := successor(whole)
 		if !ok {
 			break
 		}
-		if len(*out) == req.Limit {
+		if len(l.out) == req.Limit {
 			break // the page is full: no resume
 		}
 		s.stats.PrefixSkips++

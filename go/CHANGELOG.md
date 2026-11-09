@@ -5,6 +5,12 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- `Entry.Exact`: a common prefix entry carries its exact row (spec LIST-8), the first candidate row of the
+  request that rolls up to the prefix when that row's key is the prefix itself, with its offset and projected
+  values; nil otherwise. A listing pairs a prefix with the row stored at its exact key (an S3-style folder
+  object) without a second request. It costs the value pages of that row only; a listing without such rows
+  reads what it read before, and the group shortcut still skips the groups under a prefix. The conformance
+  adapter reports it as the prefix entry's `exact` member.
 - `Dataset.Columns(ctx, i)` returns part `i`'s top-level columns as `[]Column` (name, physical type and
   `FIXED_LEN_BYTE_ARRAY` length, logical type with a legacy converted type normalized into it,
   repetition, nested or not, key or not) from the footer the dataset checked and holds for the part,
