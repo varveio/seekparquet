@@ -164,8 +164,8 @@ type List struct {
 	Cursor *Cursor
 	// Limit is the most entries returned. It must be positive (QUERY-1).
 	Limit int
-	// Columns names the columns projected for each row entry, as
-	// Range.Columns.
+	// Columns names the columns projected for each row entry and each
+	// exact row (Entry.Exact), as Range.Columns.
 	Columns []string
 	// Stats receives the request's read statistics, as Range.Stats.
 	Stats *ReadStats
