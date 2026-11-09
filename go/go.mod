@@ -4,6 +4,9 @@ go 1.26.0
 
 toolchain go1.26.10
 
+// Superseded by v0.1.0 on the same commit; the tag is protected and cached by the module proxy.
+retract v0.1.0-draft.1
+
 require (
 	github.com/andybalholm/brotli v1.2.8
 	github.com/klauspost/compress v1.20.3
