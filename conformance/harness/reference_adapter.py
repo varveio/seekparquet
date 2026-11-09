@@ -663,7 +663,10 @@ def do_list(ds, req):
             if cp == last_prefix:
                 continue
             last_prefix = cp
-            entries.append({"kind": "prefix", "key_base64": base64.b64encode(cp).decode()})
+            entry = {"kind": "prefix", "key_base64": base64.b64encode(cp).decode()}
+            if k == cp:  # LIST-8
+                entry["exact"] = {"offset": offset, "values": project(ds, k, v, cols)}
+            entries.append(entry)
         else:
             entries.append({"kind": "row", "key_base64": base64.b64encode(k).decode(), "offset": offset, "values": project(ds, k, v, cols)})
     return entries

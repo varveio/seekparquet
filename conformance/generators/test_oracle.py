@@ -153,6 +153,15 @@ class HandWrittenExamples(unittest.TestCase):
         self.assertEqual(keys_of(ds.list(prefix=b"a/", delimiter=b"/", limit=10)),
                          [("row", b"a/"), ("prefix", b"a//"), ("row", b"a/b"), ("prefix", b"a/b/")])
 
+    def test_list8_exact_rows(self):
+        ds = mini([b"a/", b"a//", b"a/b", b"a/b/", b"a/b/c", b"a/c/d"])
+        exact = [(e["key_base64"], e.get("exact", {}).get("offset")) for e in ds.list(prefix=b"a/", delimiter=b"/", limit=10)
+                 if e["kind"] == "prefix"]
+        # a// and a/b/ are stored at their exact keys; a/c/ is not
+        self.assertEqual(exact, [(oracle.b64(b"a//"), 0), (oracle.b64(b"a/b/"), 0), (oracle.b64(b"a/c/"), None)])
+        # after a row cursor inside a/b/, its first candidate a/b/c is not the exact key
+        self.assertNotIn("exact", ds.list(prefix=b"a/", delimiter=b"/", cursor=row(b"a/b/"), limit=1)[0])
+
     def test_list7_worked_example(self):
         ds = mini([b"a/a", b"a/z"])
         self.assertEqual(keys_of(ds.list(delimiter=b"/", end=b"a/b", limit=10)), [("prefix", b"a/")])

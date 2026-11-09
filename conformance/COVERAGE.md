@@ -328,8 +328,8 @@ No case. writer's choice: not a reader obligation.
 
 ## LIST-3
 
-- Evidence: 58 positive, 0 negative.
-- Core: `list/delimiter/root`, `list/delimiter/a-slash`, `list/delimiter/a-slash-slash`, `list/delimiter/slash`, `list/delimiter/ff-delim-xff` and 9 more
+- Evidence: 60 positive, 0 negative.
+- Core: `list/delimiter/root`, `list/delimiter/a-slash`, `list/delimiter/a-slash-slash`, `list/delimiter/slash`, `list/delimiter/ff-delim-xff` and 11 more
 - Generated: `list/bounds-and-after` (11), `list/delimiter-semantics` (14), `list/other-datasets` (13), `projection/absent-and-unknown` (1), `projection/annotated` (1), `projection/column-combination` (1), `projection/key-column` (3)
 
 ## LIST-4
@@ -340,9 +340,15 @@ No case. writer's choice: not a reader obligation.
 
 ## LIST-5
 
-- Evidence: 9 positive, 0 negative.
-- Core: `list/delimiter/after-inside-prefix`, `list/delimiter/after-inside-prefix-continuation`, `repeated/core/listing-row-cursor-inside-rollup`
+- Evidence: 10 positive, 0 negative.
+- Core: `list/delimiter/after-inside-prefix`, `list/delimiter/after-inside-prefix-continuation`, `list/exact/row-cursor-inside-prefix`, `repeated/core/listing-row-cursor-inside-rollup`
 - Generated: `list/bounds-and-after` (6)
+
+## LIST-8
+
+- Evidence: 44 positive, 0 negative.
+- Core: `list/delimiter/root`, `list/delimiter/a-slash`, `list/delimiter/a-slash-slash`, `list/delimiter/slash`, `list/delimiter/ff-delim-xff` and 7 more
+- Generated: `list/bounds-and-after` (5), `list/delimiter-semantics` (8), `list/other-datasets` (6), `pagination/list-scenario` (9), `repeated/pagination` (4)
 
 ## LIST-7
 
@@ -352,8 +358,8 @@ No case. writer's choice: not a reader obligation.
 
 ## PAGE-1
 
-- Evidence: 445 positive, 8 negative.
-- Core: `list/delimiter/after-inside-prefix`, `list/delimiter/after-inside-prefix-continuation`, `pagination/list/list-bounds/root-2f-limit1/page-00`, `pagination/list/list-bounds/root-2f-limit1/page-01`, `pagination/list/list-bounds/root-2f-limit1/page-02` and 19 more
+- Evidence: 447 positive, 8 negative.
+- Core: `list/delimiter/after-inside-prefix`, `list/delimiter/after-inside-prefix-continuation`, `list/exact/row-cursor-inside-prefix`, `pagination/list/list-bounds/root-2f-limit1/page-00`, `pagination/list/list-bounds/root-2f-limit1/page-01` and 21 more
 - Generated: `list/bounds-and-after` (6), `pagination/list-scenario` (56), `repeated/cursor-every-row` (48), `repeated/invalid-cursors` (7), `repeated/pagination` (312)
 
 ## LIST-6

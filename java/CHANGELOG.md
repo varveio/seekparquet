@@ -7,6 +7,10 @@ independent of the specification's draft revisions.
 
 ### Changed
 
+- `ListEntry.CommonPrefix` is `(prefix, exact)`: a common prefix carries its exact row (spec LIST-8),
+  the first candidate row that rolls up to it when that row's key is the prefix itself, with its
+  projected values, or empty. `new CommonPrefix(prefix)` makes one without. The conformance adapter
+  reports it as the prefix entry's `exact` member.
 - Lazy open (spec CHECK-1): `Dataset.open` checks the manifest only; each part is opened and checked
   the first time a request touches it (existence, exact size, footer, row counts, stamps, KEY-1/KEY-5,
   COL-5 against the parts already checked, RG-1). A part's refusal is kept for the dataset's lifetime;

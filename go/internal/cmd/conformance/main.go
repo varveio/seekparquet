@@ -289,7 +289,15 @@ func (a *adapter) listOp(ctx context.Context, req map[string]json.RawMessage) re
 	entries := make([]any, 0, len(got))
 	for _, e := range got {
 		if e.IsPrefix() {
-			entries = append(entries, map[string]any{"kind": "prefix", "key_base64": base64.StdEncoding.EncodeToString(e.CommonPrefix)})
+			entry := map[string]any{"kind": "prefix", "key_base64": base64.StdEncoding.EncodeToString(e.CommonPrefix)}
+			if e.Exact != nil {
+				row, err := rowEntry(e.Exact)
+				if err != nil {
+					return failure(err)
+				}
+				entry["exact"] = map[string]any{"offset": row["offset"], "values": row["values"]}
+			}
+			entries = append(entries, entry)
 			continue
 		}
 		row, err := rowEntry(e.Row)

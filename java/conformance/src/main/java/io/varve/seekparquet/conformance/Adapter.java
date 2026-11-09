@@ -160,7 +160,15 @@ public final class Adapter {
                             first = false;
                             switch (entry) {
                                 case ListEntry.RowEntry r -> row(out, r.row());
-                                case ListEntry.CommonPrefix p -> out.append("{\"kind\":\"prefix\",\"key_base64\":\"").append(p.prefix().toBase64()).append("\"}");
+                                case ListEntry.CommonPrefix p -> {
+                                    out.append("{\"kind\":\"prefix\",\"key_base64\":\"").append(p.prefix().toBase64()).append('"');
+                                    if (p.exact().isPresent()) {
+                                        out.append(",\"exact\":{\"offset\":").append(p.exact().get().offset()).append(',');
+                                        values(out, p.exact().get());
+                                        out.append('}');
+                                    }
+                                    out.append('}');
+                                }
                             }
                         }
                         remaining = remaining.subtract(BigInteger.valueOf(entries.size()));
@@ -361,7 +369,13 @@ public final class Adapter {
     }
 
     private static void row(StringBuilder out, Row row) {
-        out.append("{\"kind\":\"row\",\"key_base64\":\"").append(row.key().toBase64()).append("\",\"offset\":").append(row.offset()).append(",\"values\":[");
+        out.append("{\"kind\":\"row\",\"key_base64\":\"").append(row.key().toBase64()).append("\",\"offset\":").append(row.offset()).append(',');
+        values(out, row);
+        out.append('}');
+    }
+
+    private static void values(StringBuilder out, Row row) {
+        out.append("\"values\":[");
         List<Value> values = row.values();
         for (int i = 0; i < values.size(); i++) {
             if (i > 0) {
@@ -379,6 +393,6 @@ public final class Adapter {
                 case Value.FixedLenByteArray x -> out.append("{\"bytes_base64\":\"").append(x.value().toBase64()).append("\"}");
             }
         }
-        out.append("]}");
+        out.append(']');
     }
 }

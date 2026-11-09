@@ -232,7 +232,7 @@ func TestDelimiterEdgeCases(t *testing.T) {
 		want []string
 	}{
 		// a/ is a row; a/b/ rolls up to itself (LIST-3).
-		{List{Prefix: []byte("a/"), Delimiter: '/', Limit: 100}, []string{"r:a/", "p:a//", "r:a/b", "p:a/b/", "r:a/c"}},
+		{List{Prefix: []byte("a/"), Delimiter: '/', Limit: 100}, []string{"r:a/", "P:a//", "r:a/b", "P:a/b/", "r:a/c"}},
 		// After the common prefix a/b/, the keys after every key under it.
 		{List{Prefix: []byte("a/"), Delimiter: '/', Cursor: &Cursor{Prefix: []byte("a/b/")}, Limit: 100}, []string{"r:a/c"}},
 		// After a row cursor inside a/b/, a/b/ rolls up again (LIST-5).
@@ -241,6 +241,82 @@ func TestDelimiterEdgeCases(t *testing.T) {
 		got, err := d.List(ctx, c.req)
 		if err != nil || !slices.Equal(entriesOf(got), c.want) {
 			t.Fatalf("%s: %q, %v; want %q", describe(c.req), entriesOf(got), err, c.want)
+		}
+	}
+}
+
+// TestListExact: a common prefix carries its exact row (LIST-8), from the
+// scan and from the group shortcut, at every page size, after prefix and
+// row cursors, with its projected values; it changes no key-side read.
+func TestListExact(t *testing.T) {
+	keys := []string{"a/", "a/1", "a/2", "a/3", "a/4", "a/5", "b/1", "b/2", "b/3", "b/4", "c", "d/", "d/1"}
+	dir := write(t, parts(testutil.Part{GroupRows: 2}, keys))
+	spell := func(entries []Entry) []string {
+		var out []string
+		for _, e := range entries {
+			switch {
+			case e.Row != nil:
+				out = append(out, fmt.Sprintf("r:%s=%d", e.Row.Key, e.Row.Values[0].Int64()))
+			case e.Exact != nil:
+				out = append(out, fmt.Sprintf("p:%s=%s/%d=%d", e.CommonPrefix, e.Exact.Key, e.Exact.Offset, e.Exact.Values[0].Int64()))
+			default:
+				out = append(out, "p:"+string(e.CommonPrefix))
+			}
+		}
+		return out
+	}
+	for _, verify := range []bool{false, true} {
+		d := open(t, dir, Options{})
+		if verify {
+			must(t, d.Verify(ctx))
+		}
+		for _, c := range []struct {
+			cur  *Cursor
+			want []string
+		}{
+			{nil, []string{"p:a/=a//0=0", "p:b/", "r:c=10", "p:d/=d//0=11"}},
+			{&Cursor{Prefix: []byte("a/")}, []string{"p:b/", "r:c=10", "p:d/=d//0=11"}},
+			// After a row cursor inside a/, a/ rolls up again without the
+			// row at its exact key, which precedes the cursor.
+			{&Cursor{Key: []byte("a/")}, []string{"p:a/", "p:b/", "r:c=10", "p:d/=d//0=11"}},
+			{&Cursor{Key: []byte("a/2")}, []string{"p:a/", "p:b/", "r:c=10", "p:d/=d//0=11"}},
+			{&Cursor{Key: []byte("c")}, []string{"p:d/=d//0=11"}},
+		} {
+			for _, limit := range []int{1, 2, 3, 100} {
+				req := List{Delimiter: '/', Cursor: c.cur, Limit: limit, Columns: []string{"size"}}
+				var got []string
+				for range len(keys) + 1 {
+					page, err := d.List(ctx, req)
+					if err != nil {
+						t.Fatalf("%s: %v", describe(req), err)
+					}
+					got = append(got, spell(page)...)
+					if len(page) < limit {
+						break
+					}
+					req.Cursor = page[len(page)-1].Cursor()
+				}
+				if !slices.Equal(got, c.want) {
+					t.Fatalf("verified %v, after %s, limit %d:\n got %q\nwant %q", verify, cursorString(c.cur), limit, got, c.want)
+				}
+			}
+		}
+		// Projecting the exact rows reads their value pages and nothing
+		// else: the key-side counts are those of a keys-only listing.
+		var keysOnly, projected ReadStats
+		_, err := d.List(ctx, List{Delimiter: '/', Limit: 100, Stats: &keysOnly})
+		must(t, err)
+		_, err = d.List(ctx, List{Delimiter: '/', Limit: 100, Columns: []string{"size"}, Stats: &projected})
+		must(t, err)
+		if keysOnly.ValuePagesDecoded != 0 || projected.ValuePagesDecoded == 0 || verify && keysOnly.GroupsSkipped == 0 ||
+			keysOnly.KeyPagesDecoded != projected.KeyPagesDecoded || keysOnly.KeysDecoded != projected.KeysDecoded ||
+			keysOnly.GroupsSkipped != projected.GroupsSkipped || keysOnly.PrefixSkips != projected.PrefixSkips {
+			t.Fatalf("verified %v: keys only %+v, projected %+v", verify, keysOnly, projected)
+		}
+		var none ReadStats
+		_, err = d.List(ctx, List{Delimiter: '/', Cursor: &Cursor{Prefix: []byte("a/")}, End: []byte("c"), Limit: 100, Columns: []string{"size"}, Stats: &none})
+		if err != nil || none.ValuePagesDecoded != 0 {
+			t.Fatalf("a listing without exact rows decoded %d value pages, %v", none.ValuePagesDecoded, err)
 		}
 	}
 }

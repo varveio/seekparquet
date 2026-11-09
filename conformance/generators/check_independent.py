@@ -31,7 +31,10 @@ def expected(keys, values, prefix=b'', end=None, delimiter=None):
             if split >= 0:
                 folder = key[:split + len(delimiter)]
                 if folder not in seen:
-                    result.append({'kind': 'prefix', 'key_base64': b64(folder)})
+                    entry = {'kind': 'prefix', 'key_base64': b64(folder)}
+                    if key == folder:  # LIST-8: the folder's first row is its exact row
+                        entry['exact'] = {'offset': offset, 'values': value}
+                    result.append(entry)
                     seen.add(folder)
             else:
                 result.append({'kind': 'row', 'key_base64': b64(key), 'offset': offset,

@@ -339,6 +339,12 @@ keys**. Each candidate row yields one entry:
   sorts before a row cursor's key. For example, with `p` = `a/`, `d` = `/` and the row cursor (`a/b/c`, 0),
   the candidate `a/b/d` makes `a/b/` appear. No other rule suppresses a common prefix: a prefix cursor
   excludes every key under its prefix (PAGE-1), so that prefix has no candidate key.
+- [LIST-8] A common prefix `c` carries its **exact row** when the first candidate row that rolls up to `c`
+  has the key `c` itself: that row, with its offset and projected values as a row entry has them (LIST-3).
+  Otherwise it carries none. A key equal to `c` sorts before every other key under `c`, so without a cursor,
+  or after a prefix cursor, the exact row is the first row stored at `c` whenever `c` is a candidate key; after
+  a row cursor it is the first candidate row of key `c`, if any. A client can so pair a common prefix with the
+  row stored at its exact key (a folder and a folder object) without another request.
 - [LIST-7] Bounds apply to candidate keys, not to entries. For example, with `p` empty, `d` = `/` and end
   `a/b`, the keys `a/a` and `a/z` give the common prefix `a/` only because `a/a` is a candidate; if `a/a`
   did not exist, `a/z` alone would not make `a/` appear.

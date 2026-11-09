@@ -201,28 +201,40 @@ def norm_entries(entries, ncols, where):
         if e["kind"] == "prefix":
             if "values" in e:
                 raise CaseFail(f"{w}: a prefix entry must not have values")
-            if set(e) - {"kind", "key_base64"}:
-                raise CaseFail(f"{w}: unexpected members {sorted(set(e) - {'kind', 'key_base64'})}")
-            out.append(("prefix", key, None))
+            if set(e) - {"kind", "key_base64", "exact"}:
+                raise CaseFail(f"{w}: unexpected members {sorted(set(e) - {'kind', 'key_base64', 'exact'})}")
+            exact = None
+            if "exact" in e:  # LIST-8
+                if not isinstance(e["exact"], dict) or set(e["exact"]) - {"values", "offset"}:
+                    raise CaseFail(f"{w}.exact: an exact row has exactly offset and values")
+                exact = row_of(e["exact"], ncols, f"{w}.exact")
+            out.append(("prefix", key, exact))
         else:
-            vals = e.get("values")
-            if not isinstance(vals, list):
-                raise CaseFail(f"{w}: a row entry must have values (an array, empty without columns)")
-            if ncols is not None and len(vals) != ncols:
-                raise CaseFail(f"{w}: {len(vals)} values for {ncols} requested columns")
             if set(e) - {"kind", "key_base64", "values", "offset"}:
                 raise CaseFail(f"{w}: unexpected members")
-            offset = e.get("offset")
-            if type(offset) is not int or not 0 <= offset <= (1 << 63) - 1:
-                raise CaseFail(f"{w}: offset must be an integer from 0 to 2^63-1 without sign, fraction or exponent, "
-                               f"got {offset!r}")
-            out.append(("row", key, (offset, tuple(check_value(v, f"{w}.values[{j}]") for j, v in enumerate(vals)))))
+            out.append(("row", key, row_of(e, ncols, w)))
     return out
+
+
+def row_of(e, ncols, w):
+    """A row's offset and checked values, from a row entry or an exact row."""
+    vals = e.get("values")
+    if not isinstance(vals, list):
+        raise CaseFail(f"{w}: a row must have values (an array, empty without columns)")
+    if ncols is not None and len(vals) != ncols:
+        raise CaseFail(f"{w}: {len(vals)} values for {ncols} requested columns")
+    offset = e.get("offset")
+    if type(offset) is not int or not 0 <= offset <= (1 << 63) - 1:
+        raise CaseFail(f"{w}: offset must be an integer from 0 to 2^63-1 without sign, fraction or exponent, "
+                       f"got {offset!r}")
+    return (offset, tuple(check_value(v, f"{w}.values[{j}]") for j, v in enumerate(vals)))
 
 
 def show_entry(t):
     kind, key, vals = t
     k = key.decode("latin-1") if all(0x20 <= c < 0x7F for c in key) else "0x" + key.hex()
+    if kind == "prefix":
+        return f"prefix {k!r}" + ("" if vals is None else f" with exact row {vals!r}")
     return f"{kind} {k!r}" + ("" if vals is None else f" {list(vals)!r}")
 
 

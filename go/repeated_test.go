@@ -58,7 +58,9 @@ func rangeExpect(rows []positioned, rng Range) []string {
 }
 
 // listExpect answers a listing over the rows by the definition; rows are
-// spelled "r:key/offset=size" and prefixes "p:prefix".
+// spelled "r:key/offset=size" and prefixes "p:prefix", with
+// "=key/offset=size" when the prefix's first candidate is its exact row
+// (LIST-8).
 func listExpect(rows []positioned, req List) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -72,7 +74,11 @@ func listExpect(rows []positioned, req List) []string {
 		if cp := commonPrefix(r.key, req.Prefix, req.Delimiter); cp != nil {
 			if !seen[string(cp)] {
 				seen[string(cp)] = true
-				out = append(out, "p:"+string(cp))
+				entry := "p:" + string(cp)
+				if bytes.Equal(r.key, cp) {
+					entry += fmt.Sprintf("=%s/%d=%d", r.key, r.offset, r.size)
+				}
+				out = append(out, entry)
 			}
 			continue
 		}
@@ -94,6 +100,9 @@ func listString(entries []Entry) []string {
 	for i, e := range entries {
 		if e.IsPrefix() {
 			out[i] = "p:" + string(e.CommonPrefix)
+			if x := e.Exact; x != nil {
+				out[i] += fmt.Sprintf("=%s/%d=%d", x.Key, x.Offset, x.Values[0].Int64())
+			}
 		} else {
 			out[i] = fmt.Sprintf("r:%s/%d=%d", e.Row.Key, e.Row.Offset, e.Row.Values[0].Int64())
 		}

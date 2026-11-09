@@ -42,7 +42,7 @@ for {
 	if err != nil || len(entries) == 0 {
 		break
 	}
-	// entries[i].IsPrefix(), entries[i].CommonPrefix, entries[i].Row
+	// entries[i].IsPrefix(), entries[i].CommonPrefix (with entries[i].Exact), entries[i].Row
 	req.Cursor = entries[len(entries)-1].Cursor()
 }
 ```
@@ -83,7 +83,9 @@ whole groups. `KeyRange(key, limit, columns...)` looks up one group.
 Every result pages the same way: set the request's `Cursor` to the last entry's `Cursor()` and repeat
 the request. A row cursor is the row's key and its `Row.Offset`, the zero-based position in its group
 (always zero with unique keys); a listing may also continue after a common prefix (`Entry.Cursor()` of
-a prefix entry). A range takes only a row cursor. A page may end inside a group, and resuming deep
+a prefix entry). A range takes only a row cursor. A prefix entry carries its exact row in `Entry.Exact`
+when its first candidate row is stored at the prefix itself (an `a/` folder object under the prefix `a/`), with
+its projected values, so a listing pairs the two without a lookup (spec LIST-8). A page may end inside a group, and resuming deep
 inside a large group costs a few pages, not the rows before the cursor.
 
 ## API

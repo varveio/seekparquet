@@ -235,6 +235,11 @@ ORACLE_ADAPTER = textwrap.dedent(r'''
             return {"status": "invalid_request"}
         except oracle.Unsupported as u:
             return {"status": "unsupported", "code": u.code}
+        for e in entries:
+            if BUG == "no-exact":  # BUG: a common prefix never carries its exact row
+                e.pop("exact", None)
+            if BUG == "exact-group-start" and "exact" in e:  # BUG: the exact row is the group's first row
+                e["exact"]["offset"] = 0
         if BUG == "absent-null":  # BUG: a missing column reported as null
             for e in entries:
                 if "values" in e:
@@ -308,6 +313,12 @@ class HarnessSelfTest(unittest.TestCase):
 
     def test_detects_ignored_cursor_offsets(self):
         self.assert_detected("ignore-offset", r"^repeated/(core/resume-|repeated-keys/cursor-row-)")
+
+    def test_detects_missing_exact_rows(self):
+        self.assert_detected("no-exact", r"^list/(exact/|delimiter/a-slash$)")
+
+    def test_detects_exact_row_taken_from_the_group_start(self):
+        self.assert_detected("exact-group-start", r"^repeated/core/listing-exact-row-inside-group$")
 
     def test_detects_absent_null_conflation(self):
         self.assert_detected("absent-null", r"^projection/(column/f64|columns/span-parts|col-7/)")
