@@ -1,0 +1,7259 @@
+{
+  "group": "planning",
+  "target": "reader",
+  "generated": true,
+  "generator": "generators/make_cases.py",
+  "description": "Selection planning (optional capability planning): the rows a set of ranges selects, scanned in dataset order once each, their count, and the compressed bytes of the projected columns' pages and dictionaries that the scan requests.",
+  "families": {
+    "planning/plan": "ranges alone and in overlapping or disjoint sets, with and without columns, over one and several parts, dictionaries, cursors in equal-key groups, absent columns and chunks without an OffsetIndex"
+  },
+  "cases": [
+    {
+      "id": "planning/basic/all",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {}
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ],
+        "count": 12,
+        "count_exact": true,
+        "projected_bytes": 198,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/basic/all-two-columns",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {}
+        ],
+        "columns": [
+          "etag",
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0wMA=="
+              },
+              {
+                "int": "100"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0wMQ=="
+              },
+              {
+                "int": "107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0wMg=="
+              },
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0wNA=="
+              },
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0wNQ=="
+              },
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0wNg=="
+              },
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0wOA=="
+              },
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0wOQ=="
+              },
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "ZXRhZy0xMA=="
+              },
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ],
+        "count": 12,
+        "count_exact": true,
+        "projected_bytes": 435,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/basic/keys-only",
+      "description": "no columns: no projected bytes",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {}
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": []
+          }
+        ],
+        "count": 12,
+        "count_exact": true,
+        "projected_bytes": 0,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/basic/prefix",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "prefix_base64": "YS8="
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "114"
+              }
+            ]
+          }
+        ],
+        "count": 3,
+        "count_exact": true,
+        "projected_bytes": 66,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/basic/overlapping",
+      "description": "rows two ranges select are one row of the plan, and their pages are counted once",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "start_base64": "YS8=",
+            "end_base64": "Yg=="
+          },
+          {
+            "start_base64": "YS9iLw==",
+            "end_base64": "YnJhdm8="
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          }
+        ],
+        "count": 5,
+        "count_exact": true,
+        "projected_bytes": 99,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/basic/disjoint",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "end_base64": "YS8yLnR4dA=="
+          },
+          {
+            "start_base64": "Yg==",
+            "start_exclusive": true
+          }
+        ],
+        "columns": [
+          "size",
+          "etag"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wMA=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "142"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wNg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "int": "149"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wOA=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              },
+              {
+                "bytes_base64": "ZXRhZy0wOQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              },
+              {
+                "bytes_base64": "ZXRhZy0xMA=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ],
+        "count": 8,
+        "count_exact": true,
+        "projected_bytes": 368,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/basic/empty",
+      "description": "empty ranges select nothing and project no bytes",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "QUERY-2"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "start_base64": "Yg==",
+            "end_base64": "Yg=="
+          },
+          {
+            "end_base64": ""
+          },
+          {
+            "prefix_base64": "bm90aGluZw=="
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [],
+        "count": 0,
+        "count_exact": true,
+        "projected_bytes": 0,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/basic/cursor",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "PAGE-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/basic",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "key_base64": "YS9iLzMudHh0",
+              "offset": 0
+            }
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ],
+        "count": 9,
+        "count_exact": true,
+        "projected_bytes": 165,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/multipart/all",
+      "description": "three parts with empty row groups, codecs, dictionaries and data page v2",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "ENC-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {}
+        ],
+        "columns": [
+          "size",
+          "mtime"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "UkVBRE1F",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2052263231"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDA=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "572045545"
+              },
+              {
+                "int": "1772415464"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2107371739"
+              },
+              {
+                "int": "1770337795"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDI=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "416493632"
+              },
+              {
+                "int": "1774371549"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDM=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1916433405"
+              },
+              {
+                "int": "1771252396"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDQ=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2061790936"
+              },
+              {
+                "int": "1774131254"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDU=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1722498653"
+              },
+              {
+                "int": "1775927640"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDY=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "642109893"
+              },
+              {
+                "int": "1775477352"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDc=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "613053350"
+              },
+              {
+                "int": "1770575773"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDg=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "947389209"
+              },
+              {
+                "int": "1775257572"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YXBwL3YxL29iai0wMDk=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "198072445"
+              },
+              {
+                "int": "1776681888"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2131508780"
+              },
+              {
+                "int": "1775310304"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1611710546"
+              },
+              {
+                "int": "1770403572"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1423097357"
+              },
+              {
+                "int": "1774883674"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "123567808"
+              },
+              {
+                "int": "1775552306"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1966451359"
+              },
+              {
+                "int": "1775446963"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "920731355"
+              },
+              {
+                "int": "1772914900"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "185676152"
+              },
+              {
+                "int": "1776068521"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "691651910"
+              },
+              {
+                "int": "1775574408"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1879835718"
+              },
+              {
+                "int": "1774416850"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "144881832"
+              },
+              {
+                "int": "1771582176"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2006562577"
+              },
+              {
+                "int": "1772895778"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1794840239"
+              },
+              {
+                "int": "1772699325"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1371860317"
+              },
+              {
+                "int": "1771247448"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "464124515"
+              },
+              {
+                "int": "1774045725"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1036807616"
+              },
+              {
+                "int": "1776802085"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "898616131"
+              },
+              {
+                "int": "1774695155"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1098813494"
+              },
+              {
+                "int": "1775608481"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1578488628"
+              },
+              {
+                "int": "1769421805"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "769428482"
+              },
+              {
+                "int": "1768012710"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "931402727"
+              },
+              {
+                "int": "1771407498"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "595947170"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "289243514"
+              },
+              {
+                "int": "1768233873"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1038422309"
+              },
+              {
+                "int": "1774332961"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "520797255"
+              },
+              {
+                "int": "1769951443"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "517393754"
+              },
+              {
+                "int": "1770158020"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1552810155"
+              },
+              {
+                "int": "1770546813"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1874479734"
+              },
+              {
+                "int": "1775299983"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "833453698"
+              },
+              {
+                "int": "1775184813"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1138134769"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "152387997"
+              },
+              {
+                "int": "1771422127"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "882854000"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "936166262"
+              },
+              {
+                "int": "1768899794"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1989090778"
+              },
+              {
+                "int": "1770132074"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "232002150"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1685066606"
+              },
+              {
+                "int": "1775418049"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1207775224"
+              },
+              {
+                "int": "1771860611"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "175160838"
+              },
+              {
+                "int": "1776162286"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1189262629"
+              },
+              {
+                "int": "1773917107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1536265996"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "283147767"
+              },
+              {
+                "int": "1773320231"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1428079770"
+              },
+              {
+                "int": "1774168261"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "219617200"
+              },
+              {
+                "int": "1773035602"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1680509420"
+              },
+              {
+                "int": "1776949909"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "865546578"
+              },
+              {
+                "int": "1772958125"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "570222112"
+              },
+              {
+                "int": "1770811813"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "196094001"
+              },
+              {
+                "int": "1767963104"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "438733841"
+              },
+              {
+                "int": "1776261333"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1318442420"
+              },
+              {
+                "int": "1772288161"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1856824044"
+              },
+              {
+                "int": "1775539284"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1264208374"
+              },
+              {
+                "int": "1768064381"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1350654560"
+              },
+              {
+                "int": "1770785198"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "697701077"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2016265940"
+              },
+              {
+                "int": "1771819412"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1676122187"
+              },
+              {
+                "int": "1768073096"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "822573084"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "827309862"
+              },
+              {
+                "int": "1769640014"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "510752354"
+              },
+              {
+                "int": "1771254856"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "334315265"
+              },
+              {
+                "int": "1774592315"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1500041918"
+              },
+              {
+                "int": "1773253162"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "905890783"
+              },
+              {
+                "int": "1772770242"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1814310535"
+              },
+              {
+                "int": "1770548250"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1922162610"
+              },
+              {
+                "int": "1774011753"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1361819783"
+              },
+              {
+                "int": "1773327670"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2049076646"
+              },
+              {
+                "int": "1771302670"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "400105941"
+              },
+              {
+                "int": "1773892065"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1680692067"
+              },
+              {
+                "int": "1774724288"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1444407357"
+              },
+              {
+                "int": "1775229449"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "411071564"
+              },
+              {
+                "int": "1773471760"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "622630868"
+              },
+              {
+                "int": "1772753692"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "976415507"
+              },
+              {
+                "int": "1776664949"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "383526057"
+              },
+              {
+                "int": "1771715393"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1442533434"
+              },
+              {
+                "int": "1773601793"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "256176553"
+              },
+              {
+                "int": "1776628254"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1120504347"
+              },
+              {
+                "int": "1768332575"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "5091828"
+              },
+              {
+                "int": "1771815427"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1139635534"
+              },
+              {
+                "int": "1776840159"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "749964795"
+              },
+              {
+                "int": "1768954125"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1443656273"
+              },
+              {
+                "int": "1770948702"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "371283422"
+              },
+              {
+                "int": "1770288069"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "883296115"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2018818075"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1642512923"
+              },
+              {
+                "int": "1776280122"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "206816212"
+              },
+              {
+                "int": "1769813028"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1070477579"
+              },
+              {
+                "int": "1772862976"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "736606516"
+              },
+              {
+                "int": "1770514046"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1295445100"
+              },
+              {
+                "int": "1771044406"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1790225508"
+              },
+              {
+                "int": "1767390975"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "772258715"
+              },
+              {
+                "int": "1773217239"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "322304825"
+              },
+              {
+                "int": "1772513948"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1551941165"
+              },
+              {
+                "int": "1774844975"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "425933270"
+              },
+              {
+                "int": "1768282702"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "560405147"
+              },
+              {
+                "int": "1775711173"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "987889821"
+              },
+              {
+                "int": "1774218871"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2080209633"
+              },
+              {
+                "int": "1772953804"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "592143799"
+              },
+              {
+                "int": "1767326676"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "387707945"
+              },
+              {
+                "int": "1770437672"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "575803244"
+              },
+              {
+                "int": "1770885008"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1608480733"
+              },
+              {
+                "int": "1773707433"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "19472290"
+              },
+              {
+                "int": "1774715692"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1730359644"
+              },
+              {
+                "int": "1772846545"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "746098670"
+              },
+              {
+                "int": "1770375079"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1385282808"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1366730078"
+              },
+              {
+                "int": "1769859021"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "723957133"
+              },
+              {
+                "int": "1769327279"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2116288221"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2036001730"
+              },
+              {
+                "int": "1772406509"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "57934981"
+              },
+              {
+                "int": "1768724818"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "132011694"
+              },
+              {
+                "int": "1768331329"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "873073589"
+              },
+              {
+                "int": "1775428202"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMDkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1988938649"
+              },
+              {
+                "int": "1773093227"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2146170724"
+              },
+              {
+                "int": "1776480280"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2020833071"
+              },
+              {
+                "int": "1775977473"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "702157958"
+              },
+              {
+                "int": "1776966451"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "890658541"
+              },
+              {
+                "int": "1774651355"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1536617398"
+              },
+              {
+                "int": "1772373798"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1393805421"
+              },
+              {
+                "int": "1769553580"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "256939491"
+              },
+              {
+                "int": "1772203384"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "118784434"
+              },
+              {
+                "int": "1774278361"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "522518181"
+              },
+              {
+                "int": "1774263695"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI3LzAxL2YwMTkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1478483558"
+              },
+              {
+                "int": "1774373302"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "dG1wLw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "360314332"
+              },
+              {
+                "int": "1771513536"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "dG1wL3g=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "671093289"
+              },
+              {
+                "int": "1771330012"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "enotbGFzdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2038745134"
+              },
+              {
+                "null": true
+              }
+            ]
+          }
+        ],
+        "count": 134,
+        "count_exact": true,
+        "projected_bytes": 3941,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/multipart/across-parts",
+      "description": "without columns: the count may rest on a part no read has checked, so its exactness is not asserted",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "start_base64": "YXBwL3YxL29iai0wMTA=",
+            "end_base64": "bG9ncy8yMDI3Lw=="
+          }
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDAuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDEuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDIuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDMuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDQuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDUuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDYuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDcuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDguZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDkuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTAuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTEuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTIuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTMuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTQuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTUuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTYuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTcuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTguZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTkuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjAuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjEuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjIuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjMuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjQuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjUuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjYuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjcuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjguZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjkuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDcuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDguZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDkuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTQuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTUuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTYuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTcuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTguZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTkuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjEuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjIuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjMuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjQuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjUuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjYuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjguZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjkuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzAuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzEuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzIuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzUuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzYuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzcuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDAuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDEuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDIuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDMuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDQuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDUuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDYuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDcuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDguZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDkuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTAuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTEuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTIuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTMuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTQuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTUuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTYuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTcuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTguZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTkuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjAuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjEuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjIuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjMuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjQuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjUuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjYuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjcuZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjguZ3o=",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjkuZ3o=",
+            "offset": 0,
+            "values": []
+          }
+        ],
+        "count": 100,
+        "projected_bytes": 0,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/multipart/across-parts-columns",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "start_base64": "YXBwL3YxL29iai0wMTA=",
+            "end_base64": "bG9ncy8yMDI3Lw=="
+          }
+        ],
+        "columns": [
+          "storage_class"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMDkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMTkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMDkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMTkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMjkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAyL2YwMzkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMDkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMTkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjAuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjEuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjIuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjMuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjQuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjcuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjguZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "U1RBTkRBUkQ="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAzL2YwMjkuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "bytes_base64": "R0xBQ0lFUg=="
+              }
+            ]
+          }
+        ],
+        "count": 100,
+        "count_exact": true,
+        "projected_bytes": 1279,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/multipart/lookups",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/multipart",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "start_base64": "UkVBRE1F",
+            "end_base64": "UkVBRE1FAA=="
+          },
+          {
+            "start_base64": "bG9ncy8yMDI2LzAxL2YwMjUuZ3o=",
+            "end_base64": "bG9ncy8yMDI2LzAxL2YwMjUuZ3oA"
+          },
+          {
+            "start_base64": "bG9ncy8yMDI2LzAxL2YwMjYuZ3o=",
+            "end_base64": "bG9ncy8yMDI2LzAxL2YwMjYuZ3oA"
+          }
+        ],
+        "columns": [
+          "mtime"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "UkVBRE1F",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjUuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1770546813"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "bG9ncy8yMDI2LzAxL2YwMjYuZ3o=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1775299983"
+              }
+            ]
+          }
+        ],
+        "count": 3,
+        "count_exact": true,
+        "projected_bytes": 285,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/encodings/shared-dictionary",
+      "description": "two lookups in one dictionary-encoded row group count its dictionary once",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "ENC-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "start_base64": "ZW5jLzAwMA==",
+            "end_base64": "ZW5jLzAwMAA="
+          },
+          {
+            "start_base64": "ZW5jLzAwNA==",
+            "end_base64": "ZW5jLzAwNAA="
+          }
+        ],
+        "columns": [
+          "i64"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-2305843007954207101"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-2305843008335262212"
+              }
+            ]
+          }
+        ],
+        "count": 2,
+        "count_exact": true,
+        "projected_bytes": 105,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/encodings/one-page",
+      "description": "three lookups in one page count it once",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "ENC-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "start_base64": "ZW5jLzAwMA==",
+            "end_base64": "ZW5jLzAwMAA="
+          },
+          {
+            "start_base64": "ZW5jLzAwMQ==",
+            "end_base64": "ZW5jLzAwMQA="
+          },
+          {
+            "start_base64": "ZW5jLzAwMg==",
+            "end_base64": "ZW5jLzAwMgA="
+          }
+        ],
+        "columns": [
+          "i64"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-2305843007954207101"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "2305843008785624744"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-2305843007287341469"
+              }
+            ]
+          }
+        ],
+        "count": 3,
+        "count_exact": true,
+        "projected_bytes": 83,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/encodings/all",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "ENC-1"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/encodings",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {}
+        ],
+        "columns": [
+          "i32",
+          "i64",
+          "s"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "801471672"
+              },
+              {
+                "int": "-2305843007954207101"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-904691681"
+              },
+              {
+                "int": "2305843008785624744"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "888343710"
+              },
+              {
+                "int": "-2305843007287341469"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwMw==",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "2305843008564755599"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-730534702"
+              },
+              {
+                "int": "-2305843008335262212"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "466141939"
+              },
+              {
+                "int": "2305843007344531277"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-555335117"
+              },
+              {
+                "int": "-2305843008925674984"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwNw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "31096827"
+              },
+              {
+                "int": "2305843008034680843"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwOA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-489400997"
+              },
+              {
+                "int": "-2305843008059083968"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAwOQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "99958443"
+              },
+              {
+                "int": "2305843007667561199"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMA==",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "-2305843008932168475"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "407103435"
+              },
+              {
+                "int": "2305843008602790653"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-331783568"
+              },
+              {
+                "int": "-2305843007185842414"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxMw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-188894946"
+              },
+              {
+                "int": "2305843008915896762"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "477341222"
+              },
+              {
+                "int": "-2305843008661174273"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "762725564"
+              },
+              {
+                "int": "2305843007605510661"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-648789310"
+              },
+              {
+                "int": "-2305843008117070683"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxNw==",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "2305843007219509075"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxOA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-581012081"
+              },
+              {
+                "int": "-2305843008795347758"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAxOQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-77779314"
+              },
+              {
+                "int": "2305843007348658696"
+              },
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "144706214"
+              },
+              {
+                "int": "-2305843008958560876"
+              },
+              {
+                "bytes_base64": "YWxwaGE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "-866229180"
+              },
+              {
+                "int": "2305843007773743748"
+              },
+              {
+                "bytes_base64": "YmV0YQ=="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "151891385"
+              },
+              {
+                "int": "-2305843007578211197"
+              },
+              {
+                "bytes_base64": "Z2FtbWE="
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZW5jLzAyMw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "418470590"
+              },
+              {
+                "int": "2305843008641499541"
+              },
+              {
+                "bytes_base64": ""
+              }
+            ]
+          }
+        ],
+        "count": 24,
+        "count_exact": true,
+        "projected_bytes": 1230,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/no-value-page-index/all",
+      "description": "a chunk without an OffsetIndex is omitted from the projected bytes, which are then not exact",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "COL-4"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/no-value-page-index",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {}
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YS8xLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "100"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS8yLnR4dA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "107"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YS9iLzMudHh0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "114"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YWxwaGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "121"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "128"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJhdm8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "135"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy8=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "142"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy9k",
+            "offset": 0,
+            "values": [
+              {
+                "int": "149"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Y2hhcmxpZQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "156"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZGVsdGE=",
+            "offset": 0,
+            "values": [
+              {
+                "int": "163"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZWNobw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "170"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Zm94dHJvdA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "177"
+              }
+            ]
+          }
+        ],
+        "count": 12,
+        "count_exact": true,
+        "projected_bytes": 0,
+        "projected_bytes_exact": false
+      }
+    },
+    {
+      "id": "planning/projection/absent",
+      "description": "a column a part lacks contributes no bytes",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "COL-2"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/projection",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "start_base64": "cm93LTAy",
+            "end_base64": "cm93LTE0"
+          }
+        ],
+        "columns": [
+          "f64",
+          "req",
+          "extra"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAy",
+            "offset": 0,
+            "values": [
+              {
+                "float64": "7ff0000000000000"
+              },
+              {
+                "int": "998"
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTAz",
+            "offset": 0,
+            "values": [
+              {
+                "float64": "7ff8000000000000"
+              },
+              {
+                "int": "997"
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA0",
+            "offset": 0,
+            "values": [
+              {
+                "float64": "7ff8000000000001"
+              },
+              {
+                "int": "996"
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA1",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "995"
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA2",
+            "offset": 0,
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA3",
+            "offset": 0,
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA4",
+            "offset": 0,
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTA5",
+            "offset": 0,
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEw",
+            "offset": 0,
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEx",
+            "offset": 0,
+            "values": [
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              },
+              {
+                "absent": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEy",
+            "offset": 0,
+            "values": [
+              {
+                "float64": "7ff0000000000000"
+              },
+              {
+                "int": "988"
+              },
+              {
+                "int": "-12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "cm93LTEz",
+            "offset": 0,
+            "values": [
+              {
+                "float64": "7ff8000000000000"
+              },
+              {
+                "int": "987"
+              },
+              {
+                "int": "-13"
+              }
+            ]
+          }
+        ],
+        "count": 12,
+        "count_exact": true,
+        "projected_bytes": 363,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/repeated-keys/cursor-01",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "PAGE-1",
+        "KEY-7"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "key_base64": "YQ==",
+              "offset": 1
+            }
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "2"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ],
+        "count": 22,
+        "count_exact": true,
+        "projected_bytes": 380,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/repeated-keys/cursor-05",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "PAGE-1",
+        "KEY-7"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "key_base64": "Yg==",
+              "offset": 2
+            }
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ],
+        "count": 18,
+        "count_exact": true,
+        "projected_bytes": 314,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/repeated-keys/cursor-09",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "PAGE-1",
+        "KEY-7"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "key_base64": "Yg==",
+              "offset": 6
+            }
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ],
+        "count": 14,
+        "count_exact": true,
+        "projected_bytes": 248,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/repeated-keys/cursor-13",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "PAGE-1",
+        "KEY-7"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "key_base64": "Yg==",
+              "offset": 10
+            }
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ],
+        "count": 10,
+        "count_exact": true,
+        "projected_bytes": 182,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/repeated-keys/cursor-17",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "PAGE-1",
+        "KEY-7"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "key_base64": "Yy94",
+              "offset": 2
+            }
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ],
+        "count": 6,
+        "count_exact": true,
+        "projected_bytes": 124,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/repeated-keys/cursor-21",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "PAGE-1",
+        "KEY-7"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "key_base64": "ZA==",
+              "offset": 1
+            }
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ],
+        "count": 2,
+        "count_exact": true,
+        "projected_bytes": 58,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/repeated-keys/lookups",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "KEY-7"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/repeated-keys",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "start_base64": "YQ==",
+            "end_base64": "YQA="
+          },
+          {
+            "start_base64": "Yg==",
+            "end_base64": "YgA="
+          },
+          {
+            "start_base64": "Yy94",
+            "end_base64": "Yy94AA=="
+          },
+          {
+            "start_base64": "ZA==",
+            "end_base64": "ZAA="
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "0"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "1"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "2"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 1,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 2,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 3,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yy94",
+            "offset": 4,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ],
+        "count": 24,
+        "count_exact": true,
+        "projected_bytes": 413,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/one-large-group/cursor-0",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "PAGE-1",
+        "KEY-7"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "key_base64": "b25seQ==",
+              "offset": 0
+            }
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 1,
+            "values": [
+              {
+                "int": "1"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 2,
+            "values": [
+              {
+                "int": "2"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 3,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 4,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 5,
+            "values": [
+              {
+                "int": "5"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 12,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 13,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 14,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 15,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 16,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 17,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 18,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 19,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 20,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 21,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 22,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 23,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ],
+        "count": 23,
+        "count_exact": true,
+        "projected_bytes": 396,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/one-large-group/cursor-5",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "PAGE-1",
+        "KEY-7"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "key_base64": "b25seQ==",
+              "offset": 5
+            }
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 6,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 7,
+            "values": [
+              {
+                "int": "7"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 8,
+            "values": [
+              {
+                "int": "8"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 9,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 10,
+            "values": [
+              {
+                "int": "10"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 11,
+            "values": [
+              {
+                "int": "11"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 12,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 13,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 14,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 15,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 16,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 17,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 18,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 19,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 20,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 21,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 22,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 23,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ],
+        "count": 18,
+        "count_exact": true,
+        "projected_bytes": 297,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/one-large-group/cursor-11",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "PAGE-1",
+        "KEY-7"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "key_base64": "b25seQ==",
+              "offset": 11
+            }
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 12,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 13,
+            "values": [
+              {
+                "int": "13"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 14,
+            "values": [
+              {
+                "int": "14"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 15,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 16,
+            "values": [
+              {
+                "int": "16"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 17,
+            "values": [
+              {
+                "int": "17"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 18,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 19,
+            "values": [
+              {
+                "int": "19"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 20,
+            "values": [
+              {
+                "int": "20"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 21,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 22,
+            "values": [
+              {
+                "int": "22"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 23,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ],
+        "count": 12,
+        "count_exact": true,
+        "projected_bytes": 198,
+        "projected_bytes_exact": true
+      }
+    },
+    {
+      "id": "planning/one-large-group/cursor-22",
+      "family": "planning/plan",
+      "requirements": [
+        "RANGE-1",
+        "RANGE-2",
+        "PAGE-1",
+        "KEY-7"
+      ],
+      "requires": [
+        "planning"
+      ],
+      "dataset": "datasets/one-large-group",
+      "request": {
+        "op": "plan",
+        "ranges": [
+          {
+            "after": {
+              "key_base64": "b25seQ==",
+              "offset": 22
+            }
+          }
+        ],
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "b25seQ==",
+            "offset": 23,
+            "values": [
+              {
+                "int": "23"
+              }
+            ]
+          }
+        ],
+        "count": 1,
+        "count_exact": true,
+        "projected_bytes": 33,
+        "projected_bytes_exact": true
+      }
+    }
+  ]
+}

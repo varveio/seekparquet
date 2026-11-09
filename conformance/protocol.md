@@ -119,6 +119,40 @@ The adapter opens the dataset first if it has not.
 `end_base64` is optional (absent or null); `prefix_base64` defaults to empty; `after` is optional, a row or
 prefix cursor; `columns` defaults to `[]`.
 
+### `plan`
+
+```json
+{"id": "7", "op": "plan", "dataset": "/abs/path/datasets/basic",
+ "ranges": [{"start_base64": "YS8xLnR4dA==", "end_base64": "YS8xLnR4dAA="}], "columns": ["size"]}
+```
+
+```json
+{"id": "7", "status": "ok", "entries": [{"kind": "row", "key_base64": "YS8xLnR4dA==", "offset": 0, "values": [{"int": "100"}]}],
+ "count": 1, "count_exact": true, "projected_bytes": 33, "projected_bytes_exact": true}
+```
+
+Plans reading the rows of `ranges`, then reads them. Each range has the bound and cursor members of a `range`
+request (`prefix_base64`, `start_base64`, `start_exclusive`, `end_base64`, `after`, a row cursor) and no
+`limit` or `columns`: a planned range is read whole, and the request's `columns` apply to every range. A
+row several ranges select is one row of the plan. The answer has:
+
+- `entries`: every selected row, once, in dataset order, with its offset and the values of `columns`, as a
+  `range` entry has them;
+- `count`: the number of rows the plan selects, and `count_exact`, whether every part holding one of them was
+  checked (CHECK-1) when the count was made, so that the count rests on checked footers. A plan with columns
+  checks those parts; without columns, a count across a part no read has touched may rest on the manifest's
+  row count, so cases assert `count_exact` only where every correct access path checks those parts;
+- `projected_bytes`: the compressed bytes of the projected columns that reading the rows requests: for each
+  column chunk that holds a selected row, the extent of its dictionary page (the bytes from the chunk's start,
+  its dictionary page offset or else its first data page offset, to the first data page its OffsetIndex
+  locates; zero without a dictionary) and the extents of the pages its OffsetIndex gives that hold selected
+  rows, each counted once however many ranges select its rows. A column a part lacks (COL-2) counts nothing.
+  A chunk without an OffsetIndex (COL-4) is omitted, and `projected_bytes_exact` is then false. The key
+  column's values may come from its key pages, so cases do not project it, nor a column twice.
+
+`plan` is an optional capability (`planning`): a case that requires it is skipped when the adapter does not
+claim it, and the skip does not count against the qualification of the case's target.
+
 ### `validate`
 
 ```json
@@ -147,7 +181,7 @@ that is not valid Parquet can still complete it. It adds `checked`, the number o
 
 | `status` | Members | Meaning |
 |---|---|---|
-| `ok` | `entries` for `range` and `list`; `levels` for `validate` | success |
+| `ok` | `entries` for `range` and `list`; `entries`, `count`, `count_exact`, `projected_bytes` and `projected_bytes_exact` for `plan`; `levels` for `validate` | success |
 | `refused` | `code` | the data breaks the specification; `code` is from `spec/refusal-codes.json` |
 | `invalid_request` | `message` (optional) | the request is malformed (QUERY-1), including a malformed cursor or a prefix cursor on range |
 | `unsupported` | `code`, `message` (optional) | the data is valid but uses an unsupported feature, or the adapter does not implement the operation (`unsupported_operation`) |
@@ -195,6 +229,10 @@ object cannot carry the spelling `-0` through loading and re-serialization, so t
 are tested directly against the harness's and the reference adapter's parsers (`harness/test_run.py`).
 
 ## Optional features
+
+A capability that no target requires (`optional_capabilities` in capabilities.json: `verify`, `planning`)
+is claimed or not at an adapter's choice. A case that requires one runs only when the adapter claims it, and
+is otherwise skipped without counting against its target's qualification.
 
 A case on a dataset that uses a feature outside the mandatory baseline (for example the LZ4_RAW or BROTLI
 codec, ENC-1) may list `accept_unsupported` codes in its expectation: the expected `ok` result passes, and so

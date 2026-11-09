@@ -34,6 +34,8 @@ final class Parts {
     private final Limits limits;
     private final IndexMemory indexMemory;
     private final Slot[] slots;
+    /** The parts' first-row ordinals, computed on first use (a racy but idempotent publication). */
+    private volatile long[] starts;
     /** COL-5: each top-level column's signature in the checked parts, and the first part holding it. */
     private final Map<String, Signature> signatures = new HashMap<>();
 
@@ -65,6 +67,39 @@ final class Parts {
     /** {@return part i's manifest entry} */
     ManifestPart entry(int i) {
         return manifest.parts().get(i);
+    }
+
+    /**
+     * {@return the dataset ordinal of part i's first row, by the manifest's row counts; the dataset's row
+     * count for i = size()}
+     *
+     * @throws ArithmeticException if the dataset holds more than {@link Long#MAX_VALUE} rows
+     */
+    long start(int i) {
+        long[] s = starts;
+        if (s == null) {
+            s = new long[slots.length + 1];
+            for (int j = 0; j < slots.length; j++) {
+                s[j + 1] = Math.addExact(s[j], entry(j).rows());
+            }
+            starts = s;
+        }
+        return s[i];
+    }
+
+    /** {@return the part holding dataset ordinal {@code ordinal}, below the dataset's row count} */
+    int partAt(long ordinal) {
+        int lo = 0;
+        int hi = slots.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (start(mid + 1) > ordinal) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return lo;
     }
 
     /** {@return part i if a request has checked it, without checking it} */

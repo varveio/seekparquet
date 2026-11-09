@@ -103,7 +103,7 @@ func (a *adapter) dispatch(ctx context.Context, req map[string]json.RawMessage) 
 			"version":        version,
 			"supports":       supports(),
 			"targets":        []string{"reader", "validator-structural", "validator-profile", "validator-full", "validator-digest"},
-			"capabilities": []string{"open", "range", "list", "projection", "verify",
+			"capabilities": []string{"open", "range", "list", "projection", "verify", "planning",
 				"validate:structural", "validate:profile", "validate:full", "validate:digest"},
 		}
 	case "open":
@@ -136,6 +136,8 @@ func (a *adapter) dispatch(ctx context.Context, req map[string]json.RawMessage) 
 		return a.rangeOp(ctx, req)
 	case "list":
 		return a.listOp(ctx, req)
+	case "plan":
+		return a.planOp(ctx, req)
 	case "validate":
 		return validateOp(ctx, req)
 	default:
@@ -247,6 +249,63 @@ func (a *adapter) rangeOp(ctx context.Context, req map[string]json.RawMessage) r
 		entries = append(entries, e)
 	}
 	return response{"status": "ok", "entries": entries}
+}
+
+// planOp plans the request's ranges, scans the plan and reports its rows,
+// count and projected bytes (protocol.md, plan).
+func (a *adapter) planOp(ctx context.Context, req map[string]json.RawMessage) response {
+	path, err := datasetPath(req)
+	if err != nil {
+		return invalid(err)
+	}
+	var raw []map[string]json.RawMessage
+	if err := field(req, "ranges", &raw); err != nil {
+		return invalid(err)
+	}
+	ranges := make([]seekparquet.Range, len(raw))
+	for i, r := range raw {
+		rng := &ranges[i]
+		if rng.Prefix, err = bytesField(r, "prefix_base64"); err != nil {
+			return invalid(err)
+		}
+		if rng.Start, err = bytesField(r, "start_base64"); err != nil {
+			return invalid(err)
+		}
+		if rng.End, err = bytesField(r, "end_base64"); err != nil {
+			return invalid(err)
+		}
+		if err := optionalField(r, "start_exclusive", &rng.StartExclusive); err != nil {
+			return invalid(err)
+		}
+		if rng.Cursor, err = cursorField(r); err != nil {
+			return invalid(err)
+		}
+	}
+	var columns []string
+	if err := optionalField(req, "columns", &columns); err != nil {
+		return invalid(err)
+	}
+	d, err := a.dataset(ctx, path)
+	if err != nil {
+		return failure(err)
+	}
+	plan, err := d.PlanRanges(ctx, ranges, columns)
+	if err != nil {
+		return failure(err)
+	}
+	entries := []any{}
+	err = plan.Scan(ctx, nil, func(row seekparquet.Row) error {
+		e, err := rowEntry(&row)
+		entries = append(entries, e)
+		return err
+	})
+	if err != nil {
+		return failure(err)
+	}
+	count, countExact := plan.Count()
+	projected, projectedExact := plan.ProjectedBytes()
+	return response{"status": "ok", "entries": entries, "count": count, "count_exact": countExact,
+		"projected_bytes": projected, "projected_bytes_exact": projectedExact}
 }
 
 func (a *adapter) listOp(ctx context.Context, req map[string]json.RawMessage) response {

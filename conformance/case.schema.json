@@ -63,8 +63,8 @@
           "then": {"properties": {"expect": {"properties": {"status": {"const": "invalid_request"}}}}}
         },
         {
-          "description": "A successful range or list expectation states its entries.",
-          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"enum": ["range", "list"]}}},
+          "description": "A successful range, list or plan expectation states its entries.",
+          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"enum": ["range", "list", "plan"]}}},
                                                          "expect": {"properties": {"status": {"const": "ok"}}}}},
           "then": {"properties": {"expect": {"required": ["entries"]}}}
         },
@@ -79,8 +79,16 @@
           "then": {"properties": {"expect": {"not": {"required": ["entries"]}}}}
         },
         {
-          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"enum": ["open", "range", "list"]}}}}},
+          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"enum": ["open", "range", "list", "plan"]}}}}},
           "then": {"properties": {"expect": {"not": {"required": ["levels"]}}}}
+        },
+        {
+          "description": "A successful plan expectation states its count and projected bytes; only a plan has them.",
+          "if": {"required": ["request"], "properties": {"request": {"properties": {"op": {"const": "plan"}}},
+                                                         "expect": {"properties": {"status": {"const": "ok"}}}}},
+          "then": {"properties": {"expect": {"required": ["count", "projected_bytes", "projected_bytes_exact"]}}},
+          "else": {"properties": {"expect": {"not": {"anyOf": [{"required": ["count"]}, {"required": ["count_exact"]},
+            {"required": ["projected_bytes"]}, {"required": ["projected_bytes_exact"]}]}}}}
         }
       ]
     },
@@ -89,7 +97,7 @@
       "required": ["op"],
       "additionalProperties": false,
       "properties": {
-        "op": {"enum": ["open", "range", "list", "validate"]},
+        "op": {"enum": ["open", "range", "list", "validate", "plan"]},
         "start_base64": {"$ref": "#/$defs/optb64"},
         "start_exclusive": {"type": "boolean"},
         "end_base64": {"$ref": "#/$defs/optb64"},
@@ -98,15 +106,31 @@
         "after": {"oneOf": [{"$ref": "#/$defs/row_cursor"}, {"$ref": "#/$defs/prefix_cursor"}]},
         "limit": {"type": "integer"},
         "columns": {"type": "array", "items": {"type": "string"}},
-        "level": {"enum": ["structural", "profile", "full", "digest"]}
+        "level": {"enum": ["structural", "profile", "full", "digest"]},
+        "ranges": {"type": "array", "items": {"$ref": "#/$defs/planned_range"}}
       },
       "allOf": [
         {"if": {"properties": {"op": {"enum": ["range", "list"]}}}, "then": {"required": ["limit"]}},
         {"description": "Range accepts only a row cursor (PAGE-1).",
          "if": {"properties": {"op": {"const": "range"}}}, "then": {"properties": {"after": {"$ref": "#/$defs/row_cursor"}}}},
         {"if": {"properties": {"op": {"const": "list"}}}, "then": {"required": ["delimiter_base64"]}},
-        {"if": {"properties": {"op": {"const": "validate"}}}, "then": {"required": ["level"]}}
+        {"if": {"properties": {"op": {"const": "validate"}}}, "then": {"required": ["level"]}},
+        {"if": {"properties": {"op": {"const": "plan"}}}, "then": {"required": ["ranges"], "not": {"anyOf": [{"required": ["limit"]},
+          {"required": ["start_base64"]}, {"required": ["end_base64"]}, {"required": ["prefix_base64"]}, {"required": ["after"]}]}}},
+        {"if": {"properties": {"op": {"not": {"const": "plan"}}}}, "then": {"not": {"required": ["ranges"]}}}
       ]
+    },
+    "planned_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One range of a plan request: the bounds and cursor of a range request, without limit or columns.",
+      "properties": {
+        "start_base64": {"$ref": "#/$defs/optb64"},
+        "start_exclusive": {"type": "boolean"},
+        "end_base64": {"$ref": "#/$defs/optb64"},
+        "prefix_base64": {"$ref": "#/$defs/b64"},
+        "after": {"$ref": "#/$defs/row_cursor"}
+      }
     },
     "expect": {
       "type": "object",
@@ -117,6 +141,10 @@
         "code": {"type": "string"},
         "codes": {"$ref": "#/$defs/codes"},
         "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+        "count": {"type": "integer", "minimum": 0, "description": "plan: the rows the plan selects"},
+        "count_exact": {"type": "boolean", "description": "plan: the exactness the answer must report; absent when it depends on which parts the access path checked"},
+        "projected_bytes": {"type": "integer", "minimum": 0, "description": "plan: the projected columns' page and dictionary bytes the scan requests"},
+        "projected_bytes_exact": {"type": "boolean", "description": "plan: false when a projected chunk the rows span has no OffsetIndex"},
         "accept_unsupported": {
           "description": "Optional features: an unsupported response with one of these codes also passes. Only with status ok.",
           "type": "array", "minItems": 1, "items": {"type": "string"}

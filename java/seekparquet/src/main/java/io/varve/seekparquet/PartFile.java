@@ -69,6 +69,8 @@ final class PartFile implements AutoCloseable {
     final int[] groups;
     /** The row count of each physical row group. */
     final long[] groupRows;
+    /** The part row of each physical row group's first row. */
+    final long[] groupStart;
     /** The projectable columns (COL-3) by name, the key included. */
     final Map<String, ColumnSpec> projectable;
     private final AtomicReferenceArray<KeyIndex> keyIndexes;
@@ -91,6 +93,10 @@ final class PartFile implements AutoCloseable {
         this.unique = unique;
         this.groups = groups;
         this.groupRows = groupRows;
+        this.groupStart = new long[groupRows.length];
+        for (int g = 1; g < groupRows.length; g++) {
+            groupStart[g] = groupStart[g - 1] + groupRows[g - 1];
+        }
         this.projectable = projectable;
         this.keyIndexes = new AtomicReferenceArray<>(groupRows.length);
         this.firstKeys = new AtomicReferenceArray<>(groupRows.length);
@@ -124,6 +130,7 @@ final class PartFile implements AutoCloseable {
         } catch (IOException e) {
             throw new StorageException("open part " + entry.path(), e);
         }
+        ctx.stats.partsOpened++;
         try {
             return open(source, manifest, ordinal, entry, ctx, indexMemory);
         } catch (RuntimeException | Error e) {
@@ -391,6 +398,8 @@ final class PartFile implements AutoCloseable {
 
     private static ByteBuffer read(PartSource source, String name, long position, int length, ReadContext ctx) {
         ctx.checkCancelled();
+        ctx.stats.sourceReads++;
+        ctx.stats.sourceBytes += length;
         try {
             ByteBuffer b = source.read(position, length, ctx.cancellation);
             if (b.remaining() != length) {
@@ -443,6 +452,7 @@ final class PartFile implements AutoCloseable {
     KeyIndex keyIndex(int physical, ReadContext ctx) {
         KeyIndex index = keyIndexes.get(physical);
         if (index != null) {
+            ctx.stats.rowGroupsOpened++;
             return index;
         }
         String where = "row group " + physical + ": ";
@@ -483,10 +493,13 @@ final class PartFile implements AutoCloseable {
         synchronized (indexMemory) {
             KeyIndex previous = keyIndexes.get(physical);
             if (previous != null) {
+                ctx.stats.rowGroupsOpened++;
                 return previous;
             }
             indexMemory.reserve(index.memoryBytes());
             keyIndexes.set(physical, index);
+            ctx.stats.rowGroupsOpened++;
+            ctx.stats.indexLoads++;
             return index;
         }
     }
@@ -569,6 +582,8 @@ final class PartFile implements AutoCloseable {
             throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + "the page holds " + rows + " rows, its OffsetIndex entry " + index.rows[page]);
         }
         ColumnPage decoded = decode(physical, keySpec, header, ByteBuffer.wrap(raw, headerLength, sz - headerLength), ctx, where);
+        ctx.stats.keyPagesDecoded++;
+        ctx.stats.keysDecoded += decoded.rows;
         if (decoded.rows != rows) {
             throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + "the page holds " + decoded.rows + " keys, its OffsetIndex entry " + rows);
         }
@@ -616,21 +631,42 @@ final class PartFile implements AutoCloseable {
         }
         ColumnMetaData md = rowGroup(physical).getColumns().get(col.leaf()).getMeta_data();
         long[] range = chunkRange(md);
-        long at = md.isSetDictionary_page_offset() && md.getDictionary_page_offset() > 0 ? md.getDictionary_page_offset() : md.getData_page_offset();
-        if (at < range[0] || at >= range[1]) {
-            throw new DataException("the dictionary page lies outside its column chunk");
+        ByteBuffer body;
+        PageHeader header;
+        Optional<ValueIndex> located = col.leaf() == keyLeaf ? null : valueIndexes.get(((long) physical << 32) | col.leaf());
+        long extent = located == null || located.isEmpty() ? 0 : dictionaryBytes(physical, col.leaf(), located.get());
+        if (extent > 0) {
+            // The OffsetIndex locates the first data page: what precedes it is the dictionary, read at once.
+            checkPageSize(extent, ctx);
+            byte[] raw = readBytes(range[0], (int) extent, ctx);
+            Thrift.Decoded<PageHeader> h = Thrift.pageHeader(raw, 0, raw.length);
+            header = h.value();
+            if (header.getType() != PageType.DICTIONARY_PAGE) {
+                throw new DataException("the column chunk has no dictionary page");
+            }
+            int compressed = header.getCompressed_page_size();
+            if (compressed < 0 || (long) h.length() + compressed > extent) {
+                throw new DataException("the dictionary page overlaps the first data page");
+            }
+            body = ByteBuffer.wrap(raw, h.length(), compressed);
+        } else {
+            long at = md.isSetDictionary_page_offset() && md.getDictionary_page_offset() > 0 ? md.getDictionary_page_offset() : md.getData_page_offset();
+            if (at < range[0] || at >= range[1]) {
+                throw new DataException("the dictionary page lies outside its column chunk");
+            }
+            Header h = header(at, range[1], ctx);
+            header = h.header;
+            if (header.getType() != PageType.DICTIONARY_PAGE) {
+                throw new DataException("the column chunk has no dictionary page");
+            }
+            int compressed = header.getCompressed_page_size();
+            if (compressed < 0 || at + h.length + compressed > range[1]) {
+                throw new DataException("the dictionary page overruns its column chunk");
+            }
+            checkPageSize(compressed, ctx);
+            body = ByteBuffer.wrap(readBytes(at + h.length, compressed, ctx));
         }
-        Header h = header(at, range[1], ctx);
-        if (h.header.getType() != PageType.DICTIONARY_PAGE) {
-            throw new DataException("the column chunk has no dictionary page");
-        }
-        int compressed = h.header.getCompressed_page_size();
-        if (compressed < 0 || at + h.length + compressed > range[1]) {
-            throw new DataException("the dictionary page overruns its column chunk");
-        }
-        checkPageSize(compressed, ctx);
-        byte[] body = readBytes(at + h.length, compressed, ctx);
-        d = PageDecoder.decodeDictionary(h.header, ByteBuffer.wrap(body), col, md.getCodec(), ctx.limits, "part " + name);
+        d = PageDecoder.decodeDictionary(header, body, col, md.getCodec(), ctx.limits, "part " + name);
         ctx.putDictionary(key, d);
         return d;
     }
@@ -655,8 +691,21 @@ final class PartFile implements AutoCloseable {
         throw new DataException("no page header at offset " + at);
     }
 
+    /**
+     * {@return the extent of a value column chunk's dictionary page: the bytes from the chunk's start to
+     * the first data page its OffsetIndex locates, 0 when the chunk has no dictionary}
+     */
+    long dictionaryBytes(int physical, int leaf, ValueIndex index) {
+        return index.offset[0] - chunkRange(rowGroup(physical).getColumns().get(leaf).getMeta_data())[0];
+    }
+
+    /** Refuses a value column chunk whose codec this reader does not decode, before any page is read. */
+    void checkCodec(int physical, int leaf) {
+        Codecs.checkSupported(rowGroup(physical).getColumns().get(leaf).getMeta_data().getCodec(), "part " + name);
+    }
+
     /** {@return the checked OffsetIndex of a value column chunk, or empty when it has none (COL-4)} */
-    private Optional<ValueIndex> valueIndex(int physical, int leaf, ReadContext ctx) {
+    Optional<ValueIndex> valueIndex(int physical, int leaf, ReadContext ctx) {
         long cacheKey = ((long) physical << 32) | leaf;
         Optional<ValueIndex> cached = valueIndexes.get(cacheKey);
         if (cached != null) {
@@ -715,6 +764,13 @@ final class PartFile implements AutoCloseable {
         Optional<ValueIndex> index = valueIndex(physical, col.leaf(), ctx);
         if (index.isPresent()) {
             ValueIndex vi = index.get();
+            if (ctx.planned && ctx.dictionary(key) == null && dictionaryBytes(physical, col.leaf(), vi) > 0) {
+                try {
+                    dictionary(physical, col, ctx);
+                } catch (DataException e) {
+                    throw refuse(RefusalCode.INVALID_PARQUET, where + e.getMessage());
+                }
+            }
             int p = vi.pageOf(row);
             int sz = vi.size[p];
             checkPageSize(sz, ctx);
@@ -733,6 +789,7 @@ final class PartFile implements AutoCloseable {
             }
             long want = vi.rowsOf(p, groupRowCount);
             ColumnPage decoded = decode(physical, col, header, ByteBuffer.wrap(raw, headerLength, sz - headerLength), ctx, where);
+            ctx.stats.valuePagesDecoded++;
             if (decoded.rows != want) {
                 throw refuse(RefusalCode.INVALID_PARQUET, where + "page " + p + " holds " + decoded.rows + " values for " + want + " rows");
             }
@@ -767,6 +824,7 @@ final class PartFile implements AutoCloseable {
                         checkPageSize(compressed, ctx);
                         byte[] body = readBytes(at + h.length, compressed, ctx);
                         ColumnPage decoded = decode(physical, col, h.header, ByteBuffer.wrap(body), ctx, where);
+                        ctx.stats.valuePagesDecoded++;
                         if (decoded.rows != rows) {
                             throw new DataException("a page holds " + decoded.rows + " values for " + rows + " rows");
                         }

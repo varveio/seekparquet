@@ -17,6 +17,13 @@ final class ReadContext {
 
     final Cancellation cancellation;
     final Limits limits;
+    /** What the request has read so far (shared by the contexts of one request). */
+    final ReadStats.Counter stats;
+    /**
+     * Whether value pages are read for a {@link RangePlan} scan: a chunk's dictionary is read before its
+     * first page, in the one read {@link RangePlan#projectedBytes()} counted.
+     */
+    final boolean planned;
     private final Map<ChunkKey, Dictionary> dictionaries = new HashMap<>();
     private final Map<ChunkKey, DecodedPage> valuePages = new HashMap<>();
     private final Map<ChunkKey, long[]> sequential = new HashMap<>();
@@ -69,8 +76,22 @@ final class ReadContext {
     }
 
     ReadContext(Cancellation cancellation, Limits limits) {
+        this(cancellation, limits, new ReadStats.Counter(), false);
+    }
+
+    private ReadContext(Cancellation cancellation, Limits limits, ReadStats.Counter stats, boolean planned) {
         this.cancellation = cancellation;
         this.limits = limits;
+        this.stats = stats;
+        this.planned = planned;
+    }
+
+    /**
+     * {@return a context of the same request for a plan's value columns} Its row-group caches are its
+     * own, so that the key cursor's routing probes do not drop a chunk's dictionary or current page.
+     */
+    ReadContext forPlannedValues() {
+        return new ReadContext(cancellation, limits, stats, true);
     }
 
     void checkCancelled() {

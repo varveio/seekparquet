@@ -4,18 +4,23 @@
 package io.varve.seekparquet;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
- * A top-level column of a dataset, as its parts declare it. COL-5 makes the declaration the same in
- * every part that has the column.
+ * A top-level column of a dataset, as its parts declare it. COL-5 makes the physical declaration (type,
+ * type length, repetition, nesting) the same in every part that has the column; logical annotations are
+ * not compared, so they may differ between parts.
  *
  * @param name the top-level field name (a {@code .} in it is a literal character)
  * @param type the physical type, or {@link Type#GROUP} for a nested column
  * @param typeLength the type length of a {@code FIXED_LEN_BYTE_ARRAY} column, 0 otherwise
+ * @param logicalType the logical type of a leaf column: its {@code logical_type}, or else its legacy
+ *     {@code converted_type} normalized into one (INTERVAL has none); always empty for a group
  * @param repetition the field's repetition
- * @param parts how many parts have the column
+ * @param key whether it is the dataset's key column
+ * @param parts how many of the parts described have the column: 1 from {@link Dataset#columns(int)}
  */
-public record Column(String name, Type type, int typeLength, Repetition repetition, int parts) {
+public record Column(String name, Type type, int typeLength, Optional<LogicalType> logicalType, Repetition repetition, boolean key, int parts) {
 
     /**
      * Creates a column description.
@@ -23,12 +28,15 @@ public record Column(String name, Type type, int typeLength, Repetition repetiti
      * @param name the name
      * @param type the physical type
      * @param typeLength the type length
+     * @param logicalType the logical type
      * @param repetition the repetition
+     * @param key whether it is the key column
      * @param parts the number of parts with the column
      */
     public Column {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(type, "type");
+        Objects.requireNonNull(logicalType, "logicalType");
         Objects.requireNonNull(repetition, "repetition");
     }
 

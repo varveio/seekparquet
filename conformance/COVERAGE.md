@@ -165,9 +165,9 @@ No case. gap: no encrypted fixture yet.
 
 ## KEY-7
 
-- Evidence: 454 positive, 2 negative.
+- Evidence: 465 positive, 2 negative.
 - Core: `repeated/core/seek-group-start`, `repeated/core/lookup-whole-group`, `repeated/core/resume-inside-group`, `repeated/core/resume-across-part`, `repeated/core/exclusive-whole-group` and 6 more
-- Generated: `repeated/boundaries` (84), `repeated/cursor-every-row` (48), `repeated/pagination` (312), `validate-structural/fault-at-lowest-level` (1)
+- Generated: `planning/plan` (11), `repeated/boundaries` (84), `repeated/cursor-every-row` (48), `repeated/pagination` (312), `validate-structural/fault-at-lowest-level` (1)
 
 ## KEY-4
 
@@ -230,9 +230,9 @@ No case. producer freedom: no reader obligation.
 
 ## COL-2
 
-- Evidence: 9 positive, 0 negative.
+- Evidence: 10 positive, 0 negative.
 - Core: `projection/column/f64`, `projection/columns/span-parts`, `projection/columns/absent-mix`
-- Generated: `projection/column-combination` (4), `projection/column-type` (2)
+- Generated: `planning/plan` (1), `projection/column-combination` (4), `projection/column-type` (2)
 
 ## COL-3
 
@@ -243,8 +243,8 @@ No case. producer freedom: no reader obligation.
 
 ## COL-4
 
-- Evidence: 13 positive, 0 negative.
-- Generated: `range/seek-with-columns` (12), `range/whole-dataset` (1)
+- Evidence: 14 positive, 0 negative.
+- Generated: `planning/plan` (1), `range/seek-with-columns` (12), `range/whole-dataset` (1)
 
 ## COL-5
 
@@ -286,9 +286,9 @@ No case. writer's choice: not a reader obligation.
 
 ## ENC-1
 
-- Evidence: 37 positive, 0 negative.
+- Evidence: 41 positive, 0 negative.
 - Core: `open/multipart`, `open/optional-codecs`, `projection/optional-codecs/lz4col`
-- Generated: `open/valid-dataset` (1), `projection/encodings` (3), `projection/optional-codec` (2), `projection/other-datasets` (1), `range/seek-with-columns` (24), `range/whole-dataset` (2), `validate-full/valid-dataset` (1)
+- Generated: `open/valid-dataset` (1), `planning/plan` (4), `projection/encodings` (3), `projection/optional-codec` (2), `projection/other-datasets` (1), `range/seek-with-columns` (24), `range/whole-dataset` (2), `validate-full/valid-dataset` (1)
 
 ## QUERY-1
 
@@ -298,9 +298,9 @@ No case. writer's choice: not a reader obligation.
 
 ## QUERY-2
 
-- Evidence: 7 positive, 0 negative.
+- Evidence: 8 positive, 0 negative.
 - Core: `prefix/multipart/07`, `range/basic/empty-start`, `range/basic/empty-end`
-- Generated: `list/bounds-and-after` (2), `prefix/prefix-with-bounds` (1), `range/bounds` (1)
+- Generated: `list/bounds-and-after` (2), `planning/plan` (1), `prefix/prefix-with-bounds` (1), `range/bounds` (1)
 
 ## QUERY-3
 
@@ -310,15 +310,15 @@ No case. writer's choice: not a reader obligation.
 
 ## RANGE-1
 
-- Evidence: 728 positive, 0 negative.
+- Evidence: 756 positive, 0 negative.
 - Core: `open/empty-range`, `prefix/multipart/00`, `prefix/multipart/07`, `prefix/binary-keys/04`, `prefix/binary-keys/09` and 33 more
-- Generated: `pagination/range-scenario` (25), `prefix/prefix-only` (31), `prefix/prefix-with-bounds` (12), `range/boundary-page` (100), `range/boundary-part` (32), `range/boundary-row-group` (52), `range/bounds` (11), `range/end-at-key` (46), `range/seek-key` (135), `range/seek-with-columns` (77), `range/start-just-above-key` (75), `range/whole-dataset` (10), `repeated/boundaries` (84)
+- Generated: `pagination/range-scenario` (25), `planning/plan` (28), `prefix/prefix-only` (31), `prefix/prefix-with-bounds` (12), `range/boundary-page` (100), `range/boundary-part` (32), `range/boundary-row-group` (52), `range/bounds` (11), `range/end-at-key` (46), `range/seek-key` (135), `range/seek-with-columns` (77), `range/start-just-above-key` (75), `range/whole-dataset` (10), `repeated/boundaries` (84)
 
 ## RANGE-2
 
-- Evidence: 100 positive, 0 negative.
+- Evidence: 126 positive, 0 negative.
 - Core: `projection/column/f32`, `projection/column/f64`, `projection/column/u32`, `projection/column/u64`, `projection/column/a.b` and 11 more
-- Generated: `list/delimiter-semantics` (2), `list/other-datasets` (1), `projection/absent-and-unknown` (1), `projection/annotated` (6), `projection/column-combination` (4), `projection/column-type` (7), `projection/encodings` (3), `projection/key-column` (7), `projection/optional-codec` (2), `projection/other-datasets` (2), `range/bounds` (1), `range/seek-with-columns` (44), `range/whole-dataset` (4)
+- Generated: `list/delimiter-semantics` (2), `list/other-datasets` (1), `planning/plan` (26), `projection/absent-and-unknown` (1), `projection/annotated` (6), `projection/column-combination` (4), `projection/column-type` (7), `projection/encodings` (3), `projection/key-column` (7), `projection/optional-codec` (2), `projection/other-datasets` (2), `range/bounds` (1), `range/seek-with-columns` (44), `range/whole-dataset` (4)
 
 ## LIST-2
 
@@ -358,9 +358,9 @@ No case. writer's choice: not a reader obligation.
 
 ## PAGE-1
 
-- Evidence: 447 positive, 8 negative.
+- Evidence: 458 positive, 8 negative.
 - Core: `list/delimiter/after-inside-prefix`, `list/delimiter/after-inside-prefix-continuation`, `list/exact/row-cursor-inside-prefix`, `pagination/list/list-bounds/root-2f-limit1/page-00`, `pagination/list/list-bounds/root-2f-limit1/page-01` and 21 more
-- Generated: `list/bounds-and-after` (6), `pagination/list-scenario` (56), `repeated/cursor-every-row` (48), `repeated/invalid-cursors` (7), `repeated/pagination` (312)
+- Generated: `list/bounds-and-after` (6), `pagination/list-scenario` (56), `planning/plan` (11), `repeated/cursor-every-row` (48), `repeated/invalid-cursors` (7), `repeated/pagination` (312)
 
 ## LIST-6
 
