@@ -187,6 +187,54 @@ final class KeyCursor {
     }
 
     /**
+     * Moves to the row at dataset ordinal {@code ordinal}, below the dataset's row count, through the
+     * OffsetIndex row positions: it decodes the one key page holding the row, unless it is the page
+     * decoded last. The row must begin its group of equal keys (or keys be unique): its offset is
+     * counted from it. {@return false when the ordinal is past the dataset's rows}
+     */
+    boolean seekOrdinal(long ordinal) {
+        int p = parts.partAt(ordinal);
+        if (p >= parts.size()) {
+            return exhaust(p);
+        }
+        if (p != part) {
+            pf = parts.get(p, ctx);
+            part = p;
+            index = null;
+        }
+        long r = ordinal - parts.start(p);
+        int lo = 0;
+        int hi = pf.groups.length - 1;
+        while (lo < hi) {
+            int mid = (lo + hi + 1) >>> 1;
+            if (pf.groupStart[pf.groups[mid]] <= r) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        if (index == null || lo != slot) {
+            slot = lo;
+            physical = pf.groups[lo];
+            index = pf.keyIndex(physical, ctx);
+        }
+        long row = r - pf.groupStart[physical];
+        int pg = index.pageAt(row);
+        if (keys == null || decodedPart != part || decodedSlot != slot || decodedPage != pg) {
+            load(pg);
+        }
+        page = pg;
+        pos = (int) (row - index.firstRow[pg]);
+        offsets[pos] = 0;
+        for (int i = pos + 1; i < keys.length; i++) {
+            offsets[i] = Arrays.equals(keys[i - 1], keys[i]) ? offsets[i - 1] + 1 : 0;
+        }
+        tailOffset = offsets[offsets.length - 1];
+        exhausted = false;
+        return true;
+    }
+
+    /**
      * Skips a row continuation after seek has found the group's first row. Its logical offset
      * becomes a physical row displacement. A stale/oversized offset may land after the group;
      * in that case re-seek strictly after the key rather than skipping unrelated rows.

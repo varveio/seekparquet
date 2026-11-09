@@ -5,7 +5,8 @@ package io.varve.seekparquet;
 
 /**
  * The work of one range or list request, one {@link Dataset#planRanges planning} ({@link
- * RangePlan#stats()}) or one {@link RangePlan#scan scan}. Pass a consumer to the request to receive
+ * RangePlan#stats()}), the placing of one shard's end by {@link RangePlan#split split}, or one {@link
+ * RangePlan#scan scan}. Pass a consumer to the request to receive
  * it: the counts are exact for the request and are delivered whether it succeeds or fails, up to the
  * point it stopped.
  *
@@ -59,6 +60,14 @@ public record ReadStats(
 
     /** Zero counts: a request that failed before it read. */
     static final ReadStats NONE = new ReadStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+    /** {@return the counts beyond {@code o}, for a request that reports the reads of its steps apart} */
+    ReadStats minus(ReadStats o) {
+        return new ReadStats(partsOpened - o.partsOpened, keyPagesDecoded - o.keyPagesDecoded, valuePagesDecoded - o.valuePagesDecoded,
+                keysDecoded - o.keysDecoded, rowGroupsOpened - o.rowGroupsOpened, indexLoads - o.indexLoads,
+                pageIndexSeeks - o.pageIndexSeeks, prefixSkips - o.prefixSkips, groupsSkipped - o.groupsSkipped,
+                sourceReads - o.sourceReads, sourceBytes - o.sourceBytes);
+    }
 
     /** The counts of a request in progress. Confined to the request's thread. */
     static final class Counter {
