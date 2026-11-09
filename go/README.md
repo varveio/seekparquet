@@ -263,8 +263,8 @@ dictionary only for a page that uses it.
 `plan.Split(ctx, n)` divides a plan into at most `n` shards for a whole scan on several cores: each shard is a
 `RangePlan` over consecutive rows of the plan, and the shards' `Scan`s, run on the caller's goroutines with
 their own `ReadStats`, together yield the plan's rows, each once, shard by shard in dataset order. Boundaries
-fall at the first row of a row group and balance `ProjectedBytes` when the plan's bytes are exact, else the row
-count; in repeated-key mode a boundary never divides a group of equal keys, and moves past a group that
+fall at a selected row that begins a row group and balance `ProjectedBytes` when the plan's bytes are exact,
+else the row count; in repeated-key mode a boundary never divides a group of equal keys, and moves past a group that
 continues from the row group before, after decoding the two key pages around it (unique keys need no read).
 The shards' counts and projected bytes add up to the plan's, since each row group's pages and dictionaries
 belong to one shard. Splitting is a convenience of this reader, not part of the format or the conformance

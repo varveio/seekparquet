@@ -348,3 +348,140 @@ func TestSplitRequests(t *testing.T) {
 		t.Fatalf("a split after close: %v", err)
 	}
 }
+
+// hookSource calls hook, when set, before every read of a part file.
+type hookSource struct {
+	Source
+	hook func()
+}
+
+type hookFile struct {
+	SourceFile
+	owner *hookSource
+}
+
+func (s *hookSource) Open(c context.Context, path string) (SourceFile, error) {
+	f, err := s.Source.Open(c, path)
+	if err != nil {
+		return nil, err
+	}
+	return hookFile{f, s}, nil
+}
+
+func (f hookFile) ReadAt(p []byte, off int64) (int, error) {
+	if f.owner.hook != nil {
+		f.owner.hook()
+	}
+	return f.SourceFile.ReadAt(p, off)
+}
+
+// boundaryDataset is one repeated-key part of four row groups of 20
+// distinct keys, two key pages each, and a plan of every row without
+// columns.
+func boundaryDataset(t *testing.T) string {
+	t.Helper()
+	keys := make([]string, 80)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("k%03d/%s", i, strings.Repeat("x", 40))
+	}
+	doc := parts(testutil.Part{GroupRows: 20, PageBytes: 512}, keys)
+	doc.RepeatedKeys = true
+	dir := write(t, doc)
+	d := open(t, dir, Options{})
+	p, err := d.r.part(ctx, 0, new(ReadStats))
+	must(t, err)
+	for _, grp := range p.groups {
+		index, err := p.keyIndex(ctx, grp.physical, new(ReadStats))
+		must(t, err)
+		if len(p.groups) != 4 || len(index.pages) != 2 {
+			t.Fatalf("%d row groups, one of %d key pages", len(p.groups), len(index.pages))
+		}
+	}
+	return dir
+}
+
+// TestSplitBoundaryStats: each shard's Stats are exactly the key pages
+// that placed its end, the last page of its last row group and the first
+// of the next, though one scan places every boundary.
+func TestSplitBoundaryStats(t *testing.T) {
+	d := open(t, boundaryDataset(t), Options{})
+	plan, err := d.PlanRanges(ctx, []Range{{}}, nil)
+	must(t, err)
+	shards, err := plan.Split(ctx, 4)
+	must(t, err)
+	var got []int64
+	for _, shard := range shards {
+		got = append(got, shard.Stats().KeyPagesDecoded)
+	}
+	if !slices.Equal(got, []int64{2, 2, 2, 0}) {
+		t.Fatalf("key pages decoded per shard: %v", got)
+	}
+}
+
+// TestSplitDisjointRanges: a boundary is a selected row that begins a row
+// group, never one between two ranges.
+func TestSplitDisjointRanges(t *testing.T) {
+	keys := fixtureKeys(300)
+	d := open(t, write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 256}, keys)), Options{})
+	between := func(a, b int) Range { return Range{Start: []byte(keys[a]), End: []byte(keys[b])} }
+	plan, err := d.PlanRanges(ctx, []Range{between(10, 20), between(210, 220)}, nil)
+	must(t, err)
+	if shards, err := plan.Split(ctx, 2); err != nil || len(shards) != 1 {
+		t.Fatalf("no row group begins inside the ranges: %d shards, %v", len(shards), err)
+	}
+	plan, err = d.PlanRanges(ctx, []Range{between(10, 20), between(100, 110)}, nil)
+	must(t, err)
+	shards, err := plan.Split(ctx, 2)
+	must(t, err)
+	if len(shards) != 2 || shards[1].spans[0].start != 100 || shards[1].spans[0].ordinal {
+		t.Fatalf("row group 1 begins the second range: %d shards", len(shards))
+	}
+	for i, shard := range shards {
+		if _, k := scanShard(t, shard, nil); len(k) != 10 || !bytes.Equal(k[0], []byte(keys[10+90*i])) {
+			t.Fatalf("shard %d: %d rows from %q", i, len(k), k[0])
+		}
+	}
+}
+
+// TestSplitInterrupted: a split cancelled while it reads a boundary's key
+// page fails, and the same split then succeeds; a key page refused at a
+// boundary fails the split with its refusal.
+func TestSplitInterrupted(t *testing.T) {
+	dir := boundaryDataset(t)
+	src := &hookSource{Source: dirOf(t, dir)}
+	d, err := OpenDataset(ctx, src, Options{})
+	must(t, err)
+	defer d.Close()
+	plan, err := d.PlanRanges(ctx, []Range{{}}, nil)
+	must(t, err)
+	cancelled, cancel := context.WithCancel(ctx)
+	src.hook = cancel
+	if _, err := plan.Split(cancelled, 4); !errors.Is(err, context.Canceled) {
+		t.Fatalf("a split cancelled during a read: %v", err)
+	}
+	src.hook = nil
+	shards, err := plan.Split(ctx, 4)
+	must(t, err)
+	for i, shard := range shards {
+		if n, exact := shard.Count(); n != 20 || !exact || len(shards) != 4 {
+			t.Fatalf("after a cancelled split, shard %d of %d counts %d", i, len(shards), n)
+		}
+	}
+
+	d0 := open(t, dir, Options{})
+	p, err := d0.r.part(ctx, 0, new(ReadStats))
+	must(t, err)
+	index, err := p.keyIndex(ctx, p.groups[1].physical, new(ReadStats))
+	must(t, err)
+	f, err := os.OpenFile(partFile(dir, 0), os.O_WRONLY, 0)
+	must(t, err)
+	_, err = f.WriteAt(make([]byte, index.pages[0].size), index.pages[0].offset)
+	must(t, errors.Join(err, f.Close()))
+	broken := open(t, dir, Options{})
+	plan, err = broken.PlanRanges(ctx, []Range{{}}, nil)
+	must(t, err)
+	var refusal *RefusalError
+	if _, err := plan.Split(ctx, 4); !errors.As(err, &refusal) {
+		t.Fatalf("a refused boundary key page: %v", err)
+	}
+}

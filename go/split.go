@@ -17,9 +17,9 @@ import (
 // rows, or n below 1, has no shard; a plan with fewer row groups than n
 // has fewer shards.
 //
-// A boundary between two shards is the first row of a row group of the
-// plan (or of a part no read has checked yet, whose row groups are not
-// known), never inside a group of equal keys: when keys are not unique and
+// A boundary between two shards is a selected row that is the first row
+// of a row group (or of a part no read has checked yet, whose row groups
+// are not known), never inside a group of equal keys: when keys are not unique and
 // a group continues from the row group before, the boundary moves to the
 // next row group that begins a group. The first shard begins and the last
 // ends where the plan does, at its ranges' bounds and cursors. Boundaries
@@ -64,7 +64,7 @@ func (plan *RangePlan) Split(ctx context.Context, n int) (_ []*RangePlan, err er
 			hi = cuts[i]
 		}
 		shard := plan.shard(lo, hi)
-		shard.stats = *stats[i]
+		shard.stats = stats[i]
 		shards = append(shards, shard)
 		lo = hi
 	}
@@ -74,23 +74,23 @@ func (plan *RangePlan) Split(ctx context.Context, n int) (_ []*RangePlan, err er
 // cuts returns at most n-1 shard boundaries, ascending dataset ordinals
 // each with rows of the plan on both sides, and the read statistics of the
 // shards they divide the plan into.
-func (plan *RangePlan) cuts(ctx context.Context, n int) ([]int64, []*ReadStats, error) {
+func (plan *RangePlan) cuts(ctx context.Context, n int) ([]int64, []ReadStats, error) {
 	r, spans := plan.r, plan.spans
-	first, last := spans[0].start, spans[len(spans)-1].end
-	// The candidates are the row groups' first rows, or a part's first row
-	// when no read has checked it, with rows of the plan on both sides.
+	first := spans[0].start
+	// The candidates are the selected rows that begin a row group, or a
+	// part no read has checked, after the plan's first row.
 	var candidates []int64
-	for i := r.partAt(first); i < len(r.parts) && r.parts[i].start < last; i++ {
-		p := r.parts[i]
-		if !p.ready.Load() {
-			if p.start > first {
-				candidates = append(candidates, p.start)
+	for _, sp := range spans {
+		for i := r.partAt(sp.start); i < len(r.parts) && r.parts[i].start < sp.end; i++ {
+			p := r.parts[i]
+			if !p.ready.Load() {
+				if p.start > first && p.start >= sp.start {
+					candidates = append(candidates, p.start)
+				}
+				continue
 			}
-			continue
-		}
-		for _, grp := range p.groups {
-			if grp.start > first && grp.start < last {
-				candidates = append(candidates, grp.start)
+			for j := sort.Search(len(p.groups), func(j int) bool { return p.groups[j].start >= max(sp.start, first+1) }); j < len(p.groups) && p.groups[j].start < sp.end; j++ {
+				candidates = append(candidates, p.groups[j].start)
 			}
 		}
 	}
@@ -134,10 +134,13 @@ func (plan *RangePlan) cuts(ctx context.Context, n int) ([]int64, []*ReadStats, 
 	}
 	// Each boundary inside a group of equal keys moves to the next
 	// candidate that is not, before the next boundary, or is dropped. The
-	// reads of placing a boundary are the stats of the shard it ends.
+	// reads of placing a boundary are the stats of the shard it ends: one
+	// scan counts them all, and each accepted boundary takes the reads
+	// since the one before.
 	cuts := make([]int64, 0, len(chosen))
-	stats := []*ReadStats{new(ReadStats)}
-	s := r.newScan(ctx, nil, stats[0])
+	stats := make([]ReadStats, 0, len(chosen)+1)
+	var all, mark ReadStats
+	s := r.newScan(ctx, nil, &all)
 	for i, j := range chosen {
 		next := len(candidates)
 		if i+1 < len(chosen) {
@@ -155,10 +158,11 @@ func (plan *RangePlan) cuts(ctx context.Context, n int) ([]int64, []*ReadStats, 
 		}
 		if before(j) {
 			cuts = append(cuts, candidates[j])
-			stats = append(stats, new(ReadStats))
-			s.stats = stats[len(stats)-1]
+			stats = append(stats, all.minus(mark))
+			mark = all
 		}
 	}
+	stats = append(stats, all.minus(mark))
 	return cuts, stats, nil
 }
 
