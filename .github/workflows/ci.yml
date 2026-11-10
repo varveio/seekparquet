@@ -109,7 +109,7 @@ jobs:
           python conformance/harness/check_indexed_access.py --language go
       - name: Go-written datasets (reference adapter, Python and Go validators, DuckDB)
         run: |
-          python -m pip install duckdb==1.4.1
+          python -m pip install duckdb==1.4.5
           (cd go && go run ./internal/cmd/samples "$RUNNER_TEMP/samples")
           python conformance/harness/check_datasets.py --adapter "python conformance/harness/reference_adapter.py" "$RUNNER_TEMP/samples"
           python conformance/harness/check_datasets.py --adapter "python conformance/validator/validator_adapter.py" "$RUNNER_TEMP/samples"

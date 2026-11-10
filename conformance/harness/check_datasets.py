@@ -104,7 +104,8 @@ def check_duckdb(duckdb, root, manifest):
 
 
 def protocol_value(physical, v):
-    """Encodes a source value as the adapter protocol does (protocol.md): by its physical type."""
+    """Encodes a source value, already in its physical form (see physical_values), as the adapter protocol
+    does (protocol.md)."""
     if v is None:
         return {"null": True}
     if physical == "BOOLEAN":
@@ -112,11 +113,49 @@ def protocol_value(physical, v):
     if physical in ("INT32", "INT64"):
         return {"int": str(v)}
     if physical == "FLOAT":
-        return {"float32": format(struct.unpack("<I", struct.pack("<f", v))[0], "08x")}
+        return {"float32": format(v, "08x")}
     if physical == "DOUBLE":
-        return {"float64": format(struct.unpack("<Q", struct.pack("<d", v))[0], "016x")}
+        return {"float64": format(v, "016x")}
+    return {"bytes_base64": b64(v)}
+
+
+def physical_values(column, physical, type_length):
+    """Returns a PyArrow column's values in their physical form, the form the protocol reports (protocol.md:
+    annotations are ignored): floating-point values as their exact bits (read through an integer view, so
+    that a NaN keeps its payload), dates, times, timestamps, unsigned and small integers as the signed
+    INT32 or INT64 they are stored as, decimals as their unscaled integer or big-endian bytes, strings as
+    their UTF-8 bytes. A type it cannot map exits rather than expect a wrong answer."""
+    import pyarrow as pa  # noqa: PLC0415
+    import pyarrow.types as pt  # noqa: PLC0415
+
+    column = column.combine_chunks() if hasattr(column, "combine_chunks") else column
+    if isinstance(column.type, pa.ExtensionType):
+        column = column.storage
+    t = column.type
+    if physical == "BOOLEAN":
+        return column.to_pylist()
+    if physical in ("FLOAT", "DOUBLE"):
+        if pt.is_float16(t):
+            raise SystemExit("a FLOAT16 column: not mapped by this check")
+        return column.view(pa.uint32() if physical == "FLOAT" else pa.uint64()).to_pylist()
+    if physical in ("INT32", "INT64"):
+        signed = pa.int32() if physical == "INT32" else pa.int64()
+        if pt.is_decimal(t):
+            return [None if v is None else int(v.scaleb(t.scale)) for v in column.to_pylist()]
+        if pt.is_integer(t) and t.bit_width == signed.bit_width:
+            return column.view(signed).to_pylist()  # unsigned: the stored two's complement
+        if pt.is_integer(t):
+            return column.cast(signed).to_pylist()  # 8 and 16 bits fit
+        if pt.is_temporal(t) and t.bit_width == signed.bit_width:
+            return column.view(signed).to_pylist()  # dates, times, timestamps: their stored count
+        raise SystemExit(f"a {physical} column read as {t}: not mapped by this check")
     if physical in ("BYTE_ARRAY", "FIXED_LEN_BYTE_ARRAY"):
-        return {"bytes_base64": b64(v.encode() if isinstance(v, str) else bytes(v))}
+        if pt.is_decimal(t):
+            if physical != "FIXED_LEN_BYTE_ARRAY":
+                raise SystemExit("a BYTE_ARRAY decimal: its stored width is not recoverable by this check")
+            return [None if v is None else int(v.scaleb(t.scale)).to_bytes(type_length, "big", signed=True)
+                    for v in column.to_pylist()]
+        return [None if v is None else v.encode() if isinstance(v, str) else bytes(v) for v in column.to_pylist()]
     raise SystemExit(f"a {physical} column: not a type the reader target projects")
 
 
@@ -125,25 +164,32 @@ def b64(b):
 
 
 def source_rows(root, manifest):
-    """Reads every part with PyArrow, in manifest order: the value columns, and every row's key and
-    projected values."""
+    """Reads every part with PyArrow, in manifest order: the value columns of all parts, in the order they
+    first appear, and every row's key and values, a column its part lacks reported absent (COL-2)."""
     import pyarrow.parquet as pq  # noqa: PLC0415
 
     key_column = manifest["key"]["column"]
-    columns, keys, values = None, [], []
+    columns, keys, parts = [], [], []
     for part in manifest["parts"]:
         f = pq.ParquetFile(root / part["path"])
-        physical = {f.schema.column(i).path: f.schema.column(i).physical_type for i in range(len(f.schema))}
-        names = [n for n in f.schema_arrow.names if n != key_column]
-        if columns is None:
-            columns = names
-        elif names != columns:
-            raise SystemExit(f"{part['path']}: columns {names}, the first part's {columns}")
-        table = f.read().to_pydict()
-        for i, key in enumerate(table[key_column]):
-            keys.append(key.encode() if isinstance(key, str) else bytes(key))
-            values.append([protocol_value(physical[n], table[n][i]) for n in names])
-    return columns or [], keys, values
+        leaves = {f.schema.column(i).path: f.schema.column(i) for i in range(len(f.schema))}
+        table = f.read()
+        values = {}
+        for name in table.column_names:
+            if name == key_column:
+                continue
+            if name not in columns:
+                columns.append(name)
+            leaf = leaves[name]
+            values[name] = [protocol_value(leaf.physical_type, v)
+                            for v in physical_values(table.column(name), leaf.physical_type, leaf.length)]
+        parts.append((table.num_rows, values))
+        keys += [k.encode() if isinstance(k, str) else bytes(k) for k in table.column(key_column).to_pylist()]
+    rows = []
+    for count, values in parts:
+        for i in range(count):
+            rows.append([values[name][i] if name in values else {"absent": True} for name in columns])
+    return columns, keys, rows
 
 
 def expected(keys, values, prefix=b"", start=None, exclusive=False, end=None, delimiter=None):
@@ -214,6 +260,13 @@ def check_reader(adapter, root, manifest):
             ("list", {"prefix_base64": b64(head), "delimiter_base64": b64(b"/")}, {"prefix": head, "delimiter": b"/"}),
             ("list", {"delimiter_base64": b64(b"/"), "end_base64": b64(hi)}, {"delimiter": b"/", "end": hi}),
         ]
+        # An end just above a rollup prefix, below every key under it: the end bounds the candidate keys,
+        # so the prefix is listed only if a key equal to it exists (LIST-7), not because the prefix itself
+        # is below the end.
+        under = next((k for k in keys if 0 <= k.find(b"/") < len(k) - 1), None)
+        if under is not None:
+            end = under[: under.find(b"/") + 1] + b"\x00"
+            queries.append(("list", {"delimiter_base64": b64(b"/"), "end_base64": b64(end)}, {"delimiter": b"/", "end": end}))
     problems = []
     for op, fields, model in queries:
         problem = paged(adapter, {"op": op, **base, **fields}, expected(keys, values, **model))
