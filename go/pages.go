@@ -186,6 +186,9 @@ func (c *chunk) located(off, size int64) (*format.PageHeader, int64, []byte, err
 // raw when it holds them, after checking the CRC its header carries, when
 // it carries one (zero included).
 func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte, error) {
+	// A separate payload read may overwrite raw in the same scratch allocation.
+	// Determine optional CRC presence while the header bytes are still live.
+	hasCRC := h.CRC != 0 || c.hasCRC(off, n, raw)
 	size := int64(h.CompressedPageSize)
 	var data []byte
 	if int64(len(raw)) >= n+size {
@@ -196,7 +199,7 @@ func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte,
 			return nil, c.corrupt(err)
 		}
 	}
-	if h.CRC != 0 || c.hasCRC(off, n, raw) {
+	if hasCRC {
 		if uint32(h.CRC) != crc32.ChecksumIEEE(data) {
 			return nil, c.corrupt(errors.New("the page fails its checksum"))
 		}

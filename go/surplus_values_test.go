@@ -245,3 +245,37 @@ func TestZeroCRCIsChecked(t *testing.T) {
 		}
 	}
 }
+
+// A payload read can overwrite the scratch allocation containing a partial
+// header read. CRC presence must be determined before retiring those bytes.
+func TestZeroCRCWithReusedHeader(t *testing.T) {
+	type header struct {
+		Type         int32  `thrift:"1,required"`
+		Uncompressed int32  `thrift:"2,required"`
+		Compressed   int32  `thrift:"3,required"`
+		CRC          *int32 `thrift:"4,optional"`
+	}
+	data := bytes.Repeat([]byte{7, 0, 0, 0, 0, 0, 0, 0}, 1024)
+	for _, crc := range []*int32{nil, ptr(int32(0)), ptr(int32(crc32.ChecksumIEEE(data)))} {
+		encoded, err := thrift.Marshal(new(thrift.CompactProtocol), &header{Uncompressed: int32(len(data)), Compressed: int32(len(data)), CRC: crc})
+		must(t, err)
+		var h format.PageHeader
+		n, err := decodeBounded(encoded, &h, 1<<20)
+		must(t, err)
+		file := append(bytes.Clone(encoded), data...)
+		for _, reuse := range []bool{false, true} {
+			c := testChunk(parquet.Int64Type)
+			c.p.file = bytes.NewReader(file)
+			if reuse {
+				c.scratch = &pageScratch{raw: make([]byte, len(file))}
+			}
+			raw := c.scratch.readBuffer(4096)
+			copy(raw, file[:len(raw)])
+			got, err := c.payload(&h, 0, int64(n), raw)
+			wantFail := crc != nil && *crc == 0
+			if (CodeOf(err) == CodeInvalidParquet) != wantFail || !wantFail && (err != nil || !bytes.Equal(got, data)) {
+				t.Errorf("reuse=%t crc=%v: %v", reuse, crc, err)
+			}
+		}
+	}
+}
