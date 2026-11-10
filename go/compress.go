@@ -24,11 +24,39 @@ var zstdDecoder = sync.OnceValues(func() (*zstd.Decoder, error) {
 	return zstd.NewReader(nil, zstd.WithDecoderConcurrency(0), zstd.WithDecodeAllCapLimit(true))
 })
 
+// codecScratch is request-local. The shared Zstd decoder already pools its state.
+type codecScratch struct {
+	source bytes.Reader
+	gzip   *gzip.Reader
+	brotli *brotli.Reader
+	more   [1]byte
+}
+
+func (s *pageScratch) decompress(codec format.CompressionCodec, src []byte, size int) ([]byte, error) {
+	if s == nil {
+		return decompress(codec, src, size)
+	}
+	if codec != format.Uncompressed {
+		s.plain = resize(s.plain, size)
+	}
+	return s.codec.decompress(codec, src, size, s.plain)
+}
+
 // decompress returns src decompressed with codec, which must give exactly
 // size bytes: the size a page header declares. Decompression stops as soon
 // as the output would exceed size, so a small page cannot expand beyond
 // what its header declares (and Limits.PageBytes allowed).
 func decompress(codec format.CompressionCodec, src []byte, size int) ([]byte, error) {
+	var dst []byte
+	if codec != format.Uncompressed {
+		dst = make([]byte, size)
+	}
+	return (*codecScratch)(nil).decompress(codec, src, size, dst)
+}
+
+// decompress receives a destination whose length is the declared output size.
+// Zstd appends, so its call also caps capacity to this page's size.
+func (s *codecScratch) decompress(codec format.CompressionCodec, src []byte, size int, dst []byte) ([]byte, error) {
 	wrong := func(n int) error {
 		return fmt.Errorf("the page decompresses to %d bytes, its header declares %d", n, size)
 	}
@@ -46,9 +74,9 @@ func decompress(codec format.CompressionCodec, src []byte, size int) ([]byte, er
 		if n != size {
 			return nil, wrong(n)
 		}
-		return snappy.Decode(make([]byte, size), src)
+		return snappy.Decode(dst, src)
 	case format.Lz4Raw:
-		out := make([]byte, size)
+		out := dst
 		n, err := lz4.UncompressBlock(src, out)
 		if err != nil {
 			return nil, fmt.Errorf("the page does not decompress to its declared %d bytes: %w", size, err)
@@ -62,7 +90,7 @@ func decompress(codec format.CompressionCodec, src []byte, size int) ([]byte, er
 		if err != nil {
 			return nil, err
 		}
-		out, err := dec.DecodeAll(src, make([]byte, 0, size))
+		out, err := dec.DecodeAll(src, dst[:0:size])
 		if err != nil {
 			return nil, fmt.Errorf("the page does not decompress to its declared %d bytes: %w", size, err)
 		}
@@ -71,28 +99,45 @@ func decompress(codec format.CompressionCodec, src []byte, size int) ([]byte, er
 		}
 		return out, nil
 	case format.Gzip:
-		r, err := gzip.NewReader(bytes.NewReader(src))
+		if s == nil {
+			s = new(codecScratch)
+		}
+		s.source.Reset(src)
+		var err error
+		if s.gzip == nil {
+			s.gzip, err = gzip.NewReader(&s.source)
+		} else {
+			err = s.gzip.Reset(&s.source)
+		}
 		if err != nil {
 			return nil, err
 		}
-		return readExactly(r, size)
+		return s.readExactly(s.gzip, dst)
 	case format.Brotli:
-		return readExactly(brotli.NewReader(bytes.NewReader(src)), size)
+		if s == nil {
+			s = new(codecScratch)
+		}
+		s.source.Reset(src)
+		if s.brotli == nil {
+			s.brotli = brotli.NewReader(&s.source)
+		} else if err := s.brotli.Reset(&s.source); err != nil {
+			return nil, err
+		}
+		return s.readExactly(s.brotli, dst)
 	}
 	return nil, fmt.Errorf("codec %s", codec)
 }
 
 // readExactly reads exactly size bytes from r, which must then end.
-func readExactly(r io.Reader, size int) ([]byte, error) {
-	out := make([]byte, size)
+func (s *codecScratch) readExactly(r io.Reader, out []byte) ([]byte, error) {
+	size := len(out)
 	if n, err := io.ReadFull(r, out); err != nil {
 		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 			return nil, fmt.Errorf("the page decompresses to %d bytes, its header declares %d", n, size)
 		}
 		return nil, err
 	}
-	var more [1]byte
-	switch _, err := io.ReadFull(r, more[:]); {
+	switch _, err := io.ReadFull(r, s.more[:]); {
 	case err == nil:
 		return nil, fmt.Errorf("the page decompresses to more than the %d bytes its header declares", size)
 	case !errors.Is(err, io.EOF):

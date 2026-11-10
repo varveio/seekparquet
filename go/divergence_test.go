@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"hash/crc32"
+	"math"
+	"math/rand/v2"
 	"os"
 	"slices"
 	"testing"
@@ -525,5 +527,50 @@ func TestRowGroupOrdinals(t *testing.T) {
 				t.Fatalf("openParts: %v", err)
 			}
 		})
+	}
+}
+
+// TestDeltaInt32SumMatchesParquetGo: the allocation-free sum of a
+// DELTA_BINARY_PACKED stream of lengths equals the sum of parquet-go's own
+// decoding, over streams parquet-go encodes (lengths small and large,
+// deltas wrapping INT32, counts across block and miniblock boundaries),
+// and a stream holding a negative value is refused.
+func TestDeltaInt32SumMatchesParquetGo(t *testing.T) {
+	rng := rand.New(rand.NewPCG(1, 2))
+	gens := []func(i int) int32{
+		func(int) int32 { return rng.Int32N(40) },
+		func(int) int32 { return rng.Int32N(1 << 20) },
+		func(i int) int32 { return int32(i % 7) },
+		func(i int) int32 { return []int32{0, math.MaxInt32, 0, 1}[i%4] }, // deltas wrap INT32
+		func(int) int32 { return math.MaxInt32 - rng.Int32N(3) },
+		func(int) int32 { return rng.Int32() - math.MaxInt32/2 }, // some negative
+	}
+	for g, gen := range gens {
+		for _, n := range []int{0, 1, 2, 31, 32, 33, 127, 128, 129, 1000, 4097} {
+			values := make([]int32, n)
+			for i := range values {
+				values[i] = gen(i)
+			}
+			stream, err := parquet.DeltaBinaryPacked.EncodeInt32(nil, values)
+			must(t, err)
+			decoded, err := parquet.DeltaBinaryPacked.DecodeInt32(nil, stream)
+			must(t, err)
+			var want int64
+			negative := false
+			for _, v := range decoded {
+				want += int64(v)
+				negative = negative || v < 0
+			}
+			if _, err := deltaStream(stream, n, 32); err != nil {
+				t.Fatalf("generator %d, %d values: %v", g, n, err)
+			}
+			got, err := deltaInt32Sum(stream)
+			switch {
+			case negative && err == nil:
+				t.Fatalf("generator %d, %d values: a negative length accepted", g, n)
+			case !negative && (err != nil || got != want):
+				t.Fatalf("generator %d, %d values: sum %d, %v; parquet-go %d", g, n, got, err, want)
+			}
+		}
 	}
 }

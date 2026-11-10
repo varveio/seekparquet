@@ -118,6 +118,7 @@ func chunkRange(meta *format.ColumnMetaData) (start, end int64, ok bool) {
 // chunk reads the pages of one column chunk for one request, and decodes
 // its dictionary on first use. ctx is the request's.
 type chunk struct {
+	scratch    *pageScratch // nil: allocating key/dictionary path
 	ctx        context.Context
 	p          *part
 	physical   int
@@ -167,7 +168,7 @@ func (c *chunk) corrupt(err error) error {
 // header, its length, and the bytes read from off, which may hold the page
 // that follows the header too.
 func (c *chunk) header(off int64) (*format.PageHeader, int64, []byte, error) {
-	return c.p.pageHeader(c.ctx, c.physical, c.col.index, off, c.end, c.stats)
+	return c.p.pageHeaderInto(c.ctx, c.physical, c.col.index, off, c.end, c.stats, c.scratch)
 }
 
 // located reads the page that a page index locates at off, size bytes
@@ -178,7 +179,7 @@ func (c *chunk) located(off, size int64) (*format.PageHeader, int64, []byte, err
 	if lim := &c.p.r.limits; size > lim.PageBytes+lim.headerBytes() {
 		return c.header(off)
 	}
-	return c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, c.end, c.stats)
+	return c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, c.end, c.stats, c.scratch)
 }
 
 // payload returns the page data after a header of length n at off, from
@@ -187,17 +188,20 @@ func (c *chunk) located(off, size int64) (*format.PageHeader, int64, []byte, err
 // so that no decoder can read the bytes after it (raw may hold the next
 // page's header).
 func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte, error) {
+	// A separate payload read may overwrite raw in the same scratch allocation.
+	// Determine optional CRC presence while the header bytes are still live.
+	hasCRC := h.CRC != 0 || c.hasCRC(off, n, raw)
 	size := int64(h.CompressedPageSize)
 	var data []byte
 	if int64(len(raw)) >= n+size {
 		data = raw[n : n+size : n+size]
 	} else {
-		data = make([]byte, size)
+		data = c.scratch.readBuffer(int(size))
 		if err := readFull(c.p.at(c.ctx, c.stats), data, off+n); err != nil {
 			return nil, c.corrupt(err)
 		}
 	}
-	if h.CRC != 0 || c.hasCRC(off, n, raw) {
+	if hasCRC {
 		if uint32(h.CRC) != crc32.ChecksumIEEE(data) {
 			return nil, c.corrupt(errors.New("the page fails its checksum"))
 		}
@@ -222,8 +226,41 @@ func (c *chunk) hasCRC(off, n int64, raw []byte) bool {
 			return false // the header was read before; a failing reread is not the page's
 		}
 	}
+	if present, ok := crcFieldPresent(raw[:n]); ok {
+		return present
+	}
 	var f crcField
 	return thrift.Unmarshal(new(thrift.CompactProtocol), raw[:n], &f) == nil && f.CRC != nil
+}
+
+// crcFieldPresent reads, without allocating, whether a page header in the
+// compact protocol carries its crc (field 4), when the header begins as
+// writers encode it: fields 1 to 3, each an i32 in a short-form header
+// (0x15), then field 4 (0x15) or a later field in short form. ok is false
+// for any other encoding, which hasCRC then decodes in full. Every page
+// without a CRC (most pages) asks this, so it must not cost a decode.
+func crcFieldPresent(header []byte) (present, ok bool) {
+	p := 0
+	for range 3 {
+		if p >= len(header) || header[p] != 0x15 {
+			return false, false
+		}
+		_, k := binary.Uvarint(header[p+1:])
+		if k <= 0 {
+			return false, false
+		}
+		p += 1 + k
+	}
+	if p >= len(header) {
+		return false, false
+	}
+	switch b := header[p]; {
+	case b == 0x15:
+		return true, true
+	case b>>4 > 1: // a short-form header of field 5 or later: no field 4 before it
+		return false, true
+	}
+	return false, false // the end of the struct, or a long-form header
 }
 
 // dataRows returns the rows of a data page and true, or false for a page
@@ -286,7 +323,7 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 	case format.DataPage:
 		d := &h.DataPageHeader.V
 		n, enc = int(d.NumValues), d.Encoding
-		if data, err = decompress(c.codec, payload, int(h.UncompressedPageSize)); err != nil {
+		if data, err = c.scratch.decompress(c.codec, payload, int(h.UncompressedPageSize)); err != nil {
 			return nil, c.corrupt(err)
 		}
 		if c.col.optional {
@@ -321,7 +358,7 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 		if d.IsCompressed.Valid && !d.IsCompressed.V {
 			codec = format.Uncompressed
 		}
-		if data, err = decompress(codec, data, int(h.UncompressedPageSize)-def); err != nil {
+		if data, err = c.scratch.decompress(codec, data, int(h.UncompressedPageSize)-def); err != nil {
 			return nil, c.corrupt(err)
 		}
 	}
@@ -335,11 +372,24 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 		}
 		return values, err
 	}
-	// levelsOf checks the runs (each repeated value below 2) and refuses a
-	// level above the column's maximum of 1: a level is not a count.
-	defined, err := levelsOf(levels, n, 1)
-	if err != nil {
+	// The runs are checked first (each repeated value below 2, no surplus),
+	// then decoded into this request's level buffer; a level above the
+	// column's maximum of 1 is refused, not counted.
+	if err := checkRuns(levels, n, 1); err != nil {
 		return nil, c.corrupt(fmt.Errorf("definition levels: %w", err))
+	}
+	s := c.scratch.local()
+	s.levels = resize(s.levels, n+8)
+	defined, err := (&rle.Encoding{BitWidth: 1}).DecodeLevels(s.levels[:0:n+8], levels)
+	s.levels = decodedBuffer(s.levels, defined)
+	if err != nil || len(defined) < n {
+		return nil, c.corrupt(errors.New("the page holds fewer definition levels than values"))
+	}
+	defined = defined[:n]
+	for _, level := range defined {
+		if level > 1 {
+			return nil, c.corrupt(fmt.Errorf("definition levels: a level of %d is above the column's maximum 1", level))
+		}
 	}
 	present := 0
 	for _, level := range defined {
@@ -353,7 +403,8 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 		return nil, err
 	}
 	*c.pages++
-	out := make([]parquet.Value, n)
+	s.out = resize(s.out, n)
+	out := s.out
 	for i, j := 0, 0; i < n; i++ {
 		if defined[i] == 0 {
 			out[i] = parquet.Value{}.Level(0, 0, c.col.index)
@@ -367,7 +418,15 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 
 // values decodes the n non-null values of a page, encoded with enc.
 func (c *chunk) values(enc format.Encoding, data []byte, n int) ([]parquet.Value, error) {
-	out := make([]parquet.Value, n)
+	// A reused decompression buffer can be longer than this page: no decoder
+	// may reach past the page into a previous page's bytes.
+	data = data[:len(data):len(data)]
+	s := c.scratch.local()
+	// Drop pointers into the previous page/dictionary, including a long page's
+	// unused tail, before decoding a smaller page or another chunk.
+	s.clearValues()
+	s.values = resize(s.values, n)
+	out := s.values
 	if enc == format.PlainDictionary || enc == format.RLEDictionary {
 		dict, err := c.dictionary()
 		if err != nil {
@@ -388,7 +447,9 @@ func (c *chunk) values(enc format.Encoding, data []byte, n int) ([]parquet.Value
 		if err := checkRuns(data[1:], n, width); err != nil {
 			return nil, c.corrupt(fmt.Errorf("dictionary indexes: %w", err))
 		}
-		indexes, err := (&rle.Encoding{BitWidth: width}).DecodeInt32(make([]int32, 0, n+8), data[1:])
+		s.indexes = resize(s.indexes, n+8)
+		indexes, err := (&rle.Encoding{BitWidth: width}).DecodeInt32(s.indexes[:0:n+8], data[1:])
+		s.indexes = decodedBuffer(s.indexes, indexes)
 		if err != nil || len(indexes) < n {
 			return nil, c.corrupt(errors.New("the page holds fewer dictionary indexes than values"))
 		}
@@ -416,6 +477,7 @@ func (c *chunk) values(enc format.Encoding, data []byte, n int) ([]parquet.Value
 // decoded values to hold exactly n of them.
 func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.Values, error) {
 	var none encoding.Values
+	s := c.scratch.local()
 	if !supportedEncoding(enc) {
 		return none, &UnsupportedError{Code: UnsupportedEncoding, Detail: "encoding " + enc.String() + " in part " + c.p.name}
 	}
@@ -445,7 +507,8 @@ func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.
 		if int64(size) > c.p.r.limits.PageBytes {
 			return none, exceeded("Boolean page decoding to %d bytes", size)
 		}
-		bits, err := decodeBooleanRLE(data, n)
+		s.data = resize(s.data, size)
+		bits, err := decodeBooleanRLEInto(s.data, data, n)
 		if err != nil {
 			return none, c.corrupt(err)
 		}
@@ -461,9 +524,15 @@ func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.
 	}
 	var offsets []uint32
 	if typ.Kind() == parquet.ByteArray {
-		offsets = make([]uint32, 0, n+1)
+		s.offsets = resize(s.offsets, n+1)
+		offsets = s.offsets[: 0 : n+1]
 	}
-	decoded, err := typ.Decode(typ.NewValues(make([]byte, 0, size), offsets), data, e)
+	s.data = resize(s.data, size)
+	decoded, err := typ.Decode(typ.NewValues(s.data[:0:size], offsets), data, e)
+	// Encodings may replace either destination; retain the actual returned buffers.
+	dataBytes, dataOffsets := decoded.Data()
+	s.data = decodedBuffer(s.data, dataBytes)
+	s.offsets = decodedBuffer(s.offsets, dataOffsets)
 	if err != nil {
 		return none, c.corrupt(err)
 	}
@@ -534,14 +603,22 @@ func (c *chunk) dictionary() (_ parquet.Dictionary, err error) {
 		return c.dict, nil
 	}
 	c.dictRead = true
+	// The last line of defence decode has: a planned scan and the validator
+	// read the dictionary outside decode.
 	defer func() {
-		// The last line of defence decode has: a planned scan and the
-		// validator read the dictionary outside decode.
 		if r := recover(); r != nil {
 			c.dict = nil
 			err = c.corrupt(fmt.Errorf("parquet-go failed on the dictionary page: %v", r))
 		}
 	}()
+	// A lazy read must not overwrite the active data page or its decode buffers.
+	dictionaryChunk := *c
+	dictionaryChunk.scratch = nil
+	c.dict, err = dictionaryChunk.readDictionary()
+	return c.dict, err
+}
+
+func (c *chunk) readDictionary() (parquet.Dictionary, error) {
 	none := func() (parquet.Dictionary, error) {
 		if c.p.footer.Metadata().RowGroups[c.physical].Columns[c.col.index].MetaData.DictionaryPageOffset != 0 {
 			return nil, c.corrupt(errors.New("no dictionary page at its dictionary offset"))
@@ -551,6 +628,7 @@ func (c *chunk) dictionary() (_ parquet.Dictionary, err error) {
 	var h *format.PageHeader
 	var n int64
 	var raw []byte
+	var err error
 	switch {
 	case c.first == c.start:
 		return none()
@@ -576,7 +654,7 @@ func (c *chunk) dictionary() (_ parquet.Dictionary, err error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := decompress(c.codec, payload, int(h.UncompressedPageSize))
+	data, err := c.scratch.decompress(c.codec, payload, int(h.UncompressedPageSize))
 	if err != nil {
 		return nil, c.corrupt(fmt.Errorf("dictionary page: %w", err))
 	}
@@ -632,22 +710,70 @@ func deltaLengths(src []byte, n int) error {
 	if err != nil {
 		return err
 	}
-	stream := src[: len(src)-len(rest) : len(src)-len(rest)]
-	lengths, err := parquet.DeltaBinaryPacked.DecodeInt32(nil, stream)
+	total, err := deltaInt32Sum(src[:len(src)-len(rest)])
 	if err != nil {
-		return fmt.Errorf("the lengths do not decode: %w", err)
-	}
-	total := int64(0)
-	for _, l := range lengths {
-		if l < 0 {
-			return fmt.Errorf("a value length of %d", l)
-		}
-		total += int64(l)
+		return err
 	}
 	if total != int64(len(rest)) {
 		return fmt.Errorf("the value lengths add up to %d bytes, the page holds %d after them", total, len(rest))
 	}
 	return nil
+}
+
+// deltaInt32Sum returns the sum of the INT32 values of a DELTA_BINARY_PACKED
+// stream that deltaStream has checked (its geometry, its bit widths of at
+// most 32, and its miniblocks inside it), refusing a negative value. It
+// decodes as parquet-go does (each value the previous plus the block's min
+// delta plus the miniblock's packed delta, in wrapping INT32 arithmetic)
+// without allocating: every page of the byte-array delta encodings asks
+// it, key pages included.
+func deltaInt32Sum(src []byte) (int64, error) {
+	var header [3]uint64 // block size, miniblocks per block, value count
+	for i := range header {
+		v, k := binary.Uvarint(src)
+		header[i], src = v, src[k:]
+	}
+	first, k := binary.Varint(src)
+	src = src[k:]
+	block, miniblocks, count := header[0], header[1], header[2]
+	if count == 0 {
+		return 0, nil
+	}
+	if first != int64(int32(first)) {
+		return 0, fmt.Errorf("the first value length %d is outside INT32", first)
+	}
+	value := int32(first)
+	if value < 0 {
+		return 0, fmt.Errorf("a value length of %d", value)
+	}
+	sum := int64(value)
+	per := int(block / miniblocks)
+	for left := int64(count) - 1; left > 0; {
+		minDelta, k := binary.Varint(src)
+		widths := src[k : k+int(miniblocks)]
+		src = src[k+int(miniblocks):]
+		for _, w := range widths {
+			if left <= 0 {
+				break
+			}
+			size := per * int(w) / 8
+			mini, mask := src[:size], uint64(1)<<w-1
+			for i := 0; i < per && left > 0; i, left = i+1, left-1 {
+				bit := i * int(w)
+				var x uint64
+				for b := 0; b < 5 && bit/8+b < len(mini); b++ {
+					x |= uint64(mini[bit/8+b]) << (8 * b)
+				}
+				value = int32(uint32(value) + uint32(int32(minDelta)) + uint32((x>>(bit%8))&mask))
+				if value < 0 {
+					return 0, fmt.Errorf("a value length of %d", value)
+				}
+				sum += int64(value)
+			}
+			src = src[size:]
+		}
+	}
+	return sum, nil
 }
 
 // plainByteArrays requires src to hold exactly n PLAIN BYTE_ARRAY values,
@@ -785,6 +911,10 @@ func deltaStream(src []byte, n, maxWidth int) ([]byte, error) {
 // decode is invalid_parquet. It returns the header, its length and the
 // bytes read from off.
 func (p *part) pageHeader(ctx context.Context, physical, column int, off, end int64, st *ReadStats) (*format.PageHeader, int64, []byte, error) {
+	return p.pageHeaderInto(ctx, physical, column, off, end, st, nil)
+}
+
+func (p *part) pageHeaderInto(ctx context.Context, physical, column int, off, end int64, st *ReadStats, scratch *pageScratch) (*format.PageHeader, int64, []byte, error) {
 	bad := p.badPage(physical, column, off)
 	if off < 0 || off >= end {
 		return nil, 0, nil, bad("outside the column chunk")
@@ -793,7 +923,7 @@ func (p *part) pageHeader(ctx context.Context, physical, column int, off, end in
 	// arrives with its header.
 	ceiling := min(end-off, p.r.limits.headerBytes())
 	for want := int64(4 << 10); ; want *= 16 {
-		raw, err := p.readPage(ctx, off, min(want, ceiling), st, bad)
+		raw, err := p.readPage(ctx, off, min(want, ceiling), st, bad, scratch)
 		if err != nil {
 			return nil, 0, nil, err
 		}
@@ -808,12 +938,12 @@ func (p *part) pageHeader(ctx context.Context, physical, column int, off, end in
 // page, header included, in a single read, and decodes and checks its
 // header as pageHeader does, in a column chunk ending at end. The caller
 // bounds size (chunk.located).
-func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, end int64, st *ReadStats) (*format.PageHeader, int64, []byte, error) {
+func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, end int64, st *ReadStats, scratch *pageScratch) (*format.PageHeader, int64, []byte, error) {
 	bad := p.badPage(physical, column, off)
 	if off < 0 || off >= end || size > end-off {
 		return nil, 0, nil, bad("outside the column chunk")
 	}
-	raw, err := p.readPage(ctx, off, size, st, bad)
+	raw, err := p.readPage(ctx, off, size, st, bad, scratch)
 	if err != nil {
 		return nil, 0, nil, err
 	}
@@ -829,8 +959,8 @@ func (p *part) badPage(physical, column int, off int64) func(string, ...any) err
 }
 
 // readPage reads n bytes of a column chunk at off.
-func (p *part) readPage(ctx context.Context, off, n int64, st *ReadStats, bad func(string, ...any) error) ([]byte, error) {
-	raw := make([]byte, n)
+func (p *part) readPage(ctx context.Context, off, n int64, st *ReadStats, bad func(string, ...any) error, scratch *pageScratch) ([]byte, error) {
+	raw := scratch.readBuffer(int(n))
 	if err := readFull(p.at(ctx, st), raw, off); err != nil {
 		if isEnvironment(ctx, err) {
 			return nil, err
@@ -965,7 +1095,8 @@ type columnPages struct {
 // openColumn opens the chunk of the named column in a physical row group,
 // with its OffsetIndex when it has one; nil when the part lacks the column
 // (COL-2).
-func (p *part) openColumn(ctx context.Context, physical int, name string, st *ReadStats) (*columnPages, error) {
+func (p *part) openColumn(ctx context.Context, physical int, name string, st *ReadStats, scratch *pageScratch) (*columnPages, error) {
+	scratch.clearValues()
 	col, ok := p.leaves[name]
 	if !ok {
 		return nil, nil
@@ -973,6 +1104,10 @@ func (p *part) openColumn(ctx context.Context, physical int, name string, st *Re
 	c, err := p.openChunk(ctx, physical, col, st, &st.ValuePagesDecoded)
 	if err != nil {
 		return nil, err
+	}
+	// Even a projected key keeps the non-reusing key policy.
+	if col.index != p.key.index {
+		c.scratch = scratch
 	}
 	cp := &columnPages{c: c, rows: p.footer.Metadata().RowGroups[physical].NumRows, off: c.start}
 	index, err := p.loadOffsetIndex(ctx, physical, col.index, st)
@@ -1060,14 +1195,14 @@ func (cp *columnPages) read(selected []position, emit func(int, parquet.Value)) 
 	return nil
 }
 
-// decodeBooleanRLE accepts only final bit-packed padding (at most seven bits).
-// checkCounts bounds declared counts before any output allocation.
-func decodeBooleanRLE(data []byte, n int) ([]byte, error) {
+// decodeBooleanRLEInto accepts only final bit-packed padding (at most seven bits).
+// out already has ceil(n/8) bytes, bounded by the caller before allocation.
+func decodeBooleanRLEInto(out, data []byte, n int) ([]byte, error) {
 	if err := checkCounts(format.RLE, data, n, false); err != nil {
 		return nil, err
 	}
 	src := data[4 : 4+binary.LittleEndian.Uint32(data)]
-	out := make([]byte, (n+7)/8)
+	clear(out)
 	at := 0
 	for len(src) > 0 {
 		h, k := binary.Uvarint(src)

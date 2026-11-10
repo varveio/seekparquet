@@ -429,6 +429,7 @@ func (s *scan) seekList(from []byte, req List, l *listing) error {
 // over each projected column, decoding only pages holding selected rows.
 // Sparse selections reuse the current page without retaining prior pages.
 func (r *reader) project(ctx context.Context, rows []*Row, at []position, columns []string, st *ReadStats) error {
+	scratch := make([]pageScratch, len(columns))
 	for _, row := range rows {
 		row.Columns, row.Values = columns, make([]Value, len(columns))
 	}
@@ -442,7 +443,7 @@ func (r *reader) project(ctx context.Context, rows []*Row, at []position, column
 			return err
 		}
 		for c, name := range columns {
-			cp, err := p.openColumn(ctx, p.groups[at[i].g.index].physical, name, st)
+			cp, err := p.openColumn(ctx, p.groups[at[i].g.index].physical, name, st, &scratch[c])
 			if err != nil {
 				return err
 			}
