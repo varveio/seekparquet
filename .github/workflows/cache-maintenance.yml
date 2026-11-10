@@ -1,0 +1,36 @@
+name: Cache maintenance
+
+on:
+  workflow_run:
+    workflows: [ci]
+    branches: [main]
+    types: [completed]
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-maintenance
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      # workflow_run is privileged: execute only trusted main, never triggering code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Retain two mature Go cache generations per mode and toolchain
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/cache_prune.py

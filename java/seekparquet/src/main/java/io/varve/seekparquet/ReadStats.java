@@ -18,7 +18,9 @@ package io.varve.seekparquet;
  * <p>The manifest read when the dataset was opened is not counted. Work shared with earlier requests
  * is counted only where a component says so: a part checked by an earlier request, or by {@link
  * Dataset#verify()}, is not checked again, a key page index loaded by an earlier request is reused,
- * not loaded, and a decoded first key is reused without decoding.
+ * not loaded, a projected column chunk's OffsetIndex kept by an earlier request ({@link
+ * Limits#maxOffsetIndexMemoryBytes()}) is not read again, and a decoded first key is reused without
+ * decoding.
  *
  * @param partsOpened the parts the request was the first to touch and opened from storage to check
  *     (CHECK-1), whether or not the check passed; the footer reads are in {@code sourceReads}
