@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/varveio/seekparquet/go/internal/testutil"
 )
@@ -268,3 +270,48 @@ type closer struct {
 }
 
 func (c closer) Close() error { c.closed.Add(1); return c.File.Close() }
+
+// TestRequestInsideScanWhileClosing: a Scan callback that starts another
+// request while another goroutine's Close waits for the scan gets
+// ErrClosed instead of waiting for ever (behind the Close, which waits for
+// the scan); the scan then ends and Close returns.
+func TestRequestInsideScanWhileClosing(t *testing.T) {
+	keys := fixtureKeys(60)
+	// Opened without open's cleanup Close: should the nested request wait,
+	// the test fails at its timeout rather than waiting in a cleanup.
+	d, err := OpenDataset(ctx, dirOf(t, write(t, parts(testutil.Part{GroupRows: 20}, split(keys, 2)...))), Options{})
+	must(t, err)
+	plan, err := d.PlanRanges(ctx, []Range{{}}, []string{"size"})
+	must(t, err)
+	closed := make(chan error, 1)
+	nested := make(chan error, 1)
+	done := make(chan error, 1)
+	stop := errors.New("stop")
+	go func() {
+		done <- plan.Scan(ctx, nil, func(Row) error {
+			go func() { closed <- d.Close() }()
+			// Wait until Close has begun: it cancels requests first.
+			for d.r.closing.Err() == nil {
+				runtime.Gosched()
+			}
+			_, err := d.Range(ctx, Range{Limit: 1})
+			nested <- err
+			return stop
+		})
+	}()
+	timeout := time.After(10 * time.Second)
+	for _, c := range []struct {
+		name string
+		ch   chan error
+		want error
+	}{{"the nested request", nested, ErrClosed}, {"the scan", done, stop}, {"Close", closed, nil}} {
+		select {
+		case err := <-c.ch:
+			if !errors.Is(err, c.want) && err != c.want {
+				t.Fatalf("%s: %v, want %v", c.name, err, c.want)
+			}
+		case <-timeout:
+			t.Fatalf("%s did not return: a request inside a scan waits behind Close", c.name)
+		}
+	}
+}

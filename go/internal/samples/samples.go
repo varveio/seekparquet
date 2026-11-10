@@ -103,8 +103,8 @@ func options(name string, unique bool, partBytes int64) local.DatasetOptions {
 // All returns the samples: unique keys over several parts and row groups;
 // repeated keys whose groups span pages, row groups and part targets, one
 // of 5,000 rows; long binary keys, some beginning with 1,100 0xFF bytes,
-// with values over 1,024 bytes, SNAPPY; STRING keys, GZIP; and an empty
-// dataset.
+// with values over 1,024 bytes, SNAPPY; STRING keys, GZIP; folder objects
+// beside the keys under them, some repeated; and an empty dataset.
 func All() []Sample {
 	binary := parquet.SchemaOf(new(binaryRow))
 	var out []Sample
@@ -157,6 +157,23 @@ func All() []Sample {
 	}
 	s = Sample{Name: "string-key", Schema: str, Rows: rowsOf(str, strs), Options: options("string-key", true, 16<<10)}
 	s.Options.Part.Codec = &parquet.Gzip
+	out = append(out, s)
+
+	// Folder objects: keys equal to their own delimiter rollups ("d0000/",
+	// "d0000/s/"), some repeated, beside the keys under them, so that a
+	// listing with delimiter '/' carries exact rows (LIST-8), at their
+	// offsets in their groups.
+	var folders []binaryRow
+	for i := range 1200 {
+		dir := fmt.Sprintf("d%04d/", i)
+		for j := range 1 + i%3 {
+			folders = append(folders, value(j, []byte(dir), 0))
+		}
+		folders = append(folders, value(i, []byte(dir+"s/"), 0), value(i, []byte(dir+"s/y"), 0), value(i, []byte(dir+"x"), 0))
+	}
+	slices.SortStableFunc(folders, func(a, b binaryRow) int { return bytes.Compare(a.Key, b.Key) })
+	s = Sample{Name: "folders", Schema: binary, Rows: rowsOf(binary, folders), Options: options("folders", false, 16<<10)}
+	s.Options.Part.PageRows, s.Options.Part.RowGroupRows = 64, 200
 	out = append(out, s)
 
 	out = append(out, Sample{Name: "empty", Schema: binary, Options: options("empty", true, 0)})

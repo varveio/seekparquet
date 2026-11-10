@@ -343,12 +343,25 @@ func TestSplitRequests(t *testing.T) {
 	if err := shards[0].Scan(cancelled, nil, func(Row) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("a cancelled shard scan: %v", err)
 	}
+	// An empty plan, or n below 1, has no shard, but a cancelled context
+	// still fails the split, and so does a Close.
+	empty, err := d.PlanRanges(ctx, []Range{{Start: []byte("zzzz")}}, nil)
+	must(t, err)
+	if shards, err := empty.Split(cancelled, 4); !errors.Is(err, context.Canceled) || shards != nil {
+		t.Fatalf("a cancelled split of an empty plan: %d shards, %v", len(shards), err)
+	}
+	if shards, err := plan.Split(cancelled, 0); !errors.Is(err, context.Canceled) || shards != nil {
+		t.Fatalf("a cancelled split into no shard: %d shards, %v", len(shards), err)
+	}
 	if shards, err := plan.Split(ctx, 0); err != nil || shards != nil {
 		t.Fatalf("n 0: %v, %v", shards, err)
 	}
 	must(t, d.Close())
 	if _, err := plan.Split(ctx, 2); !errors.Is(err, ErrClosed) {
 		t.Fatalf("a split after close: %v", err)
+	}
+	if _, err := empty.Split(ctx, 2); !errors.Is(err, ErrClosed) {
+		t.Fatalf("a split of an empty plan after close: %v", err)
 	}
 }
 

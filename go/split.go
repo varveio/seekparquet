@@ -41,9 +41,6 @@ import (
 // split whether or not it reads. Splitting is a convenience of
 // this reader, not a rule of the format.
 func (plan *RangePlan) Split(ctx context.Context, n int) (_ []*RangePlan, err error) {
-	if n < 1 || len(plan.spans) == 0 {
-		return nil, nil
-	}
 	r := plan.r
 	rctx, end, err := r.begin(ctx)
 	if err != nil {
@@ -57,6 +54,9 @@ func (plan *RangePlan) Split(ctx context.Context, n int) (_ []*RangePlan, err er
 	// context itself: on entry and through its loops over the plan.
 	if err := rctx.Err(); err != nil {
 		return nil, err
+	}
+	if n < 1 || len(plan.spans) == 0 {
+		return nil, nil
 	}
 	cuts, stats, err := plan.cuts(rctx, n)
 	if err != nil {

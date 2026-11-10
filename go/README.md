@@ -169,7 +169,7 @@ level failed, and 2 when a level is incomplete, validation could not run, or the
 |---|---|
 | `structural` | the manifest and every part, as the first read to touch each would (CHECK-1; with every part checked, COL-5 covers every column); for every non-empty row group, the key column's ColumnIndex and OffsetIndex (RG-2 to RG-4), and the page header at every OffsetIndex entry, which must begin one data page of exactly the entry's size and rows (RG-3). Page data is not read. |
 | `profile` | every key column chunk walked page header by page header from its start, without the OffsetIndex, which must then list exactly the data pages found (offsets, sizes, row positions, count); every key page decoded and every key checked: non-empty, valid UTF-8 for a `STRING` key, bounds valid UTF-8 too (KEY-2, KEY-6), in the declared order across pages, row groups and parts (KEY-3, PART-4), inside its page's ColumnIndex bounds (RG-5); each part's first and last keys equal to its manifest bounds (PART-3); the key chunk's metadata value count |
-| `full` | every other column chunk walked the same way and decoded: a dictionary page is checked and decoded when found, whether or not a page uses it; each page passes its CRC when its header carries a nonzero one (parquet-go cannot tell a zero CRC from none), decompresses to its declared size, its levels (RLE; `BIT_PACKED` is unsupported, anything else corrupt) and values agree with its header, V2 null counts included (nested and repeated columns too; a chunk, and every V2 page, begins a row), the chunk holds exactly the row group's rows and the value count its metadata declares; an OffsetIndex, when present, lists exactly the pages found; a ColumnIndex, when present, has one entry per page and, for a column that is neither nested nor repeated, marks a page null only if every value is null and counts nulls exactly |
+| `full` | every other column chunk walked the same way and decoded: a dictionary page is checked and decoded when found, whether or not a page uses it; each page passes its CRC when its header carries one, decompresses to its declared size, its levels (RLE; `BIT_PACKED` is unsupported, anything else corrupt) and values agree with its header, V2 null counts included (nested and repeated columns too; a chunk, and every V2 page, begins a row), the chunk holds exactly the row group's rows and the value count its metadata declares; an OffsetIndex, when present, lists exactly the pages found; a ColumnIndex, when present, has one entry per page and, for a column that is neither nested nor repeated, marks a page null only if every value is null and counts nulls exactly |
 | `digest` | the SHA-256 of every part that declares `sha256`, streamed from the file, whether or not it is valid Parquet (PART-5); with no declared digest it completes with nothing checked and says so (VAL-2) |
 
 Structural, profile and full each run the levels before them; digest runs alone. The indexes under
@@ -221,8 +221,10 @@ until `Dataset.Close`. Each part keeps its file open, and its checked footer in 
 closes; a part refused by its check is closed at once. No limit bounds how many: `Limits.Parts` bounds the
 manifest and `Limits.IndexMemory` the retained page indexes, but a long-lived `Dataset` holds one open file
 and one footer for every part it has touched, and `Verify` touches them all. Size the process's file
-descriptors (an `OpenDir` part holds one) and memory for the parts a handle will touch, or open a `Dataset`
-for a broad pass over many parts and close it after. A remote store would be another `Source`; its file must read the same bytes for as long
+descriptors (an `OpenDir` part holds one) and memory for the most parts one `Dataset` will touch: a single
+`Verify` or broad read over more parts than that fails when the process runs out, and opening a fresh
+`Dataset` for it does not help. This is a known limitation, documented rather than solved: there is no cap
+that refuses such a pass early, and no eviction. A remote store would be another `Source`; its file must read the same bytes for as long
 as it is open, bound to one stored object (one version or generation) across its range requests and retries.
 
 A file that implements `ContextBinder` has every read (manifest, footers, page indexes, pages) bound to the

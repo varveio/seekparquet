@@ -110,9 +110,8 @@ func (plan *RangePlan) Stats() ReadStats { return plan.stats }
 // return. To stop early, return an error from fn (or cancel ctx), and close
 // the Dataset after Scan has returned. fn must not call Close, nor wait for
 // a goroutine that does: Close would wait for the scan, and the scan for fn,
-// for ever. For the same reason fn must not start another request on the
-// Dataset (a Range, a List, another Scan) while another goroutine may be
-// closing it: a waiting Close blocks new requests, the nested one included.
+// for ever. A request fn starts on the Dataset (a Range, a List, another
+// Scan) runs as any other; once Close has begun it fails with ErrClosed.
 func (plan *RangePlan) Scan(ctx context.Context, st *ReadStats, fn func(Row) error) (err error) {
 	st = resetStats(st)
 	r := plan.r
