@@ -5,8 +5,26 @@ independent of the specification's draft revisions.
 
 ## Unreleased
 
+### Added
+
+- `Limits.maxPageMemory` (a new record component; `Limits.withMaxPageMemory`) bounds the memory decoding
+  one page holds (issue #46), data and dictionary pages, key pages included: estimated from the page's
+  header before anything is allocated for its values (a slot per value for its representation, a null
+  flag per row when optional, the arena's bytes, and for byte-array dictionaries an entry of 80 bytes
+  per value and their bytes twice), it fails a page over it with `LimitExceededException` naming
+  `maxPageMemory`. Every existing constructor keeps its signature and takes the default: the most
+  `maxPageValues` and `maxPageBytes` allow (832 MiB at their defaults), so no page they admit is newly
+  refused. Concurrent requests add up.
+
 ### Fixed
 
+- `LocalStorage` refused every dataset on Windows ("the filesystem does not support secure part-path
+  traversal"), since the JDK's Windows file system has no secure directory streams (issue #45). On a file
+  system without them, each part path is now resolved segment by segment as a path, refusing symbolic
+  links, junctions and other reparse points and segments Windows would reinterpret (`:`, a trailing dot or
+  space, device names), with every directory and the file's identity (its `fileKey`, else its size and
+  times) checked before and after each open. The POSIX route is unchanged. The README sets out what each
+  platform guarantees. CI builds and unit-tests the Java module on Windows.
 - Malformed streams the Go reader refuses, or reads differently, are `invalid_parquet` (found by
   differential testing against the Go reader):
   - an RLE run whose value is not below 2^width in levels, dictionary indexes or Boolean values (a Boolean

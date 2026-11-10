@@ -490,6 +490,9 @@ func (c *chunk) levelled(h *format.PageHeader, payload []byte, maxRep, maxDef in
 			err = c.corrupt(fmt.Errorf("parquet-go failed on a page: %v", r))
 		}
 	}()
+	if err := c.checkPageMemory(h); err != nil { // as decode does
+		return 0, 0, err
+	}
 	var n int
 	var enc format.Encoding
 	var repLevels, defLevels, data []byte

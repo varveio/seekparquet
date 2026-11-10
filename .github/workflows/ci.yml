@@ -204,9 +204,33 @@ jobs:
           (cd go && go run ./internal/cmd/samples "$RUNNER_TEMP/samples")
           python conformance/harness/check_datasets.py --target reader --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance "$RUNNER_TEMP/samples"
 
+  java-windows:
+    needs: changes
+    # Build and unit tests only (conformance runs in the java job): on Windows the default file system
+    # has no secure directory streams, so LocalStorage takes its checked-path route there (issue #45).
+    # Runs whenever the java job does, so that ci-ok gates both alike (scripts/ci/policy.py).
+    if: needs.changes.outputs.java == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78  # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: |
+            java/**/*.gradle.kts
+            java/gradle/libs.versions.toml
+            java/gradle/wrapper/gradle-wrapper.properties
+      - name: build and unit tests
+        working-directory: java
+        shell: bash
+        run: ./gradlew build
+
   ci-ok:
     if: always()
-    needs: [changes, go-lint, go-race, go-windows, go-macos, java, conformance]
+    needs: [changes, go-lint, go-race, go-windows, go-macos, java, java-windows, conformance]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

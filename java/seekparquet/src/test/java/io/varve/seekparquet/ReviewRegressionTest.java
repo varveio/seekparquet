@@ -40,6 +40,8 @@ import org.apache.parquet.format.PageType;
 import org.apache.parquet.format.Util;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 @Timeout(20)
@@ -381,6 +383,9 @@ class ReviewRegressionTest {
     }
 
     @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = "tests the secure-directory-stream route, which Windows lacks: renames a "
+            + "directory holding an open file and creates symbolic links, which need a privilege there; "
+            + "LocalStoragePlainDirectoryTest covers the Windows route")
     void localPartsRejectSymlinksAndReopenFromPinnedDirectories() throws Exception {
         Path root = dataset(1);
         Path directory = root.resolve("data");

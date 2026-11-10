@@ -32,6 +32,107 @@ final class PageDecoder {
 
     private PageDecoder() {}
 
+    // The page memory estimate (Limits.maxPageMemory), in bytes, from a page header alone: what
+    // decoding the page holds for its values, besides the page's own bytes (bounded by maxPageBytes).
+
+    /** A row's null flag: an optional column's page holds a {@code boolean[]} of one per row. */
+    static final int NULL_FLAG_BYTES = 1;
+    /**
+     * A byte-array value's slot: an offset and a length into the request's page arena (4 + 4 bytes), or,
+     * for keys and dictionary entries, a reference and the header of the value's own array (8 + 16
+     * bytes, without compressed references): the larger, 24.
+     */
+    static final int BINARY_SLOT_BYTES = 24;
+    /**
+     * A byte-array dictionary entry: parquet-java's {@code Binary} object and its reference (at most 56
+     * bytes without compressed references), plus the slot a request materializes the entry in (24).
+     */
+    static final int DICTIONARY_BINARY_ENTRY_BYTES = 80;
+
+    /** {@return the bytes a value of {@code type} takes in its page's primitive array: a slot} */
+    private static int slotBytes(Column.Type type) {
+        return switch (type) {
+            case BOOLEAN -> 1;
+            case INT32, FLOAT -> 4;
+            case INT64, DOUBLE -> 8;
+            case INT96 -> 12;
+            case BYTE_ARRAY, FIXED_LEN_BYTE_ARRAY, GROUP -> BINARY_SLOT_BYTES;
+        };
+    }
+
+    /**
+     * {@return the most memory {@link #pageMemory} estimates for a page within {@code maxPageValues} and
+     * {@code maxPageBytes}: the default {@code maxPageMemory}, so that the default refuses no page those
+     * limits admit} It is the larger of an optional byte-array data page (a slot and a null flag per
+     * value, and an arena of {@code maxPageBytes}) and a byte-array dictionary page (an entry per value,
+     * and its bytes twice: the page and the entries materialized from it): 832 MiB at the defaults.
+     */
+    static long worstPageMemory(int maxPageValues, int maxPageBytes) {
+        long data = (long) maxPageValues * (BINARY_SLOT_BYTES + NULL_FLAG_BYTES) + maxPageBytes;
+        long dictionary = (long) maxPageValues * DICTIONARY_BINARY_ENTRY_BYTES + 2L * maxPageBytes;
+        return Math.max(data, dictionary);
+    }
+
+    /**
+     * Estimates, from a page header alone, the memory decoding the page holds (Limits.maxPageMemory),
+     * without allocating. A data page: a slot per value for its column's representation (boolean 1, int
+     * 4, long 8, byte array {@link #BINARY_SLOT_BYTES}), a null flag per row for an optional column, and
+     * for byte arrays the arena's bytes: the page's uncompressed size (PLAIN and DELTA_LENGTH_BYTE_ARRAY
+     * values, and dictionary indexes, take no more), or {@code maxPageBytes} for DELTA_BYTE_ARRAY, whose
+     * shared prefixes can expand it (decoding refuses more). A dictionary page: an entry per value (a
+     * slot, or {@link #DICTIONARY_BINARY_ENTRY_BYTES} for byte arrays) and its bytes, twice for byte
+     * arrays.
+     */
+    static long pageMemory(PageHeader header, ColumnSpec col, Limits limits) {
+        Column.Type type = col.type();
+        boolean binary = type == Column.Type.BYTE_ARRAY || type == Column.Type.FIXED_LEN_BYTE_ARRAY;
+        long size = Math.max(0, header.getUncompressed_page_size());
+        if (header.getType() == PageType.DICTIONARY_PAGE) {
+            long count = declaredValues(header);
+            return binary ? count * DICTIONARY_BINARY_ENTRY_BYTES + 2 * size : count * slotBytes(type) + size;
+        }
+        long values = declaredValues(header);
+        Encoding encoding = null;
+        if (header.getType() == PageType.DATA_PAGE && header.getData_page_header() != null) {
+            encoding = header.getData_page_header().getEncoding();
+        } else if (header.getType() == PageType.DATA_PAGE_V2 && header.getData_page_header_v2() != null) {
+            encoding = header.getData_page_header_v2().getEncoding();
+        }
+        long memory = values * slotBytes(type) + (col.optional() ? values * NULL_FLAG_BYTES : 0);
+        if (binary) {
+            memory += encoding == Encoding.DELTA_BYTE_ARRAY ? limits.maxPageBytes() : Math.min(size, limits.maxPageBytes());
+        }
+        return memory;
+    }
+
+    /** {@return the values a page header declares, 0 when it declares none or a negative count} */
+    private static long declaredValues(PageHeader header) {
+        long values = 0;
+        if (header.getType() == PageType.DATA_PAGE && header.getData_page_header() != null) {
+            values = header.getData_page_header().getNum_values();
+        } else if (header.getType() == PageType.DATA_PAGE_V2 && header.getData_page_header_v2() != null) {
+            values = Math.max(header.getData_page_header_v2().getNum_values(), header.getData_page_header_v2().getNum_rows());
+        } else if (header.getType() == PageType.DICTIONARY_PAGE && header.getDictionary_page_header() != null) {
+            values = header.getDictionary_page_header().getNum_values();
+        }
+        return Math.max(0, values);
+    }
+
+    /**
+     * Fails with {@link LimitExceededException} when the page would hold more than maxPageMemory
+     * decoding. A page beyond maxPageValues or maxPageBytes is left to those limits, which the decoder
+     * checks next, before allocating, so that they keep reporting it.
+     */
+    private static void checkPageMemory(PageHeader header, ColumnSpec col, Limits limits, String where) {
+        if (declaredValues(header) > limits.maxPageValues() || header.getUncompressed_page_size() > limits.maxPageBytes()) {
+            return;
+        }
+        long need = pageMemory(header, col, limits);
+        if (need > limits.maxPageMemory()) {
+            throw new LimitExceededException("maxPageMemory", need, limits.maxPageMemory(), where + " (estimated page decoding memory)");
+        }
+    }
+
     /** {@return the number of rows of a data page header: v1 values or v2 rows} */
     static long rowsOf(PageHeader header) throws DataException {
         if (header.getType() == PageType.DATA_PAGE) {
@@ -90,6 +191,7 @@ final class PageDecoder {
         if (header.getType() != PageType.DICTIONARY_PAGE || h == null) {
             throw new DataException("the column chunk's dictionary page is missing");
         }
+        checkPageMemory(header, col, limits, where);
         checkCrc(header, body, codecs);
         int size = uncompressedSize(header, limits, where);
         int count = h.getNum_values();
@@ -142,6 +244,7 @@ final class PageDecoder {
     static ColumnPage decodeData(PageHeader header, ByteBuffer body, ColumnSpec col, CompressionCodec codec,
             DictionarySupplier dictionary, Limits limits, String where, PageScratch scratch, Codecs.State codecs)
             throws DataException {
+        checkPageMemory(header, col, limits, where);
         checkCrc(header, body, codecs);
         int size = uncompressedSize(header, limits, where);
         int n;

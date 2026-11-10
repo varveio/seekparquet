@@ -177,11 +177,11 @@ func (c *chunk) header(off int64) (*format.PageHeader, int64, []byte, error) {
 // with its header, in one read, and returns what header returns. A size
 // beyond any page within the limits is read through header instead, so
 // that it fails as any page beyond them does.
-func (c *chunk) located(off, size int64) (*format.PageHeader, int64, []byte, error) {
+func (c *chunk) located(off, size, rows int64) (*format.PageHeader, int64, []byte, error) {
 	if lim := &c.p.r.limits; size > lim.PageBytes+lim.headerBytes() {
 		return c.header(off)
 	}
-	return c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, c.end, c.stats, c.scratch)
+	return c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, rows, c.end, c.stats, c.scratch)
 }
 
 // payload returns the page data after a header of length n at off, from
@@ -283,7 +283,7 @@ func (c *chunk) indexed(i int, loc pageLoc) ([]parquet.Value, error) {
 	bad := func(format string, args ...any) error {
 		return refusePart(c.code, c.p.name, c.physical, "column chunk %d page %d: "+format, append([]any{c.col.index, i}, args...)...)
 	}
-	h, n, raw, err := c.located(loc.offset, loc.size)
+	h, n, raw, err := c.located(loc.offset, loc.size, loc.rows)
 	if err != nil {
 		if CodeOf(err) == CodeInvalidParquet {
 			return nil, bad("its OffsetIndex entry does not locate a page header")
@@ -317,6 +317,9 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 			err = c.corrupt(fmt.Errorf("parquet-go failed on a page: %v", r))
 		}
 	}()
+	if err := c.checkPageMemory(h); err != nil {
+		return nil, err
+	}
 	var n int
 	var enc format.Encoding
 	var levels, data []byte
@@ -640,7 +643,7 @@ func (c *chunk) readDictionary() (parquet.Dictionary, error) {
 	case c.first == c.start:
 		return none()
 	case c.first != 0:
-		h, n, raw, err = c.located(c.start, c.first-c.start)
+		h, n, raw, err = c.located(c.start, c.first-c.start, -1)
 	default:
 		h, n, raw, err = c.header(c.start)
 	}
@@ -657,6 +660,9 @@ func (c *chunk) readDictionary() (parquet.Dictionary, error) {
 	if d.Encoding != format.Plain && d.Encoding != format.PlainDictionary {
 		return nil, &UnsupportedError{Code: UnsupportedEncoding, Detail: "a dictionary encoded " + d.Encoding.String() + " in part " + c.p.name}
 	}
+	if err := c.checkPageMemory(h); err != nil {
+		return nil, err
+	}
 	payload, err := c.payload(h, c.start, n, raw)
 	if err != nil {
 		return nil, err
@@ -671,6 +677,65 @@ func (c *chunk) readDictionary() (parquet.Dictionary, error) {
 	}
 	c.dict = c.col.typ.NewDictionary(c.col.index, int(d.NumValues), decoded)
 	return c.dict, nil
+}
+
+// pageMemory estimates, from a page header alone, the memory decoding the
+// page holds (Limits.PageMemory): valueBytes for each value's parquet.Value,
+// optionalValueSlices times that for an optional column, and the bytes its
+// decoded values hold: their fixed width, or for byte arrays the page's
+// uncompressed size (PLAIN and DELTA_LENGTH_BYTE_ARRAY values, and
+// dictionary indexes, take no more), or PageBytes for DELTA_BYTE_ARRAY,
+// whose shared prefixes can expand it. decodeValues refuses decoded bytes
+// beyond PageBytes, so that term is capped there. A dictionary page counts
+// as a page of one Value slice. The estimate is arithmetic only.
+func (c *chunk) pageMemory(h *format.PageHeader, optional bool) int64 {
+	var values int64
+	var enc format.Encoding
+	switch h.Type {
+	case format.DataPage:
+		values, enc = int64(h.DataPageHeader.V.NumValues), h.DataPageHeader.V.Encoding
+	case format.DataPageV2:
+		d := &h.DataPageHeaderV2.V
+		values, enc = int64(max(d.NumValues, d.NumRows)), d.Encoding
+	case format.DictionaryPage:
+		values, enc = int64(h.DictionaryPageHeader.V.NumValues), h.DictionaryPageHeader.V.Encoding
+	}
+	values = max(values, 0)
+	slices := int64(1)
+	if optional {
+		slices = optionalValueSlices
+	}
+	pageBytes := c.p.r.limits.PageBytes
+	var decoded int64
+	switch kind := c.col.typ.Kind(); kind {
+	case parquet.ByteArray:
+		decoded = int64(max(h.UncompressedPageSize, 0))
+		if enc == format.DeltaByteArray {
+			decoded = pageBytes
+		}
+	case parquet.Boolean:
+		decoded = values // at most a byte per value
+	case parquet.FixedLenByteArray:
+		decoded = values * int64(max(c.col.typ.Length(), 1))
+	case parquet.Int32, parquet.Float:
+		decoded = values * 4
+	case parquet.Int64, parquet.Double:
+		decoded = values * 8
+	default: // INT96
+		decoded = values * 12
+	}
+	return values*valueBytes*slices + min(decoded, pageBytes)
+}
+
+// checkPageMemory fails with an error wrapping ErrLimitExceeded when the
+// page whose header is h would hold more than Limits.PageMemory decoding,
+// before anything is allocated for its values.
+func (c *chunk) checkPageMemory(h *format.PageHeader) error {
+	optional := c.col.optional && h.Type != format.DictionaryPage
+	if need, limit := c.pageMemory(h, optional), c.p.r.limits.PageMemory; need > limit {
+		return exceeded("part %s: a page whose decoding holds about %d bytes (Limits.PageMemory %d)", c.p.name, need, limit)
+	}
+	return nil
 }
 
 // checkCounts checks the value counts an encoding declares inside a page
@@ -934,7 +999,7 @@ func (p *part) pageHeaderInto(ctx context.Context, physical, column int, off, en
 		if err != nil {
 			return nil, 0, nil, err
 		}
-		h, n, err := p.decodeHeader(raw, end-off, int64(len(raw)) == ceiling, bad)
+		h, n, err := p.decodeHeader(raw, end-off, int64(len(raw)) == ceiling, -1, bad)
 		if h != nil || err != nil {
 			return h, n, raw, err
 		}
@@ -943,9 +1008,10 @@ func (p *part) pageHeaderInto(ctx context.Context, physical, column int, off, en
 
 // pageExtent reads the size bytes at off that a page index locates as one
 // page, header included, in a single read, and decodes and checks its
-// header as pageHeader does, in a column chunk ending at end. The caller
+// header as pageHeader does, in a column chunk ending at end; rows is the
+// rows its OffsetIndex entry gives, or -1 (decodeHeader). The caller
 // bounds size (chunk.located).
-func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, end int64, st *ReadStats, scratch *pageScratch) (*format.PageHeader, int64, []byte, error) {
+func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, rows, end int64, st *ReadStats, scratch *pageScratch) (*format.PageHeader, int64, []byte, error) {
 	bad := p.badPage(physical, column, off)
 	if off < 0 || off >= end || size > end-off {
 		return nil, 0, nil, bad("outside the column chunk")
@@ -954,7 +1020,7 @@ func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, 
 	if err != nil {
 		return nil, 0, nil, err
 	}
-	h, n, err := p.decodeHeader(raw, end-off, true, bad)
+	h, n, err := p.decodeHeader(raw, end-off, true, rows, bad)
 	return h, n, raw, err
 }
 
@@ -979,10 +1045,13 @@ func (p *part) readPage(ctx context.Context, off, n int64, st *ReadStats, bad fu
 
 // decodeHeader decodes the page header at the start of raw and checks it
 // against the limits and against avail, the bytes from the header to the
-// end of its column chunk. A header that does not decode from raw is
+// end of its column chunk. rows, when not -1, is the row count of the
+// OffsetIndex entry that located the page: a data page declaring other
+// rows is returned for its caller to refuse (RG-3), even beyond
+// Limits.PageValues, which then does not apply. A header that does not decode from raw is
 // refused when raw is all there is to read (final), and otherwise reported
 // by a nil header and error, so that the caller reads more.
-func (p *part) decodeHeader(raw []byte, avail int64, final bool, bad func(string, ...any) error) (*format.PageHeader, int64, error) {
+func (p *part) decodeHeader(raw []byte, avail int64, final bool, rows int64, bad func(string, ...any) error) (*format.PageHeader, int64, error) {
 	lim := &p.r.limits
 	var header format.PageHeader
 	length, err := decodeBounded(raw, &header, lim.MetadataMemory)
@@ -1020,6 +1089,11 @@ func (p *part) decodeHeader(raw []byte, avail int64, final bool, bad func(string
 		return nil, 0, bad("the value count is negative")
 	}
 	if values > lim.PageValues {
+		// A page its OffsetIndex locates with other rows breaks RG-3 whatever
+		// the limits: its caller refuses it, rather than call it too large.
+		if declared, ok := dataRows(&header); ok && rows >= 0 && declared != rows {
+			return &header, int64(length), nil
+		}
 		return nil, 0, exceeded("part %s: a page of %d values (Limits.PageValues %d)", p.name, values, lim.PageValues)
 	}
 	return &header, int64(length), nil

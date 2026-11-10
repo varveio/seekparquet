@@ -243,10 +243,18 @@ The call retains each projection slot's largest byte and element buffers until i
 codec state and both compact and expanded values for optional columns. `PageBytes` bounds page data;
 header buffers can retain up to `headerBytes` (16 MiB, bounded by `MetadataMemory`), and indexed raw
 extents include both header and payload.
-`PageValues` also matters: the two value slices alone can reach 768 MiB per optional column at the
-default limit on 64-bit platforms. Dictionaries, page headers/logs, indexes and results add to that.
-Bound concurrent calls/shards and lower `Limits` for tighter memory use. `IndexMemory` is separate;
-there is no aggregate transient-memory budget or guarantee of immediate return of memory to the OS.
+`Limits.PageMemory` bounds the memory decoding one page holds, data and dictionary pages alike, key
+pages included. It is estimated from the page's header before anything is allocated for its values:
+24 bytes per value for its `parquet.Value` (64-bit platforms), twice that for an optional column (its
+non-null values, then every row), plus the bytes its decoded values hold (at most `PageBytes`). A
+page over it fails with an error wrapping `ErrLimitExceeded`. Its default is the most `PageValues`
+and `PageBytes` allow, 2 × 24 × `PageValues` + `PageBytes` (832 MiB at their defaults), so the default
+refuses no page those limits admit; set it lower to bound decoding memory, at the cost of refusing
+pages within the other limits. The bound is per page and per call: concurrent calls and scanned
+shards each decode their own pages, so their memory adds up. Dictionaries, page headers/logs, indexes
+and results add to that. Bound concurrent calls/shards and lower `Limits` for tighter memory use.
+`IndexMemory` is separate; there is no aggregate transient-memory budget or guarantee of immediate
+return of memory to the OS.
 
 ## Cost model
 
