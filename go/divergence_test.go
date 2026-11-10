@@ -6,6 +6,7 @@ package seekparquet
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 	"math"
 	"math/rand/v2"
@@ -571,6 +572,37 @@ func TestDeltaInt32SumMatchesParquetGo(t *testing.T) {
 			case !negative && (err != nil || got != want):
 				t.Fatalf("generator %d, %d values: sum %d, %v; parquet-go %d", g, n, got, err, want)
 			}
+		}
+	}
+}
+
+// TestOffsetIndexRowsBeforeValueLimit (#44): a page its OffsetIndex locates
+// with other rows than its header declares breaks RG-3 and is refused by
+// its caller, even when the declared count is beyond Limits.PageValues;
+// only a header that agrees with its entry, or one no entry located, is
+// held to the limit and fails with ErrLimitExceeded.
+func TestOffsetIndexRowsBeforeValueLimit(t *testing.T) {
+	huge := int32(1<<31 - 1)
+	h := format.PageHeader{Type: format.DataPage}
+	h.DataPageHeader = thrift.New(format.DataPageHeader{NumValues: huge, Encoding: format.Plain})
+	raw, err := thrift.Marshal(new(thrift.CompactProtocol), &h)
+	must(t, err)
+	p := testChunk(parquet.Int64Type).p
+	bad := func(format string, args ...any) error {
+		return refusePart(CodeInvalidParquet, "test", 0, format, args...)
+	}
+	// Located by an entry of 5 rows: returned, for indexed to refuse.
+	got, _, err := p.decodeHeader(raw, int64(len(raw)), true, 5, bad)
+	if err != nil || got == nil {
+		t.Fatalf("a header contradicting its OffsetIndex entry: %v", err)
+	}
+	if rows, _ := dataRows(got); rows == 5 {
+		t.Fatal("the header's own rows were replaced")
+	}
+	// No entry, or an entry agreeing with the header: the limit applies.
+	for _, rows := range []int64{-1, int64(huge)} {
+		if _, _, err := p.decodeHeader(raw, int64(len(raw)), true, rows, bad); !errors.Is(err, ErrLimitExceeded) {
+			t.Fatalf("rows %d: %v, want ErrLimitExceeded", rows, err)
 		}
 	}
 }

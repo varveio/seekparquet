@@ -5,6 +5,10 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Fixed (#44): a page its OffsetIndex locates with other rows than its header declares is refused for
+  breaking RG-3 even when the header declares more values than `Limits.PageValues`; it was reported as a
+  limit (`ErrLimitExceeded`), as if the data might be valid. A header that agrees with its OffsetIndex entry
+  is still held to the limit. Java already answered this way.
 - Fixed (differential testing against the Java reader): a page of a type other than BOOLEAN labelled RLE
   made parquet-go decode its payload as runs of bit width 0 and allocate tens of GiB, killing the process; it
   is `invalid_parquet` before anything is decoded. A PLAIN BYTE_ARRAY value overrunning its page could be

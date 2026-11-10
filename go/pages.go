@@ -175,11 +175,11 @@ func (c *chunk) header(off int64) (*format.PageHeader, int64, []byte, error) {
 // with its header, in one read, and returns what header returns. A size
 // beyond any page within the limits is read through header instead, so
 // that it fails as any page beyond them does.
-func (c *chunk) located(off, size int64) (*format.PageHeader, int64, []byte, error) {
+func (c *chunk) located(off, size, rows int64) (*format.PageHeader, int64, []byte, error) {
 	if lim := &c.p.r.limits; size > lim.PageBytes+lim.headerBytes() {
 		return c.header(off)
 	}
-	return c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, c.end, c.stats, c.scratch)
+	return c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, rows, c.end, c.stats, c.scratch)
 }
 
 // payload returns the page data after a header of length n at off, from
@@ -281,7 +281,7 @@ func (c *chunk) indexed(i int, loc pageLoc) ([]parquet.Value, error) {
 	bad := func(format string, args ...any) error {
 		return refusePart(c.code, c.p.name, c.physical, "column chunk %d page %d: "+format, append([]any{c.col.index, i}, args...)...)
 	}
-	h, n, raw, err := c.located(loc.offset, loc.size)
+	h, n, raw, err := c.located(loc.offset, loc.size, loc.rows)
 	if err != nil {
 		if CodeOf(err) == CodeInvalidParquet {
 			return nil, bad("its OffsetIndex entry does not locate a page header")
@@ -633,7 +633,7 @@ func (c *chunk) readDictionary() (parquet.Dictionary, error) {
 	case c.first == c.start:
 		return none()
 	case c.first != 0:
-		h, n, raw, err = c.located(c.start, c.first-c.start)
+		h, n, raw, err = c.located(c.start, c.first-c.start, -1)
 	default:
 		h, n, raw, err = c.header(c.start)
 	}
@@ -927,7 +927,7 @@ func (p *part) pageHeaderInto(ctx context.Context, physical, column int, off, en
 		if err != nil {
 			return nil, 0, nil, err
 		}
-		h, n, err := p.decodeHeader(raw, end-off, int64(len(raw)) == ceiling, bad)
+		h, n, err := p.decodeHeader(raw, end-off, int64(len(raw)) == ceiling, -1, bad)
 		if h != nil || err != nil {
 			return h, n, raw, err
 		}
@@ -936,9 +936,10 @@ func (p *part) pageHeaderInto(ctx context.Context, physical, column int, off, en
 
 // pageExtent reads the size bytes at off that a page index locates as one
 // page, header included, in a single read, and decodes and checks its
-// header as pageHeader does, in a column chunk ending at end. The caller
+// header as pageHeader does, in a column chunk ending at end; rows is the
+// rows its OffsetIndex entry gives, or -1 (decodeHeader). The caller
 // bounds size (chunk.located).
-func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, end int64, st *ReadStats, scratch *pageScratch) (*format.PageHeader, int64, []byte, error) {
+func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, rows, end int64, st *ReadStats, scratch *pageScratch) (*format.PageHeader, int64, []byte, error) {
 	bad := p.badPage(physical, column, off)
 	if off < 0 || off >= end || size > end-off {
 		return nil, 0, nil, bad("outside the column chunk")
@@ -947,7 +948,7 @@ func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, 
 	if err != nil {
 		return nil, 0, nil, err
 	}
-	h, n, err := p.decodeHeader(raw, end-off, true, bad)
+	h, n, err := p.decodeHeader(raw, end-off, true, rows, bad)
 	return h, n, raw, err
 }
 
@@ -972,10 +973,13 @@ func (p *part) readPage(ctx context.Context, off, n int64, st *ReadStats, bad fu
 
 // decodeHeader decodes the page header at the start of raw and checks it
 // against the limits and against avail, the bytes from the header to the
-// end of its column chunk. A header that does not decode from raw is
+// end of its column chunk. rows, when not -1, is the row count of the
+// OffsetIndex entry that located the page: a data page declaring other
+// rows is returned for its caller to refuse (RG-3), even beyond
+// Limits.PageValues, which then does not apply. A header that does not decode from raw is
 // refused when raw is all there is to read (final), and otherwise reported
 // by a nil header and error, so that the caller reads more.
-func (p *part) decodeHeader(raw []byte, avail int64, final bool, bad func(string, ...any) error) (*format.PageHeader, int64, error) {
+func (p *part) decodeHeader(raw []byte, avail int64, final bool, rows int64, bad func(string, ...any) error) (*format.PageHeader, int64, error) {
 	lim := &p.r.limits
 	var header format.PageHeader
 	length, err := decodeBounded(raw, &header, lim.MetadataMemory)
@@ -1013,6 +1017,11 @@ func (p *part) decodeHeader(raw []byte, avail int64, final bool, bad func(string
 		return nil, 0, bad("the value count is negative")
 	}
 	if values > lim.PageValues {
+		// A page its OffsetIndex locates with other rows breaks RG-3 whatever
+		// the limits: its caller refuses it, rather than call it too large.
+		if declared, ok := dataRows(&header); ok && rows >= 0 && declared != rows {
+			return &header, int64(length), nil
+		}
 		return nil, 0, exceeded("part %s: a page of %d values (Limits.PageValues %d)", p.name, values, lim.PageValues)
 	}
 	return &header, int64(length), nil
