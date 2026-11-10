@@ -46,6 +46,17 @@ independent of the specification's draft revisions.
 
 ### Changed
 
+- The checked page locations of each projected column chunk's OffsetIndex, kept once a request has loaded
+  them so that later requests do not read and decode them again, are now bounded by the new
+  `Limits.maxOffsetIndexMemoryBytes` (default 256 MiB, `withMaxOffsetIndexMemoryBytes`, apart from
+  `maxIndexMemoryBytes`), as Go's `Limits.OffsetIndexMemory`, with the same charge: 32 bytes per page plus 64
+  per chunk. Past it requests load the locations they need without keeping them, never an error; before,
+  they were charged to `maxIndexMemoryBytes`, competed with key indexes and failed the request with
+  `LimitExceededException` once it was full. An OffsetIndex that fails to read or check is never kept and is
+  refused on every request. `ReadStats.sourceReads` and `sourceBytes` leave out an index a request found kept.
+  Compatibility: `maxOffsetIndexMemoryBytes` is a ninth `Limits` record component. The eight-argument
+  constructor and the existing `with…` methods remain, but record patterns on `Limits` need the new arity,
+  and reflection over its components, `equals`, `hashCode` and `toString` see the new field.
 - `Dataset.buildListIndex` explicitly builds an optional, bounded directory-run index for `/` listings.
   Compact exact anchors, binary run searches and first-key group routing avoid a key-page decode per
   wide prefix. Dense intervals decline safely; fully checked flat groups retain no index data.

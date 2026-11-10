@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"sort"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/encoding"
@@ -901,17 +903,48 @@ func (p *part) openColumn(ctx context.Context, physical int, name string, st *Re
 		c.scratch = scratch
 	}
 	cp := &columnPages{c: c, rows: p.footer.Metadata().RowGroups[physical].NumRows, off: c.start}
-	index, err := p.loadOffsetIndex(ctx, physical, col.index, st)
-	if err != nil {
-		return nil, c.corrupt(fmt.Errorf("the OffsetIndex: %w", err))
-	}
-	if index != nil {
-		if cp.locs, err = checkLocations(index, cp.rows, c.start, c.end); err != nil {
-			return nil, c.corrupt(err)
+	slot := &p.locs[physical][col.index]
+	if locs := slot.Load(); locs != nil {
+		cp.locs = *locs
+	} else {
+		index, err := p.loadOffsetIndex(ctx, physical, col.index, st)
+		if err != nil {
+			return nil, c.corrupt(fmt.Errorf("the OffsetIndex: %w", err))
 		}
+		if index != nil {
+			if cp.locs, err = checkLocations(index, cp.rows, c.start, c.end); err != nil {
+				return nil, c.corrupt(err)
+			}
+			p.r.keepLocations(slot, cp.locs)
+		}
+	}
+	if cp.locs != nil {
 		c.first = cp.locs[0].offset
 	}
 	return cp, nil
+}
+
+// keepLocations publishes a chunk's checked page locations to slot, for
+// later requests to share read-only, when Limits.OffsetIndexMemory has
+// room for them; otherwise they serve this request alone. Only checked
+// locations reach it: an OffsetIndex that fails to load or check is never
+// kept, so every request that touches it is refused. A request that finds
+// the locations kept makes no index read, so its SourceReads and
+// SourceBytes leave out the index bytes an earlier request read.
+func (r *reader) keepLocations(slot *atomic.Pointer[[]pageLoc], locs []pageLoc) {
+	size := int64(len(locs))*int64(unsafe.Sizeof(pageLoc{})) + 64
+	for {
+		used := r.locsMemory.Load()
+		if size > r.limits.OffsetIndexMemory-used {
+			return
+		}
+		if r.locsMemory.CompareAndSwap(used, used+size) {
+			break
+		}
+	}
+	if !slot.CompareAndSwap(nil, &locs) {
+		r.locsMemory.Add(-size) // a concurrent first use published first
+	}
 }
 
 // dictionaryBytes returns the extent of the chunk's dictionary page when

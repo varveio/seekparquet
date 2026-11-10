@@ -5,6 +5,12 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- A Dataset keeps the checked page locations of each projected column chunk's OffsetIndex once a
+  request has loaded them, so later requests do not read and decode them again (Java keeps
+  them too, under its own `maxOffsetIndexMemoryBytes`). The new `Limits.OffsetIndexMemory` (default 256 MiB, apart from `IndexMemory`) bounds what is
+  kept; past it requests load the locations they need without keeping them, never an error. An
+  OffsetIndex that fails to read or check is never kept and is refused on every request.
+  `ReadStats.SourceReads` and `SourceBytes` leave out an index a request found kept.
 - Added `RangePlan.ScanBatches(ctx, stats, func(*Batch) error)` for borrowed column scans.
   `Batch` exposes `Len`, `Key`, `Offset`, and `Column`; `Row` and `Cursor` make owning copies.
   The batch object and all borrowed slices/bytes are read-only and valid only until the callback

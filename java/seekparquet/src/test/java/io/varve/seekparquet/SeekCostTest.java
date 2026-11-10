@@ -340,12 +340,12 @@ class SeekCostTest {
         Manifest manifest = Manifest.parse(Files.readAllBytes(root.resolve("manifest.json")));
         ReadContext ctx = new ReadContext(Cancellation.none(), Limits.DEFAULT);
         long indexBytes;
-        try (PartFile part = PartFile.open(LocalStorage.of(root), manifest, 0, ctx, new IndexMemory(Long.MAX_VALUE))) {
+        try (PartFile part = PartFile.open(LocalStorage.of(root), manifest, 0, ctx, new IndexMemory(Long.MAX_VALUE), new OffsetIndexMemory(Long.MAX_VALUE))) {
             indexBytes = part.keyIndex(0, ctx).memoryBytes();
         }
         long firstBytes = 32L + ((rowsKeyLength(manifest) + 7L) & ~7L);
         for (long budget : new long[] {indexBytes, indexBytes + firstBytes}) {
-            try (PartFile part = PartFile.open(LocalStorage.of(root), manifest, 0, ctx, new IndexMemory(budget))) {
+            try (PartFile part = PartFile.open(LocalStorage.of(root), manifest, 0, ctx, new IndexMemory(budget), new OffsetIndexMemory(Long.MAX_VALUE))) {
                 part.keyIndex(0, ctx);
                 if (budget == indexBytes) {
                     assertEquals("maxIndexMemoryBytes", assertThrows(LimitExceededException.class,
@@ -408,7 +408,7 @@ class SeekCostTest {
         Manifest manifest = Manifest.parse(Files.readAllBytes(root.resolve("manifest.json")));
         ReadContext ctx = new ReadContext(Cancellation.none(), Limits.DEFAULT);
         long budget;
-        try (PartFile part = PartFile.open(local, manifest, 0, ctx, new IndexMemory(Long.MAX_VALUE))) {
+        try (PartFile part = PartFile.open(local, manifest, 0, ctx, new IndexMemory(Long.MAX_VALUE), new OffsetIndexMemory(Long.MAX_VALUE))) {
             budget = part.keyIndex(0, ctx).memoryBytes() + 40;
         }
         AtomicBoolean gate = new AtomicBoolean();
@@ -437,7 +437,7 @@ class SeekCostTest {
                 };
             }
         };
-        try (PartFile part = PartFile.open(storage, manifest, 0, ctx, new IndexMemory(budget));
+        try (PartFile part = PartFile.open(storage, manifest, 0, ctx, new IndexMemory(budget), new OffsetIndexMemory(Long.MAX_VALUE));
                 var executor = Executors.newFixedThreadPool(2)) {
             part.keyIndex(0, ctx);
             gate.set(true);

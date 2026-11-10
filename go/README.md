@@ -262,7 +262,10 @@ of the first row group whose first key is at or above it, so earlier rows of its
 finds its group's first row the same way, then moves to the row after it through the OffsetIndex row
 positions, without decoding the rows between. A warm read then decodes the key pages from the one that can
 hold its start, and value pages only for the rows it returns; a value column without an OffsetIndex has its
-page headers walked from the start of its chunk, decoding only the pages it returns rows from. A listing
+page headers walked from the start of its chunk, decoding only the pages it returns rows from. A projected
+column chunk's OffsetIndex is read and checked the first time a request needs it and its page locations kept,
+within `Limits.OffsetIndexMemory` (default 256 MiB, apart from `IndexMemory`); past that budget each request
+reads it again, never failing for it. A listing
 resumes after each common prefix at the prefix's successor, skipping the pages wholly under it, but the page
 it lands on, and the pages around a prefix's boundaries, still decode some of the keys under it.
 
