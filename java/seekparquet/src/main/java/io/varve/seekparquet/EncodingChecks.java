@@ -16,21 +16,52 @@ final class EncodingChecks {
     /**
      * Walks an RLE/bit-packed hybrid stream in {@code b[from, to)} holding at most {@code maxValues}
      * values of {@code bitWidth} bits, and checks that no run declares more values than remain (a
-     * bit-packed run may pad its last group).
+     * bit-packed run may pad its last group), without decoding it. A run of no values holds nothing, as
+     * in Go and parquet-go, which writes one for a page whose values are all null (a dictionary-encoded
+     * page of no indexes); parquet-java's decoder does not skip one, but repeats its value. So {@return
+     * the stream without its empty runs, for the decoder to read, or {@code null} when it has none}
      */
-    static void rleHybrid(byte[] b, int from, int to, int bitWidth, long maxValues) throws DataException {
+    static byte[] rleHybrid(byte[] b, int from, int to, int bitWidth, long maxValues) throws DataException {
+        return rleHybrid(b, from, to, bitWidth, maxValues, true);
+    }
+
+    /**
+     * Walks an RLE/bit-packed hybrid stream as {@link #rleHybrid(byte[], int, int, int, long)} does, and
+     * refuses an empty run unless {@code emptyRuns}: Boolean values, which Go also refuses one in.
+     */
+    static byte[] rleHybrid(byte[] b, int from, int to, int bitWidth, long maxValues, boolean emptyRuns) throws DataException {
         if (bitWidth < 0 || bitWidth > 32) {
             throw new DataException("an RLE bit width of " + bitWidth);
         }
         int[] pos = {from};
         long values = 0;
+        java.io.ByteArrayOutputStream kept = null; // the stream without its empty runs, once one is found
+        int keptFrom = from;
         while (pos[0] < to) {
+            int run = pos[0];
             long header = uleb(b, pos, to);
             long runs = header >>> 1;
-            if (runs == 0 || values >= maxValues) {
-                throw new DataException("an empty or excess RLE run");
-            }
             boolean packed = (header & 1) != 0;
+            if (runs == 0) {
+                if (!emptyRuns) {
+                    throw new DataException("an empty RLE run");
+                }
+                // A repeated run still carries its value's bytes.
+                long bytes = packed ? 0 : (bitWidth + 7) / 8;
+                if (bytes > to - pos[0]) {
+                    throw new DataException("a truncated RLE run body");
+                }
+                pos[0] += (int) bytes;
+                if (kept == null) {
+                    kept = new java.io.ByteArrayOutputStream(to - from);
+                }
+                kept.write(b, keptFrom, run - keptFrom);
+                keptFrom = pos[0];
+                continue;
+            }
+            if (values >= maxValues) {
+                throw new DataException("an excess RLE run");
+            }
             long remaining = maxValues - values;
             if (packed ? runs > (remaining + 7) / 8 : runs > remaining) {
                 throw new DataException("an RLE run exceeds the remaining value count");
@@ -45,11 +76,17 @@ final class EncodingChecks {
         if (values < maxValues) {
             throw new DataException("an RLE stream holds fewer values than expected");
         }
+        if (kept == null) {
+            return null;
+        }
+        kept.write(b, keptFrom, to - keptFrom);
+        return kept.toByteArray();
     }
 
     /**
      * Walks {@code count} PLAIN BYTE_ARRAY values (each a 4-byte little-endian length and its bytes)
-     * in {@code b[from, to)}, checking that every length lies inside the stream.
+     * in {@code b[from, to)}, checking that every length lies inside the stream and that the values end
+     * exactly at {@code to}: bytes after them would be values the decoder never reads (CHECK-5).
      */
     static void plainByteArrays(byte[] b, int from, int to, long count) throws DataException {
         long pos = from;
@@ -63,6 +100,9 @@ final class EncodingChecks {
             if (pos > to) {
                 throw new DataException("a PLAIN BYTE_ARRAY value of " + len + " bytes overruns its page");
             }
+        }
+        if (pos != to) {
+            throw new DataException("the page holds " + (to - pos) + " bytes after its " + count + " PLAIN BYTE_ARRAY values");
         }
     }
 

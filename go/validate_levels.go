@@ -203,8 +203,8 @@ func (v *validator) walk(c *chunk, rows int64, visit func(i int, loc pageLoc, h 
 	return nil
 }
 
-// page decodes the data page that walk found at loc, after its checksum
-// when it has one, and requires it to hold one value per row.
+// page decodes the data page that walk found at loc, after its CRC when
+// it has one, and requires it to hold one value per row.
 func (c *chunk) page(loc pageLoc, h *format.PageHeader, n int64, raw []byte) ([]parquet.Value, error) {
 	data, err := c.payload(h, loc.offset, n, raw)
 	if err != nil {
@@ -317,8 +317,8 @@ func (v *validator) profile(lr *LevelReport) error {
 }
 
 // full walks and decodes every column chunk other than the key column's
-// (decoded by profile) in every non-empty row group: every page passes its
-// checksum, decompresses and decodes, its levels and values agree with its
+// (decoded by profile) in every non-empty row group: every page whose
+// header carries a CRC passes it, decompresses and decodes, its levels and values agree with its
 // header, and the chunk holds exactly the row group's rows and the value
 // count its metadata declares (CHECK-5). A column's OffsetIndex, when it
 // has one, must list exactly the data pages found, and its ColumnIndex,

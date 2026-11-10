@@ -94,12 +94,15 @@ final class PartSchema {
     }
 
     /**
-     * {@return a schema element's logical type}: its {@code logical_type} when set, else its {@code
-     * converted_type} as Parquet's LogicalTypes.md maps it (time and timestamp adjusted to UTC); empty
+     * {@return a schema element's logical type}: its {@code logical_type} when set to a member this reader
+     * knows, else its {@code converted_type} as Parquet's LogicalTypes.md maps it (time and timestamp
+     * adjusted to UTC), as Go's reader does; empty
      * for neither, and for {@code INTERVAL} and the group annotations, which have no leaf logical type.
      */
     static Optional<LogicalType> logicalType(SchemaElement se) {
-        if (se.isSetLogicalType()) {
+        // A member this parquet-format does not know (a newer annotation) decodes with no set field: the
+        // converted type, if any, then stands for it.
+        if (se.isSetLogicalType() && se.getLogicalType().getSetField() != null) {
             org.apache.parquet.format.LogicalType lt = se.getLogicalType();
             return Optional.ofNullable(switch (lt.getSetField()) {
                 case STRING -> new LogicalType.StringType();

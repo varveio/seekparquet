@@ -7,6 +7,13 @@ package io.varve.seekparquet;
  * Limits on the sizes a reader accepts from the data before it allocates (spec §11). A size above a
  * limit fails with {@link LimitExceededException}, which is not a refusal: the data may be valid.
  *
+ * <p>{@code maxPageBytes} bounds a page's bytes, not the memory of decoding it: a page's values are
+ * also held in arrays of one slot per value and, for byte-array columns, one array object per value
+ * (tens of bytes each, beyond its content), which {@code maxPageValues} bounds. Each request decodes
+ * its own pages, so concurrent requests add up; lower {@code maxPageValues} to bound a page's memory.
+ * No limit bounds the part sources and footers a dataset keeps open for the parts it has touched (see
+ * {@link Dataset}).
+ *
  * @param maxManifestBytes the largest {@code manifest.json}
  * @param maxParts the most parts in a manifest
  * @param maxFooterBytes the largest Parquet footer
