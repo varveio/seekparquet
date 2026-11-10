@@ -223,7 +223,9 @@ class ListIndexRegressionTest {
         for (String dir : List.of("a", "b", "c")) for (int j = 0; j < 4; j++) keys.add(String.format("%s/%04d", dir, j));
         keys.addAll(List.of("c/0004", "d/0000", "e/0000", "f/0000"));
         for (int j = 1; j <= 4; j++) keys.add(String.format("f/%04d", j));
-        for (String dir : List.of("g", "h")) for (int j = 0; j < 4; j++) keys.add(String.format("%s/%04d", dir, j));
+        for (String dir : List.of("g", "h")) for (int j = 0; j < 4; j++) {
+            keys.add(dir.equals("g") && j == 0 ? "g/" : dir.equals("g") && j == 1 ? "g/00010000" : String.format("%s/%04d", dir, j));
+        }
         var spec = new TestDatasets.Spec(); spec.rowsPerPage = 4; spec.rowsPerGroup = 100;
         Path root = fixture("dense", spec, keys.toArray(String[]::new));
         try (Dataset plain = Dataset.open(root); Dataset indexed = Dataset.open(root)) {
@@ -231,6 +233,17 @@ class ListIndexRegressionTest {
             var group = indexed.parts().listIndex.groups[0]; assertTrue(group.dense);
             assertArrayEquals(raw("f/0001").toByteArray(), group.key(group.runAt(16)));
             assertEquals(16, group.rows[group.runAt(16)]);
+            AtomicReference<ReadStats> projected = new AtomicReference<>();
+            var entries = indexed.list(ListQuery.builder((byte) '/').columns("size", "note").limit(100).build(),
+                    Cancellation.none(), projected::set);
+            assertEquals(8, entries.size());
+            var folder = assertInstanceOf(ListEntry.CommonPrefix.class, entries.get(6));
+            assertEquals(raw("g/"), folder.prefix());
+            assertEquals(new Row(raw("g/"), 0, List.of("size", "note"),
+                    List.of(new Value.Int64(20), new Value.ByteArray(raw("n20")))), folder.exact().orElseThrow());
+            assertTrue(projected.get().listIndexSkips() >= 3);
+            assertTrue(projected.get().listIndexDensePage() > 0);
+            assertTrue(projected.get().valuePagesDecoded() > 0);
             for (Continuation cursor : Arrays.asList(null, new Continuation.CommonPrefix(raw("b/")),
                     new Continuation.CommonPrefix(raw("f/0000")), new Continuation.RowPosition(raw("f/0001"), 0))) {
                 for (String end : Arrays.asList(null, "c/0002", "f/0003")) {
@@ -241,6 +254,30 @@ class ListIndexRegressionTest {
                     }
                 }
             }
+        }
+    }
+
+    @Test void flatFirstGroupBudget() throws Exception {
+        String flat = "a" + "x".repeat(5000);
+        for (int rowsPerPage : new int[] {2, 1}) {
+            var spec = new TestDatasets.Spec(); spec.rowsPerGroup = 2; spec.rowsPerPage = rowsPerPage;
+            Path root = fixture("flat-budget" + rowsPerPage, spec, new String[] {flat + "0", flat + "1", "b/x", "b/y"});
+            try (Dataset plain = Dataset.open(root); Dataset indexed = Dataset.open(root)) {
+                var stats = indexed.buildListIndex(new ListIndexOptions(600, 1, 0), Cancellation.none());
+                assertEquals(1, stats.groupsIndexed()); assertEquals(1, stats.groupsSkipped());
+                assertEquals(0, stats.groupsFailed()); assertFalse(stats.budgetExhausted());
+                assertEquals(4 / rowsPerPage, stats.pages(), "fully decode the flat group before omitting it");
+                assertTrue(stats.bytes() <= 600);
+                assertEquals(1, indexed.parts().listIndex.groups[0].slot);
+                compare(plain, indexed, ListQuery.builder((byte) '/').columns("size").limit(100).build());
+            }
+        }
+        // A flat first page does not establish that the complete group is flat.
+        var spec = new TestDatasets.Spec(); spec.rowsPerGroup = 2; spec.rowsPerPage = 1;
+        Path root = fixture("not-flat-budget", spec, new String[] {flat + "0", flat + "1/x", "b/x", "b/y"});
+        try (Dataset indexed = Dataset.open(root)) {
+            var stats = indexed.buildListIndex(new ListIndexOptions(600, 1, 0), Cancellation.none());
+            assertEquals(0, stats.groupsIndexed()); assertTrue(stats.budgetExhausted()); assertEquals(2, stats.pages());
         }
     }
 

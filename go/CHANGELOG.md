@@ -5,6 +5,9 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Fully decode flat groups before eliminating their temporary anchors from the list-index budget,
+  allowing later indexable groups to be admitted even when flat keys exceed the byte budget.
+
 - Fix indexed listings with arbitrary prefix cursors: only slash-ended cursors use directory-run
   certification. Omit both sides of disordered group boundaries regardless of cached first keys or
   worker order, including chained violations. Cancelled builds include decoded work from the final

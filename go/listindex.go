@@ -312,7 +312,10 @@ func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndex
 		previous = bytes.Clone(directory(k.values[len(k.values)-1].ByteArray()))
 		// The candidate cannot be admitted. Bound temporary storage too; the
 		// caller treats this as an over-budget candidate, not a failed group.
-		if 256+int64(len(g.base)+len(g.data))+int64(len(g.runs))*32 > opt.MaxBytes {
+		// A flat run retains nothing if the entire group stays flat. Finish
+		// decoding before deciding, even when its temporary anchor is large.
+		flatSoFar := len(g.runs) == 1 && g.runs[0].size >= 0 && len(directory(g.base)) == 0
+		if !flatSoFar && 256+int64(len(g.base)+len(g.data))+int64(len(g.runs))*32 > opt.MaxBytes {
 			return g, pages, nil
 		}
 	}

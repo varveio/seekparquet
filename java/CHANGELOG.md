@@ -7,6 +7,9 @@ independent of the specification's draft revisions.
 
 ### Changed
 
+- Finish decoding a potentially flat group before omitting its temporary list-index anchor, so a
+  later page containing a directory cannot be mistaken for a flat group under a small byte budget.
+
 - Fix indexed listings with arbitrary prefix continuations: only slash-ended continuations use
   directory-run certification. Omit both sides of chained disordered group boundaries independent
   of worker order and cached first keys. Ordinary and synthetic group transitions share value-cache

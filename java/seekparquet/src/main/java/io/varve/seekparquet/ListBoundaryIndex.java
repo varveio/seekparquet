@@ -160,7 +160,10 @@ final class ListBoundaryIndex {
                     denseBefore = false;
                 }
                 previous = keys[keys.length - 1];
-                if (256L + base.length + data.size() + 32L * runs.size() > options.maxBytes()) break;
+                // Finish proving flatness before dropping the temporary anchor;
+                // a later page may contain a directory and require admission.
+                boolean flatSoFar = runs.size() == 1 && runs.getFirst().size() >= 0 && directoryLength(base) == 0;
+                if (!flatSoFar && 256L + base.length + data.size() + 32L * runs.size() > options.maxBytes()) break;
             }
             if (runs.size() == 1 && runs.getFirst().size() >= 0 && directoryLength(base) == 0) {
                 return new Built(null, pages, null, base, previous);

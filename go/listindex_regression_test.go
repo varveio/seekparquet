@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -170,7 +171,14 @@ func TestListIndexRegressionSparseDenseSparse(t *testing.T) {
 	}
 	for _, dir := range []string{"g", "h"} {
 		for j := 0; j < 4; j++ {
-			keys = append(keys, fmt.Sprintf("%s/%04d", dir, j))
+			if dir == "g" && j == 0 {
+				keys = append(keys, "g/")
+			} else if dir == "g" && j == 1 {
+				// Balance the shorter folder key to keep four rows in this page.
+				keys = append(keys, "g/00010000")
+			} else {
+				keys = append(keys, fmt.Sprintf("%s/%04d", dir, j))
+			}
 		}
 	}
 	dir := write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 40}, keys))
@@ -191,6 +199,19 @@ func TestListIndexRegressionSparseDenseSparse(t *testing.T) {
 	if !found {
 		t.Fatalf("missing coverage-resumption anchor: %+v", g.runs)
 	}
+	var projected ReadStats
+	entries, err := indexed.List(ctx, List{Delimiter: '/', Limit: 100, Columns: []string{"size"}, Stats: &projected})
+	must(t, err)
+	if len(entries) != 8 || string(entries[6].CommonPrefix) != "g/" || entries[6].Exact == nil {
+		t.Fatalf("missing exact folder after dense transition: %+v", entries)
+	}
+	exact := entries[6].Exact
+	if string(exact.Key) != "g/" || exact.Offset != 0 || len(exact.Values) != 1 || exact.Values[0].Absent || exact.Values[0].IsNull() || exact.Values[0].Int64() != 20 {
+		t.Fatalf("wrong projected folder: %+v", exact)
+	}
+	if projected.ListIndexSkips < 3 || projected.ListIndexDensePage == 0 || projected.ValuePagesDecoded == 0 {
+		t.Fatalf("did not project after synthetic/dense transitions: %+v", projected)
+	}
 	for _, cursor := range []*Cursor{nil, {Prefix: []byte("b/")}, {Prefix: []byte("f/0000")}, {Key: []byte("f/0001"), Offset: 0}} {
 		for _, end := range [][]byte{nil, []byte("c/0002"), []byte("f/0003")} {
 			st := compareListIndex(t, plain, indexed, List{Delimiter: '/', Limit: 100, Cursor: cursor, End: end, Columns: []string{"size", "name"}})
@@ -198,6 +219,38 @@ func TestListIndexRegressionSparseDenseSparse(t *testing.T) {
 				t.Fatalf("did not exercise hit/fallback/resumption: %+v", st)
 			}
 		}
+	}
+}
+
+func TestListIndexRegressionFlatFirstGroupBudget(t *testing.T) {
+	flat := "a" + strings.Repeat("x", 5000)
+	for _, pageBytes := range []int{20000, 4000} {
+		t.Run(fmt.Sprint(pageBytes), func(t *testing.T) {
+			dir := write(t, parts(testutil.Part{GroupRows: 2, PageBytes: pageBytes}, []string{flat + "0", flat + "1", "b/x", "b/y"}))
+			plain := open(t, dir, Options{})
+			d := open(t, dir, Options{})
+			st, err := d.BuildListIndex(ctx, ListIndexOptions{MaxBytes: 600})
+			must(t, err)
+			pages := int64(2)
+			if pageBytes == 4000 {
+				pages++
+			}
+			if st.GroupsIndexed != 1 || st.GroupsSkipped != 1 || st.GroupsFailed != 0 || st.BudgetExhausted || st.Pages != pages || st.Bytes > 600 {
+				t.Fatalf("flat group must be fully decoded and omitted before admission: %+v", st)
+			}
+			if x := d.r.listIndex.Load(); len(x.groups) != 1 || x.groups[0].g != (groupRef{0, 1}) {
+				t.Fatal("expected only the following slash group")
+			}
+			compareListIndex(t, plain, d, List{Delimiter: '/', Limit: 100, Columns: []string{"size"}})
+		})
+	}
+	// A flat first page does not establish that the complete group is flat.
+	dir := write(t, parts(testutil.Part{GroupRows: 2, PageBytes: 4000}, []string{flat + "0", flat + "1/x", "b/x", "b/y"}))
+	d := open(t, dir, Options{})
+	st, err := d.BuildListIndex(ctx, ListIndexOptions{MaxBytes: 600})
+	must(t, err)
+	if st.GroupsIndexed != 0 || !st.BudgetExhausted || st.Pages != 2 {
+		t.Fatalf("later slash must prevent flat elimination: %+v", st)
 	}
 }
 
