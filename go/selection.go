@@ -124,6 +124,7 @@ func (plan *RangePlan) Scan(ctx context.Context, st *ReadStats, fn func(Row) err
 		end()
 	}()
 	columns := slices.Clone(plan.columns)
+	scratch := make([]pageScratch, len(columns))
 	s := r.newScan(rctx, nil, st)
 	// rows are a batch of one key page's rows, at their positions; pages
 	// the projected columns of row group g.
@@ -144,7 +145,7 @@ func (plan *RangePlan) Scan(ctx context.Context, st *ReadStats, fn func(Row) err
 				}
 				pages = make([]*columnPages, len(columns))
 				for c, name := range columns {
-					cp, err := p.openColumn(rctx, p.groups[g.index].physical, name, st)
+					cp, err := p.openColumn(rctx, p.groups[g.index].physical, name, st, &scratch[c])
 					if err != nil {
 						return err
 					}
@@ -297,7 +298,7 @@ func (plan *RangePlan) planColumns(ctx context.Context) error {
 					current, chunks = g, make([]planned, len(plan.columns))
 					plan.groups = append(plan.groups, groupBytes{start: grp.start})
 					for c, name := range plan.columns {
-						cp, err := p.openColumn(ctx, grp.physical, name, st)
+						cp, err := p.openColumn(ctx, grp.physical, name, st, nil)
 						if err != nil {
 							return err
 						}

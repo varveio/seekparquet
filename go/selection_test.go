@@ -589,7 +589,7 @@ func TestRangeReadsDictionaryOnlyForItsPages(t *testing.T) {
 	must(t, err)
 	defer d.Close()
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
-	cp, err := d.r.parts[0].openColumn(ctx, 0, "size", new(ReadStats))
+	cp, err := d.r.parts[0].openColumn(ctx, 0, "size", new(ReadStats), nil)
 	must(t, err)
 	if cp.dictionaryBytes() <= limits.PageBytes {
 		t.Fatalf("the dictionary takes %d bytes, within Limits.PageBytes", cp.dictionaryBytes())
