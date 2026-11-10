@@ -186,7 +186,9 @@ func (c *chunk) located(off, size int64) (*format.PageHeader, int64, []byte, err
 
 // payload returns the page data after a header of length n at off, from
 // raw when it holds them, after checking the CRC its header carries, when
-// it carries one (zero included).
+// it carries one (zero included). The slice's capacity ends with the page,
+// so that no decoder can read the bytes after it (raw may hold the next
+// page's header).
 func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte, error) {
 	// A separate payload read may overwrite raw in the same scratch allocation.
 	// Determine optional CRC presence while the header bytes are still live.
@@ -194,7 +196,7 @@ func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte,
 	size := int64(h.CompressedPageSize)
 	var data []byte
 	if int64(len(raw)) >= n+size {
-		data = raw[n : n+size]
+		data = raw[n : n+size : n+size]
 	} else {
 		data = c.scratch.readBuffer(int(size))
 		if err := readFull(c.p.at(c.ctx, c.stats), data, off+n); err != nil {
@@ -226,8 +228,41 @@ func (c *chunk) hasCRC(off, n int64, raw []byte) bool {
 			return false // the header was read before; a failing reread is not the page's
 		}
 	}
+	if present, ok := crcFieldPresent(raw[:n]); ok {
+		return present
+	}
 	var f crcField
 	return thrift.Unmarshal(new(thrift.CompactProtocol), raw[:n], &f) == nil && f.CRC != nil
+}
+
+// crcFieldPresent reads, without allocating, whether a page header in the
+// compact protocol carries its crc (field 4), when the header begins as
+// writers encode it: fields 1 to 3, each an i32 in a short-form header
+// (0x15), then field 4 (0x15) or a later field in short form. ok is false
+// for any other encoding, which hasCRC then decodes in full. Every page
+// without a CRC (most pages) asks this, so it must not cost a decode.
+func crcFieldPresent(header []byte) (present, ok bool) {
+	p := 0
+	for range 3 {
+		if p >= len(header) || header[p] != 0x15 {
+			return false, false
+		}
+		_, k := binary.Uvarint(header[p+1:])
+		if k <= 0 {
+			return false, false
+		}
+		p += 1 + k
+	}
+	if p >= len(header) {
+		return false, false
+	}
+	switch b := header[p]; {
+	case b == 0x15:
+		return true, true
+	case b>>4 > 1: // a short-form header of field 5 or later: no field 4 before it
+		return false, true
+	}
+	return false, false // the end of the struct, or a long-form header
 }
 
 // dataRows returns the rows of a data page and true, or false for a page
@@ -285,6 +320,7 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 	var n int
 	var enc format.Encoding
 	var levels, data []byte
+	nulls := -1 // a V2 page's declared null count
 	switch h.Type {
 	case format.DataPage:
 		d := &h.DataPageHeader.V
@@ -300,7 +336,7 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 				return nil, c.corrupt(errors.New("the definition levels exceed the page"))
 			}
 			m := 4 + int(binary.LittleEndian.Uint32(data))
-			levels, data = data[4:m], data[m:]
+			levels, data = data[4:m:m], data[m:]
 		}
 	case format.DataPageV2:
 		d := &h.DataPageHeaderV2.V
@@ -309,22 +345,38 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 			return nil, c.corrupt(errors.New("a page of a non-repeated column holds a different number of rows and values"))
 		}
 		rep, def := int(d.RepetitionLevelsByteLength), int(d.DefinitionLevelsByteLength)
-		levels, data = payload[rep:rep+def], payload[rep+def:]
+		// A top-level, non-repeated column has no repetition levels, and a
+		// REQUIRED one no definition levels: bytes declared for them are not
+		// the page's values (CHECK-5).
+		if rep != 0 {
+			return nil, c.corrupt(fmt.Errorf("a page of a non-repeated column declares %d bytes of repetition levels", rep))
+		}
+		if !c.col.optional && def != 0 {
+			return nil, c.corrupt(fmt.Errorf("a page of a REQUIRED column declares %d bytes of definition levels", def))
+		}
+		nulls = int(d.NumNulls)
+		levels, data = payload[:def:def], payload[def:]
 		codec := c.codec
 		if d.IsCompressed.Valid && !d.IsCompressed.V {
 			codec = format.Uncompressed
 		}
-		if data, err = c.scratch.decompress(codec, data, int(h.UncompressedPageSize)-rep-def); err != nil {
+		if data, err = c.scratch.decompress(codec, data, int(h.UncompressedPageSize)-def); err != nil {
 			return nil, c.corrupt(err)
 		}
 	}
 	if !c.col.optional {
+		if nulls > 0 {
+			return nil, c.corrupt(fmt.Errorf("a page of a REQUIRED column declares %d nulls", nulls))
+		}
 		values, err := c.values(enc, data, n)
 		if err == nil {
 			*c.pages++
 		}
 		return values, err
 	}
+	// The runs are checked first (each repeated value below 2, no surplus),
+	// then decoded into this request's level buffer; a level above the
+	// column's maximum of 1 is refused, not counted.
 	if err := checkRuns(levels, n, 1); err != nil {
 		return nil, c.corrupt(fmt.Errorf("definition levels: %w", err))
 	}
@@ -336,9 +388,17 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 		return nil, c.corrupt(errors.New("the page holds fewer definition levels than values"))
 	}
 	defined = defined[:n]
+	for _, level := range defined {
+		if level > 1 {
+			return nil, c.corrupt(fmt.Errorf("definition levels: a level of %d is above the column's maximum 1", level))
+		}
+	}
 	present := 0
 	for _, level := range defined {
 		present += int(level)
+	}
+	if nulls >= 0 && nulls != n-present {
+		return nil, c.corrupt(fmt.Errorf("the page declares %d nulls, its definition levels hold %d", nulls, n-present))
 	}
 	values, err := c.values(enc, data, present)
 	if err != nil {
@@ -360,6 +420,9 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 
 // values decodes the n non-null values of a page, encoded with enc.
 func (c *chunk) values(enc format.Encoding, data []byte, n int) ([]parquet.Value, error) {
+	// A reused decompression buffer can be longer than this page: no decoder
+	// may reach past the page into a previous page's bytes.
+	data = data[:len(data):len(data)]
 	s := c.scratch.local()
 	// Drop pointers into the previous page/dictionary, including a long page's
 	// unused tail, before decoding a smaller page or another chunk.
@@ -373,6 +436,11 @@ func (c *chunk) values(enc format.Encoding, data []byte, n int) ([]parquet.Value
 		}
 		if dict == nil {
 			return nil, c.corrupt(errors.New("a dictionary-encoded page in a chunk without a dictionary"))
+		}
+		if n == 0 && len(data) == 0 {
+			// No index to read, so no bit width either: a page whose values
+			// are all null (Java and PyArrow read it so).
+			return out, nil
 		}
 		if len(data) == 0 || data[0] > 32 {
 			return nil, c.corrupt(errors.New("the dictionary indexes have no valid bit width"))
@@ -415,8 +483,23 @@ func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.
 	if !supportedEncoding(enc) {
 		return none, &UnsupportedError{Code: UnsupportedEncoding, Detail: "encoding " + enc.String() + " in part " + c.p.name}
 	}
-	if err := checkCounts(enc, data, n); err != nil {
+	kind := c.col.typ.Kind()
+	if enc == format.RLE && kind != parquet.Boolean {
+		// Parquet defines RLE values only for Booleans. parquet-go would
+		// decode another type's payload as runs of bit width 0, where one
+		// run header can declare 2^31 values that occupy no bytes: refused
+		// before anything is decoded or allocated.
+		return none, c.corrupt(fmt.Errorf("RLE values in a %s column", kind))
+	}
+	if err := checkCounts(enc, data, n, kind == parquet.Int64); err != nil {
 		return none, c.corrupt(err)
+	}
+	if enc == format.Plain && kind == parquet.ByteArray {
+		// parquet-go bounds a value's length by the whole buffer rather
+		// than by the bytes after it: check every length first.
+		if err := plainByteArrays(data, n); err != nil {
+			return none, c.corrupt(err)
+		}
 	}
 	// The dependency's Boolean hybrid decoder copies a repeated bit as a byte,
 	// which turns a run of true into true,false,... . Expand into a bounded
@@ -522,15 +605,22 @@ func held(typ parquet.Type, decoded *encoding.Values) int64 {
 // dictionary page that begins the chunk, decoded on first use. When the
 // chunk's first data page is known, the bytes before it are the
 // dictionary's extent, read at once.
-func (c *chunk) dictionary() (parquet.Dictionary, error) {
+func (c *chunk) dictionary() (_ parquet.Dictionary, err error) {
 	if c.dictRead {
 		return c.dict, nil
 	}
 	c.dictRead = true
+	// The last line of defence decode has: a planned scan and the validator
+	// read the dictionary outside decode.
+	defer func() {
+		if r := recover(); r != nil {
+			c.dict = nil
+			err = c.corrupt(fmt.Errorf("parquet-go failed on the dictionary page: %v", r))
+		}
+	}()
 	// A lazy read must not overwrite the active data page or its decode buffers.
 	dictionaryChunk := *c
 	dictionaryChunk.scratch = nil
-	var err error
 	c.dict, err = dictionaryChunk.readDictionary()
 	return c.dict, err
 }
@@ -585,24 +675,132 @@ func (c *chunk) readDictionary() (parquet.Dictionary, error) {
 
 // checkCounts checks the value counts an encoding declares inside a page
 // against the n values the page header declares, before a decoder
-// allocates for them.
-func checkCounts(enc format.Encoding, data []byte, n int) error {
+// allocates for them. int64Values tells a DELTA_BINARY_PACKED stream of INT64
+// values (bit widths up to 64) from one of INT32 values; the lengths of
+// the byte-array delta encodings are INT32 (widths up to 32).
+func checkCounts(enc format.Encoding, data []byte, n int, int64Values bool) error {
 	switch enc {
 	case format.RLE: // booleans: a 4-byte length, then runs of one bit
 		if len(data) < 4 || int64(binary.LittleEndian.Uint32(data)) > int64(len(data)-4) {
 			return errors.New("the RLE length exceeds the page")
 		}
-		return checkRuns(data[4:4+binary.LittleEndian.Uint32(data)], n, 1)
-	case format.DeltaBinaryPacked, format.DeltaLengthByteArray:
-		_, err := deltaStream(data, n)
+		m := 4 + int(binary.LittleEndian.Uint32(data))
+		return checkRuns(data[4:m:m], n, 1)
+	case format.DeltaBinaryPacked:
+		width := 32
+		if int64Values {
+			width = 64
+		}
+		_, err := deltaStream(data, n, width)
 		return err
-	case format.DeltaByteArray: // prefix lengths, then suffix lengths
-		rest, err := deltaStream(data, n)
+	case format.DeltaLengthByteArray: // lengths, then the values' bytes
+		return deltaLengths(data, n)
+	case format.DeltaByteArray: // prefix lengths, then suffix lengths and bytes
+		rest, err := deltaStream(data, n, 32)
 		if err != nil {
 			return err
 		}
-		_, err = deltaStream(rest, n)
+		return deltaLengths(rest, n)
+	}
+	return nil
+}
+
+// deltaLengths checks a DELTA_BINARY_PACKED stream of at most n lengths
+// followed by the bytes they measure: every length is non-negative and
+// together they cover exactly the bytes after the stream. Surplus bytes
+// would be values no one reads, and parquet-go's amd64 decoder of
+// DELTA_BYTE_ARRAY reads its last values from the end of the page, so
+// with surplus bytes it would return the wrong ones (CHECK-5). The lengths
+// are decoded to be summed; their count is bounded by n.
+func deltaLengths(src []byte, n int) error {
+	rest, err := deltaStream(src, n, 32)
+	if err != nil {
 		return err
+	}
+	total, err := deltaInt32Sum(src[:len(src)-len(rest)])
+	if err != nil {
+		return err
+	}
+	if total != int64(len(rest)) {
+		return fmt.Errorf("the value lengths add up to %d bytes, the page holds %d after them", total, len(rest))
+	}
+	return nil
+}
+
+// deltaInt32Sum returns the sum of the INT32 values of a DELTA_BINARY_PACKED
+// stream that deltaStream has checked (its geometry, its bit widths of at
+// most 32, and its miniblocks inside it), refusing a negative value. It
+// decodes as parquet-go does (each value the previous plus the block's min
+// delta plus the miniblock's packed delta, in wrapping INT32 arithmetic)
+// without allocating: every page of the byte-array delta encodings asks
+// it, key pages included.
+func deltaInt32Sum(src []byte) (int64, error) {
+	var header [3]uint64 // block size, miniblocks per block, value count
+	for i := range header {
+		v, k := binary.Uvarint(src)
+		header[i], src = v, src[k:]
+	}
+	first, k := binary.Varint(src)
+	src = src[k:]
+	block, miniblocks, count := header[0], header[1], header[2]
+	if count == 0 {
+		return 0, nil
+	}
+	if first != int64(int32(first)) {
+		return 0, fmt.Errorf("the first value length %d is outside INT32", first)
+	}
+	value := int32(first)
+	if value < 0 {
+		return 0, fmt.Errorf("a value length of %d", value)
+	}
+	sum := int64(value)
+	per := int(block / miniblocks)
+	for left := int64(count) - 1; left > 0; {
+		minDelta, k := binary.Varint(src)
+		widths := src[k : k+int(miniblocks)]
+		src = src[k+int(miniblocks):]
+		for _, w := range widths {
+			if left <= 0 {
+				break
+			}
+			size := per * int(w) / 8
+			mini, mask := src[:size], uint64(1)<<w-1
+			for i := 0; i < per && left > 0; i, left = i+1, left-1 {
+				bit := i * int(w)
+				var x uint64
+				for b := 0; b < 5 && bit/8+b < len(mini); b++ {
+					x |= uint64(mini[bit/8+b]) << (8 * b)
+				}
+				value = int32(uint32(value) + uint32(int32(minDelta)) + uint32((x>>(bit%8))&mask))
+				if value < 0 {
+					return 0, fmt.Errorf("a value length of %d", value)
+				}
+				sum += int64(value)
+			}
+			src = src[size:]
+		}
+	}
+	return sum, nil
+}
+
+// plainByteArrays requires src to hold exactly n PLAIN BYTE_ARRAY values,
+// each a 4-byte length and that many bytes: every length inside the
+// stream, and the values ending exactly at its end.
+func plainByteArrays(src []byte, n int) error {
+	at := 0
+	for i := range n {
+		if len(src)-at < 4 {
+			return fmt.Errorf("PLAIN BYTE_ARRAY value %d has no length", i)
+		}
+		length := uint64(binary.LittleEndian.Uint32(src[at:]))
+		at += 4
+		if length > uint64(len(src)-at) {
+			return fmt.Errorf("a PLAIN BYTE_ARRAY value of %d bytes overruns its page", length)
+		}
+		at += int(length)
+	}
+	if at != len(src) {
+		return fmt.Errorf("the page holds %d bytes after its %d PLAIN BYTE_ARRAY values", len(src)-at, n)
 	}
 	return nil
 }
@@ -612,7 +810,10 @@ func checkCounts(enc format.Encoding, data []byte, n int) error {
 // hold more values than remain, and a bit-packed run only the padding of
 // its final group of eight; no run with values may follow the nth. A run
 // of no values holds nothing and is stepped over (parquet-go writes one
-// for a page of no indexes, and decodes one anywhere).
+// for a page of no indexes, and decodes one anywhere). A repeated run's
+// value must fit in width bits (below 2^width; any value at width 32):
+// a larger one is no value of the stream, and decoders differ on it (Go's
+// Boolean decoder kept its low bit, parquet-java any non-zero value).
 func checkRuns(src []byte, n, width int) error {
 	total := uint64(0)
 	for len(src) > 0 {
@@ -640,6 +841,15 @@ func checkRuns(src []byte, n, width int) error {
 		if size > uint64(len(src)) {
 			return errors.New("a run is truncated")
 		}
+		if !packed && width < 32 {
+			var value uint64
+			for i, b := range src[:size] {
+				value |= uint64(b) << (8 * i)
+			}
+			if value>>width != 0 {
+				return fmt.Errorf("a repeated run's value %d does not fit in %d bits", value, width)
+			}
+		}
 		total += count
 		src = src[size:]
 	}
@@ -647,8 +857,11 @@ func checkRuns(src []byte, n, width int) error {
 }
 
 // deltaStream checks the header of a DELTA_BINARY_PACKED stream, requires
-// its value count to be at most n, and returns the bytes after its blocks.
-func deltaStream(src []byte, n int) ([]byte, error) {
+// its value count to be at most n and every miniblock's bit width to be
+// at most maxWidth (32 for a stream of INT32 values, 64 for INT64), and
+// returns the bytes after its blocks. A wider miniblock is corrupt, and
+// checking it here keeps garbage lengths from reaching a size estimate.
+func deltaStream(src []byte, n, maxWidth int) ([]byte, error) {
 	var header [3]uint64 // block size, miniblocks per block, value count
 	for i := range header {
 		v, k := binary.Uvarint(src)
@@ -684,8 +897,8 @@ func deltaStream(src []byte, n int) ([]byte, error) {
 			if left <= 0 {
 				break
 			}
-			if w > 64 {
-				return nil, errors.New("a delta miniblock bit width is invalid")
+			if int(w) > maxWidth {
+				return nil, fmt.Errorf("a delta miniblock bit width of %d, above %d", w, maxWidth)
 			}
 			size := per * uint64(w) / 8
 			if size > uint64(len(src)) {
@@ -1001,6 +1214,11 @@ func (cp *columnPages) load(row int64) error {
 			return err
 		}
 		pageRows, isData := dataRows(h)
+		// Each data page holds rows, all inside the row group (CHECK-5): a
+		// page of none, or one past the group's end, does not add up.
+		if isData && (pageRows <= 0 || pageRows > cp.rows-cp.walked) {
+			return c.corrupt(fmt.Errorf("a page of %d rows at row %d of a %d-row group", pageRows, cp.walked, cp.rows))
+		}
 		if isData && cp.walked+pageRows > row {
 			data, err := c.payload(h, cp.off, length, raw)
 			if err != nil {
@@ -1024,7 +1242,7 @@ func (cp *columnPages) load(row int64) error {
 // decodeBooleanRLEInto accepts only final bit-packed padding (at most seven bits).
 // out already has ceil(n/8) bytes, bounded by the caller before allocation.
 func decodeBooleanRLEInto(out, data []byte, n int) ([]byte, error) {
-	if err := checkCounts(format.RLE, data, n); err != nil {
+	if err := checkCounts(format.RLE, data, n, false); err != nil {
 		return nil, err
 	}
 	src := data[4 : 4+binary.LittleEndian.Uint32(data)]

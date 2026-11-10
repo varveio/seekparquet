@@ -7,6 +7,16 @@ independent of the specification's draft revisions.
 
 ### Fixed
 
+- Malformed streams the Go reader refuses, or reads differently, are `invalid_parquet` (found by
+  differential testing against the Go reader):
+  - an RLE run whose value is not below 2^width in levels, dictionary indexes or Boolean values (a Boolean
+    run value of 2 read as true, where Go reads false);
+  - a GZIP page with bytes after its one gzip member (trailing bytes or a second member were ignored or read);
+  - DELTA_LENGTH_BYTE_ARRAY and DELTA_BYTE_ARRAY lengths that do not sum to exactly the bytes after them
+    (surplus bytes were ignored);
+  - a DELTA_BINARY_PACKED first value outside INT32 range in an INT32 column or a length or prefix-length
+    stream (it was narrowed, giving wrong values or keys), and a miniblock bit width above 32 in such a
+    stream, now refused before decoding. Min deltas are not range checked, as in Go.
 - A dictionary-encoded page whose values are all null, as parquet-go writes it (a bit width, then an
   empty run), was refused as `invalid_parquet`. An RLE/bit-packed run of no values in definition levels or
   dictionary indexes now holds nothing, as in Go: it is removed before parquet-java's decoder, which would
