@@ -72,8 +72,9 @@ type span struct {
 // through the routing and the key page index, and no part known from the
 // manifest bounds to begin after the range. With columns, it also checks
 // every part holding a selected row and reads the OffsetIndex of each
-// projected column chunk the rows span, but no data page. Errors are those
-// of Range.
+// projected column chunk the rows span, unless an earlier request kept its
+// page locations (Limits.OffsetIndexMemory), but no data page. Errors are
+// those of Range.
 func (d *Dataset) PlanRanges(ctx context.Context, ranges []Range, columns []string) (*RangePlan, error) {
 	return d.r.planRanges(ctx, ranges, columns)
 }
@@ -199,8 +200,10 @@ func (r *reader) planRanges(ctx context.Context, ranges []Range, columns []strin
 
 // planColumns checks every part holding a row of the plan and adds up the
 // projected bytes: per column chunk, its dictionary's extent and the
-// extents of the pages holding the plan's rows, each page once. It keeps
-// the OffsetIndexes of one row group's chunks at a time.
+// extents of the pages holding the plan's rows, each page once. It holds
+// the OffsetIndexes of one row group's chunks at a time; the Dataset may
+// keep their page locations across groups and requests
+// (Limits.OffsetIndexMemory).
 func (plan *RangePlan) planColumns(ctx context.Context) error {
 	r, st := plan.r, &plan.stats
 	type planned struct {

@@ -16,8 +16,10 @@ package seekparquet
 // The manifest read when the Dataset was opened is not counted. Work shared
 // with earlier requests is counted only where a field says so: a part
 // checked by an earlier request, or by Verify, is not checked again, a key
-// page index loaded by an earlier request is reused, not loaded, and a
-// decoded first key is reused without decoding.
+// page index loaded by an earlier request is reused, not loaded, a
+// projected column chunk's OffsetIndex kept by an earlier request
+// (Limits.OffsetIndexMemory) is not read again, and a decoded first key is
+// reused without decoding.
 type ReadStats struct {
 	// ListIndexSkips counts skips answered by the optional slash index.
 	ListIndexSkips int64

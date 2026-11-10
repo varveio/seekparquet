@@ -55,6 +55,11 @@ type reader struct {
 	// indexMu serializes retained-index admission and publication, including
 	// first keys. No file I/O or page decoding runs under this lock.
 	indexMu sync.Mutex
+	// locsMemory is the memory charged to Limits.OffsetIndexMemory by the
+	// parts' published page locations (part.locs), plus the reservations
+	// of first loads still publishing, which a load that loses the race to
+	// publish gives back.
+	locsMemory atomic.Int64
 
 	// mu guards the request leases: active counts the requests in
 	// progress, and idle is signalled when it drops to zero; closed is set
@@ -109,6 +114,10 @@ type part struct {
 	leaves      map[string]leaf
 	unsupported map[string]bool
 	index       []atomic.Pointer[groupIndex]
+	// locs are the checked OffsetIndex page locations of projected column
+	// chunks, by physical row group and column, published on first use
+	// within Limits.OffsetIndexMemory (openColumn, reader.keepLocations).
+	locs [][]atomic.Pointer[[]pageLoc]
 }
 
 // group is one non-empty row group.
@@ -354,6 +363,10 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 	}
 	p.key = p.leaves[r.key.Column]
 	p.index = make([]atomic.Pointer[groupIndex], len(meta.RowGroups))
+	p.locs = make([][]atomic.Pointer[[]pageLoc], len(meta.RowGroups))
+	for physical := range meta.RowGroups {
+		p.locs[physical] = make([]atomic.Pointer[[]pageLoc], len(meta.RowGroups[physical].Columns))
+	}
 	var groups []*group
 	start := p.start
 	for physical := range meta.RowGroups {
