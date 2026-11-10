@@ -151,10 +151,10 @@ class ListIndexTest {
         Cancellation cancel = Cancellation.create();
         int[] checks = {0};
         assertThrows(CancellationException.class, () -> group.firstOutside(0, prefix, () -> {
-            if (++checks[0] == 500) cancel.cancel();
+            if (++checks[0] == 5) cancel.cancel();
             cancel.throwIfCancelled();
         }));
-        assertEquals(500, checks[0]);
+        assertEquals(5, checks[0]);
     }
 
     @Test void flatAndSingleDirectoryStorage() throws Exception {
@@ -211,10 +211,12 @@ class ListIndexTest {
         try (Dataset d = Dataset.open(storage); Dataset.Request request = d.begin(Cancellation.none())) {
             PartFile part = d.parts().get(0, request.ctx);
             failAt.set(part.keyIndex(0, request.ctx).offset[2]);
-            var stats = d.buildListIndex();
-            assertEquals(1, stats.groupsFailed()); assertEquals(0, stats.groupsIndexed());
+            assertThrows(StorageException.class, d::buildListIndex);
+            assertNull(d.parts().listIndex);
             assertThrows(StorageException.class, () -> d.list(ListQuery.builder((byte) '/')
                     .prefix(Bytes.utf8("a/f")).limit(1000).build()));
+            failAt.set(-1);
+            assertEquals(1, d.buildListIndex().groupsIndexed());
         }
     }
 }

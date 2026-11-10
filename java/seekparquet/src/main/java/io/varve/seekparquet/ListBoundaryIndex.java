@@ -39,22 +39,23 @@ final class ListBoundaryIndex {
         final boolean dense;
         final byte[] base, data;
         final long[] rows;
-        final int[] offsets, sizes, shared;
+        final int[] offsets, sizes, shared, denseThrough;
 
         Group(int part, int slot, byte[] base, byte[] data, List<Boundary> runs) {
             this.part = part; this.slot = slot; this.base = base; this.data = data;
             rows = new long[runs.size()]; offsets = new int[runs.size()];
-            sizes = new int[runs.size()]; shared = new int[runs.size()];
+            sizes = new int[runs.size()]; shared = new int[runs.size()]; denseThrough = new int[runs.size()];
             boolean hasDense = false;
             for (int i = 0; i < runs.size(); i++) {
                 Boundary b = runs.get(i);
                 rows[i] = b.row(); offsets[i] = b.offset(); sizes[i] = b.size(); shared[i] = b.shared();
                 hasDense |= b.size() < 0;
+                denseThrough[i] = (i == 0 ? 0 : denseThrough[i - 1]) + (b.size() < 0 ? 1 : 0);
             }
             dense = hasDense;
         }
 
-        long memoryBytes() { return 256L + base.length + data.length + 32L * rows.length; }
+        long memoryBytes() { return charge(base.length, data.length, rows.length); }
 
         int runAt(long row) {
             int lo = 0, hi = rows.length;
@@ -74,20 +75,25 @@ final class ListBoundaryIndex {
             return true;
         }
 
-        // Returns the first dense or differently prefixed run. The caller's
-        // cancellation check is also used by deterministic memory-walk tests.
+        // Binary-search the successor and reject any dense marker in the interval.
+        // The callback also permits deterministic cancellation/step-bound tests.
         int firstOutside(int start, byte[] prefix, Runnable checkCancelled) {
-            int i = start;
-            for (; i < rows.length; i++) {
+            byte[] target = Bytes.wrap(prefix).successor().map(Bytes::unsafeArray).orElse(null);
+            int lo = start, hi = rows.length;
+            while (lo < hi) {
                 checkCancelled.run();
-                if (sizes[i] < 0 || !hasPrefix(i, prefix)) break;
+                int mid = (lo + hi) >>> 1;
+                if (target == null || compare(mid, target) < 0) lo = mid + 1;
+                else hi = mid;
             }
             checkCancelled.run();
-            return i;
+            int end = Math.min(lo + 1, rows.length);
+            int before = start == 0 ? 0 : denseThrough[start - 1];
+            return end > start && denseThrough[end - 1] != before ? -1 : lo;
         }
 
         int compare(int i, byte[] key) {
-            int n = shared[i] + sizes[i];
+            int n = shared[i] + (sizes[i] < 0 ? ~sizes[i] : sizes[i]);
             for (int j = 0; j < Math.min(n, key.length); j++) {
                 byte b = j < shared[i] ? base[j] : data[offsets[i] + j - shared[i]];
                 int c = Integer.compare(Byte.toUnsignedInt(b), Byte.toUnsignedInt(key[j]));
@@ -117,6 +123,9 @@ final class ListBoundaryIndex {
         return n == directoryLength(b) && Arrays.equals(a, 0, n, b, 0, n);
     }
 
+    static long allocation(long n) { return n <= 1 ? n : Long.highestOneBit(n - 1) << 1; }
+    static long charge(int base, int data, int runs) { return 256 + allocation(base) + allocation(data) + allocation(40L * runs); }
+
     private static void add(List<Boundary> runs, ByteArrayOutputStream data, byte[] base, long row, byte[] key) {
         int shared = 0;
         if (key != null) {
@@ -131,7 +140,7 @@ final class ListBoundaryIndex {
         byte[] previous = null, base = null;
         try {
             int physical = part.groups[slot];
-            KeyIndex index = part.keyIndex(physical, ctx);
+            KeyIndex index = part.keyIndex(physical, ctx, false);
             List<Boundary> runs = new ArrayList<>();
             ByteArrayOutputStream data = new ByteArrayOutputStream();
             boolean denseBefore = false;
@@ -139,8 +148,9 @@ final class ListBoundaryIndex {
                 ctx.checkCancelled();
                 byte[][] keys = part.keyPage(physical, index, pg, ctx);
                 ctx.checkKeyPage(part, physical, pg, keys);
+                ctx.retainLastKeyPage();
                 pages++;
-                if (pg == 0) { base = keys[0].clone(); part.rememberFirst(physical, keys[0]); }
+                if (pg == 0) { base = keys[0].clone(); }
                 int changes = 0;
                 byte[] prev = previous;
                 for (byte[] key : keys) {
@@ -148,7 +158,9 @@ final class ListBoundaryIndex {
                     prev = key;
                 }
                 if (changes > options.maxChangesPerPage()) {
-                    add(runs, data, base, index.firstRow[pg], null);
+                    add(runs, data, base, index.firstRow[pg], keys[0]);
+                    Boundary b = runs.getLast();
+                    runs.set(runs.size() - 1, new Boundary(b.row(), b.offset(), ~b.size(), b.shared()));
                     denseBefore = true;
                 } else {
                     for (int j = 0; j < keys.length; j++) {
@@ -163,7 +175,7 @@ final class ListBoundaryIndex {
                 // Finish proving flatness before dropping the temporary anchor;
                 // a later page may contain a directory and require admission.
                 boolean flatSoFar = runs.size() == 1 && runs.getFirst().size() >= 0 && directoryLength(base) == 0;
-                if (!flatSoFar && 256L + base.length + data.size() + 32L * runs.size() > options.maxBytes()) break;
+                if (!flatSoFar && charge(base.length, data.size(), runs.size()) > options.maxBytes()) break;
             }
             if (runs.size() == 1 && runs.getFirst().size() >= 0 && directoryLength(base) == 0) {
                 return new Built(null, pages, null, base, previous);
@@ -171,7 +183,7 @@ final class ListBoundaryIndex {
             return new Built(new Group(part.ordinal, slot, base, data.toByteArray(), runs), pages, null, base, previous.clone());
         } catch (CancellationException e) {
             throw e;
-        } catch (SeekParquetException e) {
+        } catch (RefusalException e) {
             return new Built(null, ctx.stats.keyPagesDecoded, e, base != null ? base : part.knownFirst(part.groups[slot]), previous);
         }
     }
@@ -189,7 +201,7 @@ final class ListBoundaryIndex {
                 ctx.checkCancelled();
                 PartFile part;
                 try { part = parts.get(pi, ctx); }
-                catch (SeekParquetException e) { ctx.checkCancelled(); partsFailed++; continue; }
+                catch (RefusalException e) { ctx.checkCancelled(); partsFailed++; continue; }
                 for (int start = 0; start < part.groups.length;) {
                     ctx.checkCancelled();
                     int n = Math.min(options.workers(), part.groups.length - start);
@@ -253,6 +265,6 @@ final class ListBoundaryIndex {
         }
         ctx.checkCancelled();
         return new ListBoundaryIndex(groups.toArray(Group[]::new), new ListIndexStats(groups.size(), skipped,
-                failed, partsFailed, pages, entries, bytes, exhausted, Duration.ofNanos(System.nanoTime() - started)));
+                failed, partsFailed, pages, entries, bytes, exhausted, Duration.ofNanos(System.nanoTime() - started), options));
     }
 }

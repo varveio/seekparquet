@@ -74,6 +74,9 @@ func (s *scan) start(from []byte, exclusive bool, cur *Cursor) error {
 // otherwise routes through groupFor.
 func (s *scan) seek(from []byte, inclusive bool) error {
 	if s.synthetic {
+		if err := s.syntheticPages(); err != nil {
+			return err
+		}
 		s.kp.values = nil
 		s.kp.at = s.kp.index.pageAt(s.row) - 1
 		s.kp.next = 0
@@ -166,9 +169,25 @@ func (s *scan) seekOrdinal(ordinal int64) error {
 	return nil
 }
 
+// Synthetic anchors need no page index until ordinary decoding resumes.
+func (s *scan) syntheticPages() error {
+	if s.kp != nil {
+		return nil
+	}
+	var err error
+	s.kp, err = s.r.loadKeyPages(s.ctx, s.g, &s.log, s.stats, false)
+	if err == nil {
+		s.kp.deferFirst = true
+	}
+	return err
+}
+
 // next moves to the row after the current one.
 func (s *scan) next() error {
 	if s.synthetic {
+		if err := s.syntheticPages(); err != nil {
+			return err
+		}
 		if _, err := s.kp.seekRow(s.row); err != nil {
 			return err
 		}

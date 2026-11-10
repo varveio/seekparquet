@@ -409,8 +409,11 @@ func TestListIndexRegressionBudgetAccounting(t *testing.T) {
 			if again.GroupsIndexed != 3 {
 				t.Fatal(again)
 			}
-		} else if again != st {
-			t.Fatal("nonempty build was replaced")
+		} else {
+			again.OptionsMismatch = false
+			if again != st {
+				t.Fatal("nonempty build was replaced")
+			}
 		}
 	}
 	// Independent retained-layout accounting, using actual capacities and type sizes.
@@ -558,11 +561,19 @@ func TestListIndexRegressionLifecycle(t *testing.T) {
 				must(t, out.err)
 				concurrent := awaitListTest(t, second)
 				must(t, concurrent.err)
+				if !concurrent.stats.OptionsMismatch {
+					t.Fatal("missing options mismatch")
+				}
+				concurrent.stats.OptionsMismatch = false
 				if concurrent.stats != out.stats {
 					t.Fatal("concurrent build replaced snapshot")
 				}
 				again, e := d.BuildListIndex(ctx, ListIndexOptions{MaxBytes: 1, Workers: 3})
 				must(t, e)
+				if !again.OptionsMismatch {
+					t.Fatal("missing options mismatch")
+				}
+				again.OptionsMismatch = false
 				if again != out.stats {
 					t.Fatal("changed completed build")
 				}

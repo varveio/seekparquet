@@ -170,3 +170,19 @@ revision, which the suite also records (`format_version`, `draft_revision`). `co
 protocol.md, case.schema.json, capabilities.json, fixtures.lock.json and every case file (recomputed by
 `check_suite.py`), so `spec/status.json` can pin a suite by revision and digest. A published suite revision
 is immutable.
+
+### Optional list-index accounting parity
+
+The implementation tests can compare build statistics on the same checked-in Parquet bytes without
+changing conformance answers. From the repository root (Go 1.26+ and JDK 21+):
+
+```sh
+mkdir -p java/seekparquet/build
+export SEEKPARQUET_LIST_INDEX_PARITY="$PWD/java/seekparquet/build/list-index-parity.tsv"
+go -C go test -run '^TestListIndexParity$' -count=1
+java/gradlew -p java :seekparquet:test --tests '*ListIndexResourcesTest.sharedFixtureAccountingParity' --offline --max-workers=1
+```
+
+The export covers four shared datasets, six budgets and four page-change caps. Java independently
+builds each index and compares indexed groups, entries, retained bytes and budget exhaustion. This
+optional test skips when the environment variable is absent; it adds no protocol operation or spec rule.

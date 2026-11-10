@@ -449,7 +449,10 @@ final class PartFile implements AutoCloseable {
     }
 
     /** {@return the checked key page index of a non-empty physical row group, loading it on first use} */
-    KeyIndex keyIndex(int physical, ReadContext ctx) {
+    KeyIndex keyIndex(int physical, ReadContext ctx) { return keyIndex(physical, ctx, true); }
+
+    /** Build-only indexes never consume the shared non-evicting cache. */
+    KeyIndex keyIndex(int physical, ReadContext ctx, boolean retain) {
         KeyIndex index = keyIndexes.get(physical);
         if (index != null) {
             ctx.stats.rowGroupsOpened++;
@@ -490,6 +493,7 @@ final class PartFile implements AutoCloseable {
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + e.getMessage());
         }
+        if (!retain) return index;
         synchronized (indexMemory) {
             KeyIndex previous = keyIndexes.get(physical);
             if (previous != null) {

@@ -5,20 +5,17 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
-- Fully decode flat groups before eliminating their temporary anchors from the list-index budget,
-  allowing later indexable groups to be admitted even when flat keys exceed the byte budget.
-
-- Fix indexed listings with arbitrary prefix cursors: only slash-ended cursors use directory-run
-  certification. Omit both sides of disordered group boundaries regardless of cached first keys or
-  worker order, including chained violations. Cancelled builds include decoded work from the final
-  batch; completed builds return stable statistics. Admit groups by their compacted retained size.
-
-- `Dataset.BuildListIndex` explicitly builds a bounded in-memory directory-run index for `/` listings.
-  Wide-prefix listings can resume from exact run anchors without decoding a page per prefix. Sparse,
-  shared-prefix storage, per-page change caps and group admission keep retained memory bounded; flat
-  groups retain nothing. Concurrent reads see an immutable snapshot; cancellation discards the build,
-  and omitted or failed groups retain the ordinary read path. Build statistics and `ReadStats` expose
-  retained bytes, entries, answered skips and decline reasons. No format or query-result change.
+- `Dataset.BuildListIndex` explicitly builds an optional, bounded directory-run index for `/` listings.
+  Compact exact anchors, binary run searches and first-key group routing avoid a key-page decode per
+  wide prefix. Dense intervals decline safely; fully checked flat groups retain no index data.
+  Both languages use the same conservative byte accounting. Build-only page indexes and first keys
+  never fill the ordinary reader's index-memory cache. Data refusals omit groups (both sides of bad
+  boundaries); storage failures, resource limits and cancellation discard the attempt and permit retry.
+  Publication is atomic. Empty outcomes reuse the most recent options; nonempty outcomes expose their
+  effective options and whether any groups are indexed. Statistics count skips, declines and build work.
+  Slash-ended cursors alone use directory-run certification; all other valid cursors keep ordinary
+  seeking. Synthetic transitions preserve logical position and current-group projection caches.
+  Listings check cancellation before returning, including the no-index path. No format change.
 
 - The conformance adapter claims the optional `planning` capability: it answers `plan` (PlanRanges, then
   Scan, Count and ProjectedBytes) for the conformance suite's planning cases.

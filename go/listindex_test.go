@@ -207,10 +207,10 @@ func TestListIndexWalkCancellation(t *testing.T) {
 		g2.add(int64(i), []byte(fmt.Sprintf("a/%05d/x", i)))
 	}
 	s.listIndex = &listIndex{groups: []listGroup{g2}}
-	s.ctx = &cancelWalk{Context: ctx, n: 500}
-	handled, err := s.skipList([]byte("a/"), '/')
-	if handled || !errors.Is(err, context.Canceled) {
-		t.Fatalf("handled=%v err=%v", handled, err)
+	s.ctx = &cancelWalk{Context: ctx, n: 5}
+	_, err = g2.firstOutside(s.ctx, 0, []byte("a/"))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v", err)
 	}
 }
 
@@ -259,13 +259,18 @@ func TestListIndexUnreadableAndBuildCancelledDuringRead(t *testing.T) {
 				t.Fatalf("retry: %+v", st)
 			}
 		} else {
-			must(t, err)
-			if st.GroupsFailed != 1 {
-				t.Fatalf("%+v", st)
+			if !errors.Is(err, io.ErrUnexpectedEOF) || st.GroupsFailed != 0 || d.r.listIndex.Load() != nil {
+				t.Fatalf("%+v %v", st, err)
 			}
 			_, err = d.List(ctx, List{Prefix: []byte("a/f"), Delimiter: '/', Limit: 1000})
 			if !errors.Is(err, io.ErrUnexpectedEOF) {
 				t.Fatal(err)
+			}
+			p.file = original
+			st, err = d.BuildListIndex(ctx, ListIndexOptions{})
+			must(t, err)
+			if st.GroupsIndexed != 1 {
+				t.Fatal(st)
 			}
 		}
 		cancel()

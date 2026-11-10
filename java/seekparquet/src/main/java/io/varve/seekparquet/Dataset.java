@@ -222,10 +222,15 @@ public final class Dataset implements AutoCloseable {
     /**
      * Decodes each key page once and atomically publishes a bounded index of directory runs.
      * Complete groups are admitted in dataset order, stopping before the first over-budget group.
-     * Failed groups remain on the ordinary read path, where their errors are reported as before.
+     * Refused groups remain on the ordinary read path. Storage failures and resource limits fail
+     * the attempt without publication and permit retry. Build-only indexes and first keys do not
+     * consume the shared index-memory cache.
      * Concurrent lists use either the old path or the completed index. Cancellation discards this
      * attempt and permits retry. After a nonempty successful build, including budget exhaustion, subsequent
-     * calls return its statistics regardless of options. Opening never builds the index.
+     * calls return its statistics with the effective {@link ListIndexStats#options() options}
+     * and {@link ListIndexStats#optionsMismatch()} flag.
+     * Empty outcomes are cached for the most recent options and rebuilt when those change.
+     * {@link ListIndexStats#hasIndex()} reports whether any groups are indexed. Opening never builds it.
      *
      * @param options retained byte budget, worker count and per-page change cap
      * @param cancellation ends the build without publishing it
@@ -242,13 +247,13 @@ public final class Dataset implements AutoCloseable {
             }
             try {
                 request.ctx.checkCancelled();
-                if (parts.listIndex == null) {
+                if (parts.listIndex == null || (parts.listIndex.groups.length == 0 && !parts.listIndex.stats.options().equals(options))) {
                     ListBoundaryIndex built = ListBoundaryIndex.build(parts, options, request.ctx);
                     request.ctx.checkCancelled();
-                    if (built.groups.length > 0) parts.listIndex = built;
+                    parts.listIndex = built;
                     return built.stats;
                 }
-                return parts.listIndex.stats;
+                return parts.listIndex.stats.forOptions(options);
             } finally {
                 listBuild.unlock();
             }

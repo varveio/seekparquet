@@ -255,31 +255,46 @@ stats, err := d.BuildListIndex(ctx, seekparquet.ListIndexOptions{
 })
 ```
 
-Opening remains lazy. The build opens parts and decodes each key page once, recording directory-run
-starts as suffixes relative to a shared group anchor. Unchanged pages add nothing; flat groups retain
-nothing. Pages exceeding the change cap retain a marker and use ordinary decoding. The byte budget
-includes anchors, suffixes, slice capacity, containers and allocation overhead; the existing footer,
-routing and Parquet index caches keep their separate limits. Temporary decoding buffers are bounded
-by the worker count and ordinary reader limits, rather than this retained-storage budget.
+Opening remains lazy. The build reads key pages and keeps directory-run starts as suffixes relative
+to a shared group anchor. Unchanged pages add nothing; fully decoded flat groups retain no index data.
+Dense pages retain exact first-key markers and decline skipped intervals containing a marker.
+Build-only page indexes and first keys are transient: they never consume the shared, non-evicting
+`Limits.IndexMemory` cache (Java: `maxIndexMemoryBytes`). Checked part footers remain shared.
 
-Complete groups are admitted in dataset order; admission stops before the first group exceeding the
-budget. Unreadable or disordered groups are omitted and reads still report their failures when encountered.
-Publication is atomic and safe alongside concurrent lists. Cancellation discards the attempt and allows
-retry. A nonempty completed index is reused by later build calls regardless of their options; an empty
-build retains no snapshot and can be retried. Defaults are 64 MiB, one worker, and eight changes per page.
-`ListIndexStats` reports indexed, skipped and failed groups, failed parts, pages, entries, retained bytes,
-budget exhaustion and duration. Counts of skipped groups cover visited groups, not unopened parts.
-Both sides of a detected disordered group boundary are omitted, independent of worker order or
-cached first keys. Cancelled builds report decoded pages even from the unfinished batch, with zero
-retained bytes, entries and groups.
+Complete groups are admitted in dataset order until the first over-budget group. Data refusals omit
+the affected groups, including both sides of a bad boundary; ordinary reads still report refusals
+when encountered. Storage/I/O errors, resource limits and cancellation fail the attempt without
+publication, so a caller may retry after resolving them. Publication is atomic alongside concurrent lists.
 
-Only `/` uses the index. Slash-ended prefix cursors can start directly from a certified run anchor, including
-when page bounds share a long truncated prefix. The scan preserves its logical row after each answered skip and checks
-cancellation at every run; it allocates only the final anchor, without walking truncated page bounds.
-Other prefix cursors remain valid and use ordinary seeking.
-`ReadStats.ListIndexSkips` counts answered skips. When an index is present, `ListIndexDelimiter`,
-`ListIndexMissingGroup`, `ListIndexDensePage` and `ListIndexUnsafeRun` count every decline by reason.
-Without an index these counters stay zero. Results, exact rows, projected values and cursors are unchanged.
+A nonempty index is reused by later calls. `ListIndexStats.Options` and `HasIndex` report the **effective** options
+and whether any groups are indexed. `OptionsMismatch` (Java: `optionsMismatch()`) explicitly flags
+reuse with different normalized settings. To replace a nonempty index, reopen the dataset. An empty outcome is cached for
+the most recent options, including its original duration, so repeating that build performs no I/O;
+changing options replaces that empty outcome. This cache holds only one result, not a map of all calls.
+Defaults are 64 MiB, one worker, and eight directory changes per page. A retained index does not
+guarantee every listing benefits: if the default cap marks every page dense, all skips may decline.
+Check the skip/decline counters before choosing a larger cap or budget.
+
+Both implementations charge the same conservative formula: 256 bytes for the snapshot, and per
+retained group 256 bytes plus each of the base-key length, suffix-data length and 40 × run count
+rounded up to a power of two (zero stays zero). This includes compact containers, dense counts and
+allocator slack. Empty outcomes retain only a fixed build-status record, not boundary arrays.
+The retained byte budget is **not a peak build-memory limit**: allow roughly Workers × 2 × MaxBytes
+for candidate buffers and compaction, plus the retained index, one page's boundary expansion per
+worker, transient page indexes, decoding buffers and part footers under the ordinary reader limits.
+Oversized single keys/pages can exceed that estimate; flat groups must still finish checking.
+Sequential build order checking retains only the preceding page's boundary, not every decoded page.
+
+Only `/` uses the index. Slash-ended prefix cursors may start at certified anchors; other valid cursors
+use ordinary seeking. Sorted anchors are searched by binary search for the prefix successor, with
+cumulative dense counts certifying the skipped interval. Exact first keys route over whole groups.
+Cancellation is checked during searches and at listing completion, including ordinary listings.
+Logical position, exact rows, projected values and cursors remain unchanged. Java synthetic group
+transitions clear the previous group's value pages, dictionaries and sequential readers.
+Build statistics report groups, pages, entries, retained bytes, budget exhaustion and duration;
+skipped counts cover visited groups, not unopened parts. Go cancellation reports decoded work,
+including the last batch, but zero retained groups/entries/bytes.
+Read statistics report answered skips and delimiter, missing-group, dense-page and unsafe-run declines.
 
 The retained benchmark generates 2,000 directories × 3,000 keys with `local.WriteDir` defaults, plus
 six million flat keys with 1,000-byte numeric fields. Set `SEEKPARQUET_LIST_BENCH_DIR` to an existing

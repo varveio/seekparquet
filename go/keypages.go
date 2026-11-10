@@ -33,12 +33,16 @@ type keyPages struct {
 // keyPages opens a walker on row group g, loading the group's key page
 // index (RG-2 to RG-4) first.
 func (r *reader) keyPages(ctx context.Context, g groupRef, log *pageLog, st *ReadStats) (*keyPages, error) {
+	return r.loadKeyPages(ctx, g, log, st, true)
+}
+
+func (r *reader) loadKeyPages(ctx context.Context, g groupRef, log *pageLog, st *ReadStats, retain bool) (*keyPages, error) {
 	p, err := r.part(ctx, g.part, st)
 	if err != nil {
 		return nil, err
 	}
 	grp := p.groups[g.index]
-	index, err := p.keyIndex(ctx, grp.physical, st)
+	index, err := p.loadKeyIndex(ctx, grp.physical, st, retain)
 	if err != nil {
 		return nil, err
 	}

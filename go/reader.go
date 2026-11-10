@@ -438,17 +438,27 @@ func (r *reader) first(ctx context.Context, g groupRef, log *pageLog, st *ReadSt
 	if _, err := r.part(ctx, g.part, st); err != nil {
 		return nil, err
 	}
+	if x := r.listIndex.Load(); x != nil {
+		if group := x.group(g); group != nil {
+			return group.base, nil
+		}
+	}
 	if k := r.group(g).first.Load(); k != nil {
 		return *k, nil
 	}
-	k, err := r.keyPages(ctx, g, log, st)
+	retain := true
+	if x := r.listIndex.Load(); x != nil && len(x.groups) > 0 {
+		retain = false
+	}
+	k, err := r.loadKeyPages(ctx, g, log, st, retain)
 	if err != nil {
 		return nil, err
 	}
+	k.deferFirst = !retain
 	if err := k.decode(0); err != nil {
 		return nil, err
 	}
-	return *r.group(g).first.Load(), nil
+	return k.values[0].ByteArray(), nil
 }
 
 // noteFirst records the decoded first key of row group g, after checking

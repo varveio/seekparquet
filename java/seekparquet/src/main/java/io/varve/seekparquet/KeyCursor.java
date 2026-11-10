@@ -168,7 +168,7 @@ final class KeyCursor {
             while (lo < hi) {
                 ctx.checkCancelled();
                 int mid = (lo + hi) >>> 1;
-                if (satisfies(candidate.firstKey(candidate.groups[mid], ctx), target, exclusive)) {
+                if (satisfies(firstKey(candidate, mid), target, exclusive)) {
                     hi = mid;
                 } else {
                     lo = mid + 1;
@@ -214,7 +214,7 @@ final class KeyCursor {
         while (lo < hi) {
             ctx.checkCancelled();
             int mid = (lo + hi) >>> 1;
-            byte[] firstKey = candidate.knownFirst(candidate.groups[mid]);
+            byte[] firstKey = firstKey(candidate, mid);
             if (firstKey == null) { ctx.stats.listIndexMissingGroup++; return seek(target, false); }
             if (Arrays.compareUnsigned(firstKey, target) < 0) lo = mid + 1;
             else hi = mid;
@@ -230,7 +230,7 @@ final class KeyCursor {
         }
         int i = lo - 1;
         if (i < 0 || !group.hasPrefix(i, prefix)) { ctx.stats.listIndexUnsafeRun++; return seek(target, false); }
-        moveGroup(p, candidate, s, candidate.keyIndex(candidate.groups[s], ctx));
+        moveGroup(p, candidate, s, null);
         syntheticKey = group.key(i); syntheticRow = group.rows[i];
         return seekAfterPrefix(prefix, target, (byte) '/');
     }
@@ -249,43 +249,76 @@ final class KeyCursor {
         return answer >= 0 ? answer != 0 : seek(target, false);
     }
 
-    // -1 declines, 0 exhausts, 1 lands on an exact run-start anchor. No page
-    // searches or allocations inside the walk; the logical row survives a hit.
+    private byte[] firstKey(PartFile candidate, int s) {
+        var group = listIndex == null ? null : listIndex.group(candidate.ordinal, s);
+        if (group != null) return group.base;
+        if (listIndex == null || listIndex.groups.length == 0) return candidate.firstKey(candidate.groups[s], ctx);
+        int physical = candidate.groups[s];
+        byte[][] keys = candidate.keyPage(physical, candidate.keyIndex(physical, ctx, false), 0, ctx);
+        ctx.checkKeyPage(candidate, physical, 0, keys);
+        return keys[0];
+    }
+
+    // -1 declines, 0 exhausts, 1 lands on an exact run-start anchor.
     private int skipPrefix(byte[] prefix, byte delimiter) {
-        if (listIndex == null) return -1;
+        if (listIndex == null || listIndex.groups.length == 0) return -1;
         if (delimiter != '/') { ctx.stats.listIndexDelimiter++; return -1; }
-        int p = part, s = slot;
-        long r = row();
-        boolean first = true;
-        while (true) {
+        ctx.checkCancelled();
+        var current = listIndex.group(part, slot);
+        if (current == null) { ctx.stats.listIndexMissingGroup++; return -1; }
+        int start = current.runAt(row());
+        if (start < 0 || current.sizes[start] < 0) { ctx.stats.listIndexDensePage++; return -1; }
+        if (!current.hasPrefix(start, prefix)) { ctx.stats.listIndexUnsafeRun++; return -1; }
+        byte[] target = Bytes.wrap(prefix).successor().map(Bytes::unsafeArray).orElse(null);
+        int lo = part, hi = parts.size();
+        while (lo < hi) {
             ctx.checkCancelled();
-            if (p >= parts.size()) {
-                syntheticKey = null; exhaust(p); ctx.stats.listIndexSkips++; return 0;
-            }
-            PartFile candidate = parts.checked(p);
-            if (candidate == null) { ctx.stats.listIndexMissingGroup++; return -1; }
-            if (s >= candidate.groups.length) { p++; s = 0; r = 0; continue; }
-            ListBoundaryIndex.Group group = listIndex.group(p, s);
-            if (group == null) { ctx.stats.listIndexMissingGroup++; return -1; }
-            int start = group.runAt(r);
-            if (start < 0) { ctx.stats.listIndexDensePage++; return -1; }
-            int i = group.firstOutside(start, prefix, checkCancelled);
-            if (i > start) first = false;
-            if (i < group.rows.length) {
-                if (group.sizes[i] < 0) { ctx.stats.listIndexDensePage++; return -1; }
-                if (first) { ctx.stats.listIndexUnsafeRun++; return -1; }
-                byte[] key = group.key(i);
-                if (Arrays.compareUnsigned(key, prefix) < 0) { ctx.stats.listIndexUnsafeRun++; return -1; }
-                moveGroup(p, candidate, s, candidate.keyIndex(candidate.groups[s], ctx));
-                syntheticKey = key; syntheticRow = group.rows[i];
-                ctx.stats.listIndexSkips++;
-                if (end != null && Arrays.compareUnsigned(key, end) >= 0) {
-                    bound = ordinal(); exhausted = true; syntheticKey = null; return 0;
-                }
-                return 1;
-            }
-            s++; r = 0;
+            int mid = (lo + hi) >>> 1;
+            if (target == null || Arrays.compareUnsigned(parts.entry(mid).maxKey().unsafeArray(), target) < 0) lo = mid + 1;
+            else hi = mid;
         }
+        int p = lo;
+        if (p == parts.size()) return exhaustIndexed(p);
+        PartFile candidate = parts.get(p, ctx);
+        lo = 0; hi = candidate.groups.length;
+        while (lo < hi) {
+            ctx.checkCancelled();
+            int mid = (lo + hi) >>> 1;
+            if (Arrays.compareUnsigned(firstKey(candidate, mid), target) < 0) lo = mid + 1;
+            else hi = mid;
+        }
+        int s = Math.max(0, lo - 1);
+        if (p == part && s < slot) s = slot;
+        var group = listIndex.group(p, s);
+        if (group == null) { ctx.stats.listIndexMissingGroup++; return -1; }
+        if (p != part || s != slot) start = 0;
+        int i = group.firstOutside(start, prefix, checkCancelled);
+        if (i < 0) { ctx.stats.listIndexDensePage++; return -1; }
+        if (i > start && !group.hasPrefix(i - 1, prefix)) { ctx.stats.listIndexUnsafeRun++; return -1; }
+        if (i == group.rows.length) {
+            if (++s == candidate.groups.length) { p++; s = 0; }
+            if (p == parts.size()) return exhaustIndexed(p);
+            group = listIndex.group(p, s); i = 0;
+            if (group == null) { ctx.stats.listIndexMissingGroup++; return -1; }
+            if (group.sizes[0] < 0) { ctx.stats.listIndexDensePage++; return -1; }
+            candidate = parts.get(p, ctx);
+        }
+        ctx.checkCancelled();
+        byte[] key = group.key(i);
+        if (Arrays.compareUnsigned(key, target) < 0) { ctx.stats.listIndexUnsafeRun++; return -1; }
+        // A synthetic position needs no page index until materialization.
+        moveGroup(p, candidate, s, null);
+        syntheticKey = key; syntheticRow = group.rows[i]; ctx.stats.listIndexSkips++;
+        if (end != null && Arrays.compareUnsigned(key, end) >= 0) {
+            bound = ordinal(); exhausted = true; syntheticKey = null; return 0;
+        }
+        return 1;
+    }
+
+    private int exhaustIndexed(int p) {
+        ctx.checkCancelled();
+        syntheticKey = null; exhaust(p); ctx.stats.listIndexSkips++;
+        return 0;
     }
 
     /**

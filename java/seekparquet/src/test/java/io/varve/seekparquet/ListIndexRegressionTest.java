@@ -186,6 +186,33 @@ class ListIndexRegressionTest {
         }
     }
 
+    @Test void closeDuringMultiWorkerBuildAndWaitingBuilder() throws Exception {
+        var spec = new TestDatasets.Spec(); spec.rowsPerGroup = 2; spec.rowsPerPage = 1;
+        Path root = fixture("multi-close", spec, new String[] {"a/0", "a/1", "b/0", "b/1", "c/0", "c/1"});
+        var storage = new BoundaryStorage(root);
+        try (Dataset d = Dataset.open(storage); var pool = Executors.newFixedThreadPool(3)) {
+            try (var request = d.begin(Cancellation.none())) {
+                var part = d.parts().get(0, request.ctx);
+                for (int i=0;i<3;i++) {
+                    var index=part.keyIndex(part.groups[i],request.ctx);
+                    storage.first[i]=index.offset[0];storage.second[i]=index.offset[1];
+                }
+            }
+            storage.enabled=true;
+            var build=pool.submit(()->d.buildListIndex(new ListIndexOptions(0,3,0),Cancellation.none()));
+            for (var entered:storage.entered) assertTrue(entered.await(10,TimeUnit.SECONDS));
+            var started=new CountDownLatch(1);
+            var waiting=pool.submit(()->{started.countDown();return d.buildListIndex(new ListIndexOptions(1,2,1),Cancellation.none());});
+            assertTrue(started.await(10,TimeUnit.SECONDS));
+            var closed=pool.submit(d::close);
+            var e=assertThrows(java.util.concurrent.ExecutionException.class,()->build.get(10,TimeUnit.SECONDS));
+            assertInstanceOf(CancellationException.class,e.getCause());
+            e=assertThrows(java.util.concurrent.ExecutionException.class,()->waiting.get(10,TimeUnit.SECONDS));
+            assertTrue(e.getCause() instanceof CancellationException || e.getCause() instanceof IllegalStateException);
+            closed.get(10,TimeUnit.SECONDS);assertNull(d.parts().listIndex);
+        }
+    }
+
     @Test void syntheticAnchorsRetainOnlyCurrentGroupValues() throws Exception {
         for (boolean dictionary : new boolean[] {false, true}) for (boolean sequential : new boolean[] {false, true}) {
             var spec = new TestDatasets.Spec(); spec.rowsPerGroup = 2; spec.rowsPerPage = 2;
@@ -335,7 +362,7 @@ class ListIndexRegressionTest {
                     assertTrue(stats.pages() >= 3, "all three workers decoded before admission");
                     if (budget >= all.bytes()) assertEquals(all.pages(), stats.pages());
                     var again = d.buildListIndex(new ListIndexOptions(all.bytes(), 1, 100), Cancellation.none());
-                    if (stats.groupsIndexed() == 0) assertEquals(3, again.groupsIndexed()); else assertEquals(stats, again);
+                    if (stats.groupsIndexed() == 0) assertEquals(3, again.groupsIndexed()); else assertEquals(stats, again.forOptions(stats.options()));
                 }
             }
             // Independent graph accounting with VM reference/header/alignment settings,
@@ -417,8 +444,11 @@ class ListIndexRegressionTest {
                 } else {
                     var second = pool.submit(() -> d.buildListIndex(new ListIndexOptions(1, 3, 0), Cancellation.none()));
                     storage.gate.countDown();
-                    var stats = building.get(10, TimeUnit.SECONDS); assertEquals(stats, second.get(10, TimeUnit.SECONDS));
-                    assertEquals(stats, d.buildListIndex(new ListIndexOptions(1, 1, 1), Cancellation.none()));
+                    var stats = building.get(10, TimeUnit.SECONDS);
+                    var reused = second.get(10, TimeUnit.SECONDS); assertTrue(reused.optionsMismatch());
+                    assertEquals(stats, reused.forOptions(stats.options()));
+                    reused = d.buildListIndex(new ListIndexOptions(1, 1, 1), Cancellation.none());
+                    assertTrue(reused.optionsMismatch()); assertEquals(stats, reused.forOptions(stats.options()));
                     assertEquals(2, d.list(ListQuery.builder((byte) '/').limit(100).build()).size());
                 }
             }

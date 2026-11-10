@@ -6,6 +6,8 @@ package seekparquet
 import (
 	"bytes"
 	"context"
+	"errors"
+	"math/bits"
 	"slices"
 	"sort"
 	"sync"
@@ -33,18 +35,26 @@ type ListIndexStats struct {
 	Pages, Entries, Bytes                                   int64
 	BudgetExhausted                                         bool
 	Duration                                                time.Duration
+	// Options are the effective settings of the cached build. Compare with normalized
+	// requested settings to detect reuse of a nonempty index with different options.
+	Options ListIndexOptions
+	// OptionsMismatch reports that a nonempty index was reused with different requested options.
+	OptionsMismatch bool
+	// HasIndex reports whether any group is indexed.
+	HasIndex bool
 }
 
 type listBoundary struct {
 	row               int64
 	off, size, shared int
+	denseThrough      int
 }
 type listGroup struct {
 	g          groupRef
 	dense      bool
 	base, data []byte
 	last       []byte         // build-only boundary check; cleared before publication
-	runs       []listBoundary // size -1 denotes a dense page, whose keys must be decoded
+	runs       []listBoundary // negative size complements a dense marker's suffix length
 }
 type listIndex struct {
 	groups []listGroup
@@ -54,12 +64,17 @@ type listIndex struct {
 // BuildListIndex decodes every key page once to build a bounded, optional index
 // of directory runs for List with delimiter '/'. It does not run at open.
 // Complete groups are admitted in dataset order; the first over-budget group
-// stops admission. An unreadable or disordered group is omitted, not certified:
-// subsequent reads still perform their ordinary checks and report their errors.
+// stops admission. Refused groups are omitted; subsequent reads still perform
+// their ordinary checks. Storage failures and resource limits fail this attempt
+// without publishing it and permit retry. Build-only page indexes and first keys
+// never consume Limits.IndexMemory.
 // Publication is atomic: concurrent reads use either the old path or the whole
 // completed index. Cancellation discards this attempt and permits retry. After
 // a nonempty successful build (including budget exhaustion), later calls return its stats
-// without rebuilding, regardless of options. Close cancels the build.
+// without rebuilding; Stats.Options reports the effective settings and
+// Stats.OptionsMismatch flags differing requests. Empty outcomes
+// are cached for the most recent options and rebuilt when those options change.
+// Stats.HasIndex reports whether any groups are indexed. Close cancels the build.
 func (d *Dataset) BuildListIndex(ctx context.Context, opt ListIndexOptions) (stats ListIndexStats, err error) {
 	if opt.MaxBytes < 0 || opt.Workers < 0 || opt.MaxChangesPerPage < 0 {
 		return stats, invalidRequest("negative list index option")
@@ -92,9 +107,12 @@ func (d *Dataset) BuildListIndex(ctx context.Context, opt ListIndexOptions) (sta
 	if err := rctx.Err(); err != nil {
 		return stats, finish(ctx, rctx, err)
 	}
-	if prior := r.listIndex.Load(); prior != nil {
-		return prior.stats, nil
+	if prior := r.listIndex.Load(); prior != nil && (len(prior.groups) > 0 || prior.stats.Options == opt) {
+		stats = prior.stats
+		stats.OptionsMismatch = stats.Options != opt
+		return stats, nil
 	}
+	stats.Options = opt
 	started := time.Now()
 	defer func() {
 		if err != nil || stats.Duration == 0 {
@@ -122,6 +140,9 @@ outer:
 		if err != nil {
 			if rctx.Err() != nil {
 				return stats, rctx.Err()
+			}
+			if !listRefusal(err) {
+				return stats, err
 			}
 			stats.PartsFailed++
 			err = nil
@@ -160,13 +181,12 @@ outer:
 			if err = rctx.Err(); err != nil {
 				return stats, err
 			}
-			for oi, out := range results {
-				// Warm routing opportunistically. A shared-cache refusal is not
-				// a certification decision: decoded physical boundaries below
-				// determine both sides, regardless of cache or worker order.
-				if out.group.base != nil {
-					_ = r.noteFirst(out.group.g, out.group.base)
+			for _, out := range results {
+				if out.err != nil && !listRefusal(out.err) {
+					return stats, out.err
 				}
+			}
+			for oi, out := range results {
 				badBoundary := previousLast != nil && out.group.base != nil && previousRef.part == out.group.g.part && previousRef.index+1 == out.group.g.index && r.outOfOrder(previousLast, out.group.base)
 				if badBoundary && !previousFailed {
 					stats.GroupsFailed++
@@ -229,18 +249,26 @@ outer:
 	}
 	built.groups = slices.Clip(slices.Clone(built.groups))
 	stats.Duration = time.Since(started)
+	stats.HasIndex = len(built.groups) > 0
 	built.stats = stats
-	if len(built.groups) > 0 {
-		r.listIndex.Store(built)
-	}
+	r.listIndex.Store(built)
 	return stats, nil
 }
 
-// Conservative allocation accounting includes capacity, allocator rounding and
+// Conservative allocation accounting includes compact buffers, allocator rounding and
 // each group's slot in the snapshot. No maps or per-page arrays are retained.
 func (g *listGroup) memoryBytes() int64 {
-	return 256 + int64(cap(g.base)+cap(g.data)) + int64(cap(g.runs))*32
+	return 256 + listAllocation(len(g.base)) + listAllocation(len(g.data)) + listAllocation(40*len(g.runs))
 }
+
+// A common, allocator-independent upper bound used by both implementations.
+func listAllocation(n int) int64 {
+	if n == 0 {
+		return 0
+	}
+	return int64(1) << bits.Len(uint(n-1))
+}
+func listRefusal(err error) bool { var refusal *RefusalError; return errors.As(err, &refusal) }
 func (g *listGroup) add(row int64, key []byte) {
 	b := listBoundary{row: row, size: -1}
 	if key == nil {
@@ -253,6 +281,12 @@ func (g *listGroup) add(row int64, key []byte) {
 		b.off = len(g.data)
 		b.size = len(key) - b.shared
 		g.data = append(g.data, key[b.shared:]...)
+	}
+	if len(g.runs) > 0 {
+		b.denseThrough = g.runs[len(g.runs)-1].denseThrough
+	}
+	if key == nil {
+		b.denseThrough++
 	}
 	g.runs = append(g.runs, b)
 }
@@ -270,7 +304,7 @@ func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndex
 		}
 	}()
 	log := pageLog{unique: r.key.Unique}
-	k, err := r.keyPages(ctx, ref, &log, st)
+	k, err := r.loadKeyPages(ctx, ref, &log, st, false)
 	if err != nil {
 		return g, 0, err
 	}
@@ -281,6 +315,10 @@ func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndex
 		if err = k.decode(pg); err != nil {
 			return g, pages, err
 		}
+		// Sequential builds need only the preceding page for order validation.
+		log.spans[0] = log.spans[len(log.spans)-1]
+		clear(log.spans[1:])
+		log.spans = log.spans[:1]
 		pages++
 		if pg == 0 {
 			g.base = bytes.Clone(k.values[0].ByteArray())
@@ -296,7 +334,10 @@ func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndex
 			prev = dir
 		}
 		if changes > opt.MaxChangesPerPage {
-			g.add(meta.first, nil)
+			g.add(meta.first, k.values[0].ByteArray())
+			g.runs[len(g.runs)-1].size = ^g.runs[len(g.runs)-1].size
+			g.runs[len(g.runs)-1].denseThrough++
+			g.dense = true
 			denseBefore = true
 		} else {
 			for j, v := range k.values {
@@ -315,7 +356,7 @@ func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndex
 		// A flat run retains nothing if the entire group stays flat. Finish
 		// decoding before deciding, even when its temporary anchor is large.
 		flatSoFar := len(g.runs) == 1 && g.runs[0].size >= 0 && len(directory(g.base)) == 0
-		if !flatSoFar && 256+int64(len(g.base)+len(g.data))+int64(len(g.runs))*32 > opt.MaxBytes {
+		if !flatSoFar && g.memoryBytes() > opt.MaxBytes {
 			return g, pages, nil
 		}
 	}
@@ -327,8 +368,8 @@ func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndex
 	}
 	g.last = bytes.Clone(k.values[len(k.values)-1].ByteArray())
 	g.base = bytes.Clone(g.base)
-	g.data = bytes.Clone(g.data)
-	g.runs = slices.Clone(g.runs)
+	g.data = append(make([]byte, 0, len(g.data)), g.data...)
+	g.runs = append(make([]listBoundary, 0, len(g.runs)), g.runs...)
 	return g, pages, nil
 }
 func (x *listIndex) group(ref groupRef) *listGroup {
@@ -360,7 +401,11 @@ func (g *listGroup) hasPrefix(i int, p []byte) bool {
 // compare uses the compact anchor directly, without allocating a decoded key.
 func (g *listGroup) compare(i int, key []byte) int {
 	b := g.runs[i]
-	n := b.shared + b.size
+	size := b.size
+	if size < 0 {
+		size = ^size
+	}
+	n := b.shared + size
 	for j := 0; j < min(n, len(key)); j++ {
 		v := byte(0)
 		if j < b.shared {
@@ -416,9 +461,7 @@ func (s *scan) startListCursor(prefix, from []byte) (bool, error) {
 		s.stats.ListIndexUnsafeRun++
 		return false, nil
 	}
-	if ok, err := s.open(ref); err != nil || !ok {
-		return ok, err
-	}
+	s.g, s.kp = ref, nil
 	s.land(g.key(i), g.runs[i].row)
 	s.synthetic = true
 	return s.skipList(prefix, '/')
@@ -432,22 +475,111 @@ func (g *listGroup) key(i int) []byte {
 	return key
 }
 
-// skipList walks run starts from the logical row, independent of the last
-// decoded page. Each step checks cancellation, uses no page search and allocates
-// nothing. Only the final exact anchor is materialized.
+// firstOutside uses sorted exact anchors and cumulative dense-marker counts.
+// A dense marker in the skipped interval forces ordinary decoding.
+func (g *listGroup) firstOutside(ctx context.Context, start int, prefix []byte) (int, error) {
+	target, ok := successor(prefix)
+	lo, hi := start, len(g.runs)
+	for lo < hi {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		mid := int(uint(lo+hi) >> 1)
+		if !ok || g.compare(mid, target) < 0 {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	// Include the destination marker: it is not a certified anchor either.
+	end := min(lo+1, len(g.runs))
+	before := 0
+	if start > 0 {
+		before = g.runs[start-1].denseThrough
+	}
+	if end > start && g.runs[end-1].denseThrough != before {
+		return -1, nil
+	}
+	return lo, nil
+}
+
+// skipList routes over whole groups by exact first keys, then searches run
+// anchors in the destination group. Logical position survives synthetic moves.
 func (s *scan) skipList(prefix []byte, delim byte) (bool, error) {
-	if s.listIndex == nil {
+	if s.listIndex == nil || len(s.listIndex.groups) == 0 {
 		return false, nil
 	}
 	if delim != '/' {
 		s.stats.ListIndexDelimiter++
 		return false, nil
 	}
-	ref, row := s.g, s.row
-	first := true
-	for {
-		if err := s.ctx.Err(); err != nil {
+	if err := s.ctx.Err(); err != nil {
+		return false, err
+	}
+	current := s.listIndex.group(s.g)
+	if current == nil {
+		s.stats.ListIndexMissingGroup++
+		return false, nil
+	}
+	start := sort.Search(len(current.runs), func(i int) bool { return current.runs[i].row > s.row }) - 1
+	if start < 0 || current.runs[start].size < 0 {
+		s.stats.ListIndexDensePage++
+		return false, nil
+	}
+	if !current.hasPrefix(start, prefix) {
+		s.stats.ListIndexUnsafeRun++
+		return false, nil
+	}
+	target, exists := successor(prefix)
+	ref := s.r.end()
+	var err error
+	if exists {
+		ref, err = s.r.groupFor(s.ctx, target, true, &s.log, s.stats)
+		if err != nil {
 			return false, err
+		}
+	}
+	if err = s.ctx.Err(); err != nil {
+		return false, err
+	}
+	if ref.part >= len(s.r.parts) {
+		s.key = nil
+		s.bound = s.r.rows
+		s.stats.ListIndexSkips++
+		return true, nil
+	}
+	if ref.less(s.g) {
+		s.stats.ListIndexUnsafeRun++
+		return false, nil
+	}
+	g := s.listIndex.group(ref)
+	if g == nil {
+		s.stats.ListIndexMissingGroup++
+		return false, nil
+	}
+	if ref != s.g {
+		start = 0
+	}
+	i, err := g.firstOutside(s.ctx, start, prefix)
+	if err != nil {
+		return false, err
+	}
+	if i < 0 {
+		s.stats.ListIndexDensePage++
+		return false, nil
+	}
+	// The predecessor run must certify the interior in which target falls.
+	if i > start && !g.hasPrefix(i-1, prefix) {
+		s.stats.ListIndexUnsafeRun++
+		return false, nil
+	}
+	if i == len(g.runs) {
+		ref = ref.next()
+		if ref.index == len(s.r.parts[ref.part].groups) {
+			ref = groupRef{ref.part + 1, 0}
 		}
 		if ref.part >= len(s.r.parts) {
 			s.key = nil
@@ -455,60 +587,31 @@ func (s *scan) skipList(prefix []byte, delim byte) (bool, error) {
 			s.stats.ListIndexSkips++
 			return true, nil
 		}
-		p := s.r.parts[ref.part]
-		if !p.ready.Load() {
-			s.stats.ListIndexMissingGroup++
-			return false, nil
-		}
-		if ref.index >= len(p.groups) {
-			ref = groupRef{ref.part + 1, 0}
-			row = 0
-			continue
-		}
-		g := s.listIndex.group(ref)
+		g = s.listIndex.group(ref)
+		i = 0
 		if g == nil {
 			s.stats.ListIndexMissingGroup++
 			return false, nil
 		}
-		i := sort.Search(len(g.runs), func(i int) bool { return g.runs[i].row > row }) - 1
-		for ; i < len(g.runs); i++ {
-			if err := s.ctx.Err(); err != nil {
-				return false, err
-			}
-			if i < 0 || g.runs[i].size < 0 {
-				s.stats.ListIndexDensePage++
-				return false, nil
-			}
-			if !g.hasPrefix(i, prefix) {
-				if first {
-					s.stats.ListIndexUnsafeRun++
-					return false, nil
-				}
-				key := g.key(i)
-				// A run beginning before the successor but outside P cannot certify
-				// its interior. This includes a parent directory's interleaved objects.
-				if bytes.Compare(key, prefix) < 0 {
-					s.stats.ListIndexUnsafeRun++
-					return false, nil
-				}
-				if ok, err := s.open(ref); err != nil || !ok {
-					if err != nil {
-						return false, err
-					}
-					s.stats.ListIndexSkips++
-					return true, nil
-				}
-				s.land(key, g.runs[i].row)
-				s.synthetic = true
-				if s.key != nil {
-					s.groupKey, s.groupStart = s.key, s.ordinal()
-				}
-				s.stats.ListIndexSkips++
-				return true, nil
-			}
-			first = false
+		if len(g.runs) == 0 || g.runs[0].size < 0 {
+			s.stats.ListIndexDensePage++
+			return false, nil
 		}
-		ref = ref.next()
-		row = 0
 	}
+	if err = s.ctx.Err(); err != nil {
+		return false, err
+	}
+	key := g.key(i)
+	if bytes.Compare(key, target) < 0 {
+		s.stats.ListIndexUnsafeRun++
+		return false, nil
+	}
+	s.g, s.kp = ref, nil
+	s.land(key, g.runs[i].row)
+	s.synthetic = true
+	if s.key != nil {
+		s.groupKey, s.groupStart = s.key, s.ordinal()
+	}
+	s.stats.ListIndexSkips++
+	return true, nil
 }
