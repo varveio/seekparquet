@@ -92,7 +92,7 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `PlanRanges`, `Verify`, `Metadata`, `Columns` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan`, `Split` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Column`, a part's column as its footer declares it; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `PlanRanges`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan`, `Split` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Column`, a part's column as its footer declares it; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
 | `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
 | `cmd/seekparquet` | the `seekparquet validate` command |
@@ -252,6 +252,65 @@ hold its start, and value pages only for the rows it returns; a value column wit
 page headers walked from the start of its chunk, decoding only the pages it returns rows from. A listing
 resumes after each common prefix at the prefix's successor, skipping the pages wholly under it, but the page
 it lands on, and the pages around a prefix's boundaries, still decode some of the keys under it.
+
+**Optional slash listing index.** A server that needs predictable wide-prefix listing latency can call:
+
+```go
+stats, err := d.BuildListIndex(ctx, seekparquet.ListIndexOptions{
+    MaxBytes: 64 << 20, Workers: 2, MaxChangesPerPage: 8,
+})
+```
+
+Opening remains lazy. The build reads key pages and keeps directory-run starts as suffixes relative
+to a shared group anchor. Unchanged pages add nothing; fully decoded flat groups retain no index data.
+Dense pages retain exact first-key markers and decline skipped intervals containing a marker.
+Build-only page indexes and first keys are transient: they never consume the shared, non-evicting
+`Limits.IndexMemory` cache (Java: `maxIndexMemoryBytes`). Checked part footers remain shared. Ordinary routing probes and synthetic landings
+use the normal retaining cache and its memory limit; successful transient index loads also count
+in read statistics.
+
+Complete groups are admitted in dataset order until the first over-budget group. Data refusals and unsupported codecs/encodings omit
+the affected groups, including both sides of a bad boundary; ordinary reads still report those
+conditions when encountered. Storage/I/O errors, resource limits and cancellation fail the attempt without
+publication, so a caller may retry after resolving them. Publication is atomic alongside concurrent lists.
+
+A nonempty index is reused by later calls. `ListIndexStats.Options` and `HasIndex` report the **effective** options
+and whether any groups are indexed. `OptionsMismatch` (Java: `optionsMismatch()`) explicitly flags
+reuse with different normalized settings. To replace a nonempty index, reopen the dataset. An empty outcome is cached for
+the most recent options, including its original duration, so repeating that build performs no I/O;
+changing options replaces that empty outcome. This cache holds only one result, not a map of all calls.
+Defaults are 64 MiB, one worker, and eight directory changes per page. A retained index does not
+guarantee every listing benefits: if the default cap marks every page dense, all skips may decline.
+Check the skip/decline counters before choosing a larger cap or budget.
+
+Both implementations charge the same conservative formula: 256 bytes for the snapshot, and per
+retained group 256 bytes plus each of the base-key length, suffix-data length and 40 × run count
+rounded up to a power of two (zero stays zero). This includes compact containers, dense counts and
+allocator slack. Empty outcomes retain only a fixed build-status record, not boundary arrays.
+The retained byte budget is **not a peak build-memory limit**: allow roughly Workers × 2 × MaxBytes
+for candidate buffers and compaction, plus the retained index, one page's boundary expansion per
+worker, transient page indexes, decoding buffers and part footers under the ordinary reader limits.
+Oversized single keys/pages can exceed that estimate; flat groups must still finish checking.
+Sequential build order checking retains only the preceding page's boundary, not every decoded page.
+
+Only `/` uses the index. Slash-ended prefix cursors may start at certified anchors; other valid cursors
+use ordinary seeking. Sorted anchors are searched by binary search for the prefix successor, with
+cumulative dense counts certifying the skipped interval. Exact first keys route over whole groups.
+Cancellation is checked during searches and at listing completion, including ordinary listings.
+Logical position, exact rows, projected values and cursors remain unchanged. Java synthetic group
+transitions clear the previous group's value pages, dictionaries and sequential readers.
+Build statistics report groups, pages, entries, retained bytes, budget exhaustion and duration;
+skipped counts cover visited groups, not unopened parts. Go cancellation reports decoded work,
+including the last batch, but zero retained groups/entries/bytes.
+Read statistics report answered skips and delimiter, missing-group, dense-page and unsafe-run declines.
+
+The retained benchmark generates 2,000 directories × 3,000 keys with `local.WriteDir` defaults, plus
+six million flat keys with 1,000-byte numeric fields. Set `SEEKPARQUET_LIST_BENCH_DIR` to an existing
+parent directory to keep and reuse its `wide/` and `flat/` datasets (also used by the Java benchmark):
+
+```sh
+SEEKPARQUET_LIST_BENCH_DIR=/path/to/bench go test ./local -run '^$' -bench BenchmarkListBoundary -benchtime=5x
+```
 
 **Planned selections.** `d.PlanRanges(ctx, ranges, columns)` plans reading every row of a set of ranges
 (their bounds and cursors; rows several ranges select count once). Planning decodes the key pages at the two

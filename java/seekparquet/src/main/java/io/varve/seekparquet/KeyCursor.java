@@ -19,9 +19,13 @@ import java.util.Arrays;
 final class KeyCursor {
 
     private final Parts parts;
+    private final ListBoundaryIndex listIndex;
+    private byte[] syntheticKey;
+    private long syntheticRow;
     /** The request's exclusive upper bound, or null. */
     private final byte[] end;
     private final ReadContext ctx;
+    private final Runnable checkCancelled;
 
     private int part = -1;
     /** The current part, once entered. */
@@ -46,18 +50,20 @@ final class KeyCursor {
     private long bound;
 
     long offset() {
-        return offsets[pos];
+        return syntheticKey != null ? 0 : offsets[pos];
     }
 
     KeyCursor(Parts parts, byte[] end, ReadContext ctx) {
         this.parts = parts;
+        this.listIndex = parts.listIndex;
         this.end = end;
         this.ctx = ctx;
+        this.checkCancelled = ctx::checkCancelled;
     }
 
     /** The current key. Valid after a seek or next that returned true. */
     byte[] key() {
-        return keys[pos];
+        return syntheticKey != null ? syntheticKey : keys[pos];
     }
 
     /** The part of the current key. */
@@ -72,7 +78,7 @@ final class KeyCursor {
 
     /** The row of the current key within its row group. */
     long row() {
-        return index.firstRow[page] + pos;
+        return syntheticKey != null ? syntheticRow : index.firstRow[page] + pos;
     }
 
     /** {@return the dataset ordinal of the current key: its row counted from the dataset's first} */
@@ -106,6 +112,7 @@ final class KeyCursor {
      * none.
      */
     boolean seek(byte[] target, boolean exclusive) {
+        materialize();
         if (exhausted) {
             return false;
         }
@@ -161,7 +168,7 @@ final class KeyCursor {
             while (lo < hi) {
                 ctx.checkCancelled();
                 int mid = (lo + hi) >>> 1;
-                if (satisfies(candidate.firstKey(candidate.groups[mid], ctx), target, exclusive)) {
+                if (satisfies(firstKey(candidate, mid), target, exclusive)) {
                     hi = mid;
                 } else {
                     lo = mid + 1;
@@ -186,6 +193,130 @@ final class KeyCursor {
         return decodeForward(p, lo, Math.min(pg, probe.pages() - 1), target, exclusive);
     }
 
+    boolean seekPrefixCursor(byte[] prefix, byte[] target) {
+        if (listIndex == null || listIndex.groups.length == 0 || !Arrays.equals(Bytes.wrap(prefix).successor().orElseThrow().unsafeArray(), target)) {
+            return seek(target, false);
+        }
+        if (prefix.length == 0 || prefix[prefix.length - 1] != '/') {
+            ctx.stats.listIndexUnsafeRun++; return seek(target, false);
+        }
+        int lo = 0, hi = parts.size();
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (Arrays.compareUnsigned(parts.entry(mid).maxKey().unsafeArray(), target) < 0) lo = mid + 1;
+            else hi = mid;
+        }
+        if (lo == parts.size() || beyondEnd(lo)) return exhaust(lo);
+        int p = lo;
+        PartFile candidate = parts.checked(p);
+        if (candidate == null) { ctx.stats.listIndexMissingGroup++; return seek(target, false); }
+        lo = 0; hi = candidate.groups.length;
+        while (lo < hi) {
+            ctx.checkCancelled();
+            int mid = (lo + hi) >>> 1;
+            byte[] firstKey = firstKey(candidate, mid);
+            if (firstKey == null) { ctx.stats.listIndexMissingGroup++; return seek(target, false); }
+            if (Arrays.compareUnsigned(firstKey, target) < 0) lo = mid + 1;
+            else hi = mid;
+        }
+        int s = Math.max(0, lo - 1);
+        var group = listIndex.group(p, s);
+        if (group == null) { ctx.stats.listIndexMissingGroup++; return seek(target, false); }
+        if (group.dense) { ctx.stats.listIndexDensePage++; return seek(target, false); }
+        lo = 0; hi = group.rows.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (group.compare(mid, target) < 0) lo = mid + 1; else hi = mid;
+        }
+        int i = lo - 1;
+        if (i < 0 || !group.hasPrefix(i, prefix)) { ctx.stats.listIndexUnsafeRun++; return seek(target, false); }
+        moveGroup(p, candidate, s, null);
+        syntheticKey = group.key(i); syntheticRow = group.rows[i];
+        return seekAfterPrefix(prefix, target, (byte) '/');
+    }
+
+    private void materialize() {
+        if (syntheticKey != null) {
+            long ordinal = ordinal();
+            syntheticKey = null;
+            keys = null;
+            seekOrdinal(ordinal);
+        }
+    }
+
+    boolean seekAfterPrefix(byte[] prefix, byte[] target, byte delimiter) {
+        int answer = skipPrefix(prefix, delimiter);
+        return answer >= 0 ? answer != 0 : seek(target, false);
+    }
+
+    private byte[] firstKey(PartFile candidate, int s) {
+        var group = listIndex == null ? null : listIndex.group(candidate.ordinal, s);
+        if (group != null) return group.base;
+        return candidate.firstKey(candidate.groups[s], ctx);
+    }
+
+    // -1 declines, 0 exhausts, 1 lands on an exact run-start anchor.
+    private int skipPrefix(byte[] prefix, byte delimiter) {
+        if (listIndex == null || listIndex.groups.length == 0) return -1;
+        if (delimiter != '/') { ctx.stats.listIndexDelimiter++; return -1; }
+        ctx.checkCancelled();
+        var current = listIndex.group(part, slot);
+        if (current == null) { ctx.stats.listIndexMissingGroup++; return -1; }
+        int start = current.runAt(row());
+        if (start < 0 || current.sizes[start] < 0) { ctx.stats.listIndexDensePage++; return -1; }
+        if (!current.hasPrefix(start, prefix)) { ctx.stats.listIndexUnsafeRun++; return -1; }
+        byte[] target = Bytes.wrap(prefix).successor().map(Bytes::unsafeArray).orElse(null);
+        int lo = part, hi = parts.size();
+        while (lo < hi) {
+            ctx.checkCancelled();
+            int mid = (lo + hi) >>> 1;
+            if (target == null || Arrays.compareUnsigned(parts.entry(mid).maxKey().unsafeArray(), target) < 0) lo = mid + 1;
+            else hi = mid;
+        }
+        int p = lo;
+        if (p == parts.size() || beyondEnd(p)) return exhaustIndexed(p);
+        PartFile candidate = parts.get(p, ctx);
+        lo = 0; hi = candidate.groups.length;
+        while (lo < hi) {
+            ctx.checkCancelled();
+            int mid = (lo + hi) >>> 1;
+            if (Arrays.compareUnsigned(firstKey(candidate, mid), target) < 0) lo = mid + 1;
+            else hi = mid;
+        }
+        int s = Math.max(0, lo - 1);
+        if (p == part && s < slot) s = slot;
+        var group = listIndex.group(p, s);
+        if (group == null) { ctx.stats.listIndexMissingGroup++; return -1; }
+        if (p != part || s != slot) start = 0;
+        int i = group.firstOutside(start, prefix, checkCancelled);
+        if (i < 0) { ctx.stats.listIndexDensePage++; return -1; }
+        if (i > start && !group.hasPrefix(i - 1, prefix)) { ctx.stats.listIndexUnsafeRun++; return -1; }
+        if (i == group.rows.length) {
+            if (++s == candidate.groups.length) { p++; s = 0; }
+            if (p == parts.size() || beyondEnd(p)) return exhaustIndexed(p);
+            group = listIndex.group(p, s); i = 0;
+            if (group == null) { ctx.stats.listIndexMissingGroup++; return -1; }
+            if (group.sizes[0] < 0) { ctx.stats.listIndexDensePage++; return -1; }
+            candidate = parts.get(p, ctx);
+        }
+        ctx.checkCancelled();
+        byte[] key = group.key(i);
+        if (Arrays.compareUnsigned(key, target) < 0) { ctx.stats.listIndexUnsafeRun++; return -1; }
+        // A synthetic position needs no page index until materialization.
+        moveGroup(p, candidate, s, null);
+        syntheticKey = key; syntheticRow = group.rows[i]; ctx.stats.listIndexSkips++;
+        if (end != null && Arrays.compareUnsigned(key, end) >= 0) {
+            bound = ordinal(); exhausted = true; syntheticKey = null; return 0;
+        }
+        return 1;
+    }
+
+    private int exhaustIndexed(int p) {
+        ctx.checkCancelled();
+        syntheticKey = null; exhaust(p); ctx.stats.listIndexSkips++;
+        return 0;
+    }
+
     /**
      * Moves to the row at dataset ordinal {@code ordinal}, below the dataset's row count, through the
      * OffsetIndex row positions: it decodes the one key page holding the row, unless it is the page
@@ -197,27 +328,21 @@ final class KeyCursor {
         if (p >= parts.size()) {
             return exhaust(p);
         }
-        if (p != part) {
-            pf = parts.get(p, ctx);
-            part = p;
-            index = null;
-        }
+        PartFile candidate = p == part ? pf : parts.get(p, ctx);
         long r = ordinal - parts.start(p);
         int lo = 0;
-        int hi = pf.groups.length - 1;
+        int hi = candidate.groups.length - 1;
         while (lo < hi) {
             int mid = (lo + hi + 1) >>> 1;
-            if (pf.groupStart[pf.groups[mid]] <= r) {
+            if (candidate.groupStart[candidate.groups[mid]] <= r) {
                 lo = mid;
             } else {
                 hi = mid - 1;
             }
         }
-        if (index == null || lo != slot) {
-            slot = lo;
-            physical = pf.groups[lo];
-            index = pf.keyIndex(physical, ctx);
-        }
+        KeyIndex destination = index != null && p == part && lo == slot
+                ? index : candidate.keyIndex(candidate.groups[lo], ctx);
+        moveGroup(p, candidate, lo, destination);
         long row = r - pf.groupStart[physical];
         int pg = index.pageAt(row);
         if (keys == null || decodedPart != part || decodedSlot != slot || decodedPage != pg) {
@@ -279,9 +404,7 @@ final class KeyCursor {
         if (!Arrays.equals(decoded[next], target)) {
             return seek(target, true);
         }
-        slot = s;
-        physical = pf.groups[s];
-        index = destination;
+        moveGroup(part, pf, s, destination);
         page = pg;
         keys = decoded;
         pos = next;
@@ -324,6 +447,7 @@ final class KeyCursor {
 
     /** Moves to the next key. Returns false at the end of the dataset. */
     boolean next() {
+        materialize();
         if (exhausted) {
             return false;
         }
@@ -353,18 +477,18 @@ final class KeyCursor {
         if (p >= parts.size() || (p != part && beyondEnd(p))) {
             return exhaust(p);
         }
-        if (p != part) {
-            pf = parts.get(p, ctx);
-            part = p;
-            index = null;
-        }
-        if (index == null || s != slot) {
-            slot = s;
-            physical = pf.groups[s];
-            index = pf.keyIndex(physical, ctx);
-        }
+        PartFile candidate = p == part ? pf : parts.get(p, ctx);
+        KeyIndex destination = index != null && p == part && s == slot
+                ? index : candidate.keyIndex(candidate.groups[s], ctx);
+        moveGroup(p, candidate, s, destination);
         load(pg);
         return true;
+    }
+
+    /** Commits every ordinary or synthetic group transition before projection. */
+    private void moveGroup(int p, PartFile candidate, int s, KeyIndex destination) {
+        ctx.enterGroup(p, candidate.groups[s]);
+        part = p; pf = candidate; slot = s; physical = candidate.groups[s]; index = destination;
     }
 
     /** Decodes a key page of the current row group and checks its order against the last page decoded. */

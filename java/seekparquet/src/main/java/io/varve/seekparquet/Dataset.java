@@ -80,6 +80,7 @@ public final class Dataset implements AutoCloseable {
     private final ReentrantReadWriteLock lifecycle = new ReentrantReadWriteLock();
     private final Cancellation closing = Cancellation.create();
     private boolean closed;
+    private final java.util.concurrent.locks.ReentrantLock listBuild = new java.util.concurrent.locks.ReentrantLock();
 
     private Dataset(Manifest manifest, Parts parts, OpenOptions options) {
         this.manifest = manifest;
@@ -216,6 +217,56 @@ public final class Dataset implements AutoCloseable {
                 if (!Arrays.equals(keys[keys.length - 1], part.entry.maxKey().unsafeArray())) {
                     throw new RefusalException(RefusalCode.BOUNDS_MISMATCH, part.name, "the last key differs from the manifest's max_key");
                 }
+            }
+        }
+    }
+
+    /**
+     * Builds the optional slash listing index with default settings.
+     * @return the build statistics
+     */
+    public ListIndexStats buildListIndex() {
+        return buildListIndex(ListIndexOptions.DEFAULT, Cancellation.none());
+    }
+
+    /**
+     * Decodes each key page once and atomically publishes a bounded index of directory runs.
+     * Complete groups are admitted in dataset order, stopping before the first over-budget group.
+     * Groups with data refusals or unsupported codecs/encodings remain on the ordinary read path.
+     * Storage failures and resource limits fail
+     * the attempt without publication and permit retry. Build-only indexes and first keys do not
+     * consume the shared index-memory cache.
+     * Concurrent lists use either the old path or the completed index. Cancellation discards this
+     * attempt and permits retry. After a nonempty successful build, including budget exhaustion, subsequent
+     * calls return its statistics with the effective {@link ListIndexStats#options() options}
+     * and {@link ListIndexStats#optionsMismatch()} flag.
+     * Empty outcomes are cached for the most recent options and rebuilt when those change.
+     * {@link ListIndexStats#hasIndex()} reports whether any groups are indexed. Opening never builds it.
+     *
+     * @param options retained byte budget, worker count and per-page change cap
+     * @param cancellation ends the build without publishing it
+     * @return the build statistics
+     * @throws CancellationException if cancelled, interrupted, or closed meanwhile
+     * @throws IllegalStateException if already closed
+     */
+    public ListIndexStats buildListIndex(ListIndexOptions options, Cancellation cancellation) {
+        try (Request request = begin(cancellation)) {
+            while (!listBuild.tryLock()) {
+                request.ctx.checkCancelled();
+                try { Thread.sleep(10); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new CancellationException("interrupted"); }
+            }
+            try {
+                request.ctx.checkCancelled();
+                if (parts.listIndex == null || (parts.listIndex.groups.length == 0 && !parts.listIndex.stats.options().equals(options))) {
+                    ListBoundaryIndex built = ListBoundaryIndex.build(parts, options, request.ctx);
+                    request.ctx.checkCancelled();
+                    parts.listIndex = built;
+                    return built.stats;
+                }
+                return parts.listIndex.stats.forOptions(options);
+            } finally {
+                listBuild.unlock();
             }
         }
     }

@@ -351,6 +351,11 @@ func (a *adapter) listOp(ctx context.Context, req map[string]json.RawMessage) re
 	if err != nil {
 		return failure(err)
 	}
+	if os.Getenv("SEEKPARQUET_LIST_INDEX") != "" {
+		if _, err := d.BuildListIndex(ctx, seekparquet.ListIndexOptions{}); err != nil {
+			return failure(err)
+		}
+	}
 	got, err := d.List(ctx, list)
 	if err != nil {
 		return failure(err)

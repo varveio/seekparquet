@@ -46,6 +46,20 @@ independent of the specification's draft revisions.
 
 ### Changed
 
+- `Dataset.buildListIndex` explicitly builds an optional, bounded directory-run index for `/` listings.
+  Compact exact anchors, binary run searches and first-key group routing avoid a key-page decode per
+  wide prefix. Dense intervals decline safely; fully checked flat groups retain no index data.
+  Both languages use the same conservative byte accounting. Build-only page indexes and first keys
+  never fill the ordinary reader's index-memory cache; ordinary probes and synthetic materialization
+  retain their usual caches. Transient loads count in read statistics. Refusals and unsupported
+  codecs/encodings omit groups (both sides of bad boundaries); storage failures, resource limits
+  and cancellation discard the attempt and permit retry.
+  Publication is atomic. Empty outcomes reuse the most recent options; nonempty outcomes expose their
+  effective options and whether any groups are indexed. Statistics count skips, declines and build work; empty indexes do not count declines.
+  Slash-ended cursors alone use directory-run certification; all other valid cursors keep ordinary
+  seeking. Synthetic transitions preserve logical position and current-group projection caches.
+  Listings check cancellation before returning, including the no-index path. No format change.
+
 - A value column chunk's dictionary is read in one request of the bytes before the first data page its
   OffsetIndex locates, instead of a header window and then the body.
 - `Column` is `(name, type, typeLength, logicalType, repetition, key, parts)`.

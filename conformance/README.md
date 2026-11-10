@@ -74,6 +74,12 @@ status is 0 when every selected case passed and there was no run error (includin
 skipped without counting against `reader` qualification. Their rows come from the oracle; their projected
 bytes are computed by `make_cases.py` from the fixtures' OffsetIndex page locations, never from a reader.
 
+The Go and Java adapters also accept `SEEKPARQUET_LIST_INDEX=1`: before a list request they build the
+reader's optional boundary index, then answer the same existing cases. Run both modes to check that the
+optimization changes no conformance answer. This is an adapter test setting, not a protocol capability;
+it adds no query semantics or fixture expectations. Index budgets, caps and page-count guards live in
+each implementation's tests and benchmarks.
+
 **Optional features.** Cases on `optional-codecs` (LZ4_RAW and BROTLI value columns) accept the values or
 `unsupported` (`unsupported_encoding`); full validation of it may be `complete` or `incomplete`, never
 `failed`.
@@ -164,3 +170,40 @@ revision, which the suite also records (`format_version`, `draft_revision`). `co
 protocol.md, case.schema.json, capabilities.json, fixtures.lock.json and every case file (recomputed by
 `check_suite.py`), so `spec/status.json` can pin a suite by revision and digest. A published suite revision
 is immutable.
+
+### Optional list-index accounting parity
+
+The implementation tests can compare build statistics on the same checked-in Parquet bytes without
+changing conformance answers. From the repository root (Go 1.26+ and JDK 21+):
+
+```sh
+mkdir -p java/seekparquet/build
+export SEEKPARQUET_LIST_INDEX_PARITY="$PWD/java/seekparquet/build/list-index-parity.tsv"
+go -C go test -run '^TestListIndexParity$' -count=1
+java/gradlew -p java :seekparquet:test --tests '*ListIndexResourcesTest.sharedFixtureAccountingParity' --offline --max-workers=1
+```
+
+The export covers four shared datasets, six budgets and four page-change caps. Java independently
+builds each index and compares indexed groups, entries, retained bytes and budget exhaustion. This
+optional test skips when the environment variable is absent; it adds no protocol operation or spec rule.
+
+### Optional random list-index differential
+
+The differential harness compares complete listing responses from Go and Java, each with and
+without the index, on eight seeded random datasets containing the same Parquet bytes. It covers
+unique/repeated keys, multiple parts, sparse and dense pages, exact folder objects, byte prefixes,
+arbitrary prefix/row cursors, end bounds, projections and pagination. This supplements the normative
+suite; agreement between implementations is not conformance qualification.
+
+```sh
+export SEEKPARQUET_LIST_RANDOM_FIXTURES="$PWD/java/seekparquet/build/list-index-random"
+go -C go test -run '^TestListIndexExportRandomFixtures$' -count=1
+java/gradlew -p java :conformance:installDist --offline --max-workers=1
+python3 conformance/harness/list_index_differential.py \
+  --fixtures "$SEEKPARQUET_LIST_RANDOM_FIXTURES" \
+  --go-adapter "go -C go run ./internal/cmd/conformance" \
+  --java-adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
+```
+
+Fixture export skips when the environment variable is absent. Generated files belong in the ignored
+build directory and are not checked into the suite.
