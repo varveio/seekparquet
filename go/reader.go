@@ -657,10 +657,10 @@ func (p *part) at(ctx context.Context, st *ReadStats) io.ReaderAt {
 
 // begin takes a read lease that close waits for, and returns the request's
 // context: it ends with ctx, or with close (cause ErrClosed). Once close has
-// begun, begin fails with ErrClosed at once.
+// begun (it cancels r.closing first), begin fails with ErrClosed at once.
 func (r *reader) begin(ctx context.Context) (context.Context, func(), error) {
 	r.mu.Lock()
-	if r.closed {
+	if r.closed || r.closing.Err() != nil {
 		r.mu.Unlock()
 		return nil, nil, ErrClosed
 	}
