@@ -19,6 +19,11 @@ package seekparquet
 // page index loaded by an earlier request is reused, not loaded, and a
 // decoded first key is reused without decoding.
 type ReadStats struct {
+	// ListIndexSkips counts skips answered by the optional slash index.
+	ListIndexSkips int64
+	// Declines after an index was built: another delimiter, an omitted group,
+	// a dense page, or a run that cannot establish an exact successor.
+	ListIndexDelimiter, ListIndexMissingGroup, ListIndexDensePage, ListIndexUnsafeRun int64
 	// PartsOpened is the number of parts the request was the first to
 	// touch and opened from the Source to check (CHECK-1), whether or not
 	// the check passed. The footer reads are in SourceReads.
@@ -39,8 +44,9 @@ type ReadStats struct {
 	// an earlier request, or an earlier step of this one, had loaded.
 	RowGroupsOpened int64
 	// IndexLoads is the number of those openings that read the key page
-	// index from the Source and retained it; RowGroupsOpened-IndexLoads were
-	// reuses, including an index a concurrent request published first. An
+	// index from the Source, including successful build-only transient loads;
+	// RowGroupsOpened-IndexLoads were reuses, including an index a concurrent
+	// request published first. An
 	// index read but refused (Limits.IndexMemory) is in neither count.
 	IndexLoads int64
 	// PageIndexSeeks is the number of moves within a row group's key pages,
@@ -76,16 +82,21 @@ func resetStats(st *ReadStats) *ReadStats {
 // reads of its steps apart.
 func (st ReadStats) minus(o ReadStats) ReadStats {
 	return ReadStats{
-		PartsOpened:       st.PartsOpened - o.PartsOpened,
-		KeyPagesDecoded:   st.KeyPagesDecoded - o.KeyPagesDecoded,
-		ValuePagesDecoded: st.ValuePagesDecoded - o.ValuePagesDecoded,
-		KeysDecoded:       st.KeysDecoded - o.KeysDecoded,
-		RowGroupsOpened:   st.RowGroupsOpened - o.RowGroupsOpened,
-		IndexLoads:        st.IndexLoads - o.IndexLoads,
-		PageIndexSeeks:    st.PageIndexSeeks - o.PageIndexSeeks,
-		PrefixSkips:       st.PrefixSkips - o.PrefixSkips,
-		GroupsSkipped:     st.GroupsSkipped - o.GroupsSkipped,
-		SourceReads:       st.SourceReads - o.SourceReads,
-		SourceBytes:       st.SourceBytes - o.SourceBytes,
+		ListIndexSkips:        st.ListIndexSkips - o.ListIndexSkips,
+		ListIndexDelimiter:    st.ListIndexDelimiter - o.ListIndexDelimiter,
+		ListIndexMissingGroup: st.ListIndexMissingGroup - o.ListIndexMissingGroup,
+		ListIndexDensePage:    st.ListIndexDensePage - o.ListIndexDensePage,
+		ListIndexUnsafeRun:    st.ListIndexUnsafeRun - o.ListIndexUnsafeRun,
+		PartsOpened:           st.PartsOpened - o.PartsOpened,
+		KeyPagesDecoded:       st.KeyPagesDecoded - o.KeyPagesDecoded,
+		ValuePagesDecoded:     st.ValuePagesDecoded - o.ValuePagesDecoded,
+		KeysDecoded:           st.KeysDecoded - o.KeysDecoded,
+		RowGroupsOpened:       st.RowGroupsOpened - o.RowGroupsOpened,
+		IndexLoads:            st.IndexLoads - o.IndexLoads,
+		PageIndexSeeks:        st.PageIndexSeeks - o.PageIndexSeeks,
+		PrefixSkips:           st.PrefixSkips - o.PrefixSkips,
+		GroupsSkipped:         st.GroupsSkipped - o.GroupsSkipped,
+		SourceReads:           st.SourceReads - o.SourceReads,
+		SourceBytes:           st.SourceBytes - o.SourceBytes,
 	}
 }

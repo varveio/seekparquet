@@ -16,13 +16,15 @@ import (
 // of the group's first row. Every seek to a key lands on a group's first
 // row, and a cursor resumes inside a group whose first row it has found.
 type scan struct {
-	ctx   context.Context
-	r     *reader
-	end   []byte // the exclusive upper bound, nil for none
-	log   pageLog
-	stats *ReadStats
-	kp    *keyPages // the walker on row group g, nil before the first seek
-	g     groupRef
+	listIndex *listIndex
+	synthetic bool
+	ctx       context.Context
+	r         *reader
+	end       []byte // the exclusive upper bound, nil for none
+	log       pageLog
+	stats     *ReadStats
+	kp        *keyPages // the walker on row group g, nil before the first seek
+	g         groupRef
 	// key is the current row's key, nil once the scan is exhausted; row
 	// is its position in row group g.
 	key []byte
@@ -38,7 +40,7 @@ type scan struct {
 }
 
 func (r *reader) newScan(ctx context.Context, end []byte, st *ReadStats) *scan {
-	return &scan{ctx: ctx, r: r, end: end, log: pageLog{unique: r.key.Unique}, stats: st}
+	return &scan{ctx: ctx, r: r, end: end, log: pageLog{unique: r.key.Unique}, stats: st, listIndex: r.listIndex.Load()}
 }
 
 // offset returns the current row's offset in its group.
@@ -71,6 +73,15 @@ func (s *scan) start(from []byte, exclusive bool, cur *Cursor) error {
 // forward from the current row when no earlier row can qualify, and
 // otherwise routes through groupFor.
 func (s *scan) seek(from []byte, inclusive bool) error {
+	if s.synthetic {
+		if err := s.syntheticPages(); err != nil {
+			return err
+		}
+		s.kp.values = nil
+		s.kp.at = s.kp.index.pageAt(s.row) - 1
+		s.kp.next = 0
+		s.synthetic = false
+	}
 	g, err := s.r.groupFor(s.ctx, from, inclusive, &s.log, s.stats)
 	if err != nil {
 		return err
@@ -158,8 +169,27 @@ func (s *scan) seekOrdinal(ordinal int64) error {
 	return nil
 }
 
+// Synthetic anchors need no page index until ordinary decoding resumes.
+func (s *scan) syntheticPages() error {
+	if s.kp != nil {
+		return nil
+	}
+	var err error
+	s.kp, err = s.r.keyPages(s.ctx, s.g, &s.log, s.stats)
+	return err
+}
+
 // next moves to the row after the current one.
 func (s *scan) next() error {
+	if s.synthetic {
+		if err := s.syntheticPages(); err != nil {
+			return err
+		}
+		if _, err := s.kp.seekRow(s.row); err != nil {
+			return err
+		}
+		s.synthetic = false
+	}
 	key, row, ok, err := s.kp.advance()
 	for err == nil && !ok {
 		if ok, err := s.open(s.g.next()); !ok || err != nil {
@@ -216,7 +246,7 @@ func (s *scan) open(g groupRef) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	s.kp, s.g = kp, g
+	s.kp, s.g, s.synthetic = kp, g, false
 	return true, nil
 }
 

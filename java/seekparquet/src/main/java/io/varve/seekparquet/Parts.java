@@ -25,6 +25,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * Thread-safe: concurrent first touches of a part wait for one check.
  */
 final class Parts {
+    volatile ListBoundaryIndex listIndex;
 
     /** How long a request waits for another's check of a part before looking at its cancellation. */
     private static final long WAIT_MILLIS = 10;

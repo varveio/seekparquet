@@ -364,8 +364,9 @@ func (d *Dataset) Range(ctx context.Context, rng Range) ([]Row, error) {
 // decoding its keys; when that first key is the prefix's exact row
 // (Entry.Exact), only the row's projected value pages are read. Keys under
 // a prefix that share a page with the keys around them are decoded. Value
-// pages are read only for row entries and exact rows. Errors are those of
-// Range.
+// pages are read only for row entries and exact rows. BuildListIndex optionally
+// replaces slash-prefix resumes with exact directory-run anchors, usually
+// reducing a wide listing to one key-page decode. Errors are those of Range.
 func (d *Dataset) List(ctx context.Context, req List) ([]Entry, error) {
 	return d.r.readList(ctx, req, req.Stats)
 }

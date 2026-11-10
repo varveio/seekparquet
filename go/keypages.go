@@ -15,11 +15,14 @@ import (
 // page it decoded last. Decoded pages are never reused, so a key it
 // returns stays valid after it moves on.
 type keyPages struct {
-	r     *reader
-	part  *part
-	g     groupRef // the row group's position in the dataset
-	index *groupIndex
-	chunk *chunk
+	// deferFirst leaves cross-group certification and first-key cache warming
+	// to the list-index coordinator, after independent group decoding.
+	deferFirst bool
+	r          *reader
+	part       *part
+	g          groupRef // the row group's position in the dataset
+	index      *groupIndex
+	chunk      *chunk
 	// values are the keys of page at, next the position in them.
 	values   []parquet.Value
 	at, next int
@@ -30,12 +33,16 @@ type keyPages struct {
 // keyPages opens a walker on row group g, loading the group's key page
 // index (RG-2 to RG-4) first.
 func (r *reader) keyPages(ctx context.Context, g groupRef, log *pageLog, st *ReadStats) (*keyPages, error) {
+	return r.loadKeyPages(ctx, g, log, st, true)
+}
+
+func (r *reader) loadKeyPages(ctx context.Context, g groupRef, log *pageLog, st *ReadStats, retain bool) (*keyPages, error) {
 	p, err := r.part(ctx, g.part, st)
 	if err != nil {
 		return nil, err
 	}
 	grp := p.groups[g.index]
-	index, err := p.keyIndex(ctx, grp.physical, st)
+	index, err := p.loadKeyIndex(ctx, grp.physical, st, retain)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +151,7 @@ func (k *keyPages) decode(i int) error {
 	if err := k.log.add(pageSpan{g: k.g, page: i, part: p.name, physical: c.physical, firstRow: meta.first, first: first, last: last}); err != nil {
 		return err
 	}
-	if i == 0 {
+	if i == 0 && !k.deferFirst {
 		return k.r.noteFirst(k.g, first)
 	}
 	return nil

@@ -84,7 +84,8 @@ final class Queries {
         List<String> columns = q.columns();
         KeyCursor cursor = new KeyCursor(parts, to, ctx);
         List<ListEntry> out = new ArrayList<>(Math.min(q.limit(), 1024));
-        boolean ok = cursor.seek(from, exclusive);
+        boolean ok = tagged instanceof Continuation.CommonPrefix c && delimiter == '/'
+                ? cursor.seekPrefixCursor(c.bytes().unsafeArray(), from) : cursor.seek(from, exclusive);
         if (ok && tagged instanceof Continuation.RowPosition r) {
             ok = cursor.resume(r);
         }
@@ -119,8 +120,9 @@ final class Queries {
                 break;
             }
             ctx.stats.prefixSkips++;
-            ok = cursor.seek(next.get().unsafeArray(), false);
+            ok = cursor.seekAfterPrefix(common, next.get().unsafeArray(), delimiter);
         }
+        ctx.checkCancelled();
         return Collections.unmodifiableList(out);
     }
 

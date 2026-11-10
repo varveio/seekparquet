@@ -70,6 +70,11 @@ final class ReadContext {
         keyPages.put(position, new PageBounds(first, last));
     }
 
+    // A sequential builder needs only its preceding page, not a log of the group.
+    void retainLastKeyPage() {
+        while (keyPages.size() > 1) keyPages.pollFirstEntry();
+    }
+
     private static boolean outOfOrder(byte[] a, byte[] b, boolean unique) {
         int c = Arrays.compareUnsigned(a, b);
         return c > 0 || (unique && c == 0);

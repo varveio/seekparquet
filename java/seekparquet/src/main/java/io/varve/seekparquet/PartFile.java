@@ -449,7 +449,10 @@ final class PartFile implements AutoCloseable {
     }
 
     /** {@return the checked key page index of a non-empty physical row group, loading it on first use} */
-    KeyIndex keyIndex(int physical, ReadContext ctx) {
+    KeyIndex keyIndex(int physical, ReadContext ctx) { return keyIndex(physical, ctx, true); }
+
+    /** Build-only indexes never consume the shared non-evicting cache. */
+    KeyIndex keyIndex(int physical, ReadContext ctx, boolean retain) {
         KeyIndex index = keyIndexes.get(physical);
         if (index != null) {
             ctx.stats.rowGroupsOpened++;
@@ -490,6 +493,11 @@ final class PartFile implements AutoCloseable {
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + e.getMessage());
         }
+        if (!retain) {
+            ctx.stats.rowGroupsOpened++;
+            ctx.stats.indexLoads++;
+            return index;
+        }
         synchronized (indexMemory) {
             KeyIndex previous = keyIndexes.get(physical);
             if (previous != null) {
@@ -513,15 +521,21 @@ final class PartFile implements AutoCloseable {
         ctx.enterGroup(ordinal, physical);
         byte[][] decoded = keyPage(physical, keyIndex(physical, ctx), 0, ctx);
         ctx.checkKeyPage(this, physical, 0, decoded);
+        return rememberFirst(physical, decoded[0]);
+    }
+
+    byte[] knownFirst(int physical) { return firstKeys.get(physical); }
+
+    byte[] rememberFirst(int physical, byte[] key) {
         synchronized (indexMemory) {
-            first = firstKeys.get(physical);
+            byte[] first = firstKeys.get(physical);
             if (first == null) {
-                indexMemory.reserve(32L + ((decoded[0].length + 7L) & ~7L));
-                first = decoded[0];
+                indexMemory.reserve(32L + ((key.length + 7L) & ~7L));
+                first = key;
                 firstKeys.set(physical, first);
             }
+            return first;
         }
-        return first;
     }
 
     /** Coalesces only when the unused gap is no larger than the useful index bytes. */

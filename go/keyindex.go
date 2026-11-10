@@ -58,6 +58,11 @@ func (index *groupIndex) pageAt(row int64) int {
 // indexes and on the memory the Dataset retains for them. Concurrent first
 // uses may both load it; one result is kept.
 func (p *part) keyIndex(ctx context.Context, physical int, st *ReadStats) (*groupIndex, error) {
+	return p.loadKeyIndex(ctx, physical, st, true)
+}
+
+// Build-only loads reuse existing entries but never charge or publish new ones.
+func (p *part) loadKeyIndex(ctx context.Context, physical int, st *ReadStats, retain bool) (*groupIndex, error) {
 	if index := p.index[physical].Load(); index != nil {
 		return index, nil
 	}
@@ -84,6 +89,10 @@ func (p *part) keyIndex(ctx context.Context, physical int, st *ReadStats) (*grou
 	index, err := checkKeyIndex(&columns, offsets, p.footer.Metadata().RowGroups[physical].NumRows, start, end, p.utf8Key)
 	if err != nil {
 		return nil, refusePart(CodeInvalidPageIndex, p.name, physical, "the key page index: %v", err)
+	}
+	if !retain {
+		st.IndexLoads++
+		return index, nil
 	}
 	// Recheck, charge and publish as one operation. Competing cold loads
 	// must not charge the same retained entry, even temporarily.

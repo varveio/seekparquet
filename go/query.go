@@ -323,7 +323,13 @@ func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Ent
 	if req.Cursor != nil && req.Cursor.Key != nil {
 		err = s.start(from, false, req.Cursor)
 	} else {
-		err = s.seekList(from, req, &l)
+		handled := false
+		if req.Cursor != nil && req.Cursor.Prefix != nil && req.Delimiter == '/' {
+			handled, err = s.startListCursor(req.Cursor.Prefix, from)
+		}
+		if err == nil && !handled {
+			err = s.seekList(from, req, &l)
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -336,6 +342,11 @@ func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Ent
 				break
 			}
 			st.PrefixSkips++
+			if handled, err := s.skipList(prefix, req.Delimiter); err != nil {
+				return nil, err
+			} else if handled {
+				continue
+			}
 			if err := s.seekList(next, req, &l); err != nil {
 				return nil, err
 			}
@@ -348,6 +359,9 @@ func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Ent
 		if err := s.next(); err != nil {
 			return nil, err
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return l.out, r.project(ctx, l.rows, l.at, slices.Clone(req.Columns), st)
 }

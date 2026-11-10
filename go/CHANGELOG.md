@@ -25,6 +25,19 @@ versioning; while it is v0, minor versions may change the API.
   and PyArrow read it; a `sorting_columns` entry after the first that names no column is ignored (RG-1), and
   row-group ordinals that differ from the row groups' positions are ignored (they serve encryption): both
   were `invalid_footer`. parquet-go is given the footer without them.
+- `Dataset.BuildListIndex` explicitly builds an optional, bounded directory-run index for `/` listings.
+  Compact exact anchors, binary run searches and first-key group routing avoid a key-page decode per
+  wide prefix. Dense intervals decline safely; fully checked flat groups retain no index data.
+  Both languages use the same conservative byte accounting. Build-only page indexes and first keys
+  never fill the ordinary reader's index-memory cache; ordinary probes and synthetic materialization
+  retain their usual caches. Transient loads count in read statistics. Refusals and unsupported
+  codecs/encodings omit groups (both sides of bad boundaries); storage failures, resource limits
+  and cancellation discard the attempt and permit retry.
+  Publication is atomic. Empty outcomes reuse the most recent options; nonempty outcomes expose their
+  effective options and whether any groups are indexed. Statistics count skips, declines and build work; empty indexes do not count declines.
+  Slash-ended cursors alone use directory-run certification; all other valid cursors keep ordinary
+  seeking. Synthetic transitions preserve logical position and current-group projection caches.
+  Listings check cancellation before returning, including the no-index path. No format change.
 - Fixed: a page whose PLAIN or BYTE_STREAM_SPLIT payload held more values than its header declares (or a
   dictionary page more than its count) was decoded as its declared prefix, so full validation counted only
   those and could certify the page (CHECK-5). It is now `invalid_parquet`, in reads and in validation; a

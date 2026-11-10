@@ -48,6 +48,9 @@ type reader struct {
 	columnsMu sync.Mutex
 	columns   map[string]column
 
+	listIndex atomic.Pointer[listIndex]
+	listBuild sync.Mutex
+
 	indexMemory atomic.Int64
 	// indexMu serializes retained-index admission and publication, including
 	// first keys. No file I/O or page decoding runs under this lock.
@@ -443,6 +446,11 @@ func (r *reader) first(ctx context.Context, g groupRef, log *pageLog, st *ReadSt
 	if _, err := r.part(ctx, g.part, st); err != nil {
 		return nil, err
 	}
+	if x := r.listIndex.Load(); x != nil {
+		if group := x.group(g); group != nil {
+			return group.base, nil
+		}
+	}
 	if k := r.group(g).first.Load(); k != nil {
 		return *k, nil
 	}
@@ -453,7 +461,7 @@ func (r *reader) first(ctx context.Context, g groupRef, log *pageLog, st *ReadSt
 	if err := k.decode(0); err != nil {
 		return nil, err
 	}
-	return *r.group(g).first.Load(), nil
+	return k.values[0].ByteArray(), nil
 }
 
 // noteFirst records the decoded first key of row group g, after checking
