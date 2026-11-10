@@ -235,6 +235,16 @@ mid-call; the reader checks the context between pages.
 `OpenDataset` opens and closes only the manifest. `Dataset.Close` closes every part file the dataset opened,
 after the reads in progress end.
 
+Projected value pages reuse buffers within each `Range`, `List`, or `RangePlan.Scan` call, including
+across row groups. Results still own their keys and binary values. Dictionaries have separate storage
+for their chunk; key pages and validation do not reuse page buffers. No scratch is shared between calls.
+The call retains each projection slot's largest byte and element buffers until it returns, including
+codec state and both compact and expanded values for optional columns. `PageBytes` bounds byte data;
+`PageValues` also matters: the two value slices alone can reach 768 MiB per optional column at the
+default limit on 64-bit platforms. Dictionaries, page headers/logs, indexes and results add to that.
+Bound concurrent calls/shards and lower `Limits` for tighter memory use. `IndexMemory` is separate;
+there is no aggregate transient-memory budget or guarantee of immediate return of memory to the OS.
+
 ## Cost model
 
 Opening reads the manifest: one read, whatever the number of parts. A read is routed to a part by its

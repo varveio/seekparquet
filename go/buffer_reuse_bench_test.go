@@ -4,7 +4,9 @@
 package seekparquet
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 
@@ -37,11 +39,24 @@ func reuseRecords(n int) []reuseRecord {
 func BenchmarkScanBufferReuse(b *testing.B) {
 	const n = 32768
 	dir := write(b, testutil.Dataset{Parts: []testutil.Part{{Rows: reuseRecords(n), GroupRows: 4096, PageBytes: 4096, Compression: parquet.Compression(&zstd.Codec{})}}})
+	raw, err := os.ReadFile(partFile(dir, 0))
+	must(b, err)
+	b.Logf("fixture SHA-256 %x, %d bytes", sha256.Sum256(raw), len(raw))
+	footer, err := testutil.ReadFooter(partFile(dir, 0))
+	must(b, err)
+	if len(footer.RowGroups) != 8 {
+		b.Fatal("unexpected row-group count")
+	}
+	for _, column := range footer.RowGroups[0].Columns {
+		b.Logf("first group: %v codec=%s encodings=%v", column.MetaData.PathInSchema, column.MetaData.Codec, column.MetaData.Encoding)
+	}
 	d := open(b, dir, Options{})
 	columns := []string{"size", "etag", "class"}
 	plan, err := d.PlanRanges(ctx, []Range{{}}, columns)
 	must(b, err)
-	must(b, plan.Scan(ctx, nil, func(Row) error { return nil }))
+	var st ReadStats
+	must(b, plan.Scan(ctx, &st, func(Row) error { return nil }))
+	b.Logf("warm scan stats: %+v", st)
 	for _, workers := range []int{1, 2} {
 		shards, err := plan.Split(ctx, workers)
 		must(b, err)

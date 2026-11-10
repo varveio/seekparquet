@@ -68,18 +68,31 @@ func TestSurplusValuesAreRefused(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			values, err := testChunk(c.typ).values(c.enc, c.exact, 3)
-			must(t, err)
-			if len(values) != 3 {
-				t.Fatalf("%d values", len(values))
-			}
-			if _, err := testChunk(c.typ).values(c.enc, c.excess, 3); CodeOf(err) != CodeInvalidParquet {
-				t.Fatalf("a payload of 4 values decoded as 3: %v", err)
-			}
-			// A dictionary page is decoded by the same check.
-			if c.enc == format.Plain {
-				if _, err := testChunk(c.typ).decodeValues(format.Plain, c.excess, 3); CodeOf(err) != CodeInvalidParquet {
-					t.Fatalf("a dictionary of 4 values decoded as 3: %v", err)
+			for _, reuse := range []bool{false, true} {
+				chunk := testChunk(c.typ)
+				if reuse {
+					chunk.scratch = new(pageScratch)
+					// Decode a larger valid page before the smaller exact/surplus page.
+					count := 4
+					if c.typ.Kind() == parquet.Boolean {
+						count = 9
+					}
+					_, err := chunk.values(c.enc, c.excess, count)
+					must(t, err)
+				}
+				values, err := chunk.values(c.enc, c.exact, 3)
+				must(t, err)
+				if len(values) != 3 {
+					t.Fatalf("%d values", len(values))
+				}
+				if _, err := chunk.values(c.enc, c.excess, 3); CodeOf(err) != CodeInvalidParquet {
+					t.Fatalf("a payload of 4 values decoded as 3: %v", err)
+				}
+				// A dictionary page is decoded by the same check.
+				if c.enc == format.Plain {
+					if _, err := chunk.decodeValues(format.Plain, c.excess, 3); CodeOf(err) != CodeInvalidParquet {
+						t.Fatalf("a dictionary of 4 values decoded as 3: %v", err)
+					}
 				}
 			}
 		})
@@ -108,6 +121,7 @@ func TestSurplusValuesInDataPages(t *testing.T) {
 		return h
 	}
 	required := testChunk(parquet.Int64Type)
+	required.scratch = new(pageScratch)
 	if _, err := required.decode(page(2, make([]byte, 16)), make([]byte, 16)); err != nil {
 		t.Fatal(err)
 	}
@@ -122,6 +136,7 @@ func TestSurplusValuesInDataPages(t *testing.T) {
 	}
 	c := testChunk(parquet.Int64Type)
 	c.col.optional = true
+	c.scratch = new(pageScratch)
 	got, err := c.decode(page(3, optional(2)), optional(2))
 	must(t, err)
 	if len(got) != 3 || !got[1].IsNull() || got[0].IsNull() || got[2].IsNull() {

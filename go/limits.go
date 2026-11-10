@@ -38,8 +38,10 @@ type Limits struct {
 	// decodes to, besides its PageBytes: up to 24 bytes per value on 64-bit
 	// platforms, twice that for an optional column (its non-null values,
 	// then every row), so 384 to 768 MiB for a page at the defaults. Each
-	// request decodes its own pages, so concurrent requests add up. Lower it
-	// to bound the memory of a page.
+	// request retains projected data-page scratch at its high-water capacity
+	// until the call ends. Concurrent requests and Scan shards add up. Lower
+	// this limit and bound concurrency to reduce transient memory; IndexMemory
+	// does not account for it.
 	PageValues int64
 	// IndexMemory bounds the memory one Dataset retains for key page
 	// indexes and decoded row-group first-key bytes, which it keeps once
