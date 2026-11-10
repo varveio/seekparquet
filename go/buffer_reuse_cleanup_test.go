@@ -325,9 +325,89 @@ func TestBufferReuseScanAllocationsPerPage(t *testing.T) {
 	allocations := float64(after.Mallocs-before.Mallocs) / pages
 	bytes := float64(after.TotalAlloc-before.TotalAlloc) / pages
 	t.Logf("whole owning Scan: %.2f allocations/page, %.0f bytes/page", allocations, bytes)
-	// Allow race-build pool churn, while rejecting the original allocating
-	// scan footprint (over 208 allocations and 28,000 bytes per page without race).
-	if allocations > 208 || bytes > 26<<10 {
+	// Allow race-build pool churn. The slot gate below also rejects partial
+	// buffer regressions that could fit within this whole-request budget.
+	if allocations > 180 || bytes > 23<<10 {
 		t.Fatalf("page allocation budget exceeded: %.2f allocations, %.0f bytes", allocations, bytes)
+	}
+}
+
+// Gate each warmed projection slot separately: the whole owning scan's row
+// copies otherwise hide a regression in just one page buffer. Uncompressed
+// PLAIN avoids codec pools and their race-build eviction; headers still count.
+func TestBufferReuseProjectionSlotAllocations(t *testing.T) {
+	type record struct {
+		Key      []byte  `parquet:"key"`
+		Required string  `parquet:"required,plain"`
+		Optional *string `parquet:"optional,optional,plain"`
+	}
+	rows := make([]record, 1024)
+	for i := range rows {
+		value := fmt.Sprintf("value-%08d", i)
+		rows[i] = record{Key: fmt.Appendf(nil, "k%05d", i), Required: value}
+		if i%7 != 0 {
+			rows[i].Optional = &value
+		}
+	}
+	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: rows, PageBytes: 256}}}), Options{})
+	must(t, d.r.checkParts(ctx, new(ReadStats)))
+	for _, name := range []string{"required", "optional"} {
+		var scratch pageScratch
+		cp, err := d.r.parts[0].openColumn(ctx, 0, name, new(ReadStats), &scratch)
+		must(t, err)
+		if len(cp.locs) < 20 {
+			t.Fatal("fixture needs many pages")
+		}
+		allocations := testing.AllocsPerRun(10, func() {
+			cp.values = nil
+			for _, loc := range cp.locs {
+				if err := cp.load(loc.first); err != nil {
+					panic(err)
+				}
+			}
+		}) / float64(len(cp.locs))
+		t.Logf("%s projection slot: %.3f allocations/page (%d pages)", name, allocations, len(cp.locs))
+		budget := 6.5 // measured 6: includes the page header and decoded page wrapper
+		if name == "optional" {
+			budget = 7.5 // definition-level decoding adds one
+		}
+		if allocations > budget {
+			t.Fatalf("%s slot lost buffer reuse: %.3f allocations/page > %.1f", name, allocations, budget)
+		}
+	}
+}
+
+// This end-to-end borrowed budget includes fresh per-call scratch, headers,
+// keys, dictionaries and indexes. It guards against reintroducing row copies;
+// it is not the proposed <0.01 allocations/row acceptance target.
+func TestScanBatchesAllocationsPerRow(t *testing.T) {
+	const n = 32768
+	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: reuseRecords(n), GroupRows: 4096, PageBytes: 4096, Compression: parquet.Compression(&zstd.Codec{})}}}), Options{})
+	plan, err := d.PlanRanges(ctx, []Range{{}}, []string{"size", "etag", "class"})
+	must(t, err)
+	var st ReadStats
+	count := 0
+	emit := func(b *Batch) error { count += b.Len(); return nil }
+	must(t, plan.ScanBatches(ctx, &st, emit))
+	if count != n || st.KeyPagesDecoded != 384 || st.ValuePagesDecoded != 440 {
+		t.Fatalf("fixture geometry: %d rows, %+v", count, st)
+	}
+	const runs = 3
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for range runs {
+		count = 0
+		must(t, plan.ScanBatches(ctx, &st, emit))
+		if count != n {
+			t.Fatal(count)
+		}
+	}
+	runtime.ReadMemStats(&after)
+	allocations := float64(after.Mallocs-before.Mallocs) / float64(runs*n)
+	bytes := float64(after.TotalAlloc-before.TotalAlloc) / float64(runs*n)
+	t.Logf("whole borrowed ScanBatches: %.4f allocations/row, %.2f bytes/row", allocations, bytes)
+	// Race builds discard pool entries; keep headroom for that measured churn.
+	if allocations > 0.35 || bytes > 400 {
+		t.Fatalf("borrowed allocation budget exceeded: %.4f allocations/row, %.2f bytes/row", allocations, bytes)
 	}
 }
