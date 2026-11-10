@@ -368,6 +368,70 @@ func TestBufferReusePageAllocations(t *testing.T) {
 	}
 }
 
+// A large decoded payload makes an extra output allocation visible despite
+// small allocations from parquet-go's pools (including under the race detector).
+// Key pages need one new output buffer; warmed projected pages need none.
+func TestDeltaByteArrayOutputAllocations(t *testing.T) {
+	const n, width, pages = 128, 1024, 100
+	data := bytes.Repeat([]byte("x"), n*width)
+	offsets := make([]uint32, n+1)
+	for i := range n {
+		offsets[i] = uint32(i * width)
+		data[(i+1)*width-1] = byte(i)
+	}
+	offsets[n] = uint32(len(data))
+	payload, err := parquet.DeltaByteArray.EncodeByteArray(nil, data, offsets)
+	must(t, err)
+	for _, reuse := range []bool{false, true} {
+		name := "key"
+		if reuse {
+			name = "projected"
+		}
+		t.Run(name, func(t *testing.T) {
+			c := testChunk(parquet.ByteArrayType)
+			if reuse {
+				c.scratch = new(pageScratch)
+			}
+			// Headroom must not count toward the decoded PageBytes limit.
+			c.p.r.limits.PageBytes = int64(len(data))
+			check := func() {
+				values, err := c.values(format.DeltaByteArray, payload, n)
+				must(t, err)
+				if len(values) != n {
+					t.Fatalf("got %d values, want %d", len(values), n)
+				}
+				for i, v := range values {
+					if !bytes.Equal(v.ByteArray(), data[i*width:(i+1)*width]) {
+						t.Fatalf("value %d differs", i)
+					}
+				}
+			}
+			check() // warm the projected buffers before measuring repeated pages
+			perPage := allocated(func() {
+				for range pages {
+					_, err := c.values(format.DeltaByteArray, payload, n)
+					must(t, err)
+				}
+			}) / pages
+			// Allow half a payload for allocator rounding, Values, offsets and
+			// pooled delta lengths, but never another full output per page.
+			budget := uint64(len(data) / 2)
+			if !reuse {
+				budget += uint64(len(data))
+			}
+			t.Logf("DELTA_BYTE_ARRAY: %d allocated bytes/page (budget %d)", perPage, budget)
+			if perPage > budget {
+				t.Fatalf("decoded output regrows per page: %d bytes/page > %d", perPage, budget)
+			}
+			check()
+			c.p.r.limits.PageBytes--
+			if _, err := c.values(format.DeltaByteArray, payload, n); !errors.Is(err, ErrLimitExceeded) {
+				t.Fatalf("decoded size above PageBytes: %v", err)
+			}
+		})
+	}
+}
+
 func TestBufferReuseKeyPolicy(t *testing.T) {
 	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: transitionRecords(512, false), PageBytes: 128}}}), Options{})
 	must(t, d.r.checkParts(ctx, new(ReadStats)))

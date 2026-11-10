@@ -444,8 +444,13 @@ func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.
 		s.offsets = resize(s.offsets, n+1)
 		offsets = s.offsets[: 0 : n+1]
 	}
-	s.data = resize(s.data, size)
-	decoded, err := typ.Decode(typ.NewValues(s.data[:0:size], offsets), data, e)
+	// parquet-go v0.32.0's amd64 DELTA_BYTE_ARRAY decoder requests
+	// totalLength+padding in encoding/delta/byte_array_amd64.go; padding is
+	// defined in encoding/delta/delta_amd64.go. Give it that capacity to avoid
+	// regrowing every page. purego leaves it unused; exactly still checks length.
+	const parquetGoDeltaPadding = 64
+	s.data = resize(s.data, size+parquetGoDeltaPadding)
+	decoded, err := typ.Decode(typ.NewValues(s.data[:0:size+parquetGoDeltaPadding], offsets), data, e)
 	// Encodings may replace either destination; retain the actual returned buffers.
 	dataBytes, dataOffsets := decoded.Data()
 	s.data = decodedBuffer(s.data, dataBytes)
