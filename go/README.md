@@ -238,7 +238,12 @@ after the reads in progress end.
 Projected value pages reuse buffers within each `Range`, `RangeBatches`, `List`, `RangePlan.Scan`, or
 `RangePlan.ScanBatches` call, including across row groups. `Range`, `List`, and `Scan` results own
 their keys and binary values; `RangeBatches` and `ScanBatches` borrow page storage as described below. Dictionaries have separate storage
-for their chunk; key pages and validation do not reuse page buffers. No scratch is shared between calls.
+for their chunk. `RangeBatches` and `ScanBatches` (and so `Scan`) also decode every key page into one
+buffer set of their own, each page overwriting the one before once the callbacks borrowing it have
+returned; what the call keeps of a key across pages (the first key of a group of equal keys, the decoded
+pages' bounds, a row group's cached first key) is copied first. Every other read (`Range`, `List`, routing
+and planning probes, `Verify`, the list index) decodes each key page into storage of its own, never
+reused, and validation does not reuse page buffers. No scratch is shared between calls.
 The call retains each projection slot's largest byte and element buffers until it returns, including
 codec state and both compact and expanded values for optional columns. `PageBytes` bounds page data;
 header buffers can retain up to `headerBytes` (16 MiB, bounded by `MetadataMemory`), and indexed raw

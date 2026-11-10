@@ -31,8 +31,9 @@ type Limits struct {
 	// PageBytes bounds a page's compressed and uncompressed sizes, and the
 	// size of its decoded values' bytes, dictionary pages included. Default
 	// 64 MiB. It does not bound the memory of decoding a page: each decoded
-	// value is also held in a parquet.Value (24 bytes on 64-bit platforms),
-	// which PageMemory bounds.
+	// value page also holds a parquet.Value per value (24 bytes on 64-bit
+	// platforms), which PageMemory bounds. Key pages are decoded into their
+	// bytes with a 4-byte offset or dictionary index per key.
 	PageBytes int64
 	// PageValues bounds the number of values in one page or dictionary.
 	// Default 16,777,216. Each request retains projected data-page scratch
@@ -46,8 +47,12 @@ type Limits struct {
 	// header before anything is allocated for its values (pageMemory): 24
 	// bytes per value for its parquet.Value (64-bit platforms), twice that
 	// for an optional column (its non-null values, then every row), plus
-	// the bytes its decoded values hold, at most PageBytes. A page over it
-	// fails with an error wrapping ErrLimitExceeded, naming PageMemory.
+	// the bytes its decoded values hold, at most PageBytes. A key page is
+	// estimated the same way, though it holds a 4-byte offset or index per
+	// key instead of a parquet.Value: the estimate is conservative for it.
+	// A page over it fails with an error wrapping ErrLimitExceeded, naming
+	// PageMemory. It bounds one page's decoding, not a call's total memory
+	// or the high-water scratch a call retains.
 	//
 	// Default: the most PageValues and PageBytes allow, 2 × 24 × PageValues
 	// + PageBytes, so that the default refuses no page those limits admit:

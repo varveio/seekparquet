@@ -5,6 +5,17 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- `RangePlan.ScanBatches`, `Dataset.RangeBatches` and `RangePlan.Scan` reuse one set of key page buffers
+  per call (read, decompressed and decoded bytes, offsets, dictionary indexes), as projected value pages
+  already did: each key page overwrites the one before after the callbacks borrowing it have returned.
+  Key pages are decoded into bytes and offsets (or a dictionary's, with the page's indexes) instead of a
+  `parquet.Value` per key, by every key page walker (batches, `Range`, `List`, routing, planning, `Split`,
+  `Verify`, the list index); validation and a projected key column still use the value decoder. On a 4,000,000-row listing of 101 to 106-byte keys (1,024-row
+  ZSTD pages, DELTA_BYTE_ARRAY keys) a whole `ScanBatches` allocates about 3 bytes per row instead of
+  197. `Batch.Key` is borrowed until the callback returns, as before; `Batch.Row`, `Batch.Cursor`,
+  `Range`, `List` and every other key walker keep owning or never-reused keys. `Limits.PageMemory` still
+  estimates a key page at 24 bytes per value, more than it now holds.
+
 - Fixed (#44): a page its OffsetIndex locates with other rows than its header declares is refused for
   breaking RG-3 even when the header declares more values than `Limits.PageValues`; it was reported as a
   limit (`ErrLimitExceeded`), as if the data might be valid. A header that agrees with its OffsetIndex entry

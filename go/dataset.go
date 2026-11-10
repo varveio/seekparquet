@@ -384,7 +384,7 @@ func (d *Dataset) Range(ctx context.Context, rng Range) ([]Row, error) {
 // return: fn must not call Close, nor wait for a goroutine that does.
 // Concurrent and reentrant calls have independent scratch.
 func (d *Dataset) RangeBatches(ctx context.Context, rng Range, fn func(*Batch) error) error {
-	return d.r.rangeBatches(ctx, rng, fn)
+	return d.r.rangeBatches(ctx, rng, keyReuse{}, fn)
 }
 
 // List returns the entries of req. After a common prefix it continues at

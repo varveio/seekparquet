@@ -21,20 +21,17 @@ import (
 // callback.
 // Row and Cursor make owning copies that may be retained.
 type Batch struct {
-	keys    []parquet.Value
+	keys    pageKeys
 	offsets []int64
 	columns []string
 	values  [][]parquet.Value
 }
 
 // Len returns the number of rows in the batch.
-func (b *Batch) Len() int { return len(b.keys) }
+func (b *Batch) Len() int { return len(b.offsets) }
 
 // Key returns row i's borrowed key. It panics if i is outside [0, Len()).
-func (b *Batch) Key(i int) []byte {
-	k := b.keys[i].ByteArray()
-	return k[:len(k):len(k)]
-}
+func (b *Batch) Key(i int) []byte { return b.keys.key(i) }
 
 // Offset returns row i's zero-based offset in its group of equal keys (PAGE-1).
 // It panics if i is outside [0, Len()).
@@ -84,7 +81,24 @@ func (b *Batch) Cursor(i int) *Cursor {
 // after ScanBatches returns. Requests started by fn run normally; once Close
 // has begun they fail with ErrClosed. Concurrent or reentrant scans have
 // independent borrowed storage.
-func (plan *RangePlan) ScanBatches(ctx context.Context, st *ReadStats, fn func(*Batch) error) (err error) {
+func (plan *RangePlan) ScanBatches(ctx context.Context, st *ReadStats, fn func(*Batch) error) error {
+	return plan.scanBatches(ctx, st, keyReuse{}, fn)
+}
+
+// keyReuse configures the batch walker's key pages for tests. The zero
+// value is ScanBatches' and RangeBatches': every key page decoded into the
+// walker's one key scratch. It costs a check per call and a nil check per
+// key page.
+type keyReuse struct {
+	// off decodes every key page into storage of its own, never reused,
+	// as every other read does.
+	off bool
+	// retire, when set, is called with the scan once it has kept what it
+	// needs of a key page about to be overwritten in its scratch.
+	retire func(*scan)
+}
+
+func (plan *RangePlan) scanBatches(ctx context.Context, st *ReadStats, kr keyReuse, fn func(*Batch) error) (err error) {
 	st = resetStats(st)
 	r := plan.r
 	rctx, end, err := r.begin(ctx)
@@ -96,7 +110,7 @@ func (plan *RangePlan) ScanBatches(ctx context.Context, st *ReadStats, fn func(*
 		end()
 	}()
 	w := newBatcher(rctx, plan.columns, st, true)
-	s := r.newScan(rctx, nil, st)
+	s := w.newScan(r, nil, kr)
 	for _, sp := range plan.spans {
 		if sp.ordinal {
 			if err := s.seekOrdinal(sp.start); err != nil {
@@ -114,7 +128,7 @@ func (plan *RangePlan) ScanBatches(ctx context.Context, st *ReadStats, fn func(*
 }
 
 // rangeBatches hands fn the rows of rng as batches; see Dataset.RangeBatches.
-func (r *reader) rangeBatches(ctx context.Context, rng Range, fn func(*Batch) error) (err error) {
+func (r *reader) rangeBatches(ctx context.Context, rng Range, kr keyReuse, fn func(*Batch) error) (err error) {
 	st := resetStats(rng.Stats)
 	if fn == nil {
 		return invalidRequest("a nil batch callback")
@@ -128,11 +142,12 @@ func (r *reader) rangeBatches(ctx context.Context, rng Range, fn func(*Batch) er
 	if r.rows == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
 		return nil
 	}
-	s := r.newScan(ctx, end, st)
+	w := newBatcher(ctx, rng.Columns, st, false)
+	s := w.newScan(r, end, kr)
 	if err := s.start(from, exclusive, rng.Cursor); err != nil {
 		return err
 	}
-	return newBatcher(ctx, rng.Columns, st, false).walk(s, int64(rng.Limit), fn)
+	return w.walk(s, int64(rng.Limit), fn)
 }
 
 // batcher cuts a scan's rows into batches, the one batch execution path
@@ -141,12 +156,18 @@ func (r *reader) rangeBatches(ctx context.Context, rng Range, fn func(*Batch) er
 // rows it hands over. planned reads each chunk's dictionary before its first
 // page, as a plan's ProjectedBytes counts it; otherwise a dictionary is read
 // only for a page that uses it, as Range reads it.
+//
+// Its scan decodes every key page into one scratch, keys, each page
+// overwriting the one before: a batch's keys are borrowed until fn returns,
+// and walk hands fn no batch across a key page and moves the scan to the
+// next page only after fn returns. Owning copies (Row, Cursor) are made in fn.
 type batcher struct {
 	ctx     context.Context
 	st      *ReadStats
 	planned bool
 	b       Batch
 	scratch []pageScratch
+	keys    pageScratch
 	pages   []*columnPages
 	g       groupRef // the row group pages belong to
 }
@@ -159,6 +180,16 @@ func newBatcher(ctx context.Context, columns []string, st *ReadStats, planned bo
 		pages:   make([]*columnPages, len(columns)),
 		g:       groupRef{-1, 0},
 	}
+}
+
+// newScan opens the batcher's scan of r, decoding key pages into its key
+// scratch unless kr.off.
+func (w *batcher) newScan(r *reader, end []byte, kr keyReuse) *scan {
+	s := r.newScan(w.ctx, end, w.st)
+	if !kr.off {
+		s.keyScratch, s.retire = &w.keys, kr.retire
+	}
+	return s
 }
 
 // walk hands fn batches of at most n rows from the scan's current row on,
@@ -191,7 +222,7 @@ func (w *batcher) walk(s *scan, n int64, fn func(*Batch) error) error {
 		}
 		// Load only the page containing the first row in each slot, then
 		// intersect their ends. None may move again until fn returns.
-		k := min(n, int64(len(s.kp.values)-s.kp.next))
+		k := min(n, int64(s.kp.page.len()-s.kp.next))
 		for _, cp := range w.pages {
 			if cp != nil {
 				if err := cp.load(s.row); err != nil {
@@ -222,7 +253,7 @@ func (w *batcher) walk(s *scan, n int64, fn func(*Batch) error) error {
 				b.values[c] = cp.values[at : at+k : at+k]
 			}
 		}
-		b.keys = s.kp.values[from : from+int(k) : from+int(k)]
+		b.keys = s.kp.page.slice(from, from+int(k))
 		if err := w.ctx.Err(); err != nil {
 			return err
 		}
