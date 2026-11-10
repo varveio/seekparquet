@@ -16,7 +16,9 @@ final class EncodingChecks {
     /**
      * Walks an RLE/bit-packed hybrid stream in {@code b[from, to)} holding at most {@code maxValues}
      * values of {@code bitWidth} bits, and checks that no run declares more values than remain (a
-     * bit-packed run may pad its last group).
+     * bit-packed run may pad its last group). A run of no values holds nothing and is stepped over, as the
+     * Go reader does: parquet-go writes one for a page whose values are all null (a dictionary-encoded
+     * page of no indexes).
      */
     static void rleHybrid(byte[] b, int from, int to, int bitWidth, long maxValues) throws DataException {
         if (bitWidth < 0 || bitWidth > 32) {
@@ -27,10 +29,19 @@ final class EncodingChecks {
         while (pos[0] < to) {
             long header = uleb(b, pos, to);
             long runs = header >>> 1;
-            if (runs == 0 || values >= maxValues) {
-                throw new DataException("an empty or excess RLE run");
-            }
             boolean packed = (header & 1) != 0;
+            if (runs == 0) {
+                // An empty run: a repeated run still carries its value's bytes.
+                long bytes = packed ? 0 : (bitWidth + 7) / 8;
+                if (bytes > to - pos[0]) {
+                    throw new DataException("a truncated RLE run body");
+                }
+                pos[0] += (int) bytes;
+                continue;
+            }
+            if (values >= maxValues) {
+                throw new DataException("an excess RLE run");
+            }
             long remaining = maxValues - values;
             if (packed ? runs > (remaining + 7) / 8 : runs > remaining) {
                 throw new DataException("an RLE run exceeds the remaining value count");
@@ -49,7 +60,8 @@ final class EncodingChecks {
 
     /**
      * Walks {@code count} PLAIN BYTE_ARRAY values (each a 4-byte little-endian length and its bytes)
-     * in {@code b[from, to)}, checking that every length lies inside the stream.
+     * in {@code b[from, to)}, checking that every length lies inside the stream and that the values end
+     * exactly at {@code to}: bytes after them would be values the decoder never reads (CHECK-5).
      */
     static void plainByteArrays(byte[] b, int from, int to, long count) throws DataException {
         long pos = from;
@@ -63,6 +75,9 @@ final class EncodingChecks {
             if (pos > to) {
                 throw new DataException("a PLAIN BYTE_ARRAY value of " + len + " bytes overruns its page");
             }
+        }
+        if (pos != to) {
+            throw new DataException("the page holds " + (to - pos) + " bytes after its " + count + " PLAIN BYTE_ARRAY values");
         }
     }
 

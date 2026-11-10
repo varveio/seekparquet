@@ -229,7 +229,7 @@ class SplitTest {
     /**
      * Boundaries fall at row groups and balance the projected bytes, or the rows of a plan without
      * columns; a selection inside one row group is one shard; boundaries in a repeated-key dataset decode
-     * the key pages around them, in unique mode nothing; a cancelled split fails.
+     * the key pages around them, in unique mode nothing; a cancelled split fails in either mode.
      */
     @Test
     void balance() throws IOException {
@@ -250,11 +250,13 @@ class SplitTest {
                                 "repeated " + repeated + ", " + columns + ": shard " + i + " " + shards.get(i).stats());
                     }
                 }
-                if (repeated) {
-                    Cancellation cancelled = Cancellation.create();
-                    cancelled.cancel();
-                    RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of());
-                    assertThrows(CancellationException.class, () -> plan.split(4, cancelled));
+                // A cancelled split fails in both modes, with or without columns: with unique keys it reads
+                // nothing, and fails by checking its cancellation.
+                Cancellation cancelled = Cancellation.create();
+                cancelled.cancel();
+                for (List<String> columns : List.of(List.of("size"), List.<String>of())) {
+                    RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), columns);
+                    assertThrows(CancellationException.class, () -> plan.split(4, cancelled), "repeated " + repeated + ", " + columns);
                 }
                 RangePlan inside = d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8("k00003")).end(Bytes.utf8("k00015")).limit(1).build()),
                         List.of("size"));

@@ -51,6 +51,22 @@ final class PageDecoder {
         throw new DataException("a page of type " + header.getType() + " where a data page belongs");
     }
 
+    /**
+     * Requires the page body to match the CRC-32 its header carries, when it carries one, as the Go reader
+     * does: over the page's bytes after its header, as stored (compressed, levels included). A header
+     * without a CRC is not checked.
+     */
+    private static void checkCrc(PageHeader header, ByteBuffer body) throws DataException {
+        if (!header.isSetCrc()) {
+            return;
+        }
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(body.duplicate());
+        if ((int) crc.getValue() != header.getCrc()) {
+            throw new DataException("the page fails its checksum");
+        }
+    }
+
     private static int uncompressedSize(PageHeader header, Limits limits, String where) throws DataException {
         int size = header.getUncompressed_page_size();
         if (size < 0) {
@@ -73,6 +89,7 @@ final class PageDecoder {
         if (header.getType() != PageType.DICTIONARY_PAGE || h == null) {
             throw new DataException("the column chunk's dictionary page is missing");
         }
+        checkCrc(header, body);
         int size = uncompressedSize(header, limits, where);
         int count = h.getNum_values();
         int minWidth = switch (col.type()) {
@@ -98,8 +115,12 @@ final class PageDecoder {
                     where + ": dictionary encoding " + h.getEncoding());
         }
         byte[] data = Codecs.decompress(codec, body, size);
+        // The dictionary holds exactly its declared values: bytes after them would be values the
+        // decoder never reads (CHECK-5).
         if (col.type() == Column.Type.BYTE_ARRAY) {
             EncodingChecks.plainByteArrays(data, 0, data.length, count);
+        } else if (data.length != (col.type() == Column.Type.BOOLEAN ? (count + 7L) / 8 : (long) count * minWidth)) {
+            throw new DataException("a dictionary of " + count + " values in " + data.length + " bytes");
         }
         try {
             DictionaryPage page = new DictionaryPage(BytesInput.from(data), count, org.apache.parquet.column.Encoding.PLAIN);
@@ -118,6 +139,7 @@ final class PageDecoder {
     static ColumnPage decodeData(
             PageHeader header, ByteBuffer body, ColumnSpec col, CompressionCodec codec, DictionarySupplier dictionary, Limits limits, String where)
             throws DataException {
+        checkCrc(header, body);
         int size = uncompressedSize(header, limits, where);
         int n;
         byte[] data;
@@ -265,10 +287,11 @@ final class PageDecoder {
             if (encoding == Encoding.PLAIN && (type == Column.Type.FLOAT || type == Column.Type.DOUBLE
                     || type == Column.Type.INT32 || type == Column.Type.INT64)) {
                 // Fixed-width PLAIN values are read as raw little-endian bits, so that floating-point
-                // values keep their exact bits.
+                // values keep their exact bits. The page holds exactly its values: bytes after them would be
+                // values no one reads (CHECK-5).
                 int width = ints != null ? 4 : 8;
-                if ((long) nonNull * width > to - from) {
-                    throw new DataException(nonNull + " PLAIN values do not fit in " + (to - from) + " bytes");
+                if ((long) nonNull * width != to - from) {
+                    throw new DataException(nonNull + " PLAIN values are not " + (to - from) + " bytes");
                 }
                 ByteBuffer buf = ByteBuffer.wrap(data, from, to - from).order(java.nio.ByteOrder.LITTLE_ENDIAN);
                 for (int i = 0; i < n; i++) {
@@ -352,10 +375,11 @@ final class PageDecoder {
             case PLAIN -> {
                 if (type == Column.Type.BYTE_ARRAY) {
                     EncodingChecks.plainByteArrays(data, from, to, nonNull);
-                } else if (type == Column.Type.FIXED_LEN_BYTE_ARRAY && (long) nonNull * col.typeLength() > to - from) {
-                    throw new DataException(nonNull + " FIXED_LEN_BYTE_ARRAY values do not fit in " + (to - from) + " bytes");
-                } else if (type == Column.Type.BOOLEAN && (nonNull + 7L) / 8 > to - from) {
-                    throw new DataException(nonNull + " PLAIN BOOLEAN values do not fit in " + (to - from) + " bytes");
+                } else if (type == Column.Type.FIXED_LEN_BYTE_ARRAY && (long) nonNull * col.typeLength() != to - from) {
+                    throw new DataException(nonNull + " FIXED_LEN_BYTE_ARRAY values are not " + (to - from) + " bytes");
+                } else if (type == Column.Type.BOOLEAN && (nonNull + 7L) / 8 != to - from) {
+                    // Bit-packed: only the final byte may hold padding bits.
+                    throw new DataException(nonNull + " PLAIN BOOLEAN values are not " + (to - from) + " bytes");
                 }
                 return org.apache.parquet.column.Encoding.PLAIN.getValuesReader(col.descriptor(), ValuesType.VALUES);
             }

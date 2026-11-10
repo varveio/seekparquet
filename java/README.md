@@ -156,7 +156,7 @@ indexes taken and loaded, page index seeks, prefix skips, and the storage reads 
 | `Dataset.PlanRanges(ctx, ranges, columns)` | `Dataset.planRanges(ranges, columns, cancellation)` | A Java `RangeQuery` always has a positive limit, so a planned range's limit is ignored rather than rejected; a range with columns is rejected (`IllegalArgumentException`), as in Go. |
 | `RangePlan.Count() (n, exact)` | `count()`, `countExact()` | |
 | `RangePlan.ProjectedBytes() (n, exact)` | `projectedBytes()`, `projectedBytesExact()` | The key column, when projected, counts nothing: Java takes its values from the key pages the scan decodes, where Go reads its chunk. A column projected twice counts once, as the scan reads it once. |
-| `RangePlan.Scan(ctx, st, fn)` | `scan(cancellation, stats, action)` | `action` stops the scan by throwing. A closed dataset is `IllegalStateException`. |
+| `RangePlan.Scan(ctx, st, fn)` | `scan(cancellation, stats, action)` | `action` stops the scan by throwing. A closed dataset is `IllegalStateException`. Closing the dataset from inside `action` fails at once with `IllegalStateException`, where Go's `Close` from inside `fn` waits for ever: neither may close from inside a scan. |
 | `RangePlan.Stats()` | `stats()` | |
 | `RangePlan.Split(ctx, n)` | `split(n, cancellation)` | No shard is an empty list, not nil. |
 | `Dataset.Columns(ctx, i)` | `columns(i, cancellation)` | An index outside the parts is `IndexOutOfBoundsException`; `Column.parts()` is 1. |
@@ -269,6 +269,13 @@ does not touch it. A part's refusal ends the request that touched it and is kept
 dataset is open: every later request that touches the part, and `verify()`, is refused with the same
 code. Storage failures, limits and cancellation are not kept; the next request checks the part again.
 Concurrent first touches wait for one check. `columns()` describes the parts checked so far.
+
+A touched part stays open, with its checked footer in memory, until the dataset closes, and no limit
+bounds how many: `maxParts` bounds the manifest, the index memory budget the retained page indexes,
+and `verifyConcurrency` how many parts `verify()` checks at a time, not how many stay open.
+`LocalStorage` keeps a file channel and a directory handle per part. Size file descriptors and memory for
+the parts a long-lived dataset will touch (`verify()` touches them all), or open a dataset for a broad
+pass and close it after.
 
 **Verify (CHECK-3).** `Dataset.verify()` checks every part not yet checked, `verifyConcurrency` at a
 time (8 by default), then decodes every row group's first key page and each part's last, and compares

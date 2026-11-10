@@ -5,6 +5,20 @@ independent of the specification's draft revisions.
 
 ## Unreleased
 
+### Fixed
+
+- A dictionary-encoded page whose values are all null, as parquet-go writes it (a bit width, then an
+  empty run), was refused as `invalid_parquet`: an RLE/bit-packed run of no values is now stepped over, as
+  the Go reader does. Every Go-written dataset with an all-null dictionary-encoded page was unreadable.
+- A page whose PLAIN payload held more values than its header declares (or a dictionary page more than its
+  count) was read as its declared prefix; it is now `invalid_parquet`, as in Go. A PLAIN Boolean page may
+  still pad its final byte.
+- A page whose header carries a CRC is checked against it, as the Go reader checks a nonzero one.
+- `Dataset.close()` from inside one of its own requests on the same thread (a scan's action) waited for
+  ever; it now fails with `IllegalStateException` and changes nothing.
+- `RangePlan.split` no longer rescans the whole plan for each shard, nor walks candidates linearly where Go
+  searches them.
+
 ### Changed
 
 - A value column chunk's dictionary is read in one request of the bytes before the first data page its

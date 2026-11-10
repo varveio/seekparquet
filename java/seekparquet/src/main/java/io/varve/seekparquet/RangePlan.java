@@ -143,6 +143,11 @@ public final class RangePlan {
      * range read does and decodes each key page and projected page holding the plan's rows once,
      * checking every key page it decodes (CHECK-2).
      *
+     * <p>The scan holds the dataset open while {@code action} runs: {@link Dataset#close()} waits for it.
+     * To stop early, throw from {@code action} (or cancel); close the dataset after the scan returns.
+     * Closing it from inside {@code action} fails with {@link IllegalStateException}, and {@code action}
+     * must not wait for another thread that is closing it.
+     *
      * @param cancellation the scan's cancellation
      * @param stats receives the scan's read statistics when it ends, whether it succeeds or fails (zero
      *     counts when it fails to start)
@@ -236,6 +241,7 @@ public final class RangePlan {
             List<RangePlan> shards = new ArrayList<>(cuts.size() + 1);
             long lo = 0;
             for (int i = 0; i <= cuts.size(); i++) {
+                request.ctx.checkCancelled();
                 long hi = i < cuts.size() ? cuts.get(i) : parts.start(parts.size());
                 shards.add(shard(parts, lo, hi, stats.get(i)));
                 lo = hi;
@@ -265,11 +271,13 @@ public final class RangePlan {
                     }
                     continue;
                 }
-                for (int physical : p.groups) {
-                    long g = partStart + p.groupStart[physical];
-                    if (g >= Math.max(span.start(), first + 1) && g < span.end()) {
-                        found.add(g);
+                long from = Math.max(span.start(), first + 1);
+                for (int j = firstGroupAtOrAfter(p, partStart, from); j < p.groups.length; j++) {
+                    long g = partStart + p.groupStart[p.groups[j]];
+                    if (g >= span.end()) {
+                        break;
                     }
+                    found.add(g);
                 }
             }
         }
@@ -307,10 +315,7 @@ public final class RangePlan {
         int shards = Math.min(n, m + 1);
         for (int k = 1; k < shards; k++) {
             double target = (double) total * k / shards;
-            int j = 0;
-            while (j < m && weight[j] < target) {
-                j++;
-            }
+            int j = firstAtLeast(weight, target);
             if (j > 0 && (j == m || target - weight[j - 1] < weight[j] - target)) {
                 j--;
             }
@@ -325,6 +330,7 @@ public final class RangePlan {
         KeyCursor cursor = new KeyCursor(parts, null, ctx);
         ReadStats mark = ctx.stats.snapshot();
         for (int i = 0; i < chosen.size(); i++) {
+            ctx.checkCancelled();
             int next = i + 1 < chosen.size() ? chosen.get(i + 1) : m;
             int j = chosen.get(i);
             while (before(j, next, m, rowsBefore) && insideGroup(parts, cursor, candidates[j])) {
@@ -338,6 +344,66 @@ public final class RangePlan {
             }
         }
         stats.add(ctx.stats.snapshot().minus(mark));
+    }
+
+    /** {@return the index in {@code p.groups} of the first row group starting at or after dataset row {@code from}} */
+    private static int firstGroupAtOrAfter(PartFile p, long partStart, long from) {
+        int lo = 0;
+        int hi = p.groups.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (partStart + p.groupStart[p.groups[mid]] >= from) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return lo;
+    }
+
+    /** {@return the first index of the non-decreasing {@code weight} at or above {@code target}, or its length} */
+    private static int firstAtLeast(long[] weight, double target) {
+        int lo = 0;
+        int hi = weight.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (weight[mid] >= target) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return lo;
+    }
+
+    /** {@return the index of the first span ending after dataset row {@code row}, or the span count} */
+    private int firstSpanEndingAfter(long row) {
+        int lo = 0;
+        int hi = spans.size();
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (spans.get(mid).end() > row) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return lo;
+    }
+
+    /** {@return the index of the first row group of the plan starting at or after dataset row {@code row}} */
+    private int firstGroupFrom(long row) {
+        int lo = 0;
+        int hi = groups.size();
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (groups.get(mid).start() >= row) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return lo;
     }
 
     /** {@return whether candidate j comes before the next chosen boundary, with rows of the plan between} */
@@ -354,10 +420,7 @@ public final class RangePlan {
         if (dataset.manifest().key().unique() || parts.start(parts.partAt(c)) == c) {
             return false;
         }
-        int k = 0;
-        while (k < spans.size() && spans.get(k).end() <= c) {
-            k++;
-        }
+        int k = firstSpanEndingAfter(c);
         if (k == spans.size() || spans.get(k).start() >= c) {
             return false;
         }
@@ -371,21 +434,27 @@ public final class RangePlan {
     /**
      * {@return the plan's rows in {@code [lo, hi)}}, which are the first rows of row groups (or {@code lo}
      * is 0 and {@code hi} the dataset's row count), with the projected bytes of the row groups holding them.
+     * The plan's spans and row groups are ascending and disjoint, so it visits only those in {@code [lo,
+     * hi)}, after a binary search: many shards cost no more than few.
      */
     private RangePlan shard(Parts parts, long lo, long hi, ReadStats stats) {
         List<Span> in = new ArrayList<>();
         long count = 0;
-        for (Span span : spans) {
-            if (span.end() <= lo || span.start() >= hi) {
-                continue;
+        for (int k = firstSpanEndingAfter(lo); k < spans.size(); k++) {
+            Span span = spans.get(k);
+            if (span.start() >= hi) {
+                break;
             }
             Span s = span.start() < lo ? new Span(null, lo, span.end()) : span;
             s = new Span(s.bounds(), s.start(), Math.min(s.end(), hi));
             in.add(s);
             count += s.end() - s.start();
         }
-        List<GroupBytes> held = groups.stream().filter(g -> g.start() >= lo && g.start() < hi).toList();
-        return new RangePlan(dataset, columns, List.copyOf(in), count, checked(parts, in), held, stats);
+        List<GroupBytes> held = new ArrayList<>();
+        for (int g = firstGroupFrom(lo); g < groups.size() && groups.get(g).start() < hi; g++) {
+            held.add(groups.get(g));
+        }
+        return new RangePlan(dataset, columns, List.copyOf(in), count, checked(parts, in), List.copyOf(held), stats);
     }
 
     /**

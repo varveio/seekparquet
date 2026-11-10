@@ -340,6 +340,35 @@ class RangePlanTest {
      * planning without columns opens only the parts at the ends, and not a part the manifest bounds place
      * after the range; with columns it checks the parts between, and the count is exact.
      */
+    /**
+     * A scan's action that closes the dataset fails at once instead of waiting forever for the scan it
+     * runs in; throwing from the action ends the scan, and the dataset then closes.
+     */
+    @Test
+    // In a thread of its own, so that a close waiting for its own scan fails the test instead of hanging it.
+    @org.junit.jupiter.api.Timeout(value = 20, threadMode = org.junit.jupiter.api.Timeout.ThreadMode.SEPARATE_THREAD)
+    void closeInsideScanFails() throws IOException {
+        TestDatasets.Spec spec = new TestDatasets.Spec();
+        Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(30, 2)));
+        RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size"));
+        AtomicReference<RuntimeException> inside = new AtomicReference<>();
+        RuntimeException stop = new RuntimeException("stop");
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> plan.scan(row -> {
+            try {
+                d.close();
+            } catch (RuntimeException e) {
+                inside.set(e);
+            }
+            throw stop;
+        }));
+        assertSame(stop, thrown);
+        assertTrue(inside.get() instanceof IllegalStateException, "close inside the scan: " + inside.get());
+        // The failed close changed nothing: the dataset is open, and closes once the scan has returned.
+        assertEquals(30, d.planRanges(List.of(RangeQuery.all(1)), List.of()).count());
+        d.close();
+        assertThrows(IllegalStateException.class, () -> plan.scan(row -> {}));
+    }
+
     @Test
     void countsUseOnlyCheckedParts() throws IOException {
         TestDatasets.Spec spec = new TestDatasets.Spec();

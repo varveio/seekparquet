@@ -53,6 +53,45 @@ class ReviewRegressionTest {
                 CompressionCodec.UNCOMPRESSED, dictionary, Limits.DEFAULT, "test page");
     }
 
+    /** A page whose header carries a CRC must match it, as in Go; a page without one is not checked. */
+    @Test
+    void pageChecksums() throws DataException {
+        byte[] body = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putLong(7).putLong(8).array();
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        crc.update(body);
+        for (Integer stored : new Integer[] {null, (int) crc.getValue(), (int) crc.getValue() ^ 1}) {
+            PageHeader header = new PageHeader(PageType.DATA_PAGE, body.length, body.length)
+                    .setData_page_header(new DataPageHeader(2, Encoding.PLAIN, Encoding.RLE, Encoding.RLE));
+            if (stored != null) {
+                header.setCrc(stored);
+            }
+            PageDecoder.DictionarySupplier none = null;
+            org.junit.jupiter.api.function.Executable read = () -> PageDecoder.decodeData(header, ByteBuffer.wrap(body),
+                    ColumnSpec.of("value", 0, Column.Type.INT64, 0, false), CompressionCodec.UNCOMPRESSED, none, Limits.DEFAULT, "test page");
+            if (stored == null || stored == (int) crc.getValue()) {
+                assertEquals(7, PageDecoder.decodeData(header, ByteBuffer.wrap(body), ColumnSpec.of("value", 0, Column.Type.INT64, 0, false),
+                        CompressionCodec.UNCOMPRESSED, none, Limits.DEFAULT, "test page").longs[0]);
+            } else {
+                assertThrows(DataException.class, read);
+            }
+        }
+    }
+
+    /**
+     * parquet-go writes a page whose values are all null, in a dictionary-encoded column, as a bit width
+     * and one empty run: it holds no index, and reads as nulls (it is what Go-written datasets hold). An
+     * empty run is stepped over anywhere in a stream, and never stands for values.
+     */
+    @Test
+    void emptyRleRunsHoldNoValues() throws DataException {
+        EncodingChecks.rleHybrid(new byte[] {0, 0}, 1, 2, 0, 0);
+        EncodingChecks.rleHybrid(new byte[] {0, 1}, 0, 2, 1, 0);
+        EncodingChecks.rleHybrid(new byte[] {0, 1, 4, 1}, 0, 4, 1, 2);
+        EncodingChecks.rleHybrid(new byte[] {1, 4, 1}, 0, 3, 1, 2);
+        assertThrows(DataException.class, () -> EncodingChecks.rleHybrid(new byte[] {0, 1}, 0, 2, 1, 1));
+        assertThrows(DataException.class, () -> EncodingChecks.rleHybrid(new byte[] {0}, 0, 1, 8, 0));
+    }
+
     @Test
     void malformedRleDoesNotFabricateValues() {
         // A packed group header with no payload; a zero run; too few/many RLE values;
