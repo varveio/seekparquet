@@ -243,7 +243,20 @@ layers are decorators of these interfaces.
 `LocalStorage` is the only implementation in this module. It uses positioned reads on one
 `FileChannel` per part, opens parts through pinned directory handles and rejects symbolic links in each part-path component, and detects a
 part file that changes size or is replaced. Filesystems without `SecureDirectoryStream` are refused
-with a storage error; reopening after interruption uses the same pinned parent handle. Object-store adapters belong in separate modules.
+with a storage error; reopening after interruption uses the same pinned parent handle. `manifest.json` is
+read through a pinned handle on the root too, and must be a regular file (a symbolic link is refused).
+Object-store adapters belong in separate modules.
+
+Java cannot open a file without blocking on a special file, and whoever can write the dataset directory
+can replace an entry `LocalStorage` has checked as a regular file with a FIFO before it opens it. So that
+such an open cannot hold a request beyond cancellation, interruption or `close()`, each open of a part or
+of the manifest runs on a new platform thread, through its own handle on the file's directory, and the
+request stops waiting for it when cancelled (the open then ends on its own and closes what it opened). This
+costs a short-lived thread and a directory handle per part open, which happens once per part per dataset
+(again only after an interrupt closed the part's channel). An open that never returns strands its thread
+and directory handle until the file is opened for writing or the process exits; once
+`LocalStorage.MAX_STRANDED_OPENS` (64) opens through one `LocalStorage` are stranded, its further opens
+fail with a storage error instead of starting more threads.
 
 ## What opening checks, what reads check
 

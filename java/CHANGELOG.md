@@ -30,6 +30,19 @@ independent of the specification's draft revisions.
   the column's converted type, if any, now stands for it, as in Go.
 - `Dataset.planRanges` with columns walked every row group of a part from its first for each range, where
   Go searches for the first: a plan of many ranges in a part of many row groups cost their product.
+- A footer, page header or page index whose Thrift structure nests more than 64 deep (an unknown field
+  of a few kilobytes of nested structs, which the shaded Thrift 0.23 runtime skips without its recursion
+  limit) overflowed the stack: `StackOverflowError` escaped the request instead of a refusal. Nesting is
+  now bounded as the Go reader's `internal/thriftcheck` bounds it, and deeper nesting is refused as
+  malformed Thrift is (`invalid_footer` for a footer, `invalid_page_index` for a key page header or
+  ColumnIndex, `invalid_parquet` for a value page).
+- `LocalStorage`: a part or `manifest.json` replaced by a FIFO between its regular-file check and its
+  open (by whoever can write the dataset directory) blocked the open until a writer appeared, and neither
+  cancellation, interruption nor `Dataset.close()` could end the request; `close()` waited for ever.
+  Opens now run on a thread of their own, through their own directory handle, and a cancelled request
+  stops waiting; at most `LocalStorage.MAX_STRANDED_OPENS` (64) such stranded opens per storage, after
+  which its opens fail with a storage error. Each part open costs a short-lived thread and a directory
+  handle. `manifest.json` is now read through a pinned root handle without following a symbolic link.
 
 ### Changed
 
