@@ -16,8 +16,9 @@ import (
 // or a selected-span gap. Batches may be smaller; maximal size is not promised.
 //
 // The batch object, keys, column slices and their value bytes are borrowed,
-// read-only, and valid only until the ScanBatches callback returns. Do not
-// retain them or use them from a goroutine that outlives the callback.
+// read-only, and valid only until the ScanBatches or RangeBatches callback
+// returns. Do not retain them or use them from a goroutine that outlives the
+// callback.
 // Row and Cursor make owning copies that may be retained.
 type Batch struct {
 	keys    []parquet.Value
@@ -94,10 +95,7 @@ func (plan *RangePlan) ScanBatches(ctx context.Context, st *ReadStats, fn func(*
 		err = finish(ctx, rctx, err)
 		end()
 	}()
-	b := Batch{columns: slices.Clone(plan.columns), values: make([][]parquet.Value, len(plan.columns))}
-	scratch := make([]pageScratch, len(b.columns))
-	pages := make([]*columnPages, len(b.columns))
-	g := groupRef{-1, 0}
+	w := newBatcher(rctx, plan.columns, st, true)
 	s := r.newScan(rctx, nil, st)
 	for _, sp := range plan.spans {
 		if sp.ordinal {
@@ -108,68 +106,134 @@ func (plan *RangePlan) ScanBatches(ctx context.Context, st *ReadStats, fn func(*
 		} else if err := s.start(sp.from, sp.exclusive, sp.cursor); err != nil {
 			return err
 		}
-		for o := sp.start; o < sp.end && s.key != nil; {
-			if err := rctx.Err(); err != nil {
+		if err := w.walk(s, sp.end-sp.start, fn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// rangeBatches hands fn the rows of rng as batches; see Dataset.RangeBatches.
+func (r *reader) rangeBatches(ctx context.Context, rng Range, fn func(*Batch) error) (err error) {
+	st := resetStats(rng.Stats)
+	if fn == nil {
+		return invalidRequest("a nil batch callback")
+	}
+	ctx, done, err := r.request(ctx, rng.Cursor, false, rng.Limit, rng.Columns)
+	if err != nil {
+		return err
+	}
+	defer done(&err)
+	from, exclusive, end := rng.bounds()
+	if r.rows == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
+		return nil
+	}
+	s := r.newScan(ctx, end, st)
+	if err := s.start(from, exclusive, rng.Cursor); err != nil {
+		return err
+	}
+	return newBatcher(ctx, rng.Columns, st, false).walk(s, int64(rng.Limit), fn)
+}
+
+// batcher cuts a scan's rows into batches, the one batch execution path
+// behind ScanBatches and RangeBatches. It opens the projected chunks of each
+// row group as the scan reaches it, and loads only the pages holding the
+// rows it hands over. planned reads each chunk's dictionary before its first
+// page, as a plan's ProjectedBytes counts it; otherwise a dictionary is read
+// only for a page that uses it, as Range reads it.
+type batcher struct {
+	ctx     context.Context
+	st      *ReadStats
+	planned bool
+	b       Batch
+	scratch []pageScratch
+	pages   []*columnPages
+	g       groupRef // the row group pages belong to
+}
+
+func newBatcher(ctx context.Context, columns []string, st *ReadStats, planned bool) *batcher {
+	return &batcher{
+		ctx: ctx, st: st, planned: planned,
+		b:       Batch{columns: slices.Clone(columns), values: make([][]parquet.Value, len(columns))},
+		scratch: make([]pageScratch, len(columns)),
+		pages:   make([]*columnPages, len(columns)),
+		g:       groupRef{-1, 0},
+	}
+}
+
+// walk hands fn batches of at most n rows from the scan's current row on,
+// ending early when the scan is exhausted (at its upper bound or the end of
+// the dataset). It leaves the scan on the last row it handed over, unless it
+// found the upper bound inside a key page, when the scan is exhausted at the
+// first row it excluded. It stops at the first error.
+func (w *batcher) walk(s *scan, n int64, fn func(*Batch) error) error {
+	b := &w.b
+	for s.key != nil {
+		if err := w.ctx.Err(); err != nil {
+			return err
+		}
+		if s.g != w.g {
+			w.g = s.g
+			p := s.r.parts[w.g.part]
+			if err := p.checkProjection(b.columns); err != nil {
 				return err
 			}
-			if s.g != g {
-				g = s.g
-				p := r.parts[g.part]
-				if err := p.checkProjection(b.columns); err != nil {
+			for c, name := range b.columns {
+				cp, err := p.openColumn(w.ctx, p.groups[w.g.index].physical, name, w.st, &w.scratch[c])
+				if err != nil {
 					return err
 				}
-				for c, name := range b.columns {
-					cp, err := p.openColumn(rctx, p.groups[g.index].physical, name, st, &scratch[c])
-					if err != nil {
-						return err
-					}
-					if cp != nil {
-						cp.planned = true
-					}
-					pages[c] = cp
-				}
-			}
-			// Load only the page containing the first row in each slot, then
-			// intersect their ends. None may move again until fn returns.
-			n := min(sp.end-o, int64(len(s.kp.values)-s.kp.next))
-			for _, cp := range pages {
 				if cp != nil {
-					if err := cp.load(s.row); err != nil {
-						return err
-					}
-					n = min(n, cp.first+int64(len(cp.values))-s.row)
+					cp.planned = w.planned
 				}
+				w.pages[c] = cp
 			}
-			for c, cp := range pages {
-				b.values[c] = nil
-				if cp != nil {
-					from := s.row - cp.first
-					b.values[c] = cp.values[from : from+n : from+n]
+		}
+		// Load only the page containing the first row in each slot, then
+		// intersect their ends. None may move again until fn returns.
+		k := min(n, int64(len(s.kp.values)-s.kp.next))
+		for _, cp := range w.pages {
+			if cp != nil {
+				if err := cp.load(s.row); err != nil {
+					return err
 				}
+				k = min(k, cp.first+int64(len(cp.values))-s.row)
 			}
-			from := s.kp.next
-			b.keys = s.kp.values[from : from+int(n) : from+int(n)]
-			b.offsets = resize(b.offsets, int(n))
-			for i := range b.offsets {
-				b.offsets[i] = s.offset()
-				if i+1 < len(b.offsets) {
-					if err := s.next(); err != nil {
-						return err
-					}
-				}
-			}
-			if err := rctx.Err(); err != nil {
-				return err
-			}
-			if err := fn(&b); err != nil {
-				return err
-			}
-			o += n
-			if o < sp.end {
+		}
+		first, from := s.row, s.kp.next
+		b.offsets = resize(b.offsets, int(k))
+		for i := range b.offsets {
+			b.offsets[i] = s.offset()
+			if i+1 < len(b.offsets) {
 				if err := s.next(); err != nil {
 					return err
 				}
+				if s.key == nil { // the next row is at the upper bound
+					k = int64(i + 1)
+					b.offsets = b.offsets[:k]
+					break
+				}
 			}
+		}
+		for c, cp := range w.pages {
+			b.values[c] = nil
+			if cp != nil {
+				at := first - cp.first
+				b.values[c] = cp.values[at : at+k : at+k]
+			}
+		}
+		b.keys = s.kp.values[from : from+int(k) : from+int(k)]
+		if err := w.ctx.Err(); err != nil {
+			return err
+		}
+		if err := fn(b); err != nil {
+			return err
+		}
+		if n -= k; n == 0 || s.key == nil {
+			return nil
+		}
+		if err := s.next(); err != nil {
+			return err
 		}
 	}
 	return nil

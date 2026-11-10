@@ -25,6 +25,14 @@ versioning; while it is v0, minor versions may change the API.
   and PyArrow read it; a `sorting_columns` entry after the first that names no column is ignored (RG-1), and
   row-group ordinals that differ from the row groups' positions are ignored (they serve encryption): both
   were `invalid_footer`. parquet-go is given the footer without them.
+- Added `Dataset.RangeBatches(ctx, rng, func(*Batch) error)`: a limited range read as borrowed
+  `Batch`es, with no plan. It returns the rows, keys, values and cursors `Range` returns and reads
+  what it reads (equal `ReadStats` for a successful, fully consumed request against the same cache
+  state; a request ended by an error, a callback stop or cancellation can differ), opening projected chunks and dictionaries only as the rows reach
+  them, and stops at `Limit` without advancing to the next row. A nil callback is
+  `ErrInvalidRequest`; callback errors, cancellation, Close and borrowing follow `ScanBatches`.
+  `RangePlan.ScanBatches` now runs on the same internal batch walker, unchanged in behaviour.
+  No format change.
 - A Dataset keeps the checked page locations of each projected column chunk's OffsetIndex once a
   request has loaded them, so later requests do not read and decode them again (Java keeps
   them too, under its own `maxOffsetIndexMemoryBytes`). The new `Limits.OffsetIndexMemory` (default 256 MiB, apart from `IndexMemory`) bounds what is
