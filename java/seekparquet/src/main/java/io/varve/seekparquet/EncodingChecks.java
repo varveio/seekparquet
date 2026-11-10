@@ -16,27 +16,47 @@ final class EncodingChecks {
     /**
      * Walks an RLE/bit-packed hybrid stream in {@code b[from, to)} holding at most {@code maxValues}
      * values of {@code bitWidth} bits, and checks that no run declares more values than remain (a
-     * bit-packed run may pad its last group). A run of no values holds nothing and is stepped over, as the
-     * Go reader does: parquet-go writes one for a page whose values are all null (a dictionary-encoded
-     * page of no indexes).
+     * bit-packed run may pad its last group), without decoding it. A run of no values holds nothing, as
+     * in Go and parquet-go, which writes one for a page whose values are all null (a dictionary-encoded
+     * page of no indexes); parquet-java's decoder does not skip one, but repeats its value. So {@return
+     * the stream without its empty runs, for the decoder to read, or {@code null} when it has none}
      */
-    static void rleHybrid(byte[] b, int from, int to, int bitWidth, long maxValues) throws DataException {
+    static byte[] rleHybrid(byte[] b, int from, int to, int bitWidth, long maxValues) throws DataException {
+        return rleHybrid(b, from, to, bitWidth, maxValues, true);
+    }
+
+    /**
+     * Walks an RLE/bit-packed hybrid stream as {@link #rleHybrid(byte[], int, int, int, long)} does, and
+     * refuses an empty run unless {@code emptyRuns}: Boolean values, which Go also refuses one in.
+     */
+    static byte[] rleHybrid(byte[] b, int from, int to, int bitWidth, long maxValues, boolean emptyRuns) throws DataException {
         if (bitWidth < 0 || bitWidth > 32) {
             throw new DataException("an RLE bit width of " + bitWidth);
         }
         int[] pos = {from};
         long values = 0;
+        java.io.ByteArrayOutputStream kept = null; // the stream without its empty runs, once one is found
+        int keptFrom = from;
         while (pos[0] < to) {
+            int run = pos[0];
             long header = uleb(b, pos, to);
             long runs = header >>> 1;
             boolean packed = (header & 1) != 0;
             if (runs == 0) {
-                // An empty run: a repeated run still carries its value's bytes.
+                if (!emptyRuns) {
+                    throw new DataException("an empty RLE run");
+                }
+                // A repeated run still carries its value's bytes.
                 long bytes = packed ? 0 : (bitWidth + 7) / 8;
                 if (bytes > to - pos[0]) {
                     throw new DataException("a truncated RLE run body");
                 }
                 pos[0] += (int) bytes;
+                if (kept == null) {
+                    kept = new java.io.ByteArrayOutputStream(to - from);
+                }
+                kept.write(b, keptFrom, run - keptFrom);
+                keptFrom = pos[0];
                 continue;
             }
             if (values >= maxValues) {
@@ -56,6 +76,11 @@ final class EncodingChecks {
         if (values < maxValues) {
             throw new DataException("an RLE stream holds fewer values than expected");
         }
+        if (kept == null) {
+            return null;
+        }
+        kept.write(b, keptFrom, to - keptFrom);
+        return kept.toByteArray();
     }
 
     /**

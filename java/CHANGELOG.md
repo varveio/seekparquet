@@ -8,16 +8,28 @@ independent of the specification's draft revisions.
 ### Fixed
 
 - A dictionary-encoded page whose values are all null, as parquet-go writes it (a bit width, then an
-  empty run), was refused as `invalid_parquet`: an RLE/bit-packed run of no values is now stepped over, as
-  the Go reader does. Every Go-written dataset with an all-null dictionary-encoded page was unreadable.
+  empty run), was refused as `invalid_parquet`. An RLE/bit-packed run of no values in definition levels or
+  dictionary indexes now holds nothing, as in Go: it is removed before parquet-java's decoder, which would
+  repeat its value, reads the stream. Boolean values still refuse one, as Go does. Every Go-written dataset
+  with an all-null dictionary-encoded page was unreadable.
 - A page whose PLAIN payload held more values than its header declares (or a dictionary page more than its
   count) was read as its declared prefix; it is now `invalid_parquet`, as in Go. A PLAIN Boolean page may
   still pad its final byte.
-- A page whose header carries a CRC is checked against it, as the Go reader checks a nonzero one.
+- A page whose header carries a CRC is checked against it, as in Go.
 - `Dataset.close()` from inside one of its own requests on the same thread (a scan's action) waited for
   ever; it now fails with `IllegalStateException` and changes nothing.
+- A request started on another thread while `close()` waited for the requests in progress waited behind
+  it, so a scan's action waiting for such a request never returned, nor did the close. A request started
+  once the dataset is closing now fails at once.
+- `RangePlan.split` of an empty plan, or into fewer than one shard, returned no shard for a cancelled
+  split or a closed dataset; it now fails as any split does.
 - `RangePlan.split` no longer rescans the whole plan for each shard, nor walks candidates linearly where Go
   searches them.
+- `Dataset.columns(int)`, `columns()` and `column(name)` threw `NullPointerException` for a part with a
+  column whose `logical_type` is a member this reader's parquet-format does not know (a newer annotation);
+  the column's converted type, if any, now stands for it, as in Go.
+- `Dataset.planRanges` with columns walked every row group of a part from its first for each range, where
+  Go searches for the first: a plan of many ranges in a part of many row groups cost their product.
 
 ### Changed
 

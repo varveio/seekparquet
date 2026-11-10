@@ -227,6 +227,49 @@ class SplitTest {
     }
 
     /**
+     * Random sets of ranges, row cursors inside groups of equal keys among them, merged and disjoint, in
+     * several geometries: planned, scanned and split, their rows and offsets are the oracle's.
+     */
+    @Test
+    void cursorSetsInRepeatedKeys() throws IOException {
+        int dir = 0;
+        for (int[] geometry : new int[][] {{7, 2}, {19, 4}, {1, 1}, {25, 3}}) {
+            TestDatasets.Spec spec = new TestDatasets.Spec();
+            spec.unique = false;
+            spec.rowsPerGroup = geometry[0];
+            spec.rowsPerPage = geometry[1];
+            Path root = TestDatasets.write(tmp.resolve("c" + dir++), spec, repeatedParts());
+            Oracle oracle = Oracle.of(root, "size");
+            RecordingStorage storage = new RecordingStorage(root);
+            List<Row> rows = oracle.rows();
+            List<Bytes> distinct = rows.stream().map(Row::key).distinct().toList();
+            Random random = new Random(dir);
+            try (Dataset d = Dataset.open(storage)) {
+                for (int round = 0; round < 25; round++) {
+                    List<RangeQuery> set = new ArrayList<>();
+                    for (int n = 1 + random.nextInt(3); n > 0; n--) {
+                        RangeQuery.Builder b = RangeQuery.builder().limit(1);
+                        switch (random.nextInt(4)) {
+                            case 0 -> {
+                                Row r = rows.get(random.nextInt(rows.size()));
+                                b.after(new Continuation.RowPosition(r.key(), r.offset()));
+                            }
+                            case 1 -> b.start(distinct.get(random.nextInt(distinct.size())));
+                            case 2 -> b.startAfter(distinct.get(random.nextInt(distinct.size())));
+                            default -> { }
+                        }
+                        if (random.nextBoolean()) {
+                            b.end(distinct.get(random.nextInt(distinct.size())));
+                        }
+                        set.add(b.build());
+                    }
+                    checkSplit(d, storage, oracle, "size", set);
+                }
+            }
+        }
+    }
+
+    /**
      * Boundaries fall at row groups and balance the projected bytes, or the rows of a plan without
      * columns; a selection inside one row group is one shard; boundaries in a repeated-key dataset decode
      * the key pages around them, in unique mode nothing; a cancelled split fails in either mode.
@@ -258,6 +301,11 @@ class SplitTest {
                     RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), columns);
                     assertThrows(CancellationException.class, () -> plan.split(4, cancelled), "repeated " + repeated + ", " + columns);
                 }
+                // An empty plan, or n below 1, has no shard, but a cancelled split still fails.
+                RangePlan nothing = d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8("zzzz")).limit(1).build()), List.of());
+                assertThrows(CancellationException.class, () -> nothing.split(3, cancelled));
+                RangePlan whole = d.planRanges(List.of(RangeQuery.all(1)), List.of());
+                assertThrows(CancellationException.class, () -> whole.split(0, cancelled));
                 RangePlan inside = d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8("k00003")).end(Bytes.utf8("k00015")).limit(1).build()),
                         List.of("size"));
                 assertEquals(1, inside.split(5).size());
@@ -342,8 +390,11 @@ class SplitTest {
         Cancellation cancelled = Cancellation.create();
         cancelled.cancel();
         assertThrows(CancellationException.class, () -> shards.getFirst().scan(cancelled, row -> {}));
+        RangePlan empty = d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8("zzzz")).limit(1).build()), List.of());
         d.close();
         assertThrows(IllegalStateException.class, () -> plan.split(2));
+        assertThrows(IllegalStateException.class, () -> empty.split(2), "an empty plan's split after close");
+        assertThrows(IllegalStateException.class, () -> plan.split(0), "a split into no shard after close");
     }
 
     /** One repeated-key part of four row groups of 20 distinct keys, two key pages each. */

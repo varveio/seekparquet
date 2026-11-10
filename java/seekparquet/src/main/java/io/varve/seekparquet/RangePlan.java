@@ -146,7 +146,8 @@ public final class RangePlan {
      * <p>The scan holds the dataset open while {@code action} runs: {@link Dataset#close()} waits for it.
      * To stop early, throw from {@code action} (or cancel); close the dataset after the scan returns.
      * Closing it from inside {@code action} fails with {@link IllegalStateException}, and {@code action}
-     * must not wait for another thread that is closing it.
+     * must not wait for another thread that is closing it. A request {@code action} starts on the dataset,
+     * on any thread, runs as any other; once the dataset is closing it fails at once.
      *
      * @param cancellation the scan's cancellation
      * @param stats receives the scan's read statistics when it ends, whether it succeeds or fails (zero
@@ -230,10 +231,12 @@ public final class RangePlan {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<RangePlan> split(int n, Cancellation cancellation) {
-        if (n < 1 || spans.isEmpty()) {
-            return List.of();
-        }
         try (Dataset.Request request = dataset.begin(cancellation)) {
+            // A cancelled split, or one on a closed dataset, fails even when it has nothing to divide.
+            request.ctx.checkCancelled();
+            if (n < 1 || spans.isEmpty()) {
+                return List.of();
+            }
             Parts parts = dataset.parts();
             List<Long> cuts = new ArrayList<>();
             List<ReadStats> stats = new ArrayList<>();
@@ -530,12 +533,23 @@ public final class RangePlan {
                 PartFile p = parts.get(i, ctx);
                 p.checkProjection(columns);
                 long partStart = parts.start(i);
-                for (int physical : p.groups) {
+                // The first row group ending after the span's start, by binary search: a plan of many
+                // ranges in a part of many row groups visits only the groups its ranges hold.
+                int lo = 0;
+                int hi = p.groups.length;
+                while (lo < hi) {
+                    int mid = (lo + hi) >>> 1;
+                    int g = p.groups[mid];
+                    if (partStart + p.groupStart[g] + p.groupRows[g] > span.start()) {
+                        hi = mid;
+                    } else {
+                        lo = mid + 1;
+                    }
+                }
+                for (int j = lo; j < p.groups.length; j++) {
+                    int physical = p.groups[j];
                     long groupStart = partStart + p.groupStart[physical];
                     long groupEnd = groupStart + p.groupRows[physical];
-                    if (groupEnd <= span.start()) {
-                        continue;
-                    }
                     if (groupStart >= span.end()) {
                         break;
                     }

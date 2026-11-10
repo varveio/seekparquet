@@ -253,7 +253,12 @@ final class PageDecoder {
 
     /** Decodes {@code n} one-bit definition levels from an RLE/bit-packed hybrid stream; true marks a null. */
     private static boolean[] rleLevels(byte[] b, int from, int to, int n) throws DataException {
-        EncodingChecks.rleHybrid(b, from, to, 1, n);
+        byte[] runs = EncodingChecks.rleHybrid(b, from, to, 1, n);
+        if (runs != null) { // the levels without their empty runs, which parquet-java does not skip
+            b = runs;
+            from = 0;
+            to = runs.length;
+        }
         boolean[] nulls = new boolean[n];
         try {
             RunLengthBitPackingHybridDecoder d =
@@ -312,6 +317,20 @@ final class PageDecoder {
                 }
                 deltaByteArray(data, from, to, n, nonNull, nulls, binaries, col, limits, where);
                 return new ColumnPage(type, n, nulls, bools, ints, longs, binaries);
+            }
+            if ((encoding == Encoding.PLAIN_DICTIONARY || encoding == Encoding.RLE_DICTIONARY) && from < to
+                    && dictionary != null && dictionary.get() != null) {
+                // The indexes without their empty runs, which parquet-java does not skip: the bit width,
+                // then the runs. The dictionary is read first, so that its failures keep their kind.
+                byte[] runs = EncodingChecks.rleHybrid(data, from + 1, to, data[from] & 0xFF, nonNull);
+                if (runs != null) {
+                    byte[] indexes = new byte[1 + runs.length];
+                    indexes[0] = data[from];
+                    System.arraycopy(runs, 0, indexes, 1, runs.length);
+                    data = indexes;
+                    from = 0;
+                    to = indexes.length;
+                }
             }
             ValuesReader reader = reader(col, encoding, data, from, to, nonNull, dictionary, limits, where);
             reader.initFromPage(nonNull, ByteBufferInputStream.wrap(ByteBuffer.wrap(data, from, to - from)));
@@ -408,7 +427,8 @@ final class PageDecoder {
                 if (len < 0 || len > to - from - 4) {
                     throw new DataException("RLE values of " + len + " bytes outside the page");
                 }
-                EncodingChecks.rleHybrid(data, from + 4, from + 4 + len, 1, nonNull);
+                // Go's Boolean decoder refuses an empty run, and parquet-java's would repeat its value.
+                EncodingChecks.rleHybrid(data, from + 4, from + 4 + len, 1, nonNull, false);
                 return org.apache.parquet.column.Encoding.RLE.getValuesReader(col.descriptor(), ValuesType.VALUES);
             }
             case DELTA_BINARY_PACKED -> {

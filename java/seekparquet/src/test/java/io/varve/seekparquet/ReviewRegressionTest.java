@@ -3,6 +3,7 @@
 
 package io.varve.seekparquet;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -80,16 +81,49 @@ class ReviewRegressionTest {
     /**
      * parquet-go writes a page whose values are all null, in a dictionary-encoded column, as a bit width
      * and one empty run: it holds no index, and reads as nulls (it is what Go-written datasets hold). An
-     * empty run is stepped over anywhere in a stream, and never stands for values.
+     * empty run holds nothing anywhere in the levels or indexes, as in Go: the decoder must not read it as
+     * values, which parquet-java's own decoder does (it repeats the run's value). Boolean values refuse
+     * one, as Go does.
      */
     @Test
     void emptyRleRunsHoldNoValues() throws DataException {
-        EncodingChecks.rleHybrid(new byte[] {0, 0}, 1, 2, 0, 0);
-        EncodingChecks.rleHybrid(new byte[] {0, 1}, 0, 2, 1, 0);
-        EncodingChecks.rleHybrid(new byte[] {0, 1, 4, 1}, 0, 4, 1, 2);
-        EncodingChecks.rleHybrid(new byte[] {1, 4, 1}, 0, 3, 1, 2);
+        // The checker: an empty run is stepped over, and returns the stream without it.
+        assertArrayEquals(new byte[0], EncodingChecks.rleHybrid(new byte[] {0, 0}, 1, 2, 0, 0));
+        assertArrayEquals(new byte[] {4, 1}, EncodingChecks.rleHybrid(new byte[] {0, 1, 4, 1}, 0, 4, 1, 2));
+        assertArrayEquals(new byte[] {4, 1}, EncodingChecks.rleHybrid(new byte[] {1, 4, 1}, 0, 3, 1, 2));
+        assertEquals(null, EncodingChecks.rleHybrid(new byte[] {4, 1}, 0, 2, 1, 2));
         assertThrows(DataException.class, () -> EncodingChecks.rleHybrid(new byte[] {0, 1}, 0, 2, 1, 1));
         assertThrows(DataException.class, () -> EncodingChecks.rleHybrid(new byte[] {0}, 0, 1, 8, 0));
+        // Boolean values: an empty run (value 1), then two false values, is refused, not read as true, true.
+        byte[] booleans = {4, 0, 0, 0, 0, 1, 4, 0};
+        assertThrows(DataException.class, () -> decode(booleans, Encoding.RLE, Column.Type.BOOLEAN, 2, null));
+        // Dictionary indexes of width 1: an empty run of index 1, then two of index 0, read entry 0 twice.
+        byte[] entries = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putLong(10).putLong(20).array();
+        PageHeader dictHeader = new PageHeader(PageType.DICTIONARY_PAGE, 16, 16)
+                .setDictionary_page_header(new org.apache.parquet.format.DictionaryPageHeader(2, Encoding.PLAIN));
+        org.apache.parquet.column.Dictionary dict = PageDecoder.decodeDictionary(dictHeader, ByteBuffer.wrap(entries),
+                ColumnSpec.of("value", 0, Column.Type.INT64, 0, false), CompressionCodec.UNCOMPRESSED, Limits.DEFAULT, "test");
+        ColumnPage indexed = decode(new byte[] {1, 0, 1, 4, 0}, Encoding.RLE_DICTIONARY, Column.Type.INT64, 2, () -> dict);
+        assertEquals(10, indexed.longs[0]);
+        assertEquals(10, indexed.longs[1]);
+        // The all-null page parquet-go writes: no index, a bit width and an empty run.
+        ByteBuffer allNull = ByteBuffer.allocate(4 + 2 + 2).order(ByteOrder.LITTLE_ENDIAN).putInt(2).put((byte) 4).put((byte) 0)
+                .put((byte) 0).put((byte) 0);
+        PageHeader nullHeader = new PageHeader(PageType.DATA_PAGE, 8, 8)
+                .setData_page_header(new DataPageHeader(2, Encoding.RLE_DICTIONARY, Encoding.RLE, Encoding.RLE));
+        ColumnPage nulls = PageDecoder.decodeData(nullHeader, ByteBuffer.wrap(allNull.array()), ColumnSpec.of("value", 0, Column.Type.INT64, 0, true),
+                CompressionCodec.UNCOMPRESSED, () -> dict, Limits.DEFAULT, "test page");
+        assertArrayEquals(new boolean[] {true, true}, nulls.nulls);
+        // Definition levels: an empty run of 0 (null), then three 1s: no row is null.
+        byte[] levels = {0, 0, 6, 1};
+        ByteBuffer optional = ByteBuffer.allocate(4 + levels.length + 24).order(ByteOrder.LITTLE_ENDIAN).putInt(levels.length).put(levels)
+                .putLong(1).putLong(2).putLong(3);
+        PageHeader optHeader = new PageHeader(PageType.DATA_PAGE, optional.capacity(), optional.capacity())
+                .setData_page_header(new DataPageHeader(3, Encoding.PLAIN, Encoding.RLE, Encoding.RLE));
+        ColumnPage defined = PageDecoder.decodeData(optHeader, ByteBuffer.wrap(optional.array()), ColumnSpec.of("value", 0, Column.Type.INT64, 0, true),
+                CompressionCodec.UNCOMPRESSED, null, Limits.DEFAULT, "test page");
+        assertEquals(null, defined.nulls == null ? null : java.util.stream.IntStream.range(0, 3).filter(i -> defined.nulls[i]).boxed().findFirst().orElse(null));
+        assertEquals(3, defined.longs[2]);
     }
 
     @Test

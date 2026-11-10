@@ -157,7 +157,7 @@ indexes taken and loaded, page index seeks, prefix skips, and the storage reads 
 | `RangePlan.Count() (n, exact)` | `count()`, `countExact()` | |
 | `RangePlan.ProjectedBytes() (n, exact)` | `projectedBytes()`, `projectedBytesExact()` | The key column, when projected, counts nothing: Java takes its values from the key pages the scan decodes, where Go reads its chunk. A column projected twice counts once, as the scan reads it once. |
 | `RangePlan.Scan(ctx, st, fn)` | `scan(cancellation, stats, action)` | `action` stops the scan by throwing. A closed dataset is `IllegalStateException`. Closing the dataset from inside `action` fails at once with `IllegalStateException`, where Go's `Close` from inside `fn` waits for ever: neither may close from inside a scan. |
-| `RangePlan.Stats()` | `stats()` | |
+| `RangePlan.Stats()` | `stats()` | Java positions each range's ends with a cursor of its own, where Go moves one scan through every range and continues from its current row when it can: for ranges near each other, Java can count more key pages, keys and row-group openings for the same plan. Rows, counts and projected bytes do not differ. |
 | `RangePlan.Split(ctx, n)` | `split(n, cancellation)` | No shard is an empty list, not nil. |
 | `Dataset.Columns(ctx, i)` | `columns(i, cancellation)` | An index outside the parts is `IndexOutOfBoundsException`; `Column.parts()` is 1. |
 | `Column{Logical *format.LogicalType}` | `Column.logicalType()`: `Optional<LogicalType>` | `LogicalType` is a sealed interface of records, so the API does not expose parquet-java's Thrift classes. |
@@ -274,8 +274,9 @@ A touched part stays open, with its checked footer in memory, until the dataset 
 bounds how many: `maxParts` bounds the manifest, the index memory budget the retained page indexes,
 and `verifyConcurrency` how many parts `verify()` checks at a time, not how many stay open.
 `LocalStorage` keeps a file channel and a directory handle per part. Size file descriptors and memory for
-the parts a long-lived dataset will touch (`verify()` touches them all), or open a dataset for a broad
-pass and close it after.
+the most parts one dataset will touch (`verify()` touches them all): a single pass over more parts than
+that fails when the process runs out, and opening a fresh dataset for it does not help. This is a known
+limitation, documented rather than solved: there is no cap that refuses such a pass early, and no eviction.
 
 **Verify (CHECK-3).** `Dataset.verify()` checks every part not yet checked, `verifyConcurrency` at a
 time (8 by default), then decodes every row group's first key page and each part's last, and compares

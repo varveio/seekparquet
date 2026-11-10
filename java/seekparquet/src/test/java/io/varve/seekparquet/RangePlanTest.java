@@ -44,7 +44,8 @@ class RangePlanTest {
 
     /** Records every part read, so that a test can attribute requested bytes to column chunks. */
     static final class RecordingStorage implements DatasetStorage {
-        record Read(String path, long offset, int length) {}
+        /** A read; {@code tail} marks the first read of a part, its footer window, which may span chunks. */
+        record Read(String path, long offset, int length, boolean tail) {}
 
         final LocalStorage local;
         final List<Read> reads = new ArrayList<>();
@@ -76,7 +77,8 @@ class RangePlanTest {
                 @Override
                 public ByteBuffer read(long position, int length, Cancellation c) throws IOException {
                     synchronized (RecordingStorage.this) {
-                        reads.add(new Read(path, position, length));
+                        long window = Math.min(inner.size(), PartFile.TAIL_WINDOW);
+                        reads.add(new Read(path, position, length, position == inner.size() - window && length == window));
                     }
                     return inner.read(position, length, c);
                 }
@@ -111,12 +113,21 @@ class RangePlanTest {
             }
         }
 
+        /**
+         * {@return the bytes of {@code reads} inside the column's chunks}: any read overlapping a chunk
+         * must lie within it, but for a part's footer window, which counts nothing.
+         */
         long bytes(String name, List<RecordingStorage.Read> reads) {
             long n = 0;
             for (RecordingStorage.Read read : reads) {
+                if (read.tail()) {
+                    continue;
+                }
+                long end = read.offset() + read.length();
                 for (Extent e : extents) {
-                    if (read.path().equals(e.path()) && read.offset() >= e.start() && read.offset() < e.end()) {
-                        assertTrue(read.offset() + read.length() <= e.end(), name + ": a read leaves its chunk: " + read + " " + e + " " + extents);
+                    if (read.path().equals(e.path()) && read.offset() < e.end() && end > e.start()) {
+                        assertTrue(read.offset() >= e.start() && end <= e.end(),
+                                name + ": a read crosses its chunk's boundary: " + read + " " + e + " " + extents);
                         n += read.length();
                     }
                 }
@@ -336,11 +347,6 @@ class RangePlanTest {
     }
 
     /**
-     * A count across a part no read has checked relies on its manifest row count and is not exact;
-     * planning without columns opens only the parts at the ends, and not a part the manifest bounds place
-     * after the range; with columns it checks the parts between, and the count is exact.
-     */
-    /**
      * A scan's action that closes the dataset fails at once instead of waiting forever for the scan it
      * runs in; throwing from the action ends the scan, and the dataset then closes.
      */
@@ -369,6 +375,50 @@ class RangePlanTest {
         assertThrows(IllegalStateException.class, () -> plan.scan(row -> {}));
     }
 
+    /**
+     * A request a scan's action starts on another thread, while a close waits for the scan, fails at once
+     * instead of waiting behind the close (which waits for the scan, which waits for the action).
+     */
+    @Test
+    @org.junit.jupiter.api.Timeout(value = 20, threadMode = org.junit.jupiter.api.Timeout.ThreadMode.SEPARATE_THREAD)
+    void requestInsideScanWhileClosing() throws Exception {
+        Dataset d = Dataset.open(TestDatasets.write(tmp, new TestDatasets.Spec(), split(30, 2)));
+        RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size"));
+        AtomicReference<Throwable> nested = new AtomicReference<>();
+        AtomicReference<Thread> closer = new AtomicReference<>();
+        RuntimeException stop = new RuntimeException("stop");
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> plan.scan(row -> {
+            Thread c = Thread.ofPlatform().start(d::close);
+            closer.set(c);
+            while (c.getState() != Thread.State.WAITING) { // the close waits for this scan
+                Thread.onSpinWait();
+            }
+            Thread request = Thread.ofPlatform().start(() -> {
+                try {
+                    d.range(RangeQuery.all(1));
+                } catch (Throwable e) {
+                    nested.set(e);
+                }
+            });
+            try {
+                request.join();
+            } catch (InterruptedException e) {
+                throw new IllegalStateException(e);
+            }
+            throw stop;
+        }));
+        assertSame(stop, thrown);
+        assertTrue(nested.get() instanceof IllegalStateException || nested.get() instanceof java.util.concurrent.CancellationException,
+                "the nested request: " + nested.get());
+        closer.get().join();
+        assertThrows(IllegalStateException.class, () -> plan.scan(row -> {}));
+    }
+
+    /**
+     * A count across a part no read has checked relies on its manifest row count and is not exact;
+     * planning without columns opens only the parts at the ends, and not a part the manifest bounds place
+     * after the range; with columns it checks the parts between, and the count is exact.
+     */
     @Test
     void countsUseOnlyCheckedParts() throws IOException {
         TestDatasets.Spec spec = new TestDatasets.Spec();
