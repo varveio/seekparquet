@@ -56,11 +56,12 @@ final class PageDecoder {
      * does: over the page's bytes after its header, as stored (compressed, levels included). A header
      * without a CRC is not checked.
      */
-    private static void checkCrc(PageHeader header, ByteBuffer body) throws DataException {
+    private static void checkCrc(PageHeader header, ByteBuffer body, Codecs.State codecs) throws DataException {
         if (!header.isSetCrc()) {
             return;
         }
-        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        java.util.zip.CRC32 crc = codecs.crc;
+        crc.reset();
         crc.update(body.duplicate());
         if ((int) crc.getValue() != header.getCrc()) {
             throw new DataException("the page fails its checksum");
@@ -83,13 +84,13 @@ final class PageDecoder {
      *
      * @param body the page body: exactly its compressed size
      */
-    static Dictionary decodeDictionary(PageHeader header, ByteBuffer body, ColumnSpec col, CompressionCodec codec, Limits limits, String where)
-            throws DataException {
+    static Dictionary decodeDictionary(PageHeader header, ByteBuffer body, ColumnSpec col, CompressionCodec codec,
+            Limits limits, String where, PageScratch scratch, Codecs.State codecs) throws DataException {
         DictionaryPageHeader h = header.getDictionary_page_header();
         if (header.getType() != PageType.DICTIONARY_PAGE || h == null) {
             throw new DataException("the column chunk's dictionary page is missing");
         }
-        checkCrc(header, body);
+        checkCrc(header, body, codecs);
         int size = uncompressedSize(header, limits, where);
         int count = h.getNum_values();
         int minWidth = switch (col.type()) {
@@ -114,16 +115,18 @@ final class PageDecoder {
             default -> throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCODING,
                     where + ": dictionary encoding " + h.getEncoding());
         }
-        byte[] data = Codecs.decompress(codec, body, size);
+        byte[] data = scratch == null ? new byte[size]
+                : (scratch.dictionaryPlain = PageScratch.grow(scratch.dictionaryPlain, size));
+        Codecs.decompress(codec, body, size, data, codecs);
         // The dictionary holds exactly its declared values: bytes after them would be values the
         // decoder never reads (CHECK-5).
         if (col.type() == Column.Type.BYTE_ARRAY) {
-            EncodingChecks.plainByteArrays(data, 0, data.length, count);
-        } else if (data.length != (col.type() == Column.Type.BOOLEAN ? (count + 7L) / 8 : (long) count * minWidth)) {
-            throw new DataException("a dictionary of " + count + " values in " + data.length + " bytes");
+            EncodingChecks.plainByteArrays(data, 0, size, count);
+        } else if (size != (col.type() == Column.Type.BOOLEAN ? (count + 7L) / 8 : (long) count * minWidth)) {
+            throw new DataException("a dictionary of " + count + " values in " + size + " bytes");
         }
         try {
-            DictionaryPage page = new DictionaryPage(BytesInput.from(data), count, org.apache.parquet.column.Encoding.PLAIN);
+            DictionaryPage page = new DictionaryPage(BytesInput.from(data, 0, size), count, org.apache.parquet.column.Encoding.PLAIN);
             return org.apache.parquet.column.Encoding.PLAIN.initDictionary(col.descriptor(), page);
         } catch (IOException | RuntimeException e) {
             throw new DataException("the dictionary page does not decode", e);
@@ -136,13 +139,14 @@ final class PageDecoder {
      * @param body the page body: exactly its compressed size
      * @param dictionary the column chunk's dictionary, or {@code null} when it has none
      */
-    static ColumnPage decodeData(
-            PageHeader header, ByteBuffer body, ColumnSpec col, CompressionCodec codec, DictionarySupplier dictionary, Limits limits, String where)
+    static ColumnPage decodeData(PageHeader header, ByteBuffer body, ColumnSpec col, CompressionCodec codec,
+            DictionarySupplier dictionary, Limits limits, String where, PageScratch scratch, Codecs.State codecs)
             throws DataException {
-        checkCrc(header, body);
+        checkCrc(header, body, codecs);
         int size = uncompressedSize(header, limits, where);
         int n;
         byte[] data;
+        int dataSize = size;
         int valuesFrom;
         boolean[] nulls = null;
         Encoding encoding;
@@ -153,26 +157,26 @@ final class PageDecoder {
             }
             n = count(h.getNum_values(), limits, where);
             encoding = encoding(h.getEncoding(), where);
-            data = Codecs.decompress(codec, body, size);
+            data = decompress(codec, body, size, scratch, codecs);
             valuesFrom = 0;
             if (col.optional()) {
                 Encoding levels = encoding(h.getDefinition_level_encoding(), where);
                 if (levels == Encoding.RLE) {
-                    if (data.length < 4) {
+                    if (dataSize < 4) {
                         throw new DataException("a truncated definition level length");
                     }
                     int len = ByteBuffer.wrap(data, 0, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt();
-                    if (len < 0 || len > data.length - 4) {
-                        throw new DataException("definition levels of " + len + " bytes in a page of " + data.length);
+                    if (len < 0 || len > dataSize - 4) {
+                        throw new DataException("definition levels of " + len + " bytes in a page of " + dataSize);
                     }
-                    nulls = rleLevels(data, 4, 4 + len, n);
+                    nulls = rleLevels(data, 4, 4 + len, n, scratch);
                     valuesFrom = 4 + len;
                 } else if (levels == Encoding.BIT_PACKED) {
                     int len = (n + 7) / 8;
-                    if (len > data.length) {
+                    if (len > dataSize) {
                         throw new DataException("truncated bit-packed definition levels");
                     }
-                    nulls = new boolean[n];
+                    nulls = scratch == null ? new boolean[n] : scratch.nulls(n);
                     for (int i = 0; i < n; i++) {
                         nulls[i] = ((data[i >>> 3] >>> (7 - (i & 7))) & 1) == 0;
                     }
@@ -196,28 +200,30 @@ final class PageDecoder {
             if (rl != 0 || dl < 0 || (!col.optional() && dl != 0) || (long) rl + dl > body.remaining() || (long) rl + dl > size) {
                 throw new DataException("level lengths outside the page");
             }
-            byte[] levels = new byte[rl + dl];
-            body.duplicate().get(levels);
+            byte[] levels = scratch == null ? new byte[rl + dl]
+                    : (scratch.levels = PageScratch.grow(scratch.levels, rl + dl));
+            body.duplicate().get(levels, 0, rl + dl);
             if (col.optional()) {
-                nulls = rleLevels(levels, rl, rl + dl, n);
+                nulls = rleLevels(levels, rl, rl + dl, n, scratch);
             }
             ByteBuffer values = body.duplicate();
             values.position(values.position() + rl + dl);
             int valuesSize = size - rl - dl;
             boolean compressed = !h.isSetIs_compressed() || h.isIs_compressed();
             if (compressed) {
-                data = Codecs.decompress(codec, values, valuesSize);
+                data = decompress(codec, values, valuesSize, scratch, codecs);
             } else {
-                data = Codecs.decompress(CompressionCodec.UNCOMPRESSED, values, valuesSize);
+                data = decompress(CompressionCodec.UNCOMPRESSED, values, valuesSize, scratch, codecs);
             }
+            dataSize = valuesSize;
             valuesFrom = 0;
         } else {
             throw new DataException("a page of type " + header.getType() + " where a data page belongs");
         }
         int nonNull = n;
         if (nulls != null) {
-            for (boolean isNull : nulls) {
-                if (isNull) {
+            for (int i = 0; i < n; i++) {
+                if (nulls[i]) {
                     nonNull--;
                 }
             }
@@ -225,7 +231,13 @@ final class PageDecoder {
         if (header.getType() == PageType.DATA_PAGE_V2 && header.getData_page_header_v2().getNum_nulls() != n - nonNull) {
             throw new DataException("the v2 null count disagrees with its definition levels");
         }
-        return values(col, encoding, data, valuesFrom, n, nonNull, nulls, dictionary, limits, where);
+        return values(col, encoding, data, valuesFrom, dataSize, n, nonNull, nulls, dictionary, limits, where, scratch);
+    }
+
+    private static byte[] decompress(CompressionCodec codec, ByteBuffer body, int size, PageScratch scratch,
+            Codecs.State codecs) throws DataException {
+        byte[] out = scratch == null ? new byte[size] : (scratch.plain = PageScratch.grow(scratch.plain, size));
+        return Codecs.decompress(codec, body, size, out, codecs);
     }
 
     /** Supplies a column chunk's dictionary on first need. */
@@ -252,14 +264,14 @@ final class PageDecoder {
     }
 
     /** Decodes {@code n} one-bit definition levels from an RLE/bit-packed hybrid stream; true marks a null. */
-    private static boolean[] rleLevels(byte[] b, int from, int to, int n) throws DataException {
+    private static boolean[] rleLevels(byte[] b, int from, int to, int n, PageScratch scratch) throws DataException {
         byte[] runs = EncodingChecks.rleHybrid(b, from, to, 1, n);
         if (runs != null) { // the levels without their empty runs, which parquet-java does not skip
             b = runs;
             from = 0;
             to = runs.length;
         }
-        boolean[] nulls = new boolean[n];
+        boolean[] nulls = scratch == null ? new boolean[n] : scratch.nulls(n);
         try {
             RunLengthBitPackingHybridDecoder d =
                     new RunLengthBitPackingHybridDecoder(1, ByteBufferInputStream.wrap(ByteBuffer.wrap(b, from, to - from)));
@@ -277,17 +289,19 @@ final class PageDecoder {
     }
 
     private static ColumnPage values(
-            ColumnSpec col, Encoding encoding, byte[] data, int from, int n, int nonNull, boolean[] nulls, DictionarySupplier dictionary,
-            Limits limits, String where) throws DataException {
+            ColumnSpec col, Encoding encoding, byte[] data, int from, int to, int n, int nonNull, boolean[] nulls, DictionarySupplier dictionary,
+            Limits limits, String where, PageScratch scratch) throws DataException {
         Column.Type type = col.type();
-        boolean[] bools = type == Column.Type.BOOLEAN ? new boolean[n] : null;
-        int[] ints = type == Column.Type.INT32 || type == Column.Type.FLOAT ? new int[n] : null;
-        long[] longs = type == Column.Type.INT64 || type == Column.Type.DOUBLE ? new long[n] : null;
-        byte[][] binaries = type == Column.Type.BYTE_ARRAY || type == Column.Type.FIXED_LEN_BYTE_ARRAY ? new byte[n][] : null;
+        boolean[] bools = type == Column.Type.BOOLEAN ? (scratch == null ? new boolean[n] : scratch.bools(n)) : null;
+        int[] ints = type == Column.Type.INT32 || type == Column.Type.FLOAT ? (scratch == null ? new int[n] : scratch.ints(n)) : null;
+        long[] longs = type == Column.Type.INT64 || type == Column.Type.DOUBLE ? (scratch == null ? new long[n] : scratch.longs(n)) : null;
+        boolean binary = type == Column.Type.BYTE_ARRAY || type == Column.Type.FIXED_LEN_BYTE_ARRAY;
+        boolean arena = binary && scratch != null && encoding != Encoding.PLAIN_DICTIONARY && encoding != Encoding.RLE_DICTIONARY;
+        byte[][] binaries = binary && !arena ? (scratch == null ? new byte[n][] : scratch.binaries(n)) : null;
+        if (scratch != null) scratch.representation(binaries != null);
         if (type == Column.Type.INT96 || type == Column.Type.GROUP) {
             throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_PROJECTION, where + ": " + type + " values");
         }
-        int to = data.length;
         try {
             if (encoding == Encoding.PLAIN && (type == Column.Type.FLOAT || type == Column.Type.DOUBLE
                     || type == Column.Type.INT32 || type == Column.Type.INT64)) {
@@ -310,6 +324,9 @@ final class PageDecoder {
                     }
                 }
                 return new ColumnPage(type, n, nulls, bools, ints, longs, binaries);
+            }
+            if (arena) {
+                return binaryValues(col, encoding, data, from, to, n, nonNull, nulls, dictionary, limits, where, scratch);
             }
             if (encoding == Encoding.DELTA_BYTE_ARRAY) {
                 if (binaries == null) {
@@ -338,9 +355,10 @@ final class PageDecoder {
                 // Rows that share a dictionary entry share one array, so a page of many repeated
                 // values costs a reference per row, not a copy.
                 Dictionary dict = dictionary.get();
-                byte[][] entries = new byte[dict.getMaxId() + 1][];
+                byte[][] entries = scratch == null ? new byte[dict.getMaxId() + 1][] : scratch.entries(dict);
                 for (int i = 0; i < n; i++) {
                     if (nulls != null && nulls[i]) {
+                        binaries[i] = null;
                         continue;
                     }
                     int id = reader.readValueDictionaryId();
@@ -384,6 +402,71 @@ final class PageDecoder {
             throw new DataException("the page values do not decode (" + encoding + ")", e);
         }
         return new ColumnPage(type, n, nulls, bools, ints, longs, binaries);
+    }
+
+    private static ColumnPage binaryValues(ColumnSpec col, Encoding encoding, byte[] data, int from, int to,
+            int n, int nonNull, boolean[] nulls, DictionarySupplier dictionary, Limits limits, String where,
+            PageScratch scratch) throws IOException, DataException {
+        int[] offsets = scratch.offsets(n);
+        int[] lengths = scratch.lengths(n);
+        if (encoding == Encoding.PLAIN) {
+            // Validate the exact page extent before using it as the binary arena.
+            reader(col, encoding, data, from, to, nonNull, dictionary, limits, where);
+            ByteBuffer in = ByteBuffer.wrap(data).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            int at = from;
+            for (int i = 0; i < n; i++) {
+                if (nulls != null && nulls[i]) continue;
+                int length = col.type() == Column.Type.BYTE_ARRAY ? in.getInt(at) : col.typeLength();
+                if (col.type() == Column.Type.BYTE_ARRAY) at += 4;
+                offsets[i] = at;
+                lengths[i] = length;
+                at += length;
+            }
+            return new ColumnPage(col.type(), n, nulls, null, null, null, null, data, offsets, lengths);
+        }
+        DeltaBinaryPackingValuesReader prefixes = null;
+        ValuesReader suffixes;
+        ByteBufferInputStream in = ByteBufferInputStream.wrap(ByteBuffer.wrap(data, from, to - from));
+        if (encoding == Encoding.DELTA_BYTE_ARRAY) {
+            int suffixFrom = EncodingChecks.deltaBinaryPacked(data, from, to, nonNull, limits, where);
+            EncodingChecks.deltaBinaryPacked(data, suffixFrom, to, nonNull, limits, where);
+            prefixes = new DeltaBinaryPackingValuesReader();
+            prefixes.initFromPage(nonNull, in);
+            suffixes = new DeltaLengthByteArrayValuesReader();
+        } else {
+            suffixes = reader(col, encoding, data, from, to, nonNull, dictionary, limits, where);
+        }
+        suffixes.initFromPage(nonNull, in);
+        int used = 0, previousOffset = 0, previousLength = 0;
+        for (int i = 0; i < n; i++) {
+            if (nulls != null && nulls[i]) continue;
+            int prefix = prefixes == null ? 0 : prefixes.readInteger();
+            if (prefix < 0 || prefix > previousLength) {
+                throw new DataException("a DELTA_BYTE_ARRAY prefix of " + prefix + " bytes after a value of " + previousLength);
+            }
+            Binary suffix = suffixes.readBytes();
+            long length = (long) prefix + suffix.length();
+            long required = used + length;
+            if (required > limits.maxPageBytes()) {
+                throw new LimitExceededException("maxPageBytes", required, limits.maxPageBytes(), where + " (decoded binary values)");
+            }
+            if (col.type() == Column.Type.FIXED_LEN_BYTE_ARRAY && length != col.typeLength()) {
+                throw new DataException("a FIXED_LEN_BYTE_ARRAY value of " + length + " bytes, not " + col.typeLength());
+            }
+            // Preserve earlier values while growing; capped geometric growth avoids quadratic copying.
+            if (scratch.arena.length < required) {
+                int capacity = (int) Math.min(limits.maxPageBytes(), Math.max(required, 2L * scratch.arena.length));
+                scratch.arena = java.util.Arrays.copyOf(scratch.arena, capacity);
+            }
+            System.arraycopy(scratch.arena, previousOffset, scratch.arena, used, prefix);
+            suffix.toByteBuffer().get(scratch.arena, used + prefix, suffix.length());
+            offsets[i] = used;
+            lengths[i] = (int) length;
+            previousOffset = used;
+            previousLength = (int) length;
+            used += (int) length;
+        }
+        return new ColumnPage(col.type(), n, nulls, null, null, null, null, scratch.arena, offsets, lengths);
     }
 
     /** {@return parquet-java's reader for the values, after checking the encoded stream's structure} */

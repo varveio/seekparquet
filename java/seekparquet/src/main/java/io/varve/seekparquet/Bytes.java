@@ -112,7 +112,8 @@ public final class Bytes implements Comparable<Bytes> {
 
     /**
      * Wraps an array the caller gives up. Internal use only: the array must not be modified
-     * afterwards.
+     * afterwards. Reusable decoder storage must cross the owning boundary through {@code of},
+     * never through this method.
      */
     static Bytes wrap(byte[] owned) {
         return owned.length == 0 ? EMPTY : new Bytes(owned);
