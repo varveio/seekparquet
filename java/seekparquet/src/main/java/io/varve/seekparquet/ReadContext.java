@@ -24,6 +24,27 @@ final class ReadContext {
      * first page, in the one read {@link RangePlan#projectedBytes()} counted.
      */
     final boolean planned;
+    // Logical column names remain stable when a part changes its physical leaf order.
+    // Only requested value columns acquire slots; duplicate projections share their current page.
+    private final Map<String, PageScratch> scratch = new HashMap<>();
+    final Codecs.State codecs = new Codecs.State();
+
+    PageScratch scratch(ColumnSpec col, ChunkKey chunk) {
+        PageScratch slot = scratch.computeIfAbsent(col.name(), ignored -> new PageScratch());
+        if (!chunk.equals(slot.owner)) {
+            // Routing probes may have entered a different group without moving the cursor. A slot's
+            // actual owner, rather than activeGroup, determines which cached aliases it invalidates.
+            if (slot.owner != null) {
+                dictionaries.remove(slot.owner);
+                valuePages.remove(slot.owner);
+                sequential.remove(slot.owner);
+            }
+            slot.enterGroup();
+            slot.owner = chunk;
+        }
+        return slot;
+    }
+
     private final Map<ChunkKey, Dictionary> dictionaries = new HashMap<>();
     private final Map<ChunkKey, DecodedPage> valuePages = new HashMap<>();
     private final Map<ChunkKey, long[]> sequential = new HashMap<>();
@@ -35,6 +56,7 @@ final class ReadContext {
     void enterGroup(int part, int group) {
         if (part != activePart || group != activeGroup) {
             dictionaries.clear();
+            scratch.values().forEach(PageScratch::enterGroup);
             valuePages.clear();
             sequential.clear();
             activePart = part;

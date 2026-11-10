@@ -39,10 +39,10 @@ import org.apache.parquet.format.TypeDefinedOrder;
 import org.apache.parquet.format.Util;
 
 /**
- * Writes small SeekParquet datasets for tests: PLAIN, data page v1, uncompressed, with a page index
+ * Writes small SeekParquet datasets for tests: by default PLAIN, data page v1, uncompressed, with a page index
  * on every column. Each part has the columns {@code key} (BYTE_ARRAY, REQUIRED, STRING), {@code size}
  * (INT64, OPTIONAL: null when a row's size is negative) and, when asked, {@code note} (BYTE_ARRAY,
- * OPTIONAL). Faults can be injected for refusal tests.
+ * OPTIONAL). Value codecs and dictionary/plain transitions can be selected; faults can be injected for refusal tests.
  */
 final class TestDatasets {
 
@@ -61,6 +61,10 @@ final class TestDatasets {
         boolean noteColumn;
         /** Encode a constant, non-null size per group through a dictionary. */
         boolean dictionarySize;
+        CompressionCodec valueCodec = CompressionCodec.UNCOMPRESSED;
+        /** Alternate dictionary/plain chunks and dictionary/plain pages, with every supported codec. */
+        boolean mixedValuePages;
+        boolean dictionaryNote;
         boolean unique = true;
         /** Broad alternating bounds exercise routing without monotone index metadata. */
         boolean nonMonotoneKeyBounds;
@@ -114,6 +118,7 @@ final class TestDatasets {
 
     private static final class Chunk {
         final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        long uncompressedBytes;
         final List<PageLocation> locations = new ArrayList<>();
         final List<Boolean> nullPages = new ArrayList<>();
         final List<ByteBuffer> mins = new ArrayList<>();
@@ -134,30 +139,49 @@ final class TestDatasets {
             for (int c = 0; c < ncols; c++) {
                 long chunkStart = out.size();
                 Chunk chunk = new Chunk();
-                boolean dictionary = c == 1 && spec.dictionarySize;
+                boolean dictionary = (c == 1 && spec.dictionarySize || c == 2 && spec.dictionaryNote)
+                        && (!spec.mixedValuePages || (g0 / spec.rowsPerGroup) % 2 == 0);
+                CompressionCodec codec = c == 0 ? CompressionCodec.UNCOMPRESSED : spec.mixedValuePages
+                        ? List.of(CompressionCodec.ZSTD, CompressionCodec.UNCOMPRESSED, CompressionCodec.GZIP,
+                                CompressionCodec.SNAPPY, CompressionCodec.LZ4_RAW).get((g0 / spec.rowsPerGroup) % 5) : spec.valueCodec;
+                List<Bytes> entries = c == 2 && dictionary
+                        ? group.stream().map(TestDatasets::note).filter(java.util.Objects::nonNull).map(Bytes::of).distinct().toList() : List.of();
                 if (dictionary) {
-                    long value = group.getFirst().size();
-                    if (value < 0 || group.stream().anyMatch(r -> r.size() != value)) throw new IllegalArgumentException("dictionary fixture needs a constant non-null size per group");
-                    byte[] body = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(value).array();
-                    PageHeader header = new PageHeader(PageType.DICTIONARY_PAGE, body.length, body.length);
-                    header.setDictionary_page_header(new org.apache.parquet.format.DictionaryPageHeader(1, Encoding.PLAIN));
-                    Util.writePageHeader(header, chunk.bytes); chunk.bytes.write(body);
+                    byte[] body;
+                    if (c == 1) {
+                        long value = group.getFirst().size();
+                        if (value < 0 || group.stream().anyMatch(r -> r.size() != value)) throw new IllegalArgumentException("dictionary fixture needs a constant non-null size per group");
+                        body = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(value).array();
+                    } else {
+                        ByteArrayOutputStream encoded = new ByteArrayOutputStream();
+                        for (Bytes entry : entries) { encoded.write(le32(entry.length())); encoded.write(entry.toByteArray()); }
+                        body = encoded.toByteArray();
+                    }
+                    byte[] compressed = compress(body, codec);
+                    PageHeader header = new PageHeader(PageType.DICTIONARY_PAGE, body.length, compressed.length);
+                    header.setDictionary_page_header(new org.apache.parquet.format.DictionaryPageHeader(c == 1 ? 1 : entries.size(), Encoding.PLAIN));
+                    Util.writePageHeader(header, chunk.bytes);
+                    chunk.uncompressedBytes += chunk.bytes.size() + body.length;
+                    chunk.bytes.write(compressed);
                 }
                 long dataStart = chunkStart + chunk.bytes.size();
                 for (int r0 = 0; r0 < group.size(); r0 += spec.rowsPerPage) {
                     List<TestRow> page = group.subList(r0, Math.min(group.size(), r0 + spec.rowsPerPage));
                     long pageOffset = chunkStart + chunk.bytes.size();
-                    byte[] body = dictionary ? dictionaryBody(page.size()) : pageBody(c, page);
-                    PageHeader header = new PageHeader(PageType.DATA_PAGE, body.length, body.length);
-                    header.setData_page_header(new DataPageHeader(page.size(), dictionary ? Encoding.RLE_DICTIONARY : Encoding.PLAIN, Encoding.RLE, Encoding.RLE));
+                    boolean dictionaryPage = dictionary && (!spec.mixedValuePages || (r0 / spec.rowsPerPage) % 2 == 0);
+                    byte[] body = dictionaryPage ? (c == 1 ? dictionaryBody(page.size()) : dictionaryNotes(page, entries)) : pageBody(c, page);
+                    byte[] compressed = compress(body, codec);
+                    PageHeader header = new PageHeader(PageType.DATA_PAGE, body.length, compressed.length);
+                    header.setData_page_header(new DataPageHeader(page.size(), dictionaryPage ? Encoding.RLE_DICTIONARY : Encoding.PLAIN, Encoding.RLE, Encoding.RLE));
                     ByteArrayOutputStream h = new ByteArrayOutputStream();
                     Util.writePageHeader(header, h);
                     if (c == 0 && g0 == 0 && r0 == 0 && spec.keyPageHeaderExtraField != null) {
                         h = withField(h.toByteArray(), spec.keyPageHeaderExtraField);
                     }
+                    chunk.uncompressedBytes += h.size() + body.length;
                     chunk.bytes.write(h.toByteArray());
-                    chunk.bytes.write(body);
-                    chunk.locations.add(new PageLocation(pageOffset, h.size() + body.length, r0));
+                    chunk.bytes.write(compressed);
+                    chunk.locations.add(new PageLocation(pageOffset, h.size() + compressed.length, r0));
                     bounds(c, page, chunk);
                     if (c == 0 && spec.keyBoundBytes > 0) {
                         int last = chunk.mins.size() - 1;
@@ -183,11 +207,11 @@ final class TestDatasets {
                 }
                 byte[] data = chunk.bytes.toByteArray();
                 out.write(data);
-                groupBytes += data.length;
+                groupBytes += chunk.uncompressedBytes;
                 Type type = c == 1 ? Type.INT64 : Type.BYTE_ARRAY;
                 String name = c == 0 ? spec.keyColumn : c == 1 ? "size" : "note";
-                ColumnMetaData md = new ColumnMetaData(type, dictionary ? List.of(Encoding.PLAIN, Encoding.RLE, Encoding.RLE_DICTIONARY) : List.of(Encoding.PLAIN, Encoding.RLE), List.of(name), CompressionCodec.UNCOMPRESSED,
-                        group.size(), data.length, data.length, dataStart);
+                ColumnMetaData md = new ColumnMetaData(type, dictionary ? List.of(Encoding.PLAIN, Encoding.RLE, Encoding.RLE_DICTIONARY) : List.of(Encoding.PLAIN, Encoding.RLE), List.of(name), codec,
+                        group.size(), chunk.uncompressedBytes, data.length, dataStart);
                 if (dictionary) md.setDictionary_page_offset(chunkStart);
                 ColumnChunk cc = new ColumnChunk(chunkStart);
                 cc.setMeta_data(md);
@@ -282,9 +306,44 @@ final class TestDatasets {
         return b;
     }
 
+    static byte[] compress(byte[] body, CompressionCodec codec) throws IOException {
+        if (codec == CompressionCodec.UNCOMPRESSED) return body;
+        if (codec == CompressionCodec.GZIP) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            try (var gzip = new java.util.zip.GZIPOutputStream(out)) { gzip.write(body); }
+            return out.toByteArray();
+        }
+        io.airlift.compress.Compressor compressor = switch (codec) {
+            case ZSTD -> new io.airlift.compress.zstd.ZstdCompressor();
+            case SNAPPY -> new io.airlift.compress.snappy.SnappyCompressor();
+            case LZ4_RAW -> new io.airlift.compress.lz4.Lz4Compressor();
+            default -> throw new IllegalArgumentException("test codec " + codec);
+        };
+        byte[] out = new byte[compressor.maxCompressedLength(body.length)];
+        return Arrays.copyOf(out, compressor.compress(body, 0, body.length, out, 0, out.length));
+    }
+
     /** The note value of a row: null for every third size, else "n" + size. */
     static byte[] note(TestRow row) {
         return row.size() % 3 == 0 ? null : ("n" + row.size()).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static byte[] dictionaryNotes(List<TestRow> page, List<Bytes> entries) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        boolean[] present = new boolean[page.size()];
+        for (int i = 0; i < page.size(); i++) present[i] = note(page.get(i)) != null;
+        byte[] levels = rleLevels(present);
+        out.write(le32(levels.length)); out.write(levels);
+        int width = Math.max(1, 32 - Integer.numberOfLeadingZeros(Math.max(0, entries.size() - 1)));
+        out.write(width);
+        for (TestRow row : page) {
+            byte[] note = note(row);
+            if (note == null) continue;
+            int id = entries.indexOf(Bytes.of(note));
+            out.write(2);
+            for (int i = 0; i < (width + 7) / 8; i++) out.write(id >>> (8 * i));
+        }
+        return out.toByteArray();
     }
 
     private static byte[] dictionaryBody(int rows) throws IOException {

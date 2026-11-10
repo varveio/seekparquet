@@ -40,7 +40,7 @@ class EncodingPolicyTest {
         PageHeader header = new PageHeader(PageType.DATA_PAGE, body.length, body.length)
                 .setData_page_header(new DataPageHeader(count, encoding, Encoding.RLE, Encoding.RLE));
         return PageDecoder.decodeData(header, ByteBuffer.wrap(body), ColumnSpec.of("value", 0, type, 0, false),
-                CompressionCodec.UNCOMPRESSED, dictionary, Limits.DEFAULT, "test page");
+                CompressionCodec.UNCOMPRESSED, dictionary, Limits.DEFAULT, "test page", null, new Codecs.State());
     }
 
     private static ColumnPage decode(byte[] body, Encoding encoding, Column.Type type, int count) throws DataException {
@@ -89,6 +89,11 @@ class EncodingPolicyTest {
 
     // Item 4: an RLE run's value must be below 2^width.
 
+    /** Decompresses a GZIP page of {@code size} declared bytes into a fresh buffer of that size. */
+    private static byte[] gunzipPage(ByteBuffer page, int size) throws DataException {
+        return Codecs.decompress(CompressionCodec.GZIP, page, size, new byte[size], new Codecs.State());
+    }
+
     @Test
     void aBooleanRunValueAboveOneBitIsRefused() throws DataException {
         // Three one-value RLE runs: 2, 0, 2 (parquet-java read true, false, true; parquet-go false, false, false).
@@ -108,7 +113,7 @@ class EncodingPolicyTest {
                 le32(1), "c".getBytes(StandardCharsets.UTF_8));
         dictHeader.setUncompressed_page_size(entries.length).setCompressed_page_size(entries.length);
         PlainValuesDictionary dict = (PlainValuesDictionary) PageDecoder.decodeDictionary(dictHeader, ByteBuffer.wrap(entries),
-                ColumnSpec.of("value", 0, Column.Type.BYTE_ARRAY, 0, false), CompressionCodec.UNCOMPRESSED, Limits.DEFAULT, "test");
+                ColumnSpec.of("value", 0, Column.Type.BYTE_ARRAY, 0, false), CompressionCodec.UNCOMPRESSED, Limits.DEFAULT, "test", null, new Codecs.State());
         // Bit width 1, one RLE run of three indexes of value 2: index 2 exists, but not at width 1.
         assertThrows(DataException.class, () -> decode(bytes(1, 0x06, 0x02), Encoding.RLE_DICTIONARY, Column.Type.BYTE_ARRAY, 3, () -> dict));
         ColumnPage page = decode(bytes(2, 0x06, 0x02), Encoding.RLE_DICTIONARY, Column.Type.BYTE_ARRAY, 3, () -> dict);
@@ -141,17 +146,17 @@ class EncodingPolicyTest {
     void aGzipPageWithBytesAfterItsMemberIsRefused() throws Exception {
         byte[] data = concat(le32(1), le32(2), le32(3));
         byte[] member = gzip(data);
-        assertArrayEquals(data, Codecs.decompress(CompressionCodec.GZIP, ByteBuffer.wrap(member), data.length));
-        assertThrows(DataException.class, () -> Codecs.decompress(CompressionCodec.GZIP, ByteBuffer.wrap(concat(member, bytes(0))), data.length));
-        assertThrows(DataException.class, () -> Codecs.decompress(CompressionCodec.GZIP, ByteBuffer.wrap(concat(member, bytes(0x1F, 0x8B))), data.length));
+        assertArrayEquals(data, gunzipPage(ByteBuffer.wrap(member), data.length));
+        assertThrows(DataException.class, () -> gunzipPage(ByteBuffer.wrap(concat(member, bytes(0))), data.length));
+        assertThrows(DataException.class, () -> gunzipPage(ByteBuffer.wrap(concat(member, bytes(0x1F, 0x8B))), data.length));
         // Two members, as a gzip concatenation: refused, as the Go reader refuses it.
         byte[] two = concat(gzip(java.util.Arrays.copyOf(data, 4)), gzip(java.util.Arrays.copyOfRange(data, 4, 12)));
-        assertThrows(DataException.class, () -> Codecs.decompress(CompressionCodec.GZIP, ByteBuffer.wrap(two), data.length));
+        assertThrows(DataException.class, () -> gunzipPage(ByteBuffer.wrap(two), data.length));
         // A corrupt trailer still fails its check.
         byte[] badCrc = member.clone();
         badCrc[badCrc.length - 8] ^= 1;
-        assertThrows(DataException.class, () -> Codecs.decompress(CompressionCodec.GZIP, ByteBuffer.wrap(badCrc), data.length));
-        assertThrows(DataException.class, () -> Codecs.decompress(CompressionCodec.GZIP, ByteBuffer.wrap(member, 0, member.length - 1), data.length));
+        assertThrows(DataException.class, () -> gunzipPage(ByteBuffer.wrap(badCrc), data.length));
+        assertThrows(DataException.class, () -> gunzipPage(ByteBuffer.wrap(member, 0, member.length - 1), data.length));
     }
 
     @Test
@@ -174,7 +179,7 @@ class EncodingPolicyTest {
         CRC32 crc = new CRC32();
         crc.update(data);
         byte[] member = concat(h.toByteArray(), java.util.Arrays.copyOf(deflated, n), le32((int) crc.getValue()), le32(data.length));
-        assertArrayEquals(data, Codecs.decompress(CompressionCodec.GZIP, ByteBuffer.wrap(member), data.length));
+        assertArrayEquals(data, gunzipPage(ByteBuffer.wrap(member), data.length));
     }
 
     // Item 19: byte-array delta lengths cover exactly the bytes after them.

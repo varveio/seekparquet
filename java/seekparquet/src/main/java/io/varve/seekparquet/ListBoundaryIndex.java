@@ -180,7 +180,7 @@ final class ListBoundaryIndex {
             if (runs.size() == 1 && runs.getFirst().size() >= 0 && directoryLength(base) == 0) {
                 return new Built(null, pages, null, base, previous);
             }
-            return new Built(new Group(part.ordinal, slot, base, data.toByteArray(), runs), pages, null, base, previous.clone());
+            return new Built(new Group(part.ordinal, slot, base, data.toByteArray(), runs), pages, null, base, previous);
         } catch (CancellationException e) {
             throw e;
         } catch (RefusalException | UnsupportedFeatureException e) {

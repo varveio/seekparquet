@@ -32,14 +32,14 @@ class SurplusValuesTest {
         PageHeader header = new PageHeader(PageType.DATA_PAGE, body.length, body.length)
                 .setData_page_header(new DataPageHeader(count, Encoding.PLAIN, Encoding.RLE, Encoding.RLE));
         return PageDecoder.decodeData(header, ByteBuffer.wrap(body), ColumnSpec.of("value", 0, type, typeLength, optional),
-                CompressionCodec.UNCOMPRESSED, null, Limits.DEFAULT, "test page");
+                CompressionCodec.UNCOMPRESSED, null, Limits.DEFAULT, "test page", null, new Codecs.State());
     }
 
     private static void dictionary(byte[] body, Column.Type type, int typeLength, int count) throws DataException {
         PageHeader header = new PageHeader(PageType.DICTIONARY_PAGE, body.length, body.length)
                 .setDictionary_page_header(new DictionaryPageHeader(count, Encoding.PLAIN));
         PageDecoder.decodeDictionary(header, ByteBuffer.wrap(body), ColumnSpec.of("value", 0, type, typeLength, false),
-                CompressionCodec.UNCOMPRESSED, Limits.DEFAULT, "test dictionary");
+                CompressionCodec.UNCOMPRESSED, Limits.DEFAULT, "test dictionary", null, new Codecs.State());
     }
 
     private static byte[] byteArrays(String... values) {
