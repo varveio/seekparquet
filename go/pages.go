@@ -323,10 +323,7 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 	if err := checkRuns(levels, n, 1); err != nil {
 		return nil, c.corrupt(fmt.Errorf("definition levels: %w", err))
 	}
-	s := c.scratch
-	if s == nil {
-		s = new(pageScratch)
-	}
+	s := c.scratch.local()
 	s.levels = resize(s.levels, n+8)
 	defined, err := (&rle.Encoding{BitWidth: 1}).DecodeLevels(s.levels[:0:n+8], levels)
 	s.levels = decodedBuffer(s.levels, defined)
@@ -358,10 +355,7 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 
 // values decodes the n non-null values of a page, encoded with enc.
 func (c *chunk) values(enc format.Encoding, data []byte, n int) ([]parquet.Value, error) {
-	s := c.scratch
-	if s == nil {
-		s = new(pageScratch)
-	}
+	s := c.scratch.local()
 	// Drop pointers into the previous page/dictionary, including a long page's
 	// unused tail, before decoding a smaller page or another chunk.
 	s.clearValues()
@@ -412,10 +406,7 @@ func (c *chunk) values(enc format.Encoding, data []byte, n int) ([]parquet.Value
 // decoded values to hold exactly n of them.
 func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.Values, error) {
 	var none encoding.Values
-	s := c.scratch
-	if s == nil {
-		s = new(pageScratch)
-	}
+	s := c.scratch.local()
 	if !supportedEncoding(enc) {
 		return none, &UnsupportedError{Code: UnsupportedEncoding, Detail: "encoding " + enc.String() + " in part " + c.p.name}
 	}
@@ -984,13 +975,12 @@ func (cp *columnPages) read(selected []position, emit func(int, parquet.Value)) 
 }
 
 // decodeBooleanRLEInto accepts only final bit-packed padding (at most seven bits).
-// checkCounts bounds declared counts before any output allocation.
+// out already has ceil(n/8) bytes, bounded by the caller before allocation.
 func decodeBooleanRLEInto(out, data []byte, n int) ([]byte, error) {
 	if err := checkCounts(format.RLE, data, n); err != nil {
 		return nil, err
 	}
 	src := data[4 : 4+binary.LittleEndian.Uint32(data)]
-	out = resize(out, (n+7)/8)
 	clear(out)
 	at := 0
 	for len(src) > 0 {

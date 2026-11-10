@@ -88,9 +88,9 @@ func TestSurplusValuesAreRefused(t *testing.T) {
 				if _, err := chunk.values(c.enc, c.excess, 3); CodeOf(err) != CodeInvalidParquet {
 					t.Fatalf("a payload of 4 values decoded as 3: %v", err)
 				}
-				// A dictionary page is decoded by the same check.
+				// Dictionaries use the allocating path, even during a reusable scan.
 				if c.enc == format.Plain {
-					if _, err := chunk.decodeValues(format.Plain, c.excess, 3); CodeOf(err) != CodeInvalidParquet {
+					if _, err := testChunk(c.typ).decodeValues(format.Plain, c.excess, 3); CodeOf(err) != CodeInvalidParquet {
 						t.Fatalf("a dictionary of 4 values decoded as 3: %v", err)
 					}
 				}

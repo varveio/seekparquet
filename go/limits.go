@@ -39,8 +39,10 @@ type Limits struct {
 	// platforms, twice that for an optional column (its non-null values,
 	// then every row), so 384 to 768 MiB for a page at the defaults. Each
 	// request retains projected data-page scratch at its high-water capacity
-	// until the call ends. Concurrent requests and Scan shards add up. Lower
-	// this limit and bound concurrency to reduce transient memory; IndexMemory
+	// until the call ends. Besides PageBytes, header buffers can retain up to
+	// headerBytes (16 MiB, bounded by MetadataMemory); indexed raw extents
+	// include header and payload. Concurrent requests and Scan shards add up.
+	// Lower this limit and bound concurrency to reduce transient memory; IndexMemory
 	// does not account for it.
 	PageValues int64
 	// IndexMemory bounds the memory one Dataset retains for key page

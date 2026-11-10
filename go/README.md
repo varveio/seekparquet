@@ -239,7 +239,9 @@ Projected value pages reuse buffers within each `Range`, `List`, or `RangePlan.S
 across row groups. Results still own their keys and binary values. Dictionaries have separate storage
 for their chunk; key pages and validation do not reuse page buffers. No scratch is shared between calls.
 The call retains each projection slot's largest byte and element buffers until it returns, including
-codec state and both compact and expanded values for optional columns. `PageBytes` bounds byte data;
+codec state and both compact and expanded values for optional columns. `PageBytes` bounds page data;
+header buffers can retain up to `headerBytes` (16 MiB, bounded by `MetadataMemory`), and indexed raw
+extents include both header and payload.
 `PageValues` also matters: the two value slices alone can reach 768 MiB per optional column at the
 default limit on 64-bit platforms. Dictionaries, page headers/logs, indexes and results add to that.
 Bound concurrent calls/shards and lower `Limits` for tighter memory use. `IndexMemory` is separate;

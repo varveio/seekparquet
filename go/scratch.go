@@ -10,7 +10,8 @@ import "github.com/parquet-go/parquet-go"
 // Dictionaries use independent storage retained by their chunk, including when
 // loaded lazily while an encoded data page is live in raw/plain.
 //
-// Byte buffers follow PageBytes (raw also includes the bounded header); element
+// Byte buffers follow PageBytes, plus header reads up to headerBytes (16 MiB,
+// bounded by MetadataMemory); indexed raw extents include both. Element
 // buffers follow PageValues. Both compact and optional expanded Values are
 // retained at their high-water sizes until the call ends, along with codec state.
 // This transient memory is separate from retained indexes and multiplies with
@@ -42,18 +43,21 @@ func (s *pageScratch) readBuffer(n int) []byte {
 	return s.raw
 }
 
-// decodedBuffer remembers a decoder's replacement allocation, or restores the
-// retained capacity when it returned the capped destination we supplied.
+// decodedBuffer keeps the larger allocation: encodings append into the supplied
+// destination and replace it only when they need more capacity.
 func decodedBuffer[T any](previous, decoded []T) []T {
-	// A zero-byte decode may return a zero-capacity view. There is no data to
-	// preserve in that view; keep the larger allocation for the next page.
-	if len(decoded) == 0 && cap(decoded) <= cap(previous) {
-		return previous[:0]
+	if cap(decoded) > cap(previous) {
+		return decoded
 	}
-	if cap(previous) > 0 && cap(decoded) > 0 && &previous[:cap(previous)][0] == &decoded[:cap(decoded)][0] {
-		return previous[:len(decoded)]
+	return previous
+}
+
+// local supplies ephemeral buffers for the non-reusing key/dictionary path.
+func (s *pageScratch) local() *pageScratch {
+	if s == nil {
+		return new(pageScratch)
 	}
-	return decoded
+	return s
 }
 
 func (s *pageScratch) clearValues() {

@@ -47,14 +47,16 @@ func (s *pageScratch) decompress(codec format.CompressionCodec, src []byte, size
 // as the output would exceed size, so a small page cannot expand beyond
 // what its header declares (and Limits.PageBytes allowed).
 func decompress(codec format.CompressionCodec, src []byte, size int) ([]byte, error) {
-	return (*codecScratch)(nil).decompress(codec, src, size, nil)
+	var dst []byte
+	if codec != format.Uncompressed {
+		dst = make([]byte, size)
+	}
+	return (*codecScratch)(nil).decompress(codec, src, size, dst)
 }
 
+// decompress receives a destination whose length is the declared output size.
+// Zstd appends, so its call also caps capacity to this page's size.
 func (s *codecScratch) decompress(codec format.CompressionCodec, src []byte, size int, dst []byte) ([]byte, error) {
-	// Cap to this page, even after a larger page used the same allocation.
-	if codec != format.Uncompressed {
-		dst = resize(dst, size)[:size:size]
-	}
 	wrong := func(n int) error {
 		return fmt.Errorf("the page decompresses to %d bytes, its header declares %d", n, size)
 	}
