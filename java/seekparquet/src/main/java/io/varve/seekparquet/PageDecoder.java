@@ -388,7 +388,7 @@ final class PageDecoder {
 
     /** {@return parquet-java's reader for the values, after checking the encoded stream's structure} */
     private static ValuesReader reader(
-            ColumnSpec col, Encoding encoding, byte[] data, int from, int to, int nonNull, DictionarySupplier dictionary, Limits limits, String where) throws DataException {
+            ColumnSpec col, Encoding encoding, byte[] data, int from, int to, int nonNull, DictionarySupplier dictionary, Limits limits, String where) throws DataException, IOException {
         Column.Type type = col.type();
         switch (encoding) {
             case PLAIN -> {
@@ -435,17 +435,42 @@ final class PageDecoder {
                 if (type != Column.Type.INT32 && type != Column.Type.INT64) {
                     throw new DataException("DELTA_BINARY_PACKED values in a " + type + " column");
                 }
-                EncodingChecks.deltaBinaryPacked(data, from, to, nonNull, limits, where);
+                EncodingChecks.deltaBinaryPacked(data, from, to, nonNull, type == Column.Type.INT32, limits, where);
                 return new DeltaBinaryPackingValuesReader();
             }
             case DELTA_LENGTH_BYTE_ARRAY -> {
                 if (type != Column.Type.BYTE_ARRAY) {
                     throw new DataException("DELTA_LENGTH_BYTE_ARRAY values in a " + type + " column");
                 }
-                EncodingChecks.deltaBinaryPacked(data, from, to, nonNull, limits, where);
+                int valuesFrom = EncodingChecks.deltaBinaryPacked(data, from, to, nonNull, true, limits, where);
+                checkLengths(data, from, valuesFrom, nonNull, to - valuesFrom);
                 return new DeltaLengthByteArrayValuesReader();
             }
             default -> throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCODING, "encoding " + encoding + " for values");
+        }
+    }
+
+    /**
+     * Checks the {@code count} lengths of the DELTA_BINARY_PACKED stream in {@code data[from, end)}
+     * (checked already): each is non-negative and together they are exactly the {@code bytes} after the
+     * stream, as the values that follow are. Bytes after the values would be data no one reads, and
+     * decoders differ on them (CHECK-5).
+     */
+    private static void checkLengths(byte[] data, int from, int end, int count, long bytes) throws DataException, IOException {
+        long sum = 0;
+        if (count > 0) {
+            DeltaBinaryPackingValuesReader lengths = new DeltaBinaryPackingValuesReader();
+            lengths.initFromPage(count, ByteBufferInputStream.wrap(ByteBuffer.wrap(data, from, end - from)));
+            for (int i = 0; i < count; i++) {
+                int length = lengths.readInteger();
+                if (length < 0) {
+                    throw new DataException("a byte-array length of " + length);
+                }
+                sum += length;
+            }
+        }
+        if (sum != bytes) {
+            throw new DataException("byte-array lengths summing to " + sum + " bytes where " + bytes + " follow them");
         }
     }
 
@@ -457,8 +482,9 @@ final class PageDecoder {
     private static void deltaByteArray(
             byte[] data, int from, int to, int n, int nonNull, boolean[] nulls, byte[][] out, ColumnSpec col, Limits limits, String where)
             throws DataException, IOException {
-        int suffixFrom = EncodingChecks.deltaBinaryPacked(data, from, to, nonNull, limits, where);
-        EncodingChecks.deltaBinaryPacked(data, suffixFrom, to, nonNull, limits, where);
+        int suffixFrom = EncodingChecks.deltaBinaryPacked(data, from, to, nonNull, true, limits, where);
+        int valuesFrom = EncodingChecks.deltaBinaryPacked(data, suffixFrom, to, nonNull, true, limits, where);
+        checkLengths(data, suffixFrom, valuesFrom, nonNull, to - valuesFrom);
         ByteBufferInputStream in = ByteBufferInputStream.wrap(ByteBuffer.wrap(data, from, to - from));
         DeltaBinaryPackingValuesReader prefixes = new DeltaBinaryPackingValuesReader();
         prefixes.initFromPage(nonNull, in);

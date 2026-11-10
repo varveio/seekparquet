@@ -157,13 +157,13 @@ class ReviewRegressionTest {
         Limits small = new Limits(1024, 4, 1024, 1024, 1024, 4);
         byte[] hostile = {(byte) 128, (byte) 128, 64, 1, 1, 0};
         assertEquals("maxPageBytes", assertThrows(LimitExceededException.class,
-                () -> EncodingChecks.deltaBinaryPacked(hostile, 0, hostile.length, 1, small, "test")).limit());
+                () -> EncodingChecks.deltaBinaryPacked(hostile, 0, hostile.length, 1, false, small, "test")).limit());
         byte[] ordinary = {(byte) 128, 1, 4, 1, 0};
-        assertEquals(ordinary.length, EncodingChecks.deltaBinaryPacked(ordinary, 0, ordinary.length, 1, small, "test"));
+        assertEquals(ordinary.length, EncodingChecks.deltaBinaryPacked(ordinary, 0, ordinary.length, 1, false, small, "test"));
         // Valid block geometry with a large width array also uses the configured limit.
         byte[] widths = {(byte) 128, (byte) 128, 64, (byte) 128, (byte) 128, 2, 1, 0};
         assertThrows(LimitExceededException.class,
-                () -> EncodingChecks.deltaBinaryPacked(widths, 0, widths.length, 1, small, "test"));
+                () -> EncodingChecks.deltaBinaryPacked(widths, 0, widths.length, 1, false, small, "test"));
     }
 
     @Test
