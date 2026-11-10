@@ -5,6 +5,18 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Added `RangePlan.ScanBatches(ctx, stats, func(*Batch) error)` for borrowed column scans.
+  `Batch` exposes `Len`, `Key`, `Offset`, and `Column`; `Row` and `Cursor` make owning copies.
+  The batch object and all borrowed slices/bytes are read-only and valid only until the callback
+  returns. Batches stay within a row group, every key/projected page, and a selected span;
+  maximal size is not promised. Duplicate projections, projected keys, absent columns,
+  repeated-key offsets and chunks without value OffsetIndexes retain their semantics.
+  `Scan` now adapts batches into owning rows. Both APIs hold the Dataset open during callbacks;
+  callbacks must not call Close or wait for a goroutine that does. No format change.
+- Tightened the owning scan allocation budget and added per-slot allocation gates that reject
+  losing even one warmed PLAIN page buffer. Removed the redundant value-slice clear when opening
+  a column; decoding already clears the previous page and its stale tail before reuse.
+
 - `Dataset.BuildListIndex` explicitly builds an optional, bounded directory-run index for `/` listings.
   Compact exact anchors, binary run searches and first-key group routing avoid a key-page decode per
   wide prefix. Dense intervals decline safely; fully checked flat groups retain no index data.

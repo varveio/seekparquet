@@ -883,7 +883,6 @@ type columnPages struct {
 // with its OffsetIndex when it has one; nil when the part lacks the column
 // (COL-2).
 func (p *part) openColumn(ctx context.Context, physical int, name string, st *ReadStats, scratch *pageScratch) (*columnPages, error) {
-	scratch.clearValues()
 	col, ok := p.leaves[name]
 	if !ok {
 		return nil, nil
@@ -924,14 +923,21 @@ func (cp *columnPages) pages(from, to int64) (first, last int) {
 // ascending, after every row of an earlier call, and confined to this
 // physical row group.
 func (cp *columnPages) read(selected []position, emit func(int, parquet.Value)) error {
-	c := cp.c
-	for next := 0; next < len(selected); {
-		row := selected[next].row
-		if row >= cp.first && row < cp.first+int64(len(cp.values)) {
-			emit(next, cp.values[row-cp.first])
-			next++
-			continue
+	for i, pos := range selected {
+		if err := cp.load(pos.row); err != nil {
+			return err
 		}
+		emit(i, cp.values[pos.row-cp.first])
+	}
+	return nil
+}
+
+// load retains the page containing row until a later load moves to another
+// page. Calls must move forward, as read does. Keeping the loading boundary
+// separate lets a batch borrow several columns' pages simultaneously.
+func (cp *columnPages) load(row int64) error {
+	c := cp.c
+	for row < cp.first || row >= cp.first+int64(len(cp.values)) {
 		if err := c.ctx.Err(); err != nil {
 			return err
 		}

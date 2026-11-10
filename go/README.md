@@ -92,7 +92,7 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `PlanRanges`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan`, `Split` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Column`, a part's column as its footer declares it; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `PlanRanges`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan`, `ScanBatches`, `Split` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`, `Batch`; `Column`, a part's column as its footer declares it; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
 | `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
 | `cmd/seekparquet` | the `seekparquet validate` command |
@@ -235,8 +235,9 @@ mid-call; the reader checks the context between pages.
 `OpenDataset` opens and closes only the manifest. `Dataset.Close` closes every part file the dataset opened,
 after the reads in progress end.
 
-Projected value pages reuse buffers within each `Range`, `List`, or `RangePlan.Scan` call, including
-across row groups. Results still own their keys and binary values. Dictionaries have separate storage
+Projected value pages reuse buffers within each `Range`, `List`, `RangePlan.Scan`, or
+`RangePlan.ScanBatches` call, including across row groups. `Range`, `List`, and `Scan` results own
+their keys and binary values; `ScanBatches` borrows page storage as described below. Dictionaries have separate storage
 for their chunk; key pages and validation do not reuse page buffers. No scratch is shared between calls.
 The call retains each projection slot's largest byte and element buffers until it returns, including
 codec state and both compact and expanded values for optional columns. `PageBytes` bounds page data;
@@ -339,6 +340,26 @@ dictionary only for a page that uses it. A projected key column is read as a val
 in `ProjectedBytes`; the Java reader takes key values from its key pages and counts nothing for it (see
 [java/README.md](../java/README.md#parity-with-the-go-reader)), so the conformance planning cases never
 project the key.
+
+`ScanBatches(ctx, stats, fn func(*Batch) error)` yields the same selected rows as borrowed column
+slices, avoiding the per-row owning copies. `Batch.Len()`, `Key(i)`, and `Offset(i)` identify rows;
+`Column(c)` returns `([]parquet.Value, bool)` for projection slot `c`, in request order, including
+duplicates. `false` means the part lacks the column; a present column has `Len()` values, whose
+`IsNull()` distinguishes nulls. A projected key remains an ordinary projected column.
+
+Each batch is a positive run within one row group, one key page, one page of every projected column,
+and one selected span. It never crosses a gap in the selection. Pages need not align across columns;
+batches may be small, and maximal size is not promised. **The batch object, slices, keys and value
+bytes are borrowed, read-only, and valid only until the callback returns.** Do not retain them or
+pass them to work that outlives the callback. `batch.Row(i)` and `batch.Cursor(i)` make owning copies.
+Accessors panic on out-of-range indexes. `Scan` is the owning adapter over `ScanBatches`.
+
+Both scan APIs stop at the first callback error, return it, and populate read statistics on failure.
+`ScanBatches` checks cancellation before each callback; `Scan` also checks before each owning row.
+Each concurrent or reentrant scan has its own scratch. Both hold a Dataset lease during callbacks:
+**the callback must not close the Dataset or wait for a goroutine that does**, since Close waits for
+the scan. Return an error or cancel the context to stop, and close after the scan returns. Requests
+started by the callback work normally until Close begins, then fail with `ErrClosed`.
 
 `plan.Split(ctx, n)` divides a plan into at most `n` shards for a whole scan on several cores: each shard is a
 `RangePlan` over consecutive rows of the plan, and the shards' `Scan`s, run on the caller's goroutines with

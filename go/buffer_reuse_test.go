@@ -151,7 +151,8 @@ func TestBufferReuseTransitions(t *testing.T) {
 
 // Poison only when a complete page has been consumed, and a dictionary only
 // when its chunk retires. The production owning boundary is projectColumn,
-// shared by Range, List and Scan. No global test hook changes concurrent scans.
+// shared by Range and List. Scan uses Batch.Row, tested separately.
+// No global test hook changes concurrent scans.
 func TestBufferReusePoisonRetiredPages(t *testing.T) {
 	records := transitionRecords(1024, true)
 	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 512, PageBytes: 128, DictionaryMaxBytes: 1024, Compression: parquet.Compression(&zstd.Codec{})}}})
