@@ -120,7 +120,7 @@ func chunkRange(meta *format.ColumnMetaData) (start, end int64, ok bool) {
 // chunk reads the pages of one column chunk for one request, and decodes
 // its dictionary on first use. ctx is the request's.
 type chunk struct {
-	scratch    *pageScratch // nil: allocating key/dictionary path
+	scratch    *pageScratch // nil: allocating key/dictionary path (keys: see scan.keyScratch)
 	ctx        context.Context
 	p          *part
 	physical   int
@@ -280,63 +280,84 @@ func dataRows(h *format.PageHeader) (int64, bool) {
 // indexed decodes page i, which loc locates, after requiring its header to
 // begin exactly one data page that fills loc and holds loc's rows (RG-3).
 func (c *chunk) indexed(i int, loc pageLoc) ([]parquet.Value, error) {
-	bad := func(format string, args ...any) error {
-		return refusePart(c.code, c.p.name, c.physical, "column chunk %d page %d: "+format, append([]any{c.col.index, i}, args...)...)
-	}
-	h, n, raw, err := c.located(loc.offset, loc.size, loc.rows)
-	if err != nil {
-		if CodeOf(err) == CodeInvalidParquet {
-			return nil, bad("its OffsetIndex entry does not locate a page header")
-		}
-		return nil, err
-	}
-	rows, ok := dataRows(h)
-	switch {
-	case !ok:
-		return nil, bad("its OffsetIndex entry locates a page of type %s, not a data page", h.Type)
-	case n+int64(h.CompressedPageSize) != loc.size:
-		return nil, bad("its OffsetIndex entry does not locate exactly one page")
-	case rows != loc.rows:
-		return nil, bad("the page holds %d rows, its OffsetIndex entry %d", rows, loc.rows)
-	}
-	data, err := c.payload(h, loc.offset, n, raw)
+	h, data, err := c.indexedPage(i, loc)
 	if err != nil {
 		return nil, err
 	}
 	return c.decode(h, data)
 }
 
-// decode decodes a data page: one value per row, null where the
-// definition level is zero.
-func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value, err error) {
-	defer func() {
-		// A last line of defence: a panic inside parquet-go's decoders is
-		// reported as corrupt data. The checks before decoding are the
-		// protection; this is not a substitute for them.
-		if r := recover(); r != nil {
-			err = c.corrupt(fmt.Errorf("parquet-go failed on a page: %v", r))
-		}
-	}()
-	if err := c.checkPageMemory(h); err != nil {
-		return nil, err
+// indexedKeys decodes key page i, which loc locates, as indexed does, into
+// pageKeys (decodeKeys).
+func (c *chunk) indexedKeys(i int, loc pageLoc) (pageKeys, error) {
+	h, data, err := c.indexedPage(i, loc)
+	if err != nil {
+		return pageKeys{}, err
 	}
-	var n int
-	var enc format.Encoding
-	var levels, data []byte
-	nulls := -1 // a V2 page's declared null count
+	return c.decodeKeys(h, data)
+}
+
+// indexedPage reads page i, which loc locates, after requiring its header
+// to begin exactly one data page that fills loc and holds loc's rows
+// (RG-3), and returns its header and payload.
+func (c *chunk) indexedPage(i int, loc pageLoc) (*format.PageHeader, []byte, error) {
+	bad := func(format string, args ...any) error {
+		return refusePart(c.code, c.p.name, c.physical, "column chunk %d page %d: "+format, append([]any{c.col.index, i}, args...)...)
+	}
+	h, n, raw, err := c.located(loc.offset, loc.size, loc.rows)
+	if err != nil {
+		if CodeOf(err) == CodeInvalidParquet {
+			return nil, nil, bad("its OffsetIndex entry does not locate a page header")
+		}
+		return nil, nil, err
+	}
+	rows, ok := dataRows(h)
+	switch {
+	case !ok:
+		return nil, nil, bad("its OffsetIndex entry locates a page of type %s, not a data page", h.Type)
+	case n+int64(h.CompressedPageSize) != loc.size:
+		return nil, nil, bad("its OffsetIndex entry does not locate exactly one page")
+	case rows != loc.rows:
+		return nil, nil, bad("the page holds %d rows, its OffsetIndex entry %d", rows, loc.rows)
+	}
+	data, err := c.payload(h, loc.offset, n, raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	return h, data, nil
+}
+
+// recoverPage is a last line of defence: a panic inside parquet-go's
+// decoders is reported as corrupt data. The checks before decoding are the
+// protection; this is not a substitute for them.
+func (c *chunk) recoverPage(err *error) {
+	if r := recover(); r != nil {
+		*err = c.corrupt(fmt.Errorf("parquet-go failed on a page: %v", r))
+	}
+}
+
+// pageData decompresses a data page's payload, after checking its header
+// against Limits.PageMemory, and returns its value count n, its encoding,
+// its definition levels (an optional column's), its values, and a V2
+// page's declared null count (-1 for a V1 page).
+func (c *chunk) pageData(h *format.PageHeader, payload []byte) (n int, enc format.Encoding, levels, data []byte, nulls int, err error) {
+	if err := c.checkPageMemory(h); err != nil {
+		return 0, 0, nil, nil, 0, err
+	}
+	nulls = -1
 	switch h.Type {
 	case format.DataPage:
 		d := &h.DataPageHeader.V
 		n, enc = int(d.NumValues), d.Encoding
 		if data, err = c.scratch.decompress(c.codec, payload, int(h.UncompressedPageSize)); err != nil {
-			return nil, c.corrupt(err)
+			return 0, 0, nil, nil, 0, c.corrupt(err)
 		}
 		if c.col.optional {
 			if d.DefinitionLevelEncoding != format.RLE {
-				return nil, &UnsupportedError{Code: UnsupportedEncoding, Detail: "definition levels encoded " + d.DefinitionLevelEncoding.String() + " in part " + c.p.name}
+				return 0, 0, nil, nil, 0, &UnsupportedError{Code: UnsupportedEncoding, Detail: "definition levels encoded " + d.DefinitionLevelEncoding.String() + " in part " + c.p.name}
 			}
 			if len(data) < 4 || int64(binary.LittleEndian.Uint32(data)) > int64(len(data)-4) {
-				return nil, c.corrupt(errors.New("the definition levels exceed the page"))
+				return 0, 0, nil, nil, 0, c.corrupt(errors.New("the definition levels exceed the page"))
 			}
 			m := 4 + int(binary.LittleEndian.Uint32(data))
 			levels, data = data[4:m:m], data[m:]
@@ -345,17 +366,17 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 		d := &h.DataPageHeaderV2.V
 		n, enc = int(d.NumValues), d.Encoding
 		if d.NumRows != d.NumValues {
-			return nil, c.corrupt(errors.New("a page of a non-repeated column holds a different number of rows and values"))
+			return 0, 0, nil, nil, 0, c.corrupt(errors.New("a page of a non-repeated column holds a different number of rows and values"))
 		}
 		rep, def := int(d.RepetitionLevelsByteLength), int(d.DefinitionLevelsByteLength)
 		// A top-level, non-repeated column has no repetition levels, and a
 		// REQUIRED one no definition levels: bytes declared for them are not
 		// the page's values (CHECK-5).
 		if rep != 0 {
-			return nil, c.corrupt(fmt.Errorf("a page of a non-repeated column declares %d bytes of repetition levels", rep))
+			return 0, 0, nil, nil, 0, c.corrupt(fmt.Errorf("a page of a non-repeated column declares %d bytes of repetition levels", rep))
 		}
 		if !c.col.optional && def != 0 {
-			return nil, c.corrupt(fmt.Errorf("a page of a REQUIRED column declares %d bytes of definition levels", def))
+			return 0, 0, nil, nil, 0, c.corrupt(fmt.Errorf("a page of a REQUIRED column declares %d bytes of definition levels", def))
 		}
 		nulls = int(d.NumNulls)
 		levels, data = payload[:def:def], payload[def:]
@@ -364,8 +385,19 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 			codec = format.Uncompressed
 		}
 		if data, err = c.scratch.decompress(codec, data, int(h.UncompressedPageSize)-def); err != nil {
-			return nil, c.corrupt(err)
+			return 0, 0, nil, nil, 0, c.corrupt(err)
 		}
+	}
+	return n, enc, levels, data, nulls, nil
+}
+
+// decode decodes a data page: one value per row, null where the
+// definition level is zero.
+func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value, err error) {
+	defer c.recoverPage(&err)
+	n, enc, levels, data, nulls, err := c.pageData(h, payload)
+	if err != nil {
+		return nil, err
 	}
 	if !c.col.optional {
 		if nulls > 0 {
@@ -433,36 +465,9 @@ func (c *chunk) values(enc format.Encoding, data []byte, n int) ([]parquet.Value
 	s.values = resize(s.values, n)
 	out := s.values
 	if enc == format.PlainDictionary || enc == format.RLEDictionary {
-		dict, err := c.dictionary()
+		dict, indexes, err := c.dictionaryIndexes(data, n)
 		if err != nil {
 			return nil, err
-		}
-		if dict == nil {
-			return nil, c.corrupt(errors.New("a dictionary-encoded page in a chunk without a dictionary"))
-		}
-		if n == 0 && len(data) == 0 {
-			// No index to read, so no bit width either: a page whose values
-			// are all null (Java and PyArrow read it so).
-			return out, nil
-		}
-		if len(data) == 0 || data[0] > 32 {
-			return nil, c.corrupt(errors.New("the dictionary indexes have no valid bit width"))
-		}
-		width := int(data[0])
-		if err := checkRuns(data[1:], n, width); err != nil {
-			return nil, c.corrupt(fmt.Errorf("dictionary indexes: %w", err))
-		}
-		s.indexes = resize(s.indexes, n+8)
-		indexes, err := (&rle.Encoding{BitWidth: width}).DecodeInt32(s.indexes[:0:n+8], data[1:])
-		s.indexes = decodedBuffer(s.indexes, indexes)
-		if err != nil || len(indexes) < n {
-			return nil, c.corrupt(errors.New("the page holds fewer dictionary indexes than values"))
-		}
-		indexes = indexes[:n]
-		for _, i := range indexes {
-			if i < 0 || int(i) >= dict.Len() {
-				return nil, c.corrupt(fmt.Errorf("dictionary index %d is outside the dictionary of %d values", i, dict.Len()))
-			}
 		}
 		dict.Lookup(indexes, out)
 		return out, nil
@@ -475,6 +480,131 @@ func (c *chunk) values(enc format.Encoding, data []byte, n int) ([]parquet.Value
 		return nil, c.corrupt(fmt.Errorf("the page holds %d of its %d values", read, n))
 	}
 	return out, nil
+}
+
+// dictionaryIndexes returns the chunk's dictionary and the n dictionary
+// indexes of a dictionary-encoded page's values, data, each checked to
+// lie inside the dictionary. A page of no values may hold no indexes, nor
+// their bit width: one whose values are all null (Java and PyArrow read
+// it so).
+func (c *chunk) dictionaryIndexes(data []byte, n int) (parquet.Dictionary, []int32, error) {
+	dict, err := c.dictionary()
+	if err != nil {
+		return nil, nil, err
+	}
+	if dict == nil {
+		return nil, nil, c.corrupt(errors.New("a dictionary-encoded page in a chunk without a dictionary"))
+	}
+	if n == 0 && len(data) == 0 {
+		return dict, nil, nil
+	}
+	if len(data) == 0 || data[0] > 32 {
+		return nil, nil, c.corrupt(errors.New("the dictionary indexes have no valid bit width"))
+	}
+	width := int(data[0])
+	if err := checkRuns(data[1:], n, width); err != nil {
+		return nil, nil, c.corrupt(fmt.Errorf("dictionary indexes: %w", err))
+	}
+	s := c.scratch.local()
+	s.indexes = resize(s.indexes, n+8)
+	indexes, err := (&rle.Encoding{BitWidth: width}).DecodeInt32(s.indexes[:0:n+8], data[1:])
+	s.indexes = decodedBuffer(s.indexes, indexes)
+	if err != nil || len(indexes) < n {
+		return nil, nil, c.corrupt(errors.New("the page holds fewer dictionary indexes than values"))
+	}
+	indexes = indexes[:n]
+	for _, i := range indexes {
+		if i < 0 || int(i) >= dict.Len() {
+			return nil, nil, c.corrupt(fmt.Errorf("dictionary index %d is outside the dictionary of %d values", i, dict.Len()))
+		}
+	}
+	return dict, indexes, nil
+}
+
+// decodeKeys decodes a key page (a REQUIRED BYTE_ARRAY column's, KEY-1)
+// as decode would, into pageKeys instead of parquet.Values: the decoded
+// bytes and offsets of a PLAIN, DELTA_LENGTH_BYTE_ARRAY or
+// DELTA_BYTE_ARRAY page, or the dictionary's with the page's indexes.
+// With the chunk's scratch, the page's storage is the scratch's and the
+// next page decoded through it overwrites it; without, it is the page's own.
+func (c *chunk) decodeKeys(h *format.PageHeader, payload []byte) (_ pageKeys, err error) {
+	defer c.recoverPage(&err)
+	if c.col.optional || c.col.typ.Kind() != parquet.ByteArray {
+		return pageKeys{}, c.corrupt(errors.New("a key column that is not a REQUIRED BYTE_ARRAY column"))
+	}
+	n, enc, _, data, nulls, err := c.pageData(h, payload)
+	if err != nil {
+		return pageKeys{}, err
+	}
+	if nulls > 0 {
+		return pageKeys{}, c.corrupt(fmt.Errorf("a page of a REQUIRED column declares %d nulls", nulls))
+	}
+	data = data[:len(data):len(data)] // as values: no decoder may read past the page
+	var page pageKeys
+	if enc == format.PlainDictionary || enc == format.RLEDictionary {
+		dict, indexes, err := c.dictionaryIndexes(data, n)
+		if err != nil {
+			return pageKeys{}, err
+		}
+		values := dict.Page().Data()
+		if values.Kind() != encoding.ByteArray {
+			return pageKeys{}, c.corrupt(errors.New("a key dictionary that does not hold byte arrays"))
+		}
+		page.data, page.offsets = values.ByteArray()
+		if len(page.offsets) != dict.Len()+1 {
+			return pageKeys{}, c.corrupt(errors.New("a key dictionary whose offsets do not match its values"))
+		}
+		page.indexes = indexes
+		if indexes == nil {
+			page.indexes = []int32{}
+		}
+	} else {
+		decoded, err := c.decodeValues(enc, data, n)
+		if err != nil {
+			return pageKeys{}, err
+		}
+		page.data, page.offsets = decoded.ByteArray()
+		if len(page.offsets) != n+1 {
+			return pageKeys{}, c.corrupt(fmt.Errorf("the page decodes to %d of its %d values", len(page.offsets)-1, n))
+		}
+	}
+	*c.pages++
+	return page, nil
+}
+
+// pageKeys is a decoded key page. Key i is data[offsets[j]:offsets[j+1]],
+// where j is indexes[i] for a dictionary-encoded page (indexes not nil)
+// and i otherwise.
+type pageKeys struct {
+	data    []byte
+	offsets []uint32
+	indexes []int32
+}
+
+// len returns the number of keys.
+func (p *pageKeys) len() int {
+	if p.indexes != nil {
+		return len(p.indexes)
+	}
+	return max(len(p.offsets)-1, 0)
+}
+
+// key returns key i, its capacity ending with it.
+func (p *pageKeys) key(i int) []byte {
+	j := i
+	if p.indexes != nil {
+		j = int(p.indexes[i])
+	}
+	from, to := p.offsets[j], p.offsets[j+1]
+	return p.data[from:to:to]
+}
+
+// slice returns keys [from, to) as a pageKeys.
+func (p *pageKeys) slice(from, to int) pageKeys {
+	if p.indexes != nil {
+		return pageKeys{data: p.data, offsets: p.offsets, indexes: p.indexes[from:to:to]}
+	}
+	return pageKeys{data: p.data, offsets: p.offsets[from : to+1 : to+1]}
 }
 
 // decodeValues decodes n values encoded with enc, after checking the value

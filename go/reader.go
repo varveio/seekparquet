@@ -474,7 +474,7 @@ func (r *reader) first(ctx context.Context, g groupRef, log *pageLog, st *ReadSt
 	if err := k.decode(0); err != nil {
 		return nil, err
 	}
-	return k.values[0].ByteArray(), nil
+	return k.page.key(0), nil
 }
 
 // noteFirst records the decoded first key of row group g, after checking

@@ -37,6 +37,15 @@ type scan struct {
 	// first row it did not reach: the first at or after the upper bound, or
 	// the dataset's row count.
 	bound int64
+	// keyScratch, when set, is the scratch every key page of the scan's
+	// own walkers is decoded into, each overwriting the one before
+	// (keyPages.reuse): the batch walker's, whose callbacks borrow a key
+	// page only until they return. Then key is valid until the next key
+	// page is decoded, and groupKey is moved to groupOwned before it is.
+	// Walkers opened by routing (reader.first) never use it.
+	keyScratch *pageScratch
+	groupOwned []byte
+	retire     func(*scan) // keyReuse.retire
 }
 
 func (r *reader) newScan(ctx context.Context, end []byte, st *ReadStats) *scan {
@@ -77,7 +86,7 @@ func (s *scan) seek(from []byte, inclusive bool) error {
 		if err := s.syntheticPages(); err != nil {
 			return err
 		}
-		s.kp.values = nil
+		s.kp.page = pageKeys{}
 		s.kp.at = s.kp.index.pageAt(s.row) - 1
 		s.kp.next = 0
 		s.synthetic = false
@@ -175,8 +184,31 @@ func (s *scan) syntheticPages() error {
 		return nil
 	}
 	var err error
-	s.kp, err = s.r.keyPages(s.ctx, s.g, &s.log, s.stats)
+	s.kp, err = s.keyPages(s.g)
 	return err
+}
+
+// keyPages opens the scan's walker on row group g, decoding into
+// keyScratch when the scan has it.
+func (s *scan) keyPages(g groupRef) (*keyPages, error) {
+	kp, err := s.r.keyPages(s.ctx, g, &s.log, s.stats)
+	if err != nil || s.keyScratch == nil {
+		return kp, err
+	}
+	kp.chunk.scratch, kp.reuse = s.keyScratch, s.keepGroupKey
+	return kp, nil
+}
+
+// keepGroupKey moves groupKey out of the key page about to be overwritten.
+// key is not kept: every caller replaces it once the next page is decoded.
+func (s *scan) keepGroupKey() {
+	if s.groupKey != nil {
+		s.groupOwned = append(s.groupOwned[:0], s.groupKey...)
+		s.groupKey = s.groupOwned
+	}
+	if s.retire != nil {
+		s.retire(s)
+	}
 }
 
 // next moves to the row after the current one.
@@ -242,7 +274,7 @@ func (s *scan) open(g groupRef) (bool, error) {
 		}
 		g = groupRef{g.part + 1, 0}
 	}
-	kp, err := s.r.keyPages(s.ctx, g, &s.log, s.stats)
+	kp, err := s.keyPages(g)
 	if err != nil {
 		return false, err
 	}
