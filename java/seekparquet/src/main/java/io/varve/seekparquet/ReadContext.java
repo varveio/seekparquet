@@ -24,6 +24,15 @@ final class ReadContext {
      * first page, in the one read {@link RangePlan#projectedBytes()} counted.
      */
     final boolean planned;
+    // Logical column names remain stable when a part changes its physical leaf order.
+    // Only requested value columns acquire slots; duplicate projections share their current page.
+    private final Map<String, PageScratch> scratch = new HashMap<>();
+    final Codecs.State codecs = new Codecs.State();
+
+    PageScratch scratch(ColumnSpec col) {
+        return scratch.computeIfAbsent(col.name(), ignored -> new PageScratch());
+    }
+
     private final Map<ChunkKey, Dictionary> dictionaries = new HashMap<>();
     private final Map<ChunkKey, DecodedPage> valuePages = new HashMap<>();
     private final Map<ChunkKey, long[]> sequential = new HashMap<>();
@@ -35,6 +44,7 @@ final class ReadContext {
     void enterGroup(int part, int group) {
         if (part != activePart || group != activeGroup) {
             dictionaries.clear();
+            scratch.values().forEach(PageScratch::enterGroup);
             valuePages.clear();
             sequential.clear();
             activePart = part;
@@ -67,7 +77,7 @@ final class ReadContext {
             throw new RefusalException(RefusalCode.KEY_ORDER, part.name,
                     "row group " + group + " key page " + page + " is out of order with another decoded page");
         }
-        keyPages.put(position, new PageBounds(first, last));
+        keyPages.put(position, new PageBounds(first.clone(), last.clone()));
     }
 
     // A sequential builder needs only its preceding page, not a log of the group.

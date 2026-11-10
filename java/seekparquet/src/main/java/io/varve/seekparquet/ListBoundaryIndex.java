@@ -171,7 +171,8 @@ final class ListBoundaryIndex {
                     }
                     denseBefore = false;
                 }
-                previous = keys[keys.length - 1];
+                // This crosses a decode, and is also returned on flat/failure paths.
+                previous = keys[keys.length - 1].clone();
                 // Finish proving flatness before dropping the temporary anchor;
                 // a later page may contain a directory and require admission.
                 boolean flatSoFar = runs.size() == 1 && runs.getFirst().size() >= 0 && directoryLength(base) == 0;

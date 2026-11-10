@@ -526,6 +526,7 @@ final class PartFile implements AutoCloseable {
 
     byte[] knownFirst(int physical) { return firstKeys.get(physical); }
 
+    // Retains a key-page array: key decoding must keep using fresh storage (null PageScratch).
     byte[] rememberFirst(int physical, byte[] key) {
         synchronized (indexMemory) {
             byte[] first = firstKeys.get(physical);
@@ -628,7 +629,7 @@ final class PartFile implements AutoCloseable {
         ColumnMetaData md = rowGroup(physical).getColumns().get(col.leaf()).getMeta_data();
         try {
             return PageDecoder.decodeData(header, body, col, md.getCodec(), () -> dictionary(physical, col, ctx), ctx.limits,
-                    "part " + name + " " + where);
+                    "part " + name + " " + where, col.leaf() == keyLeaf ? null : ctx.scratch(col), ctx.codecs);
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_PARQUET, where + e.getMessage());
         }
@@ -680,7 +681,8 @@ final class PartFile implements AutoCloseable {
             checkPageSize(compressed, ctx);
             body = ByteBuffer.wrap(readBytes(at + h.length, compressed, ctx));
         }
-        d = PageDecoder.decodeDictionary(header, body, col, md.getCodec(), ctx.limits, "part " + name);
+        d = PageDecoder.decodeDictionary(header, body, col, md.getCodec(), ctx.limits, "part " + name,
+                col.leaf() == keyLeaf ? null : ctx.scratch(col), ctx.codecs);
         ctx.putDictionary(key, d);
         return d;
     }

@@ -249,8 +249,24 @@ progress, waits for them to return, then closes the part sources.
 
 `Limits` bound what the data may make the reader allocate (spec §11): the manifest size, the number
 of parts, footer, page index and page sizes, page value counts, and the maximum requested result
-entries (1,000,000 by default). Per-request dictionaries and value pages are retained only for the
-current row group. `Limits.withMaxIndexMemoryBytes(bytes)` sets a dataset-wide budget for retained
+entries (1,000,000 by default). Each request keeps one scratch slot per projected value column,
+shared by duplicate projections and retained at its high-water capacity until the request ends.
+Logical pages and dictionaries belong to the current row group; dictionary backing is separate from
+live data-page storage, including during lazy dictionary loading. Slots survive row-group and part
+changes. Codec state is request-local. Key pages still use fresh arrays.
+
+Existing range, list and scan results own their keys and binary values: the result boundary copies
+them before page storage can be reused. Rows, values, read-only byte views and continuations can be
+retained after later reads or after the dataset closes. There is no borrowed public result API.
+Storage reads still use the `PartSource` buffer contract; this optimization does not remove source
+buffer allocations or Parquet header/decoder allocations.
+
+Scratch bytes (decompressed pages, levels, binary arenas and dictionary backing) are bounded by
+`maxPageBytes`; primitive and reference arrays are separately bounded by `maxPageValues` times their
+element widths. Codec state, dictionary entries, key pages and boundary logs add memory beyond those
+arrays. Capacities are not charged to the shared index budget. Caller-controlled concurrency multiplies
+this transient storage; these limits do not provide an aggregate request-memory budget.
+`Limits.withMaxIndexMemoryBytes(bytes)` sets a dataset-wide budget for retained
 key and value indexes and retained exact row-group first keys (256 MiB by default), using conservative estimates of their decoded arrays,
 bounds and cache entries. Publication is charged once under a shared lock; a budget failure leaves
 already cached indexes usable. Delta decoders also check padded scratch arrays against `maxPageBytes`
@@ -454,3 +470,18 @@ behavior. `Manifest.rowsExact()` returns the exact `BigInteger` total, including
 zero for an empty dataset. This accessor limit is not a format refusal: parsing,
 opening, and queries do not reject a dataset merely because its total exceeds the
 range of `rows()`.
+
+### Page allocation benchmark
+
+Run the opt-in generated-fixture benchmark with JDK 21:
+
+```sh
+SEEKPARQUET_PAGE_BENCH=1 ./gradlew :seekparquet:test --tests '*PageReuseBenchmarkTest' --offline --max-workers=1 --rerun-tasks
+```
+
+The test reports current-thread allocated bytes and time per row for owning scans of 65,536 rows,
+two parts, 4,096 rows/group and 256 rows/page, with nullable binary and INT64 projections. It compares
+uncompressed and Zstd value pages; keys are uncompressed. Fixture generation, planning and warmup are
+outside measurement; every measured scan creates fresh request scratch. Results include a field
+checksum, and are recorded in the test XML under `seekparquet/build/test-results/test/`. Timing is
+informational on shared hosts. The benchmark is skipped in the normal build.

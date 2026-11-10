@@ -184,7 +184,8 @@ final class Queries {
     }
 
     static Row row(KeyCursor cursor, List<String> columns, ReadContext ctx) {
-        Bytes key = Bytes.wrap(cursor.key());
+        // The owning boundary for range, list (including exact rows), scan and continuations.
+        Bytes key = Bytes.of(cursor.key());
         if (columns.isEmpty()) {
             return new Row(key, cursor.offset(), columns, List.of());
         }

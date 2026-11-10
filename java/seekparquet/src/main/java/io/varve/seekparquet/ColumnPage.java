@@ -18,10 +18,22 @@ final class ColumnPage {
     final int[] ints;
     /** INT64 values, or DOUBLE bits. */
     final long[] longs;
-    /** BYTE_ARRAY and FIXED_LEN_BYTE_ARRAY values; never modified. */
+    /** Fresh key arrays or dictionary entries; value-page reference arrays may be reused. */
     final byte[][] binaries;
+    /** Binary values in reusable page storage, addressed by row. Null for keys/dictionary entries. */
+    final byte[] arena;
+    final int[] offsets;
+    final int[] lengths;
 
     ColumnPage(Column.Type type, int rows, boolean[] nulls, boolean[] bools, int[] ints, long[] longs, byte[][] binaries) {
+        this(type, rows, nulls, bools, ints, longs, binaries, null, null, null);
+    }
+
+    ColumnPage(Column.Type type, int rows, boolean[] nulls, boolean[] bools, int[] ints, long[] longs,
+            byte[][] binaries, byte[] arena, int[] offsets, int[] lengths) {
+        this.arena = arena;
+        this.offsets = offsets;
+        this.lengths = lengths;
         this.type = type;
         this.rows = rows;
         this.nulls = nulls;
@@ -31,7 +43,7 @@ final class ColumnPage {
         this.binaries = binaries;
     }
 
-    /** {@return the value of row {@code i} of the page} */
+    /** {@return an owning value of row {@code i}, safe after this page is overwritten} */
     Value value(int i) {
         if (nulls != null && nulls[i]) {
             return Value.Null.INSTANCE;
@@ -42,9 +54,13 @@ final class ColumnPage {
             case INT64 -> new Value.Int64(longs[i]);
             case FLOAT -> new Value.Float32(ints[i]);
             case DOUBLE -> new Value.Float64(longs[i]);
-            case BYTE_ARRAY -> new Value.ByteArray(Bytes.wrap(binaries[i]));
-            case FIXED_LEN_BYTE_ARRAY -> new Value.FixedLenByteArray(Bytes.wrap(binaries[i]));
+            case BYTE_ARRAY -> new Value.ByteArray(ownBytes(i));
+            case FIXED_LEN_BYTE_ARRAY -> new Value.FixedLenByteArray(ownBytes(i));
             case INT96, GROUP -> throw new IllegalStateException("not projectable: " + type);
         };
+    }
+
+    private Bytes ownBytes(int i) {
+        return arena == null ? Bytes.of(binaries[i]) : Bytes.of(arena, offsets[i], lengths[i]);
     }
 }

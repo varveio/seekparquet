@@ -8,9 +8,12 @@ package io.varve.seekparquet;
  * limit fails with {@link LimitExceededException}, which is not a refusal: the data may be valid.
  *
  * <p>{@code maxPageBytes} bounds a page's bytes, not the memory of decoding it: a page's values are
- * also held in arrays of one slot per value and, for byte-array columns, one array object per value
- * (tens of bytes each, beyond its content), which {@code maxPageValues} bounds. Each request decodes
- * its own pages, so concurrent requests add up; lower {@code maxPageValues} to bound a page's memory.
+ * also held in primitive, offset/length or reference arrays of one slot per value, which
+ * {@code maxPageValues} bounds. Keys and dictionary entries can additionally hold one byte-array
+ * object per value. Each request retains its projected-column scratch at its high-water capacities
+ * until the call ends, separately from dictionary storage and codec state. Concurrent requests add
+ * up; lower {@code maxPageValues} and caller concurrency to bound decoding memory. The shared index
+ * budget does not account for request scratch or owning results.
  * No limit bounds the part sources and footers a dataset keeps open for the parts it has touched (see
  * {@link Dataset}).
  *
