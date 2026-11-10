@@ -5,6 +5,26 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Fixed (differential testing against the Java reader): a page of a type other than BOOLEAN labelled RLE
+  made parquet-go decode its payload as runs of bit width 0 and allocate tens of GiB, killing the process; it
+  is `invalid_parquet` before anything is decoded. A PLAIN BYTE_ARRAY value overrunning its page could be
+  completed with the bytes after it (the next page's header, read with this one), or make parquet-go panic
+  where a planned scan or full validation reads a dictionary, which killed the process: every length is
+  checked against its page first, page payloads are sliced with their capacity ending at the page, and a
+  dictionary is decoded under the same recover as a page.
+- Fixed: a repeated run of an RLE/bit-packed stream (levels, dictionary indexes, Booleans) whose value does
+  not fit its bit width was read (a Boolean 2 as false); a definition level above 1 was counted as that many
+  values; a DATA_PAGE_V2 page's repetition-level bytes, a REQUIRED column's definition-level bytes and a
+  `num_nulls` that disagrees with the levels were not checked; a column chunk without an OffsetIndex could
+  hold a page of no rows, or pages past its row group's end; a DELTA_LENGTH_BYTE_ARRAY or DELTA_BYTE_ARRAY
+  page's lengths need not cover exactly the bytes after them (parquet-go's amd64 decoder then returned the
+  wrong values); a DELTA_BINARY_PACKED miniblock above 32 bits in an INT32 stream reached a size estimate
+  and failed as a limit. Each is now `invalid_parquet`, as in Java. A column chunk whose metadata names
+  another path or physical type than its schema leaf is `invalid_footer`.
+- Fixed: a dictionary-encoded page with no non-null value and no index bytes is read as all nulls, as Java
+  and PyArrow read it; a `sorting_columns` entry after the first that names no column is ignored (RG-1), and
+  row-group ordinals that differ from the row groups' positions are ignored (they serve encryption): both
+  were `invalid_footer`. parquet-go is given the footer without them.
 - Fixed: a page whose PLAIN or BYTE_STREAM_SPLIT payload held more values than its header declares (or a
   dictionary page more than its count) was decoded as its declared prefix, so full validation counted only
   those and could certify the page (CHECK-5). It is now `invalid_parquet`, in reads and in validation; a
