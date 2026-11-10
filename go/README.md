@@ -92,7 +92,7 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `PlanRanges`, `Verify`, `Metadata`, `Columns` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan`, `Split` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Column`, a part's column as its footer declares it; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `PlanRanges`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan`, `Split` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`; `Column`, a part's column as its footer declares it; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
 | `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
 | `cmd/seekparquet` | the `seekparquet validate` command |
@@ -246,6 +246,44 @@ hold its start, and value pages only for the rows it returns; a value column wit
 page headers walked from the start of its chunk, decoding only the pages it returns rows from. A listing
 resumes after each common prefix at the prefix's successor, skipping the pages wholly under it, but the page
 it lands on, and the pages around a prefix's boundaries, still decode some of the keys under it.
+
+**Optional slash listing index.** A server that needs predictable wide-prefix listing latency can call:
+
+```go
+stats, err := d.BuildListIndex(ctx, seekparquet.ListIndexOptions{
+    MaxBytes: 64 << 20, Workers: 2, MaxChangesPerPage: 8,
+})
+```
+
+Opening remains lazy. The build opens parts and decodes each key page once, recording directory-run
+starts as suffixes relative to a shared group anchor. Unchanged pages add nothing; flat groups retain
+nothing. Pages exceeding the change cap retain a marker and use ordinary decoding. The byte budget
+includes anchors, suffixes, slice capacity, containers and allocation overhead; the existing footer,
+routing and Parquet index caches keep their separate limits. Temporary decoding buffers are bounded
+by the worker count and ordinary reader limits, rather than this retained-storage budget.
+
+Complete groups are admitted in dataset order; admission stops before the first group exceeding the
+budget. Unreadable or disordered groups are omitted and reads still report their failures when encountered.
+Publication is atomic and safe alongside concurrent lists. Cancellation discards the attempt and allows
+retry. A nonempty completed index is reused by later build calls regardless of their options; an empty
+build retains no snapshot and can be retried. Defaults are 64 MiB, one worker, and eight changes per page.
+`ListIndexStats` reports indexed, skipped and failed groups, failed parts, pages, entries, retained bytes,
+budget exhaustion and duration. Counts of skipped groups cover visited groups, not unopened parts.
+
+Only `/` uses the index. Prefix cursors can start directly from a certified run anchor, including
+when page bounds share a long truncated prefix. The scan preserves its logical row after each answered skip and checks
+cancellation at every run; it allocates only the final anchor, without walking truncated page bounds.
+`ReadStats.ListIndexSkips` counts answered skips. When an index is present, `ListIndexDelimiter`,
+`ListIndexMissingGroup`, `ListIndexDensePage` and `ListIndexUnsafeRun` count every decline by reason.
+Without an index these counters stay zero. Results, exact rows, projected values and cursors are unchanged.
+
+The retained benchmark generates 2,000 directories × 3,000 keys with `local.WriteDir` defaults, plus
+six million flat keys with 1,000-byte numeric fields. Set `SEEKPARQUET_LIST_BENCH_DIR` to an existing
+parent directory to keep and reuse its `wide/` and `flat/` datasets (also used by the Java benchmark):
+
+```sh
+SEEKPARQUET_LIST_BENCH_DIR=/path/to/bench go test ./local -run '^$' -bench BenchmarkListBoundary -benchtime=5x
+```
 
 **Planned selections.** `d.PlanRanges(ctx, ranges, columns)` plans reading every row of a set of ranges
 (their bounds and cursors; rows several ranges select count once). Planning decodes the key pages at the two

@@ -5,6 +5,13 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- `Dataset.BuildListIndex` explicitly builds a bounded in-memory directory-run index for `/` listings.
+  Wide-prefix listings can resume from exact run anchors without decoding a page per prefix. Sparse,
+  shared-prefix storage, per-page change caps and group admission keep retained memory bounded; flat
+  groups retain nothing. Concurrent reads see an immutable snapshot; cancellation discards the build,
+  and omitted or failed groups retain the ordinary read path. Build statistics and `ReadStats` expose
+  retained bytes, entries, answered skips and decline reasons. No format or query-result change.
+
 - The conformance adapter claims the optional `planning` capability: it answers `plan` (PlanRanges, then
   Scan, Count and ProjectedBytes) for the conformance suite's planning cases.
 - `RangePlan.Split(ctx, n)` divides a selection plan into at most `n` shards along row-group boundaries,

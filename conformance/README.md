@@ -74,6 +74,12 @@ status is 0 when every selected case passed and there was no run error (includin
 skipped without counting against `reader` qualification. Their rows come from the oracle; their projected
 bytes are computed by `make_cases.py` from the fixtures' OffsetIndex page locations, never from a reader.
 
+The Go and Java adapters also accept `SEEKPARQUET_LIST_INDEX=1`: before a list request they build the
+reader's optional boundary index, then answer the same existing cases. Run both modes to check that the
+optimization changes no conformance answer. This is an adapter test setting, not a protocol capability;
+it adds no query semantics or fixture expectations. Index budgets, caps and page-count guards live in
+each implementation's tests and benchmarks.
+
 **Optional features.** Cases on `optional-codecs` (LZ4_RAW and BROTLI value columns) accept the values or
 `unsupported` (`unsupported_encoding`); full validation of it may be `complete` or `incomplete`, never
 `failed`.

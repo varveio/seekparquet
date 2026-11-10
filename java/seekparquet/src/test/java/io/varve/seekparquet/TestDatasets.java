@@ -56,6 +56,7 @@ final class TestDatasets {
     /** What to write, and which faults to inject. */
     static final class Spec {
         int rowsPerPage = 2;
+        int keyBoundBytes;
         int rowsPerGroup = 4;
         boolean noteColumn;
         boolean unique = true;
@@ -139,6 +140,21 @@ final class TestDatasets {
                     chunk.bytes.write(body);
                     chunk.locations.add(new PageLocation(pageOffset, h.size() + body.length, r0));
                     bounds(c, page, chunk);
+                    if (c == 0 && spec.keyBoundBytes > 0) {
+                        int last = chunk.mins.size() - 1;
+                        byte[] lo = chunk.mins.get(last).array();
+                        byte[] hi = chunk.maxs.get(last).array();
+                        if (lo.length > spec.keyBoundBytes) chunk.mins.set(last, ByteBuffer.wrap(Arrays.copyOf(lo, spec.keyBoundBytes)));
+                        if (hi.length > spec.keyBoundBytes) {
+                            byte[] shortHi = Arrays.copyOf(hi, spec.keyBoundBytes);
+                            int at = shortHi.length - 1;
+                            while (at >= 0 && shortHi[at] == (byte) 255) at--;
+                            if (at >= 0) {
+                                shortHi[at]++;
+                                chunk.maxs.set(last, ByteBuffer.wrap(Arrays.copyOf(shortHi, at + 1)));
+                            }
+                        }
+                    }
                     if (c == 0 && spec.nonMonotoneKeyBounds) {
                         chunk.mins.set(chunk.mins.size() - 1, ByteBuffer.wrap(new byte[] {'a'}));
                         if ((g0 / spec.rowsPerGroup + r0 / spec.rowsPerPage) % 2 == 0) {

@@ -155,6 +155,7 @@ public final class Adapter {
                     BigInteger remaining = limit(req);
                     ListQuery q = listQuery(req, pageSize(remaining));
                     Dataset d = dataset(req);
+                    if (System.getenv("SEEKPARQUET_LIST_INDEX") != null) d.buildListIndex();
                     out.append(response(id, "ok")).append(",\"entries\":[");
                     boolean first = true;
                     while (true) {

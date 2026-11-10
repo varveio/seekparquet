@@ -70,6 +70,7 @@ public final class Dataset implements AutoCloseable {
     private final ReentrantReadWriteLock lifecycle = new ReentrantReadWriteLock();
     private final Cancellation closing = Cancellation.create();
     private boolean closed;
+    private final java.util.concurrent.locks.ReentrantLock listBuild = new java.util.concurrent.locks.ReentrantLock();
 
     private Dataset(Manifest manifest, Parts parts, OpenOptions options) {
         this.manifest = manifest;
@@ -206,6 +207,50 @@ public final class Dataset implements AutoCloseable {
                 if (!Arrays.equals(keys[keys.length - 1], part.entry.maxKey().unsafeArray())) {
                     throw new RefusalException(RefusalCode.BOUNDS_MISMATCH, part.name, "the last key differs from the manifest's max_key");
                 }
+            }
+        }
+    }
+
+    /**
+     * Builds the optional slash listing index with default settings.
+     * @return the build statistics
+     */
+    public ListIndexStats buildListIndex() {
+        return buildListIndex(ListIndexOptions.DEFAULT, Cancellation.none());
+    }
+
+    /**
+     * Decodes each key page once and atomically publishes a bounded index of directory runs.
+     * Complete groups are admitted in dataset order, stopping before the first over-budget group.
+     * Failed groups remain on the ordinary read path, where their errors are reported as before.
+     * Concurrent lists use either the old path or the completed index. Cancellation discards this
+     * attempt and permits retry. After a nonempty successful build, including budget exhaustion, subsequent
+     * calls return its statistics regardless of options. Opening never builds the index.
+     *
+     * @param options retained byte budget, worker count and per-page change cap
+     * @param cancellation ends the build without publishing it
+     * @return the build statistics
+     * @throws CancellationException if cancelled, interrupted, or closed meanwhile
+     * @throws IllegalStateException if already closed
+     */
+    public ListIndexStats buildListIndex(ListIndexOptions options, Cancellation cancellation) {
+        try (Request request = begin(cancellation)) {
+            while (!listBuild.tryLock()) {
+                request.ctx.checkCancelled();
+                try { Thread.sleep(10); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new CancellationException("interrupted"); }
+            }
+            try {
+                request.ctx.checkCancelled();
+                if (parts.listIndex == null) {
+                    ListBoundaryIndex built = ListBoundaryIndex.build(parts, options, request.ctx);
+                    request.ctx.checkCancelled();
+                    if (built.groups.length > 0) parts.listIndex = built;
+                    return built.stats;
+                }
+                return parts.listIndex.stats;
+            } finally {
+                listBuild.unlock();
             }
         }
     }

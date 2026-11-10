@@ -7,6 +7,13 @@ independent of the specification's draft revisions.
 
 ### Changed
 
+- `Dataset.buildListIndex` explicitly builds a budgeted in-memory directory-run index for `/` listings,
+  with `ListIndexOptions` and `ListIndexStats`. Compact anchors avoid a key-page decode per wide prefix;
+  unchanged pages and flat groups add no boundary storage. Dense, failed and over-budget groups/pages
+  retain the ordinary read path. Publication is atomic, cancellation permits retry, and `ReadStats`
+  exposes answered skips and decline reasons. The original `ReadStats` constructor remains available.
+  No format or query-result change.
+
 - A value column chunk's dictionary is read in one request of the bytes before the first data page its
   OffsetIndex locates, instead of a header window and then the body.
 - `Column` is `(name, type, typeLength, logicalType, repetition, key, parts)`.

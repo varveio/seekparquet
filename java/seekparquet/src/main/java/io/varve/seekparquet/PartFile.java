@@ -513,15 +513,21 @@ final class PartFile implements AutoCloseable {
         ctx.enterGroup(ordinal, physical);
         byte[][] decoded = keyPage(physical, keyIndex(physical, ctx), 0, ctx);
         ctx.checkKeyPage(this, physical, 0, decoded);
+        return rememberFirst(physical, decoded[0]);
+    }
+
+    byte[] knownFirst(int physical) { return firstKeys.get(physical); }
+
+    byte[] rememberFirst(int physical, byte[] key) {
         synchronized (indexMemory) {
-            first = firstKeys.get(physical);
+            byte[] first = firstKeys.get(physical);
             if (first == null) {
-                indexMemory.reserve(32L + ((decoded[0].length + 7L) & ~7L));
-                first = decoded[0];
+                indexMemory.reserve(32L + ((key.length + 7L) & ~7L));
+                first = key;
                 firstKeys.set(physical, first);
             }
+            return first;
         }
-        return first;
     }
 
     /** Coalesces only when the unused gap is no larger than the useful index bytes. */

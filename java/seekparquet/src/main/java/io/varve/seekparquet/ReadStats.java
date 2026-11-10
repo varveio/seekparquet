@@ -41,6 +41,11 @@ package io.varve.seekparquet;
  *     successor instead of reading the keys under it
  * @param groupsSkipped the row groups a listing emitted as a common prefix without reading them; this
  *     reader has no such shortcut, so it is always zero (the Go reader's is not)
+ * @param listIndexSkips skips answered by the optional slash index
+ * @param listIndexDelimiter declines because the delimiter is not slash
+ * @param listIndexMissingGroup declines because a group was omitted
+ * @param listIndexDensePage declines because a dense page must be decoded
+ * @param listIndexUnsafeRun declines because the run cannot establish an exact successor
  * @param sourceReads the {@link io.varve.seekparquet.storage.PartSource#read} calls the request made
  *     on part files, footer, page index and page header reads included
  * @param sourceBytes the total length of those reads, the bytes requested
@@ -56,7 +61,33 @@ public record ReadStats(
         long prefixSkips,
         long groupsSkipped,
         long sourceReads,
-        long sourceBytes) {
+        long sourceBytes,
+        long listIndexSkips,
+        long listIndexDelimiter,
+        long listIndexMissingGroup,
+        long listIndexDensePage,
+        long listIndexUnsafeRun) {
+
+    /**
+     * Constructs counts from the original access paths, with zero optional-index counts.
+     * @param partsOpened parts opened
+     * @param keyPagesDecoded key pages decoded
+     * @param valuePagesDecoded value pages decoded
+     * @param keysDecoded keys decoded
+     * @param rowGroupsOpened row groups opened
+     * @param indexLoads indexes loaded
+     * @param pageIndexSeeks page index seeks
+     * @param prefixSkips prefix skips
+     * @param groupsSkipped groups skipped
+     * @param sourceReads source reads
+     * @param sourceBytes source bytes
+     */
+    public ReadStats(long partsOpened, long keyPagesDecoded, long valuePagesDecoded, long keysDecoded,
+            long rowGroupsOpened, long indexLoads, long pageIndexSeeks, long prefixSkips,
+            long groupsSkipped, long sourceReads, long sourceBytes) {
+        this(partsOpened, keyPagesDecoded, valuePagesDecoded, keysDecoded, rowGroupsOpened, indexLoads,
+                pageIndexSeeks, prefixSkips, groupsSkipped, sourceReads, sourceBytes, 0, 0, 0, 0, 0);
+    }
 
     /** Zero counts: a request that failed before it read. */
     static final ReadStats NONE = new ReadStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -66,11 +97,14 @@ public record ReadStats(
         return new ReadStats(partsOpened - o.partsOpened, keyPagesDecoded - o.keyPagesDecoded, valuePagesDecoded - o.valuePagesDecoded,
                 keysDecoded - o.keysDecoded, rowGroupsOpened - o.rowGroupsOpened, indexLoads - o.indexLoads,
                 pageIndexSeeks - o.pageIndexSeeks, prefixSkips - o.prefixSkips, groupsSkipped - o.groupsSkipped,
-                sourceReads - o.sourceReads, sourceBytes - o.sourceBytes);
+                sourceReads - o.sourceReads, sourceBytes - o.sourceBytes, listIndexSkips - o.listIndexSkips,
+                listIndexDelimiter - o.listIndexDelimiter, listIndexMissingGroup - o.listIndexMissingGroup,
+                listIndexDensePage - o.listIndexDensePage, listIndexUnsafeRun - o.listIndexUnsafeRun);
     }
 
     /** The counts of a request in progress. Confined to the request's thread. */
     static final class Counter {
+        long listIndexSkips, listIndexDelimiter, listIndexMissingGroup, listIndexDensePage, listIndexUnsafeRun;
         long partsOpened;
         long keyPagesDecoded;
         long valuePagesDecoded;
@@ -84,7 +118,8 @@ public record ReadStats(
 
         ReadStats snapshot() {
             return new ReadStats(partsOpened, keyPagesDecoded, valuePagesDecoded, keysDecoded, rowGroupsOpened, indexLoads,
-                    pageIndexSeeks, prefixSkips, 0, sourceReads, sourceBytes);
+                    pageIndexSeeks, prefixSkips, 0, sourceReads, sourceBytes, listIndexSkips, listIndexDelimiter,
+                    listIndexMissingGroup, listIndexDensePage, listIndexUnsafeRun);
         }
     }
 }

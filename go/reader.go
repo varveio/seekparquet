@@ -48,6 +48,9 @@ type reader struct {
 	columnsMu sync.Mutex
 	columns   map[string]column
 
+	listIndex atomic.Pointer[listIndex]
+	listBuild sync.Mutex
+
 	indexMemory atomic.Int64
 	// indexMu serializes retained-index admission and publication, including
 	// first keys. No file I/O or page decoding runs under this lock.
