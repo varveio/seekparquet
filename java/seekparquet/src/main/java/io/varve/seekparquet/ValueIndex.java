@@ -20,11 +20,6 @@ final class ValueIndex {
         this.size = size;
     }
 
-    /** Conservative retained size, including arrays and the map entry. */
-    long memoryBytes() {
-        return 192L + 24L * firstRow.length;
-    }
-
     static ValueIndex check(OffsetIndex oi, long groupRows, long start, long end) throws DataException {
         List<PageLocation> locations = oi.getPage_locations();
         int n = locations == null ? 0 : locations.size();

@@ -9,7 +9,8 @@ import "fmt"
 // Every limit is checked against what the files declare before anything
 // is allocated for it, and exceeding one fails the operation with an error
 // wrapping ErrLimitExceeded: a policy of the caller, not a refusal of the
-// data. A zero field takes its default. Within a page, the counts and
+// data. OffsetIndexMemory is the exception: it bounds a cache, and
+// exceeding it never fails an operation. A zero field takes its default. Within a page, the counts and
 // lengths its encodings declare are checked against the page header before
 // decoding, and a page that decompresses to more or fewer bytes than its
 // header declares is refused, so a small page cannot allocate beyond them.
@@ -51,6 +52,21 @@ type Limits struct {
 	// first-key bytes; not allocator overhead, footers, transient decoding
 	// buffers or query results. Default 1 GiB.
 	IndexMemory int64
+	// OffsetIndexMemory bounds the memory one Dataset retains for the
+	// checked page locations of projected column chunks' OffsetIndexes,
+	// which it keeps once loaded so that later requests do not read and
+	// decode them again. It is a cache, not a limit on reads: past it,
+	// each request loads the locations it needs and drops them, as if no
+	// cache were kept, and never with ErrLimitExceeded. It counts page
+	// entries plus a fixed per-chunk overhead, apart from IndexMemory. It
+	// does not count allocator overhead, the locations a request loads
+	// without keeping (including concurrent first loads of one chunk, all
+	// but one of which are dropped), or the cache's slots: every opened
+	// part allocates about 24 bytes per physical row group and 8 per
+	// column chunk on 64-bit platforms when it is checked, whatever the
+	// budget and even if no request projects a value column. Default
+	// 256 MiB.
+	OffsetIndexMemory int64
 }
 
 // withDefaults returns l with its zero fields set to their defaults.
@@ -67,6 +83,7 @@ func (l Limits) withDefaults() Limits {
 	set(&l.PageBytes, 64<<20)
 	set(&l.PageValues, 1<<24)
 	set(&l.IndexMemory, 1<<30)
+	set(&l.OffsetIndexMemory, 256<<20)
 	if l.Parts <= 0 {
 		l.Parts = 1_000_000
 	}

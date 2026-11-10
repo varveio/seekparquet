@@ -104,13 +104,14 @@ func TestReadStatsLookupAndRange(t *testing.T) {
 	checkStats(t, "point lookup", st, ReadStats{KeyPagesDecoded: 3, ValuePagesDecoded: 1, KeysDecoded: 54,
 		RowGroupsOpened: 3, IndexLoads: 2, SourceReads: 9}, src)
 
-	// The same lookup warm: the first keys and both indexes are kept, so the
-	// routing probes decode nothing; only the seek's page 3, and the value.
+	// The same lookup warm: the first keys, both key indexes and the size
+	// column's OffsetIndex are kept, so the routing probes decode nothing;
+	// only the seek's page 3, and the value.
 	st = ReadStats{}
 	_, err = d.Range(ctx, withStats(KeyRange([]byte("d3/f010"), 5, "size"), &st))
 	must(t, err)
 	checkStats(t, "warm point lookup", st, ReadStats{KeyPagesDecoded: 1, ValuePagesDecoded: 1, KeysDecoded: 18,
-		RowGroupsOpened: 1, SourceReads: 3}, src)
+		RowGroupsOpened: 1, SourceReads: 2}, src)
 
 	// A cold short range, d3/f015 up to d3/f030 (rows 65 to 79 of group 1):
 	// the same routing, then key pages 3 (rows 54 to 71) and 4 (72 to 89),

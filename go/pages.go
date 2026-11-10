@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"sort"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/encoding"
@@ -527,8 +529,13 @@ func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.
 		s.offsets = resize(s.offsets, n+1)
 		offsets = s.offsets[: 0 : n+1]
 	}
-	s.data = resize(s.data, size)
-	decoded, err := typ.Decode(typ.NewValues(s.data[:0:size], offsets), data, e)
+	// parquet-go v0.32.0's amd64 DELTA_BYTE_ARRAY decoder requests
+	// totalLength+padding in encoding/delta/byte_array_amd64.go; padding is
+	// defined in encoding/delta/delta_amd64.go. Give it that capacity to avoid
+	// regrowing every page. purego leaves it unused; exactly still checks length.
+	const parquetGoDeltaPadding = 64
+	s.data = resize(s.data, size+parquetGoDeltaPadding)
+	decoded, err := typ.Decode(typ.NewValues(s.data[:0:size+parquetGoDeltaPadding], offsets), data, e)
 	// Encodings may replace either destination; retain the actual returned buffers.
 	dataBytes, dataOffsets := decoded.Data()
 	s.data = decodedBuffer(s.data, dataBytes)
@@ -1109,17 +1116,48 @@ func (p *part) openColumn(ctx context.Context, physical int, name string, st *Re
 		c.scratch = scratch
 	}
 	cp := &columnPages{c: c, rows: p.footer.Metadata().RowGroups[physical].NumRows, off: c.start}
-	index, err := p.loadOffsetIndex(ctx, physical, col.index, st)
-	if err != nil {
-		return nil, c.corrupt(fmt.Errorf("the OffsetIndex: %w", err))
-	}
-	if index != nil {
-		if cp.locs, err = checkLocations(index, cp.rows, c.start, c.end); err != nil {
-			return nil, c.corrupt(err)
+	slot := &p.locs[physical][col.index]
+	if locs := slot.Load(); locs != nil {
+		cp.locs = *locs
+	} else {
+		index, err := p.loadOffsetIndex(ctx, physical, col.index, st)
+		if err != nil {
+			return nil, c.corrupt(fmt.Errorf("the OffsetIndex: %w", err))
 		}
+		if index != nil {
+			if cp.locs, err = checkLocations(index, cp.rows, c.start, c.end); err != nil {
+				return nil, c.corrupt(err)
+			}
+			p.r.keepLocations(slot, cp.locs)
+		}
+	}
+	if cp.locs != nil {
 		c.first = cp.locs[0].offset
 	}
 	return cp, nil
+}
+
+// keepLocations publishes a chunk's checked page locations to slot, for
+// later requests to share read-only, when Limits.OffsetIndexMemory has
+// room for them; otherwise they serve this request alone. Only checked
+// locations reach it: an OffsetIndex that fails to load or check is never
+// kept, so every request that touches it is refused. A request that finds
+// the locations kept makes no index read, so its SourceReads and
+// SourceBytes leave out the index bytes an earlier request read.
+func (r *reader) keepLocations(slot *atomic.Pointer[[]pageLoc], locs []pageLoc) {
+	size := int64(len(locs))*int64(unsafe.Sizeof(pageLoc{})) + 64
+	for {
+		used := r.locsMemory.Load()
+		if size > r.limits.OffsetIndexMemory-used {
+			return
+		}
+		if r.locsMemory.CompareAndSwap(used, used+size) {
+			break
+		}
+	}
+	if !slot.CompareAndSwap(nil, &locs) {
+		r.locsMemory.Add(-size) // a concurrent first use published first
+	}
 }
 
 // dictionaryBytes returns the extent of the chunk's dictionary page when

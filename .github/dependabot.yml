@@ -8,8 +8,10 @@ updates:
   - package-ecosystem: pip
     directory: /conformance/generators
     schedule: {interval: monthly}
+  # "/" scans .github/workflows only; the composite action under .github/actions pins its own
+  # actions (setup-go, cache), which are bumped only if its directory is named.
   - package-ecosystem: github-actions
-    directory: /
+    directories: ["/", "/.github/actions/*"]
     schedule: {interval: monthly}
   - package-ecosystem: gradle
     directory: /java

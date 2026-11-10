@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.parquet.column.Dictionary;
 import org.apache.parquet.format.ColumnChunk;
@@ -58,6 +57,7 @@ final class PartFile implements AutoCloseable {
     final String name;
     private final PartSource source;
     private final IndexMemory indexMemory;
+    private final OffsetIndexMemory offsetIndexMemory;
     final long size;
     private final FileMetaData meta;
     final PartSchema schema;
@@ -75,11 +75,17 @@ final class PartFile implements AutoCloseable {
     final Map<String, ColumnSpec> projectable;
     private final AtomicReferenceArray<KeyIndex> keyIndexes;
     private final AtomicReferenceArray<byte[]> firstKeys;
-    private final ConcurrentHashMap<Long, Optional<ValueIndex>> valueIndexes = new ConcurrentHashMap<>();
+    /**
+     * The checked OffsetIndexes of value column chunks, by physical row group and leaf ({@link #slot}),
+     * published on first use within {@link Limits#maxOffsetIndexMemoryBytes()} ({@link OffsetIndexMemory#keep}).
+     */
+    private final AtomicReferenceArray<ValueIndex> valueIndexes;
 
     private PartFile(int ordinal, ManifestPart entry, PartSource source, FileMetaData meta, PartSchema schema, int keyLeaf, boolean utf8Key,
-            int[] groups, long[] groupRows, Map<String, ColumnSpec> projectable, boolean unique, IndexMemory indexMemory) {
+            int[] groups, long[] groupRows, Map<String, ColumnSpec> projectable, boolean unique, IndexMemory indexMemory,
+            OffsetIndexMemory offsetIndexMemory) {
         this.indexMemory = indexMemory;
+        this.offsetIndexMemory = offsetIndexMemory;
         this.ordinal = ordinal;
         this.entry = entry;
         this.name = entry.path();
@@ -100,6 +106,7 @@ final class PartFile implements AutoCloseable {
         this.projectable = projectable;
         this.keyIndexes = new AtomicReferenceArray<>(groupRows.length);
         this.firstKeys = new AtomicReferenceArray<>(groupRows.length);
+        this.valueIndexes = new AtomicReferenceArray<>(groupRows.length * schema.leaves.size());
     }
 
     private RefusalException refuse(RefusalCode code, String detail) {
@@ -114,7 +121,8 @@ final class PartFile implements AutoCloseable {
     // Checking on first touch (CHECK-1)
 
     /** Opens a part and applies the CHECK-1 checks that concern it alone. Closes the source on failure. */
-    static PartFile open(DatasetStorage storage, Manifest manifest, int ordinal, ReadContext ctx, IndexMemory indexMemory) {
+    static PartFile open(DatasetStorage storage, Manifest manifest, int ordinal, ReadContext ctx, IndexMemory indexMemory,
+            OffsetIndexMemory offsetIndexMemory) {
         ManifestPart entry = manifest.parts().get(ordinal);
         ctx.checkCancelled();
         PartSource source;
@@ -132,7 +140,7 @@ final class PartFile implements AutoCloseable {
         }
         ctx.stats.partsOpened++;
         try {
-            return open(source, manifest, ordinal, entry, ctx, indexMemory);
+            return open(source, manifest, ordinal, entry, ctx, indexMemory, offsetIndexMemory);
         } catch (RuntimeException | Error e) {
             try {
                 source.close();
@@ -143,7 +151,8 @@ final class PartFile implements AutoCloseable {
         }
     }
 
-    private static PartFile open(PartSource source, Manifest manifest, int ordinal, ManifestPart entry, ReadContext ctx, IndexMemory indexMemory) {
+    private static PartFile open(PartSource source, Manifest manifest, int ordinal, ManifestPart entry, ReadContext ctx, IndexMemory indexMemory,
+            OffsetIndexMemory offsetIndexMemory) {
         String name = entry.path();
         long size = source.size();
         if (size != entry.bytes()) {
@@ -276,7 +285,8 @@ final class PartFile implements AutoCloseable {
             }
             projectable.put(f.name(), ColumnSpec.of(f.name(), f.leaf(), f.type(), f.typeLength(), f.repetition() == Column.Repetition.OPTIONAL));
         }
-        return new PartFile(ordinal, entry, source, meta, schema, key.leaf(), utf8Key, groups, groupRows, Map.copyOf(projectable), manifest.key().unique(), indexMemory);
+        return new PartFile(ordinal, entry, source, meta, schema, key.leaf(), utf8Key, groups, groupRows, Map.copyOf(projectable), manifest.key().unique(), indexMemory,
+                offsetIndexMemory);
     }
 
     private static FileMetaData readFooter(PartSource source, String name, long size, ReadContext ctx) {
@@ -658,8 +668,8 @@ final class PartFile implements AutoCloseable {
         long[] range = chunkRange(md);
         ByteBuffer body;
         PageHeader header;
-        Optional<ValueIndex> located = col.leaf() == keyLeaf ? null : valueIndexes.get(((long) physical << 32) | col.leaf());
-        long extent = located == null || located.isEmpty() ? 0 : dictionaryBytes(physical, col.leaf(), located.get());
+        ValueIndex located = col.leaf() == keyLeaf ? null : loadedValueIndex(physical, col.leaf(), key, ctx);
+        long extent = located == null ? 0 : dictionaryBytes(physical, col.leaf(), located);
         if (extent > 0) {
             // The OffsetIndex locates the first data page: what precedes it is the dictionary, read at once.
             checkPageSize(extent, ctx);
@@ -730,44 +740,69 @@ final class PartFile implements AutoCloseable {
         Codecs.checkSupported(rowGroup(physical).getColumns().get(leaf).getMeta_data().getCodec(), "part " + name);
     }
 
-    /** {@return the checked OffsetIndex of a value column chunk, or empty when it has none (COL-4)} */
+    private int slot(int physical, int leaf) {
+        return physical * schema.leaves.size() + leaf;
+    }
+
+    /** {@return a value column chunk's OffsetIndex if kept, or loaded earlier in this row group by this request; else null} */
+    private ValueIndex loadedValueIndex(int physical, int leaf, ReadContext.ChunkKey key, ReadContext ctx) {
+        ValueIndex kept = valueIndexes.get(slot(physical, leaf));
+        return kept != null ? kept : ctx.valueIndex(key);
+    }
+
+    /**
+     * {@return the checked OffsetIndex of a value column chunk, or empty when it has none (COL-4)} A checked
+     * index is kept for later requests while {@link Limits#maxOffsetIndexMemoryBytes()} has room; past it,
+     * the caller's request uses it alone, never failing for the budget. One that fails to read or check is
+     * never kept, so every request that needs it is refused. A kept index is not read again, so it is in no
+     * later request's {@code sourceReads} or {@code sourceBytes}.
+     */
     Optional<ValueIndex> valueIndex(int physical, int leaf, ReadContext ctx) {
-        long cacheKey = ((long) physical << 32) | leaf;
-        Optional<ValueIndex> cached = valueIndexes.get(cacheKey);
-        if (cached != null) {
-            return cached;
+        int slot = slot(physical, leaf);
+        ValueIndex kept = valueIndexes.get(slot);
+        if (kept != null) {
+            return Optional.of(kept);
         }
         ColumnChunk cc = rowGroup(physical).getColumns().get(leaf);
-        Optional<ValueIndex> result;
         if (!cc.isSetOffset_index_offset() || !cc.isSetOffset_index_length() || cc.getOffset_index_length() == 0) {
             return Optional.empty();
-        } else {
-            long off = cc.getOffset_index_offset();
-            int len = cc.getOffset_index_length();
-            String where = "row group " + physical + " column " + schema.leaves.get(leaf).getName() + ": ";
-            if (off <= 0 || len < 0 || off > size - len) {
-                throw refuse(RefusalCode.INVALID_PARQUET, where + "its OffsetIndex lies outside the part");
-            }
-            if (len > ctx.limits.maxIndexBytes()) {
-                throw new LimitExceededException("maxIndexBytes", len, ctx.limits.maxIndexBytes(), "part " + name);
-            }
-            long[] range = chunkRange(cc.getMeta_data());
-            byte[] raw = readBytes(off, len, ctx);
-            try {
-                result = Optional.of(ValueIndex.check(Thrift.offsetIndex(raw), groupRows[physical], range[0], range[1]));
-            } catch (DataException e) {
-                throw refuse(RefusalCode.INVALID_PARQUET, where + "its OffsetIndex is invalid: " + e.getMessage());
+        }
+        long off = cc.getOffset_index_offset();
+        int len = cc.getOffset_index_length();
+        String where = "row group " + physical + " column " + schema.leaves.get(leaf).getName() + ": ";
+        if (off <= 0 || len < 0 || off > size - len) {
+            throw refuse(RefusalCode.INVALID_PARQUET, where + "its OffsetIndex lies outside the part");
+        }
+        if (len > ctx.limits.maxIndexBytes()) {
+            throw new LimitExceededException("maxIndexBytes", len, ctx.limits.maxIndexBytes(), "part " + name);
+        }
+        long[] range = chunkRange(cc.getMeta_data());
+        byte[] raw = readBytes(off, len, ctx);
+        ValueIndex index;
+        try {
+            index = ValueIndex.check(Thrift.offsetIndex(raw), groupRows[physical], range[0], range[1]);
+        } catch (DataException e) {
+            throw refuse(RefusalCode.INVALID_PARQUET, where + "its OffsetIndex is invalid: " + e.getMessage());
+        }
+        offsetIndexMemory.keep(valueIndexes, slot, index);
+        return Optional.of(index);
+    }
+
+    /** {@return whether a value column chunk's OffsetIndex is kept} */
+    boolean keptValueIndex(int physical, int leaf) {
+        return valueIndexes.get(slot(physical, leaf)) != null;
+    }
+
+    /** {@return the bytes charged for this part's kept OffsetIndexes, recomputed from its slots; for tests} */
+    long keptValueIndexBytes() {
+        long bytes = 0;
+        for (int i = 0; i < valueIndexes.length(); i++) {
+            ValueIndex index = valueIndexes.get(i);
+            if (index != null) {
+                bytes += OffsetIndexMemory.charge(index);
             }
         }
-        synchronized (indexMemory) {
-            Optional<ValueIndex> previous = valueIndexes.get(cacheKey);
-            if (previous != null) {
-                return previous;
-            }
-            indexMemory.reserve(result.orElseThrow().memoryBytes());
-            valueIndexes.put(cacheKey, result);
-            return result;
-        }
+        return bytes;
     }
 
     /** {@return the value of a projected column at a row of a physical row group} */
@@ -788,9 +823,15 @@ final class PartFile implements AutoCloseable {
         ColumnMetaData md = rowGroup(physical).getColumns().get(col.leaf()).getMeta_data();
         Codecs.checkSupported(md.getCodec(), "part " + name);
         long groupRowCount = groupRows[physical];
-        Optional<ValueIndex> index = valueIndex(physical, col.leaf(), ctx);
-        if (index.isPresent()) {
-            ValueIndex vi = index.get();
+        ValueIndex vi = loadedValueIndex(physical, col.leaf(), key, ctx);
+        if (vi == null) {
+            vi = valueIndex(physical, col.leaf(), ctx).orElse(null);
+            if (vi != null && !keptValueIndex(physical, col.leaf())) {
+                // Past maxOffsetIndexMemoryBytes: keep it for the rest of this row group, for this request alone.
+                ctx.putValueIndex(key, vi);
+            }
+        }
+        if (vi != null) {
             if (ctx.planned && ctx.dictionary(key) == null && dictionaryBytes(physical, col.leaf(), vi) > 0) {
                 try {
                     dictionary(physical, col, ctx);

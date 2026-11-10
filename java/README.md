@@ -225,6 +225,7 @@ indexes taken and loaded, page index seeks, prefix skips, and the storage reads 
 | `RangePlan.Split(ctx, n)` | `split(n, cancellation)` | No shard is an empty list, not nil. |
 | `Dataset.Columns(ctx, i)` | `columns(i, cancellation)` | An index outside the parts is `IndexOutOfBoundsException`; `Column.parts()` is 1. |
 | `Column{Logical *format.LogicalType}` | `Column.logicalType()`: `Optional<LogicalType>` | `LogicalType` is a sealed interface of records, so the API does not expose parquet-java's Thrift classes. |
+| `Limits.OffsetIndexMemory` | `Limits.maxOffsetIndexMemoryBytes()`, `withMaxOffsetIndexMemoryBytes(bytes)` | Same default (256 MiB), charge (32 bytes per page plus 64 per chunk) and fallback past it. Go's zero means the default; Java's limits must be positive. |
 | `ReadStats` via `Range.Stats`, `List.Stats` | `ReadStats` via a `Consumer<ReadStats>` argument | Same fields and counting rules. `groupsSkipped` is always 0: Java's listing has no row-group shortcut. The access paths differ, so counts for the same request can differ. |
 
 ### Options, limits and cancellation
@@ -272,9 +273,16 @@ arrays are additional, separately bounded by `maxPageValues` times their element
 dictionary entries, key pages and boundary logs add memory beyond those arrays. Capacities are not charged to the shared index budget. Caller-controlled concurrency multiplies
 this transient storage; these limits do not provide an aggregate request-memory budget.
 `Limits.withMaxIndexMemoryBytes(bytes)` sets a dataset-wide budget for retained
-key and value indexes and retained exact row-group first keys (256 MiB by default), using conservative estimates of their decoded arrays,
+key indexes and retained exact row-group first keys (256 MiB by default), using conservative estimates of their decoded arrays,
 bounds and cache entries. Publication is charged once under a shared lock; a budget failure leaves
-already cached indexes usable. Delta decoders also check padded scratch arrays against `maxPageBytes`
+already cached indexes usable. A projected column chunk's OffsetIndex is read and checked the first time a
+request needs it and its page locations kept, within `Limits.withMaxOffsetIndexMemoryBytes(bytes)` (default
+256 MiB, apart from `maxIndexMemoryBytes`); past that budget each request reads it again, never failing for it.
+The budget bounds an accounting charge, not heap: 32 bytes per kept page plus 64 per kept chunk, as Go's
+`Limits.OffsetIndexMemory` counts; JVM headers and alignment can exceed it. It leaves out each opened part's
+slot array (one reference per physical row group and leaf, allocated even for key-only requests or a 1-byte
+budget), transient Thrift data, duplicate loads by concurrent first uses, and the locations a request holds
+for itself past the budget. Delta decoders also check padded scratch arrays against `maxPageBytes`
 before initialization. Page and entry limits are not a total request-memory guarantee: concurrent
 requests each retain their own pages, dictionaries and results. A size above a limit fails with
 `LimitExceededException`, which is not a refusal.

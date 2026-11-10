@@ -36,57 +36,78 @@ func listIndexRandomKeys(rng *rand.Rand, n int) []string {
 }
 
 func TestListIndexRandomizedDifferential(t *testing.T) {
-	for seed := int64(0); seed < 25; seed++ {
-		rng := rand.New(rand.NewSource(seed))
-		keys := listIndexRandomKeys(rng, 200+rng.Intn(300))
-		repeated := seed%2 == 1
-		if repeated {
-			var more []string
-			for _, k := range keys {
-				for r := rng.Intn(3); r >= 0; r-- {
-					more = append(more, k)
+	// Keep all 25 seeds, with at most two fixtures and index builds active.
+	// Seed subtests own their files and handles, releasing both after each seed.
+	for worker := range 2 {
+		t.Run(fmt.Sprintf("worker-%d", worker), func(t *testing.T) {
+			t.Parallel()
+			for seed := int64(0); seed < 25; seed++ {
+				// Alternate pairs so each worker exercises both unique and repeated keys.
+				if (seed/2)%2 != int64(worker) {
+					continue
 				}
+				t.Run(fmt.Sprintf("seed-%d", seed), func(t *testing.T) {
+					testListIndexRandomSeed(t, seed)
+				})
 			}
-			keys = more
+		})
+	}
+}
+
+func testListIndexRandomSeed(t *testing.T, seed int64) {
+	rng := rand.New(rand.NewSource(seed))
+	keys := listIndexRandomKeys(rng, 200+rng.Intn(300))
+	repeated := seed%2 == 1
+	if repeated {
+		var more []string
+		for _, k := range keys {
+			for r := rng.Intn(3); r >= 0; r-- {
+				more = append(more, k)
+			}
 		}
-		// split into parts at distinct-key boundaries
-		var ps [][]string
-		cut := len(keys) / 3
-		for cut < len(keys) && keys[cut] == keys[cut-1] {
-			cut++
+		keys = more
+	}
+	// split into parts at distinct-key boundaries
+	var ps [][]string
+	cut := len(keys) / 3
+	for cut < len(keys) && keys[cut] == keys[cut-1] {
+		cut++
+	}
+	ps = append(ps, keys[:cut], keys[cut:])
+	geo := testutil.Part{GroupRows: 40 + rng.Intn(60), PageBytes: 60 + rng.Intn(200), IndexSizeLimit: 8}
+	fixture := parts(geo, ps...)
+	fixture.RepeatedKeys = repeated
+	dir := write(t, fixture)
+	plain := open(t, dir, Options{})
+	var cases []listIndexCase
+	prefixes := []string{"", "a", "a/", "b/", "a/a", "//", "/", "\xff", "a/b/", "ab"}
+	for _, pfx := range prefixes {
+		for _, limit := range []int{1, 3, 1000} {
+			q := List{Prefix: []byte(pfx), Delimiter: '/', Limit: limit, Columns: []string{"size"}}
+			for page := 0; page < 400; page++ {
+				want, err := plain.List(ctx, q)
+				cases = append(cases, listIndexCase{query: q, want: want, err: err})
+				if len(want) < limit {
+					break
+				}
+				q.Cursor = want[len(want)-1].Cursor()
+			}
 		}
-		ps = append(ps, keys[:cut], keys[cut:])
-		geo := testutil.Part{GroupRows: 40 + rng.Intn(60), PageBytes: 60 + rng.Intn(200), IndexSizeLimit: 8}
-		fixture := parts(geo, ps...)
-		fixture.RepeatedKeys = repeated
-		dir := write(t, fixture)
-		plain := open(t, dir, Options{})
-		for _, cap := range []int{1, 3, 1000} {
-			for _, budget := range []int64{600, 3000, 1 << 24} {
+	}
+	for _, cap := range []int{1, 3, 1000} {
+		for _, budget := range []int64{600, 3000, 1 << 24} {
+			t.Run(fmt.Sprintf("cap-%d/budget-%d", cap, budget), func(t *testing.T) {
 				idx := open(t, dir, Options{})
 				if _, err := idx.BuildListIndex(ctx, ListIndexOptions{MaxBytes: budget, MaxChangesPerPage: cap, Workers: 3}); err != nil {
 					t.Fatal(err)
 				}
-				prefixes := []string{"", "a", "a/", "b/", "a/a", "//", "/", "\xff", "a/b/", "ab"}
-				for _, pfx := range prefixes {
-					for _, limit := range []int{1, 3, 1000} {
-						q := List{Prefix: []byte(pfx), Delimiter: '/', Limit: limit, Columns: []string{"size"}}
-						var cur *Cursor
-						for page := 0; page < 400; page++ {
-							q.Cursor = cur
-							want, e1 := plain.List(ctx, q)
-							got, e2 := idx.List(ctx, q)
-							if (e1 == nil) != (e2 == nil) || !reflect.DeepEqual(want, got) {
-								t.Fatalf("seed=%d cap=%d budget=%d prefix=%q limit=%d cursor=%+v err=%v/%v\nwant=%v\ngot =%v", seed, cap, budget, pfx, limit, cur, e1, e2, entriesOf(want), entriesOf(got))
-							}
-							if len(want) < limit {
-								break
-							}
-							cur = want[len(want)-1].Cursor()
-						}
+				for _, tc := range cases {
+					got, err := idx.List(ctx, tc.query)
+					if (tc.err == nil) != (err == nil) || !reflect.DeepEqual(tc.want, got) {
+						t.Fatalf("seed=%d cap=%d budget=%d prefix=%q limit=%d cursor=%+v err=%v/%v\nwant=%v\ngot =%v", seed, cap, budget, tc.query.Prefix, tc.query.Limit, tc.query.Cursor, tc.err, err, entriesOf(tc.want), entriesOf(got))
 					}
 				}
-			}
+			})
 		}
 	}
 }
