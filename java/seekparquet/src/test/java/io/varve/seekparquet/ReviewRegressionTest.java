@@ -51,7 +51,7 @@ class ReviewRegressionTest {
         PageHeader header = new PageHeader(PageType.DATA_PAGE, body.length, body.length)
                 .setData_page_header(new DataPageHeader(count, encoding, Encoding.RLE, Encoding.RLE));
         return PageDecoder.decodeData(header, ByteBuffer.wrap(body), ColumnSpec.of("value", 0, type, 0, false),
-                CompressionCodec.UNCOMPRESSED, dictionary, Limits.DEFAULT, "test page");
+                CompressionCodec.UNCOMPRESSED, dictionary, Limits.DEFAULT, "test page", null, new Codecs.State());
     }
 
     /** A page whose header carries a CRC must match it, as in Go; a page without one is not checked. */
@@ -68,10 +68,10 @@ class ReviewRegressionTest {
             }
             PageDecoder.DictionarySupplier none = null;
             org.junit.jupiter.api.function.Executable read = () -> PageDecoder.decodeData(header, ByteBuffer.wrap(body),
-                    ColumnSpec.of("value", 0, Column.Type.INT64, 0, false), CompressionCodec.UNCOMPRESSED, none, Limits.DEFAULT, "test page");
+                    ColumnSpec.of("value", 0, Column.Type.INT64, 0, false), CompressionCodec.UNCOMPRESSED, none, Limits.DEFAULT, "test page", null, new Codecs.State());
             if (stored == null || stored == (int) crc.getValue()) {
                 assertEquals(7, PageDecoder.decodeData(header, ByteBuffer.wrap(body), ColumnSpec.of("value", 0, Column.Type.INT64, 0, false),
-                        CompressionCodec.UNCOMPRESSED, none, Limits.DEFAULT, "test page").longs[0]);
+                        CompressionCodec.UNCOMPRESSED, none, Limits.DEFAULT, "test page", null, new Codecs.State()).longs[0]);
             } else {
                 assertThrows(DataException.class, read);
             }
@@ -102,7 +102,7 @@ class ReviewRegressionTest {
         PageHeader dictHeader = new PageHeader(PageType.DICTIONARY_PAGE, 16, 16)
                 .setDictionary_page_header(new org.apache.parquet.format.DictionaryPageHeader(2, Encoding.PLAIN));
         org.apache.parquet.column.Dictionary dict = PageDecoder.decodeDictionary(dictHeader, ByteBuffer.wrap(entries),
-                ColumnSpec.of("value", 0, Column.Type.INT64, 0, false), CompressionCodec.UNCOMPRESSED, Limits.DEFAULT, "test");
+                ColumnSpec.of("value", 0, Column.Type.INT64, 0, false), CompressionCodec.UNCOMPRESSED, Limits.DEFAULT, "test", null, new Codecs.State());
         ColumnPage indexed = decode(new byte[] {1, 0, 1, 4, 0}, Encoding.RLE_DICTIONARY, Column.Type.INT64, 2, () -> dict);
         assertEquals(10, indexed.longs[0]);
         assertEquals(10, indexed.longs[1]);
@@ -112,7 +112,7 @@ class ReviewRegressionTest {
         PageHeader nullHeader = new PageHeader(PageType.DATA_PAGE, 8, 8)
                 .setData_page_header(new DataPageHeader(2, Encoding.RLE_DICTIONARY, Encoding.RLE, Encoding.RLE));
         ColumnPage nulls = PageDecoder.decodeData(nullHeader, ByteBuffer.wrap(allNull.array()), ColumnSpec.of("value", 0, Column.Type.INT64, 0, true),
-                CompressionCodec.UNCOMPRESSED, () -> dict, Limits.DEFAULT, "test page");
+                CompressionCodec.UNCOMPRESSED, () -> dict, Limits.DEFAULT, "test page", null, new Codecs.State());
         assertArrayEquals(new boolean[] {true, true}, nulls.nulls);
         // Definition levels: an empty run of 0 (null), then three 1s: no row is null.
         byte[] levels = {0, 0, 6, 1};
@@ -121,7 +121,7 @@ class ReviewRegressionTest {
         PageHeader optHeader = new PageHeader(PageType.DATA_PAGE, optional.capacity(), optional.capacity())
                 .setData_page_header(new DataPageHeader(3, Encoding.PLAIN, Encoding.RLE, Encoding.RLE));
         ColumnPage defined = PageDecoder.decodeData(optHeader, ByteBuffer.wrap(optional.array()), ColumnSpec.of("value", 0, Column.Type.INT64, 0, true),
-                CompressionCodec.UNCOMPRESSED, null, Limits.DEFAULT, "test page");
+                CompressionCodec.UNCOMPRESSED, null, Limits.DEFAULT, "test page", null, new Codecs.State());
         assertEquals(null, defined.nulls == null ? null : java.util.stream.IntStream.range(0, 3).filter(i -> defined.nulls[i]).boxed().findFirst().orElse(null));
         assertEquals(3, defined.longs[2]);
     }
@@ -184,7 +184,7 @@ class ReviewRegressionTest {
                     .setIs_compressed(false);
             PageHeader h = new PageHeader(PageType.DATA_PAGE_V2, fault == 2 ? 0 : 4, 4).setData_page_header_v2(v2);
             assertThrows(DataException.class, () -> PageDecoder.decodeData(h, ByteBuffer.wrap(new byte[] {42, 0, 0, 0}),
-                    col, CompressionCodec.UNCOMPRESSED, null, Limits.DEFAULT, "test"));
+                    col, CompressionCodec.UNCOMPRESSED, null, Limits.DEFAULT, "test", null, new Codecs.State()));
         }
     }
 

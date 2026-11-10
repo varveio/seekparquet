@@ -6,6 +6,7 @@ package io.varve.seekparquet;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -47,8 +48,6 @@ class PageReuseTest {
         Arrays.fill(s.longs, -99);
         Arrays.fill(s.offsets, -99);
         Arrays.fill(s.lengths, -99);
-        if (s.entries != null) for (byte[] entry : s.entries) if (entry != null) Arrays.fill(entry, (byte) 0xa5);
-        for (byte[] binary : s.binaries) if (binary != null) Arrays.fill(binary, (byte) 0xa5);
         Arrays.fill(s.binaries, null);
     }
 
@@ -92,16 +91,16 @@ class PageReuseTest {
                         List<Row> got = Queries.range(d.parts(), range, request.ctx);
                         List<Continuation.RowPosition> cursors = got.stream().map(Row::continuation).toList();
                         PartFile last = d.parts().get(1, request.ctx);
-                        poison(request.ctx.scratch(last.projectable.get("size")));
-                        poison(request.ctx.scratch(last.projectable.get("note")));
+                        poison(last.scratch(last.groups[last.groups.length - 1], last.projectable.get("size"), request.ctx));
+                        poison(last.scratch(last.groups[last.groups.length - 1], last.projectable.get("note"), request.ctx));
                         assertEquals(want, got);
                         assertEquals(want.stream().map(Row::continuation).toList(), cursors);
                     }
                     try (Dataset.Request request = d.begin(Cancellation.none())) {
                         List<ListEntry> got = Queries.list(d.parts(), list, request.ctx);
                         PartFile last = d.parts().get(1, request.ctx);
-                        poison(request.ctx.scratch(last.projectable.get("size")));
-                        poison(request.ctx.scratch(last.projectable.get("note")));
+                        poison(last.scratch(last.groups[last.groups.length - 1], last.projectable.get("size"), request.ctx));
+                        poison(last.scratch(last.groups[last.groups.length - 1], last.projectable.get("note"), request.ctx));
                         assertEquals(want.stream().map(ListEntry.RowEntry::new).toList(), got);
                     }
                     List<Row> scanned = new ArrayList<>();
@@ -120,8 +119,8 @@ class PageReuseTest {
         }
     }
 
-    /** Mutate the cursor's page too: owning row keys/continuations must not depend on key deferral. */
-    @Test void rowBoundaryCopiesKeysAndBinaryValues() throws Exception {
+    /** Keys stay on the permanent path, while result binary arenas are copied before reuse. */
+    @Test void keyPagesHaveNoScratchAndResultsSurviveValueReuse() throws Exception {
         var spec = new TestDatasets.Spec();
         spec.noteColumn = true;
         Path root = TestDatasets.write(tmp, spec, List.of(List.of(TestDatasets.TestRow.of("a/", 1), TestDatasets.TestRow.of("b/", 2))));
@@ -130,15 +129,22 @@ class PageReuseTest {
             assertTrue(cursor.seek(null, false));
             Row row = Queries.row(cursor, COLUMNS, request.ctx);
             Continuation continuation = row.continuation();
-            Arrays.fill(cursor.key(), (byte) 0xa5);
-            poison(request.ctx.scratch(cursor.partFile().projectable.get("note")));
+            PartFile part = cursor.partFile();
+            assertNull(part.scratch(0, part.keySpec, request.ctx));
+            assertSame(cursor.key(), row.key().unsafeArray());
+            assertSame(row.key(), ((Value.ByteArray) row.values().get(2)).value());
+            poison(part.scratch(0, part.projectable.get("note"), request.ctx));
+            assertTrue(cursor.next());
+            Row next = Queries.row(cursor, COLUMNS, request.ctx);
+            assertNotSame(row.key().unsafeArray(), next.key().unsafeArray());
             assertEquals(expected(TestDatasets.TestRow.of("a/", 1)), row);
             assertEquals(Bytes.utf8("a/"), continuation.bytes());
         }
         // LIST-8 exact rows and common-prefix continuations own the same boundary.
         try (Dataset d = Dataset.open(root); Dataset.Request request = d.begin(Cancellation.none())) {
             List<ListEntry> entries = Queries.list(d.parts(), ListQuery.builder((byte) '/').limit(10).columns(COLUMNS).build(), request.ctx);
-            poison(request.ctx.scratch(d.parts().get(0, request.ctx).projectable.get("note")));
+            PartFile part = d.parts().get(0, request.ctx);
+            poison(part.scratch(0, part.projectable.get("note"), request.ctx));
             var first = (ListEntry.CommonPrefix) entries.getFirst();
             assertEquals(Bytes.utf8("a/"), first.prefix());
             assertEquals(expected(TestDatasets.TestRow.of("a/", 1)), first.exact().orElseThrow());
@@ -151,6 +157,30 @@ class PageReuseTest {
         return ByteBuffer.allocate(4 + bytes.length).order(ByteOrder.LITTLE_ENDIAN).putInt(bytes.length).put(bytes).array();
     }
 
+    @Test void keyDictionariesAndPagesUsePermanentBacking() {
+        try (Dataset d = Dataset.open(ConformanceFixturesTest.fixture("datasets/encodings"));
+                Dataset.Request request = d.begin(Cancellation.none())) {
+            ReadContext ctx = request.ctx;
+            PartFile part = d.parts().get(0, ctx);
+            ctx.enterGroup(part.ordinal, 0);
+            assertNull(part.scratch(0, part.keySpec, ctx));
+            byte[][] first = part.keyPage(0, part.keyIndex(0, ctx), 0, ctx);
+            assertNotNull(ctx.dictionary(new ReadContext.ChunkKey(part.ordinal, 0, part.keyLeaf)));
+            assertSame(first[0], part.rememberFirst(0, first[0]));
+            byte[] expected = first[0].clone();
+            ctx.enterGroup(part.ordinal, 1);
+            assertNull(part.scratch(1, part.keySpec, ctx));
+            part.keyPage(1, part.keyIndex(1, ctx), 0, ctx);
+            ctx.enterGroup(part.ordinal, 0);
+            byte[][] again = part.keyPage(0, part.keyIndex(0, ctx), 0, ctx);
+            assertNotSame(first, again);
+            assertNotSame(first[0], again[0]);
+            assertArrayEquals(expected, first[0]);
+            assertArrayEquals(expected, again[0]);
+            assertSame(first[0], part.knownFirst(0));
+        }
+    }
+
     private static ColumnPage decode(byte[] body, int rows, ColumnSpec col, Encoding encoding,
             PageDecoder.DictionarySupplier dictionary, PageScratch scratch, Codecs.State codecs) throws DataException {
         var header = new PageHeader(PageType.DATA_PAGE, body.length, body.length)
@@ -159,37 +189,98 @@ class PageReuseTest {
                 dictionary, Limits.DEFAULT, "test", scratch, codecs);
     }
 
-    @Test void lazyDictionaryHasSeparateBackingAndSurvivesPlainFallback() throws Exception {
-        var s = new PageScratch();
-        var codecs = new Codecs.State();
-        var col = ColumnSpec.of("binary", 1, Column.Type.BYTE_ARRAY, 0, false);
-        Dictionary[] dictionary = new Dictionary[1];
-        PageDecoder.DictionarySupplier supplier = () -> {
-            if (dictionary[0] == null) {
-                byte[] body = binary("dictionary");
-                var h = new PageHeader(PageType.DICTIONARY_PAGE, body.length, body.length)
-                        .setDictionary_page_header(new DictionaryPageHeader(1, Encoding.PLAIN));
-                dictionary[0] = PageDecoder.decodeDictionary(h, ByteBuffer.wrap(body), col,
-                        CompressionCodec.UNCOMPRESSED, Limits.DEFAULT, "dictionary", s, codecs);
+    @Test void dictionariesOwnFreshEntriesAcrossFallbackAndChunkReplacement() throws Exception {
+        for (Column.Type type : List.of(Column.Type.BYTE_ARRAY, Column.Type.FIXED_LEN_BYTE_ARRAY)) {
+            var s = new PageScratch();
+            var codecs = new Codecs.State();
+            var col = ColumnSpec.of("binary", 1, type, type == Column.Type.BYTE_ARRAY ? 0 : 10, false);
+            Dictionary[] dictionary = new Dictionary[1];
+            PageDecoder.DictionarySupplier supplier = () -> {
+                if (dictionary[0] == null) dictionary[0] = dictionary("dictionary", col, s, codecs);
+                return dictionary[0];
+            };
+            byte[] ids = {1, 4, 0}; // two references to entry zero
+            ColumnPage first = decode(ids, 2, col, Encoding.RLE_DICTIONARY, supplier, s, codecs);
+            Value kept = first.value(0);
+            Bytes keptBytes = type == Column.Type.BYTE_ARRAY ? ((Value.ByteArray) kept).value()
+                    : ((Value.FixedLenByteArray) kept).value();
+            byte[][] entries = s.entries;
+            assertNotSame(s.plain, s.dictionaryPlain);
+            assertSame(entries[0], keptBytes.unsafeArray(), "results share the immutable dictionary entry");
+            assertSame(first.binaries[0], first.binaries[1]);
+            byte[] fallback = type == Column.Type.BYTE_ARRAY ? binary("plain-data") : Bytes.utf8("plain-data").toByteArray();
+            decode(fallback, 1, col, Encoding.PLAIN, supplier, s, codecs);
+            assertTrue(Arrays.stream(s.binaries).allMatch(java.util.Objects::isNull));
+            ColumnPage again = decode(ids, 2, col, Encoding.RLE_DICTIONARY, supplier, s, codecs);
+            assertSame(entries, s.entries, "dictionary entries are cached across data pages");
+            assertEquals(kept, again.value(1));
+            poison(s); // Only storage production reuses, never the entry bytes themselves.
+            assertEquals(Bytes.utf8("dictionary"), keptBytes);
+            byte[] backing = s.dictionaryPlain;
+            s.enterGroup();
+            assertNull(s.entries);
+            assertNull(s.dictionary);
+            assertTrue(Arrays.stream(s.binaries).allMatch(java.util.Objects::isNull));
+            dictionary[0] = dictionary("new-entry!", col, s, codecs);
+            ColumnPage replaced = decode(ids, 2, col, Encoding.RLE_DICTIONARY, supplier, s, codecs);
+            assertSame(backing, s.dictionaryPlain, "dictionary output capacity is reused");
+            assertNotSame(entries, s.entries, "a new dictionary gets a fresh entries table");
+            assertNotSame(entries[0], s.entries[0]);
+            assertArrayEquals(Bytes.utf8("new-entry!").toByteArray(), replaced.binaries[0]);
+            assertEquals(Bytes.utf8("dictionary"), keptBytes);
+        }
+    }
+
+    private static Dictionary dictionary(String text, ColumnSpec col, PageScratch s, Codecs.State codecs) throws DataException {
+        byte[] body = col.type() == Column.Type.BYTE_ARRAY ? binary(text) : Bytes.utf8(text).toByteArray();
+        var h = new PageHeader(PageType.DICTIONARY_PAGE, body.length, body.length)
+                .setDictionary_page_header(new DictionaryPageHeader(1, Encoding.PLAIN));
+        return PageDecoder.decodeDictionary(h, ByteBuffer.wrap(body), col, CompressionCodec.UNCOMPRESSED,
+                Limits.DEFAULT, "dictionary", s, codecs);
+    }
+
+    /** A key probe can set activeGroup ahead of the cursor without a subsequent enterGroup clearing it. */
+    @Test void probeThenMoveAcrossGroupsEvictsTheSlotsPreviousChunk() throws Exception {
+        for (boolean sequential : List.of(false, true)) {
+            var spec = new TestDatasets.Spec();
+            spec.noteColumn = true;
+            spec.dictionaryNote = true;
+            spec.rowsPerGroup = 2;
+            spec.rowsPerPage = 2;
+            spec.omitValueOffsetIndexes = sequential;
+            Path root = TestDatasets.write(tmp.resolve("probe-" + sequential), spec, List.of(List.of(
+                    TestDatasets.TestRow.of("a", 1), TestDatasets.TestRow.of("b", 2),
+                    TestDatasets.TestRow.of("c", 4), TestDatasets.TestRow.of("d", 5))));
+            try (Dataset d = Dataset.open(root); Dataset.Request request = d.begin(Cancellation.none())) {
+                ReadContext ctx = request.ctx;
+                KeyCursor cursor = new KeyCursor(d.parts(), null, ctx);
+                assertTrue(cursor.seekOrdinal(0));
+                PartFile part = cursor.partFile();
+                assertNull(part.knownFirst(1));
+                assertArrayEquals(Bytes.utf8("c").toByteArray(), part.firstKey(1, ctx)); // probe ahead
+                Row first = Queries.row(cursor, COLUMNS, ctx); // project group 0 after the group 1 probe
+                ColumnSpec note = part.projectable.get("note");
+                var old = new ReadContext.ChunkKey(part.ordinal, 0, note.leaf());
+                PageScratch slot = part.scratch(0, note, ctx);
+                byte[][] entries = slot.entries;
+                assertNotNull(ctx.valuePage(old));
+                assertNotNull(ctx.dictionary(old));
+                assertEquals(old, slot.owner);
+                assertTrue(cursor.next());
+                assertTrue(cursor.next()); // activeGroup already says group 1, so this does not clear caches
+                Row next = Queries.row(cursor, COLUMNS, ctx);
+                assertEquals(expected(TestDatasets.TestRow.of("c", 4)), next);
+                assertEquals(new ReadContext.ChunkKey(part.ordinal, 1, note.leaf()), slot.owner);
+                assertNull(ctx.valuePage(old));
+                assertNull(ctx.dictionary(old));
+                assertNull(ctx.sequential(old));
+                assertNotSame(entries, slot.entries);
+                assertEquals(expected(TestDatasets.TestRow.of("a", 1)), first);
+                // Revisiting the evicted chunk must decode it, not return its overwritten cached page.
+                assertEquals(new Value.ByteArray(Bytes.utf8("n1")), part.value(0, note, 0, ctx));
+                assertEquals(expected(TestDatasets.TestRow.of("c", 4)), next);
             }
-            return dictionary[0];
-        };
-        byte[] ids = {1, 4, 0}; // two references to entry zero
-        ColumnPage first = decode(ids, 2, col, Encoding.RLE_DICTIONARY, supplier, s, codecs);
-        Value kept = first.value(0);
-        byte[] entries = s.entries[0];
-        assertNotSame(s.plain, s.dictionaryPlain);
-        assertEquals(new Value.ByteArray(Bytes.utf8("dictionary")), kept);
-        decode(binary("plain fallback"), 1, col, Encoding.PLAIN, supplier, s, codecs);
-        ColumnPage again = decode(ids, 2, col, Encoding.RLE_DICTIONARY, supplier, s, codecs);
-        assertSame(entries, s.entries[0], "dictionary entries are cached across data pages");
-        assertEquals(kept, again.value(1));
-        poison(s);
-        assertEquals(new Value.ByteArray(Bytes.utf8("dictionary")), kept);
-        s.enterGroup();
-        assertNull(s.entries);
-        assertNull(s.dictionary);
-        assertTrue(Arrays.stream(s.binaries).allMatch(java.util.Objects::isNull));
+        }
     }
 
     @Test void slotCapacitiesSurviveGroupsButRequestsAndColumnsAreIndependent() throws Exception {
@@ -197,15 +288,15 @@ class PageReuseTest {
         var a = ColumnSpec.of("a", 1, Column.Type.INT64, 0, false);
         var b = ColumnSpec.of("b", 2, Column.Type.INT64, 0, false);
         ctx.enterGroup(0, 0);
-        PageScratch s = ctx.scratch(a);
+        PageScratch s = ctx.scratch(a, new ReadContext.ChunkKey(0, 0, 1));
         ColumnPage large = decode(new byte[800], 100, a, Encoding.PLAIN, null, s, ctx.codecs);
         ctx.enterGroup(1, 3);
-        assertSame(s, ctx.scratch(ColumnSpec.of("a", 7, Column.Type.INT64, 0, false)));
+        assertSame(s, ctx.scratch(ColumnSpec.of("a", 7, Column.Type.INT64, 0, false), new ReadContext.ChunkKey(1, 3, 7)));
         ColumnPage small = decode(new byte[8], 1, a, Encoding.PLAIN, null, s, ctx.codecs);
         assertSame(large.longs, small.longs);
-        assertNotSame(s, ctx.scratch(b));
-        assertNotSame(s, ctx.forPlannedValues().scratch(a));
-        assertNotSame(s, new ReadContext(Cancellation.none(), Limits.DEFAULT).scratch(a));
+        assertNotSame(s, ctx.scratch(b, new ReadContext.ChunkKey(1, 3, 2)));
+        assertNotSame(s, ctx.forPlannedValues().scratch(a, new ReadContext.ChunkKey(0, 0, 1)));
+        assertNotSame(s, new ReadContext(Cancellation.none(), Limits.DEFAULT).scratch(a, new ReadContext.ChunkKey(0, 0, 1)));
         assertThrows(DataException.class, () -> decode(new byte[16], 1, a, Encoding.PLAIN, null, s, ctx.codecs));
     }
 

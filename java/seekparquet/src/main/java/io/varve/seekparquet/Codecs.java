@@ -48,10 +48,6 @@ final class Codecs {
      *
      * @throws DataException if the input does not decompress to exactly that size
      */
-    static byte[] decompress(CompressionCodec codec, ByteBuffer input, int size) throws DataException {
-        return decompress(codec, input, size, new byte[size], new State());
-    }
-
     static byte[] decompress(CompressionCodec codec, ByteBuffer input, int size, byte[] out, State state) throws DataException {
         if (size < 0 || size > out.length) throw new IllegalArgumentException("output capacity");
         byte[] in;

@@ -8,10 +8,13 @@ import org.apache.parquet.column.Dictionary;
 
 /**
  * One request's storage for one projected column. Capacities survive row groups and parts; logical
- * pages and dictionaries do not. Never used for keys, shared across requests, or retained by results.
+ * pages and dictionaries do not. Never used for keys or shared across requests. Reusable arrays stay
+ * private; immutable dictionary entry bytes may be retained by results.
  * Primitive arrays grow to the checked requirement; binary arena growth is capped by maxPageBytes.
  */
 final class PageScratch {
+    ReadContext.ChunkKey owner;
+    private boolean binaryReferences;
     byte[] plain = new byte[0];
     byte[] levels = new byte[0];
     byte[] arena = new byte[0];
@@ -23,15 +26,30 @@ final class PageScratch {
     int[] lengths = new int[0];
     byte[][] binaries = new byte[0][];
     Dictionary dictionary;
+    /** Immutable entry bytes: published values may retain them after this table is replaced. */
     byte[][] entries;
     // A lazy dictionary decode must not overwrite the active data page's plain/levels/arena.
     byte[] dictionaryPlain = new byte[0];
 
     void enterGroup() {
+        owner = null;
         dictionary = null;
         entries = null;
-        Arrays.fill(binaries, null);
+        representation(false);
     }
+
+    /** Retire reference-bearing pages once when changing representation, not on every arena page. */
+    void representation(boolean references) {
+        if (binaryReferences && !references) Arrays.fill(binaries, null);
+        binaryReferences = references;
+    }
+
+    boolean[] bools(int n) { return bools = grow(bools, n); }
+    int[] ints(int n) { return ints = grow(ints, n); }
+    long[] longs(int n) { return longs = grow(longs, n); }
+    boolean[] nulls(int n) { return nulls = grow(nulls, n); }
+    int[] offsets(int n) { return offsets = grow(offsets, n); }
+    int[] lengths(int n) { return lengths = grow(lengths, n); }
 
     static byte[] grow(byte[] a, int n) { return a.length < n ? new byte[n] : a; }
     static boolean[] grow(boolean[] a, int n) { return a.length < n ? new boolean[n] : a; }
@@ -40,7 +58,6 @@ final class PageScratch {
 
     byte[][] binaries(int n) {
         if (binaries.length < n) binaries = new byte[n][];
-        else Arrays.fill(binaries, null);
         return binaries;
     }
 

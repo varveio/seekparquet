@@ -29,8 +29,20 @@ final class ReadContext {
     private final Map<String, PageScratch> scratch = new HashMap<>();
     final Codecs.State codecs = new Codecs.State();
 
-    PageScratch scratch(ColumnSpec col) {
-        return scratch.computeIfAbsent(col.name(), ignored -> new PageScratch());
+    PageScratch scratch(ColumnSpec col, ChunkKey chunk) {
+        PageScratch slot = scratch.computeIfAbsent(col.name(), ignored -> new PageScratch());
+        if (!chunk.equals(slot.owner)) {
+            // Routing probes may have entered a different group without moving the cursor. A slot's
+            // actual owner, rather than activeGroup, determines which cached aliases it invalidates.
+            if (slot.owner != null) {
+                dictionaries.remove(slot.owner);
+                valuePages.remove(slot.owner);
+                sequential.remove(slot.owner);
+            }
+            slot.enterGroup();
+            slot.owner = chunk;
+        }
+        return slot;
     }
 
     private final Map<ChunkKey, Dictionary> dictionaries = new HashMap<>();
@@ -77,7 +89,7 @@ final class ReadContext {
             throw new RefusalException(RefusalCode.KEY_ORDER, part.name,
                     "row group " + group + " key page " + page + " is out of order with another decoded page");
         }
-        keyPages.put(position, new PageBounds(first.clone(), last.clone()));
+        keyPages.put(position, new PageBounds(first, last));
     }
 
     // A sequential builder needs only its preceding page, not a log of the group.

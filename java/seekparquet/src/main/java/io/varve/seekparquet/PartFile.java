@@ -526,7 +526,6 @@ final class PartFile implements AutoCloseable {
 
     byte[] knownFirst(int physical) { return firstKeys.get(physical); }
 
-    // Retains a key-page array: key decoding must keep using fresh storage (null PageScratch).
     byte[] rememberFirst(int physical, byte[] key) {
         synchronized (indexMemory) {
             byte[] first = firstKeys.get(physical);
@@ -625,11 +624,21 @@ final class PartFile implements AutoCloseable {
         }
     }
 
+    /**
+     * Key lifetime policy: key pages and key dictionaries always decode with null scratch, producing
+     * permanent arrays that are never modified. Rows, continuations, first-key caches, page boundaries
+     * and list-index walkers may share these arrays. Only projected value columns reuse storage.
+     */
+    PageScratch scratch(int physical, ColumnSpec col, ReadContext ctx) {
+        return col.leaf() == keyLeaf ? null
+                : ctx.scratch(col, new ReadContext.ChunkKey(ordinal, physical, col.leaf()));
+    }
+
     private ColumnPage decode(int physical, ColumnSpec col, PageHeader header, ByteBuffer body, ReadContext ctx, String where) {
         ColumnMetaData md = rowGroup(physical).getColumns().get(col.leaf()).getMeta_data();
         try {
             return PageDecoder.decodeData(header, body, col, md.getCodec(), () -> dictionary(physical, col, ctx), ctx.limits,
-                    "part " + name + " " + where, col.leaf() == keyLeaf ? null : ctx.scratch(col), ctx.codecs);
+                    "part " + name + " " + where, scratch(physical, col, ctx), ctx.codecs);
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_PARQUET, where + e.getMessage());
         }
@@ -640,6 +649,7 @@ final class PartFile implements AutoCloseable {
 
     private Dictionary dictionary(int physical, ColumnSpec col, ReadContext ctx) throws DataException {
         ReadContext.ChunkKey key = new ReadContext.ChunkKey(ordinal, physical, col.leaf());
+        PageScratch slot = scratch(physical, col, ctx);
         Dictionary d = ctx.dictionary(key);
         if (d != null) {
             return d;
@@ -682,7 +692,7 @@ final class PartFile implements AutoCloseable {
             body = ByteBuffer.wrap(readBytes(at + h.length, compressed, ctx));
         }
         d = PageDecoder.decodeDictionary(header, body, col, md.getCodec(), ctx.limits, "part " + name,
-                col.leaf() == keyLeaf ? null : ctx.scratch(col), ctx.codecs);
+                slot, ctx.codecs);
         ctx.putDictionary(key, d);
         return d;
     }
@@ -773,6 +783,7 @@ final class PartFile implements AutoCloseable {
 
     private ReadContext.DecodedPage valuePage(int physical, ColumnSpec col, long row, ReadContext.ChunkKey key, ReadContext ctx) {
         ctx.checkCancelled();
+        scratch(physical, col, ctx);
         String where = "row group " + physical + " column " + col.name() + ": ";
         ColumnMetaData md = rowGroup(physical).getColumns().get(col.leaf()).getMeta_data();
         Codecs.checkSupported(md.getCodec(), "part " + name);

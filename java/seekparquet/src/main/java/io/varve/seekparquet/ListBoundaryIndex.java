@@ -171,8 +171,7 @@ final class ListBoundaryIndex {
                     }
                     denseBefore = false;
                 }
-                // This crosses a decode, and is also returned on flat/failure paths.
-                previous = keys[keys.length - 1].clone();
+                previous = keys[keys.length - 1];
                 // Finish proving flatness before dropping the temporary anchor;
                 // a later page may contain a directory and require admission.
                 boolean flatSoFar = runs.size() == 1 && runs.getFirst().size() >= 0 && directoryLength(base) == 0;
@@ -181,7 +180,7 @@ final class ListBoundaryIndex {
             if (runs.size() == 1 && runs.getFirst().size() >= 0 && directoryLength(base) == 0) {
                 return new Built(null, pages, null, base, previous);
             }
-            return new Built(new Group(part.ordinal, slot, base, data.toByteArray(), runs), pages, null, base, previous.clone());
+            return new Built(new Group(part.ordinal, slot, base, data.toByteArray(), runs), pages, null, base, previous);
         } catch (CancellationException e) {
             throw e;
         } catch (RefusalException | UnsupportedFeatureException e) {

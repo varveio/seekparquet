@@ -26,31 +26,36 @@ class PageReuseBenchmarkTest {
         assumeTrue(bean.isThreadAllocatedMemorySupported());
         bean.setThreadAllocatedMemoryEnabled(true);
         int rows = 65_536;
-        List<List<TestDatasets.TestRow>> parts = new ArrayList<>();
-        for (int p = 0; p < 2; p++) {
-            List<TestDatasets.TestRow> part = new ArrayList<>();
-            for (int i = p * rows / 2; i < (p + 1) * rows / 2; i++) {
-                part.add(TestDatasets.TestRow.of(String.format("objects/%08d", i), i));
+        for (boolean dictionary : List.of(false, true)) {
+            List<List<TestDatasets.TestRow>> parts = new ArrayList<>();
+            for (int p = 0; p < 2; p++) {
+                List<TestDatasets.TestRow> part = new ArrayList<>();
+                for (int i = p * rows / 2; i < (p + 1) * rows / 2; i++) {
+                    // The dictionary fixture has eight non-null binary entries and one-third nulls.
+                    part.add(TestDatasets.TestRow.of(String.format("objects/%08d", i), dictionary ? i % 12 : i));
+                }
+                parts.add(part);
             }
-            parts.add(part);
-        }
-        for (CompressionCodec codec : List.of(CompressionCodec.UNCOMPRESSED, CompressionCodec.ZSTD)) {
-            var spec = new TestDatasets.Spec();
-            spec.noteColumn = true;
-            spec.rowsPerGroup = 4096;
-            spec.rowsPerPage = 256;
-            spec.valueCodec = codec;
-            try (Dataset d = Dataset.open(TestDatasets.write(tmp.resolve(codec.name()), spec, parts))) {
-                RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size", "note"));
-                for (int i = 0; i < 8; i++) scan(plan, rows);
-                for (int trial = 0; trial < 3; trial++) {
-                    long before = bean.getCurrentThreadAllocatedBytes();
-                    long start = System.nanoTime();
-                    for (int i = 0; i < 5; i++) scan(plan, rows);
-                    long elapsed = System.nanoTime() - start;
-                    long bytes = bean.getCurrentThreadAllocatedBytes() - before;
-                    System.out.printf("PAGE_BENCH codec=%s trial=%d rows=%d bytes/row=%.2f ns/row=%.2f checksum=%d%n",
-                            codec, trial, rows, bytes / (5.0 * rows), elapsed / (5.0 * rows), checksum);
+            String encoding = dictionary ? "DICTIONARY" : "PLAIN";
+            for (CompressionCodec codec : List.of(CompressionCodec.UNCOMPRESSED, CompressionCodec.ZSTD)) {
+                var spec = new TestDatasets.Spec();
+                spec.noteColumn = true;
+                spec.dictionaryNote = dictionary;
+                spec.rowsPerGroup = 4096;
+                spec.rowsPerPage = 256;
+                spec.valueCodec = codec;
+                try (Dataset d = Dataset.open(TestDatasets.write(tmp.resolve(encoding + "-" + codec.name()), spec, parts))) {
+                    RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size", "note"));
+                    for (int i = 0; i < 20; i++) scan(plan, rows);
+                    for (int trial = 0; trial < 3; trial++) {
+                        long before = bean.getCurrentThreadAllocatedBytes();
+                        long start = System.nanoTime();
+                        for (int i = 0; i < 5; i++) scan(plan, rows);
+                        long elapsed = System.nanoTime() - start;
+                        long bytes = bean.getCurrentThreadAllocatedBytes() - before;
+                        System.out.printf("PAGE_BENCH encoding=%s codec=%s trial=%d rows=%d bytes/row=%.2f ns/row=%.2f checksum=%d%n",
+                                encoding, codec, trial, rows, bytes / (5.0 * rows), elapsed / (5.0 * rows), checksum);
+                    }
                 }
             }
         }

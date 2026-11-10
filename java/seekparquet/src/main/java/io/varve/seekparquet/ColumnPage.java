@@ -61,6 +61,6 @@ final class ColumnPage {
     }
 
     private Bytes ownBytes(int i) {
-        return arena == null ? Bytes.of(binaries[i]) : Bytes.of(arena, offsets[i], lengths[i]);
+        return arena == null ? Bytes.wrap(binaries[i]) : Bytes.of(arena, offsets[i], lengths[i]);
     }
 }

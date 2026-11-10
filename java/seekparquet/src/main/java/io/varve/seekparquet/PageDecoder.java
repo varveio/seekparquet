@@ -84,11 +84,6 @@ final class PageDecoder {
      *
      * @param body the page body: exactly its compressed size
      */
-    static Dictionary decodeDictionary(PageHeader header, ByteBuffer body, ColumnSpec col, CompressionCodec codec, Limits limits, String where)
-            throws DataException {
-        return decodeDictionary(header, body, col, codec, limits, where, null, new Codecs.State());
-    }
-
     static Dictionary decodeDictionary(PageHeader header, ByteBuffer body, ColumnSpec col, CompressionCodec codec,
             Limits limits, String where, PageScratch scratch, Codecs.State codecs) throws DataException {
         DictionaryPageHeader h = header.getDictionary_page_header();
@@ -144,13 +139,6 @@ final class PageDecoder {
      * @param body the page body: exactly its compressed size
      * @param dictionary the column chunk's dictionary, or {@code null} when it has none
      */
-    static ColumnPage decodeData(
-            PageHeader header, ByteBuffer body, ColumnSpec col, CompressionCodec codec, DictionarySupplier dictionary, Limits limits, String where)
-            throws DataException {
-        return decodeData(header, body, col, codec, dictionary, limits, where, null, new Codecs.State());
-    }
-
-    /** A null scratch allocates permanent backing, required by key cursors and retained first keys. */
     static ColumnPage decodeData(PageHeader header, ByteBuffer body, ColumnSpec col, CompressionCodec codec,
             DictionarySupplier dictionary, Limits limits, String where, PageScratch scratch, Codecs.State codecs)
             throws DataException {
@@ -188,7 +176,7 @@ final class PageDecoder {
                     if (len > dataSize) {
                         throw new DataException("truncated bit-packed definition levels");
                     }
-                    nulls = scratch == null ? new boolean[n] : (scratch.nulls = PageScratch.grow(scratch.nulls, n));
+                    nulls = scratch == null ? new boolean[n] : scratch.nulls(n);
                     for (int i = 0; i < n; i++) {
                         nulls[i] = ((data[i >>> 3] >>> (7 - (i & 7))) & 1) == 0;
                     }
@@ -283,7 +271,7 @@ final class PageDecoder {
             from = 0;
             to = runs.length;
         }
-        boolean[] nulls = scratch == null ? new boolean[n] : (scratch.nulls = PageScratch.grow(scratch.nulls, n));
+        boolean[] nulls = scratch == null ? new boolean[n] : scratch.nulls(n);
         try {
             RunLengthBitPackingHybridDecoder d =
                     new RunLengthBitPackingHybridDecoder(1, ByteBufferInputStream.wrap(ByteBuffer.wrap(b, from, to - from)));
@@ -304,13 +292,13 @@ final class PageDecoder {
             ColumnSpec col, Encoding encoding, byte[] data, int from, int to, int n, int nonNull, boolean[] nulls, DictionarySupplier dictionary,
             Limits limits, String where, PageScratch scratch) throws DataException {
         Column.Type type = col.type();
-        boolean[] bools = type == Column.Type.BOOLEAN ? (scratch == null ? new boolean[n] : (scratch.bools = PageScratch.grow(scratch.bools, n))) : null;
-        int[] ints = type == Column.Type.INT32 || type == Column.Type.FLOAT ? (scratch == null ? new int[n] : (scratch.ints = PageScratch.grow(scratch.ints, n))) : null;
-        long[] longs = type == Column.Type.INT64 || type == Column.Type.DOUBLE ? (scratch == null ? new long[n] : (scratch.longs = PageScratch.grow(scratch.longs, n))) : null;
+        boolean[] bools = type == Column.Type.BOOLEAN ? (scratch == null ? new boolean[n] : scratch.bools(n)) : null;
+        int[] ints = type == Column.Type.INT32 || type == Column.Type.FLOAT ? (scratch == null ? new int[n] : scratch.ints(n)) : null;
+        long[] longs = type == Column.Type.INT64 || type == Column.Type.DOUBLE ? (scratch == null ? new long[n] : scratch.longs(n)) : null;
         boolean binary = type == Column.Type.BYTE_ARRAY || type == Column.Type.FIXED_LEN_BYTE_ARRAY;
         boolean arena = binary && scratch != null && encoding != Encoding.PLAIN_DICTIONARY && encoding != Encoding.RLE_DICTIONARY;
         byte[][] binaries = binary && !arena ? (scratch == null ? new byte[n][] : scratch.binaries(n)) : null;
-        if (arena) java.util.Arrays.fill(scratch.binaries, null);
+        if (scratch != null) scratch.representation(binaries != null);
         if (type == Column.Type.INT96 || type == Column.Type.GROUP) {
             throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_PROJECTION, where + ": " + type + " values");
         }
@@ -370,6 +358,7 @@ final class PageDecoder {
                 byte[][] entries = scratch == null ? new byte[dict.getMaxId() + 1][] : scratch.entries(dict);
                 for (int i = 0; i < n; i++) {
                     if (nulls != null && nulls[i]) {
+                        binaries[i] = null;
                         continue;
                     }
                     int id = reader.readValueDictionaryId();
@@ -418,8 +407,8 @@ final class PageDecoder {
     private static ColumnPage binaryValues(ColumnSpec col, Encoding encoding, byte[] data, int from, int to,
             int n, int nonNull, boolean[] nulls, DictionarySupplier dictionary, Limits limits, String where,
             PageScratch scratch) throws IOException, DataException {
-        int[] offsets = scratch.offsets = PageScratch.grow(scratch.offsets, n);
-        int[] lengths = scratch.lengths = PageScratch.grow(scratch.lengths, n);
+        int[] offsets = scratch.offsets(n);
+        int[] lengths = scratch.lengths(n);
         if (encoding == Encoding.PLAIN) {
             // Validate the exact page extent before using it as the binary arena.
             reader(col, encoding, data, from, to, nonNull, dictionary, limits, where);

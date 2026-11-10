@@ -253,18 +253,23 @@ entries (1,000,000 by default). Each request keeps one scratch slot per projecte
 shared by duplicate projections and retained at its high-water capacity until the request ends.
 Logical pages and dictionaries belong to the current row group; dictionary backing is separate from
 live data-page storage, including during lazy dictionary loading. Slots survive row-group and part
-changes. Codec state is request-local. Key pages still use fresh arrays.
+changes. A slot records its owning chunk and evicts that chunk's cached page and dictionary before
+another chunk decodes into it, including after out-of-order key probes. Codec state is request-local.
 
-Existing range, list and scan results own their keys and binary values: the result boundary copies
-them before page storage can be reused. Rows, values, read-only byte views and continuations can be
-retained after later reads or after the dataset closes. There is no borrowed public result API.
+Existing range, list and scan results own their keys and binary values. Key pages and key dictionaries
+always decode without scratch; their arrays are permanent and may be shared by results and caches.
+Dictionary binary entries are also immutable and shared by returned values. The result boundary copies
+binary values from reusable plain/delta arenas before those buffers can change. Rows, values, read-only
+byte views and continuations can be retained after later reads or after the dataset closes. There is no borrowed public result API.
 Storage reads still use the `PartSource` buffer contract; this optimization does not remove source
 buffer allocations or Parquet header/decoder allocations.
 
-Scratch bytes (decompressed pages, levels, binary arenas and dictionary backing) are bounded by
-`maxPageBytes`; primitive and reference arrays are separately bounded by `maxPageValues` times their
-element widths. Codec state, dictionary entries, key pages and boundary logs add memory beyond those
-arrays. Capacities are not charged to the shared index budget. Caller-controlled concurrency multiplies
+Each projected-column slot can retain up to approximately **4 × `maxPageBytes` per request** in byte
+buffers: decompressed page output, V2 levels, a delta binary arena and dictionary output. Each buffer
+retains its own high-water capacity across pages, row groups and parts; at the default 256 MiB page
+limit these four buffers alone can total about 1 GiB per column. Primitive, offset/length and reference
+arrays are additional, separately bounded by `maxPageValues` times their element widths. Codec state,
+dictionary entries, key pages and boundary logs add memory beyond those arrays. Capacities are not charged to the shared index budget. Caller-controlled concurrency multiplies
 this transient storage; these limits do not provide an aggregate request-memory budget.
 `Limits.withMaxIndexMemoryBytes(bytes)` sets a dataset-wide budget for retained
 key and value indexes and retained exact row-group first keys (256 MiB by default), using conservative estimates of their decoded arrays,
@@ -481,7 +486,8 @@ SEEKPARQUET_PAGE_BENCH=1 ./gradlew :seekparquet:test --tests '*PageReuseBenchmar
 
 The test reports current-thread allocated bytes and time per row for owning scans of 65,536 rows,
 two parts, 4,096 rows/group and 256 rows/page, with nullable binary and INT64 projections. It compares
-uncompressed and Zstd value pages; keys are uncompressed. Fixture generation, planning and warmup are
+PLAIN binary pages with dictionary binary pages (eight non-null entries, one-third null rows), each
+with uncompressed and Zstd value pages; keys are uncompressed. Fixture generation, planning and warmup are
 outside measurement; every measured scan creates fresh request scratch. Results include a field
 checksum, and are recorded in the test XML under `seekparquet/build/test-results/test/`. Timing is
 informational on shared hosts. The benchmark is skipped in the normal build.
