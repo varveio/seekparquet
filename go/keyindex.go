@@ -91,6 +91,7 @@ func (p *part) loadKeyIndex(ctx context.Context, physical int, st *ReadStats, re
 		return nil, refusePart(CodeInvalidPageIndex, p.name, physical, "the key page index: %v", err)
 	}
 	if !retain {
+		st.IndexLoads++
 		return index, nil
 	}
 	// Recheck, charge and publish as one operation. Competing cold loads

@@ -44,8 +44,9 @@ type ReadStats struct {
 	// an earlier request, or an earlier step of this one, had loaded.
 	RowGroupsOpened int64
 	// IndexLoads is the number of those openings that read the key page
-	// index from the Source and retained it; RowGroupsOpened-IndexLoads were
-	// reuses, including an index a concurrent request published first. An
+	// index from the Source, including successful build-only transient loads;
+	// RowGroupsOpened-IndexLoads were reuses, including an index a concurrent
+	// request published first. An
 	// index read but refused (Limits.IndexMemory) is in neither count.
 	IndexLoads int64
 	// PageIndexSeeks is the number of moves within a row group's key pages,

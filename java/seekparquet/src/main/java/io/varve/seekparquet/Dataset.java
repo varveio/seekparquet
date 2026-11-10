@@ -222,7 +222,8 @@ public final class Dataset implements AutoCloseable {
     /**
      * Decodes each key page once and atomically publishes a bounded index of directory runs.
      * Complete groups are admitted in dataset order, stopping before the first over-budget group.
-     * Refused groups remain on the ordinary read path. Storage failures and resource limits fail
+     * Groups with data refusals or unsupported codecs/encodings remain on the ordinary read path.
+     * Storage failures and resource limits fail
      * the attempt without publication and permit retry. Build-only indexes and first keys do not
      * consume the shared index-memory cache.
      * Concurrent lists use either the old path or the completed index. Cancellation discards this

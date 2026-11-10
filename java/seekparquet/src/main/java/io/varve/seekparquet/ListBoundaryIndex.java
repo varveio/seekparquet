@@ -183,7 +183,7 @@ final class ListBoundaryIndex {
             return new Built(new Group(part.ordinal, slot, base, data.toByteArray(), runs), pages, null, base, previous.clone());
         } catch (CancellationException e) {
             throw e;
-        } catch (RefusalException e) {
+        } catch (RefusalException | UnsupportedFeatureException e) {
             return new Built(null, ctx.stats.keyPagesDecoded, e, base != null ? base : part.knownFirst(part.groups[slot]), previous);
         }
     }
@@ -201,7 +201,7 @@ final class ListBoundaryIndex {
                 ctx.checkCancelled();
                 PartFile part;
                 try { part = parts.get(pi, ctx); }
-                catch (RefusalException e) { ctx.checkCancelled(); partsFailed++; continue; }
+                catch (RefusalException | UnsupportedFeatureException e) { ctx.checkCancelled(); partsFailed++; continue; }
                 for (int start = 0; start < part.groups.length;) {
                     ctx.checkCancelled();
                     int n = Math.min(options.workers(), part.groups.length - start);

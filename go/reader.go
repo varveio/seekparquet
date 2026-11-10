@@ -446,15 +446,10 @@ func (r *reader) first(ctx context.Context, g groupRef, log *pageLog, st *ReadSt
 	if k := r.group(g).first.Load(); k != nil {
 		return *k, nil
 	}
-	retain := true
-	if x := r.listIndex.Load(); x != nil && len(x.groups) > 0 {
-		retain = false
-	}
-	k, err := r.loadKeyPages(ctx, g, log, st, retain)
+	k, err := r.keyPages(ctx, g, log, st)
 	if err != nil {
 		return nil, err
 	}
-	k.deferFirst = !retain
 	if err := k.decode(0); err != nil {
 		return nil, err
 	}

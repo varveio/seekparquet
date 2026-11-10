@@ -194,7 +194,7 @@ final class KeyCursor {
     }
 
     boolean seekPrefixCursor(byte[] prefix, byte[] target) {
-        if (listIndex == null || !Arrays.equals(Bytes.wrap(prefix).successor().orElseThrow().unsafeArray(), target)) {
+        if (listIndex == null || listIndex.groups.length == 0 || !Arrays.equals(Bytes.wrap(prefix).successor().orElseThrow().unsafeArray(), target)) {
             return seek(target, false);
         }
         if (prefix.length == 0 || prefix[prefix.length - 1] != '/') {
@@ -206,7 +206,7 @@ final class KeyCursor {
             if (Arrays.compareUnsigned(parts.entry(mid).maxKey().unsafeArray(), target) < 0) lo = mid + 1;
             else hi = mid;
         }
-        if (lo == parts.size()) return exhaust(lo);
+        if (lo == parts.size() || beyondEnd(lo)) return exhaust(lo);
         int p = lo;
         PartFile candidate = parts.checked(p);
         if (candidate == null) { ctx.stats.listIndexMissingGroup++; return seek(target, false); }
@@ -252,11 +252,7 @@ final class KeyCursor {
     private byte[] firstKey(PartFile candidate, int s) {
         var group = listIndex == null ? null : listIndex.group(candidate.ordinal, s);
         if (group != null) return group.base;
-        if (listIndex == null || listIndex.groups.length == 0) return candidate.firstKey(candidate.groups[s], ctx);
-        int physical = candidate.groups[s];
-        byte[][] keys = candidate.keyPage(physical, candidate.keyIndex(physical, ctx, false), 0, ctx);
-        ctx.checkKeyPage(candidate, physical, 0, keys);
-        return keys[0];
+        return candidate.firstKey(candidate.groups[s], ctx);
     }
 
     // -1 declines, 0 exhausts, 1 lands on an exact run-start anchor.
@@ -278,7 +274,7 @@ final class KeyCursor {
             else hi = mid;
         }
         int p = lo;
-        if (p == parts.size()) return exhaustIndexed(p);
+        if (p == parts.size() || beyondEnd(p)) return exhaustIndexed(p);
         PartFile candidate = parts.get(p, ctx);
         lo = 0; hi = candidate.groups.length;
         while (lo < hi) {
@@ -297,7 +293,7 @@ final class KeyCursor {
         if (i > start && !group.hasPrefix(i - 1, prefix)) { ctx.stats.listIndexUnsafeRun++; return -1; }
         if (i == group.rows.length) {
             if (++s == candidate.groups.length) { p++; s = 0; }
-            if (p == parts.size()) return exhaustIndexed(p);
+            if (p == parts.size() || beyondEnd(p)) return exhaustIndexed(p);
             group = listIndex.group(p, s); i = 0;
             if (group == null) { ctx.stats.listIndexMissingGroup++; return -1; }
             if (group.sizes[0] < 0) { ctx.stats.listIndexDensePage++; return -1; }

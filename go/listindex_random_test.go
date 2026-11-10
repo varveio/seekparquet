@@ -4,7 +4,11 @@
 package seekparquet
 
 import (
+	"encoding/json"
+	"fmt"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"testing"
@@ -84,5 +88,55 @@ func TestListIndexRandomizedDifferential(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestListIndexExportRandomFixtures supplies identical Parquet bytes to the two
+// conformance adapters for the optional cross-language differential harness.
+func TestListIndexExportRandomFixtures(t *testing.T) {
+	root := os.Getenv("SEEKPARQUET_LIST_RANDOM_FIXTURES")
+	if root == "" {
+		t.Skip("set SEEKPARQUET_LIST_RANDOM_FIXTURES to export shared random fixtures")
+	}
+	for seed := int64(0); seed < 8; seed++ {
+		rng := rand.New(rand.NewSource(seed))
+		keys := listIndexRandomKeys(rng, 300)
+		for i := 0; i < 20; i++ {
+			keys = append(keys, fmt.Sprintf("wide/d%03d/", i))
+			for j := 0; j < 30; j++ {
+				keys = append(keys, fmt.Sprintf("wide/d%03d/f%03d", i, j))
+			}
+		}
+		slices.Sort(keys)
+		if seed%2 == 1 {
+			var repeated []string
+			for _, key := range keys {
+				for n := rng.Intn(3); n >= 0; n-- {
+					repeated = append(repeated, key)
+				}
+			}
+			keys = repeated
+		}
+		cut := len(keys) / 2
+		for cut < len(keys) && keys[cut] == keys[cut-1] {
+			cut++
+		}
+		fixture := parts(testutil.Part{GroupRows: 80, PageBytes: 80 + rng.Intn(100), IndexSizeLimit: 8}, keys[:cut], keys[cut:])
+		fixture.RepeatedKeys = seed%2 == 1
+		dir := filepath.Join(root, fmt.Sprintf("seed-%02d", seed))
+		must(t, testutil.Write(dir, fixture))
+		d := open(t, dir, Options{})
+		st, err := d.BuildListIndex(ctx, ListIndexOptions{})
+		must(t, err)
+		if !st.HasIndex {
+			t.Fatal("fixture must exercise indexed groups", st)
+		}
+		encoded := make([][]byte, len(keys))
+		for i, key := range keys {
+			encoded[i] = []byte(key)
+		}
+		metadata, err := json.Marshal(encoded)
+		must(t, err)
+		must(t, os.WriteFile(filepath.Join(dir, "keys.json"), metadata, 0600))
 	}
 }

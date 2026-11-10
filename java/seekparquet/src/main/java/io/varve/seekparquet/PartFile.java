@@ -493,7 +493,11 @@ final class PartFile implements AutoCloseable {
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + e.getMessage());
         }
-        if (!retain) return index;
+        if (!retain) {
+            ctx.stats.rowGroupsOpened++;
+            ctx.stats.indexLoads++;
+            return index;
+        }
         synchronized (indexMemory) {
             KeyIndex previous = keyIndexes.get(physical);
             if (previous != null) {

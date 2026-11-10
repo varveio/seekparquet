@@ -32,7 +32,7 @@ package io.varve.seekparquet;
  * @param rowGroupsOpened the times the request took a row group's key page index, to probe its bounds
  *     or walk its pages: loading it, or reusing one an earlier request, or an earlier step of this
  *     one, had loaded
- * @param indexLoads how many of those read the key page index from storage and retained it; {@code
+ * @param indexLoads how many of those read the key page index from storage, including successful build-only transient loads; {@code
  *     rowGroupsOpened - indexLoads} were reuses, including an index a concurrent request published
  *     first; an index read but refused by {@link Limits#maxIndexMemoryBytes()} is in neither count
  * @param pageIndexSeeks the moves within a row group's key pages, through its ColumnIndex or

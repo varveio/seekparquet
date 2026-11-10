@@ -64,9 +64,9 @@ type listIndex struct {
 // BuildListIndex decodes every key page once to build a bounded, optional index
 // of directory runs for List with delimiter '/'. It does not run at open.
 // Complete groups are admitted in dataset order; the first over-budget group
-// stops admission. Refused groups are omitted; subsequent reads still perform
-// their ordinary checks. Storage failures and resource limits fail this attempt
-// without publishing it and permit retry. Build-only page indexes and first keys
+// stops admission. Groups with data refusals or unsupported codecs/encodings
+// are omitted; subsequent reads still perform their ordinary checks. Storage
+// failures and resource limits fail this attempt without publishing it and permit retry. Build-only page indexes and first keys
 // never consume Limits.IndexMemory.
 // Publication is atomic: concurrent reads use either the old path or the whole
 // completed index. Cancellation discards this attempt and permits retry. After
@@ -141,7 +141,7 @@ outer:
 			if rctx.Err() != nil {
 				return stats, rctx.Err()
 			}
-			if !listRefusal(err) {
+			if !listDataFailure(err) {
 				return stats, err
 			}
 			stats.PartsFailed++
@@ -182,7 +182,7 @@ outer:
 				return stats, err
 			}
 			for _, out := range results {
-				if out.err != nil && !listRefusal(out.err) {
+				if out.err != nil && !listDataFailure(out.err) {
 					return stats, out.err
 				}
 			}
@@ -268,7 +268,11 @@ func listAllocation(n int) int64 {
 	}
 	return int64(1) << bits.Len(uint(n-1))
 }
-func listRefusal(err error) bool { var refusal *RefusalError; return errors.As(err, &refusal) }
+func listDataFailure(err error) bool {
+	var refusal *RefusalError
+	var unsupported *UnsupportedError
+	return errors.As(err, &refusal) || errors.As(err, &unsupported)
+}
 func (g *listGroup) add(row int64, key []byte) {
 	b := listBoundary{row: row, size: -1}
 	if key == nil {
@@ -432,7 +436,7 @@ func (g *listGroup) compare(i int, key []byte) int {
 // A prefix continuation can start from the run containing its predecessor,
 // without first decoding all ambiguous pages before it. Dense groups decline.
 func (s *scan) startListCursor(prefix, from []byte) (bool, error) {
-	if s.listIndex == nil {
+	if s.listIndex == nil || len(s.listIndex.groups) == 0 {
 		return false, nil
 	}
 	if len(prefix) == 0 || prefix[len(prefix)-1] != '/' {

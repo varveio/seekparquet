@@ -186,3 +186,24 @@ java/gradlew -p java :seekparquet:test --tests '*ListIndexResourcesTest.sharedFi
 The export covers four shared datasets, six budgets and four page-change caps. Java independently
 builds each index and compares indexed groups, entries, retained bytes and budget exhaustion. This
 optional test skips when the environment variable is absent; it adds no protocol operation or spec rule.
+
+### Optional random list-index differential
+
+The differential harness compares complete listing responses from Go and Java, each with and
+without the index, on eight seeded random datasets containing the same Parquet bytes. It covers
+unique/repeated keys, multiple parts, sparse and dense pages, exact folder objects, byte prefixes,
+arbitrary prefix/row cursors, end bounds, projections and pagination. This supplements the normative
+suite; agreement between implementations is not conformance qualification.
+
+```sh
+export SEEKPARQUET_LIST_RANDOM_FIXTURES="$PWD/java/seekparquet/build/list-index-random"
+go -C go test -run '^TestListIndexExportRandomFixtures$' -count=1
+java/gradlew -p java :conformance:installDist --offline --max-workers=1
+python3 conformance/harness/list_index_differential.py \
+  --fixtures "$SEEKPARQUET_LIST_RANDOM_FIXTURES" \
+  --go-adapter "go -C go run ./internal/cmd/conformance" \
+  --java-adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
+```
+
+Fixture export skips when the environment variable is absent. Generated files belong in the ignored
+build directory and are not checked into the suite.

@@ -259,11 +259,13 @@ Opening remains lazy. The build reads key pages and keeps directory-run starts a
 to a shared group anchor. Unchanged pages add nothing; fully decoded flat groups retain no index data.
 Dense pages retain exact first-key markers and decline skipped intervals containing a marker.
 Build-only page indexes and first keys are transient: they never consume the shared, non-evicting
-`Limits.IndexMemory` cache (Java: `maxIndexMemoryBytes`). Checked part footers remain shared.
+`Limits.IndexMemory` cache (Java: `maxIndexMemoryBytes`). Checked part footers remain shared. Ordinary routing probes and synthetic landings
+use the normal retaining cache and its memory limit; successful transient index loads also count
+in read statistics.
 
-Complete groups are admitted in dataset order until the first over-budget group. Data refusals omit
-the affected groups, including both sides of a bad boundary; ordinary reads still report refusals
-when encountered. Storage/I/O errors, resource limits and cancellation fail the attempt without
+Complete groups are admitted in dataset order until the first over-budget group. Data refusals and unsupported codecs/encodings omit
+the affected groups, including both sides of a bad boundary; ordinary reads still report those
+conditions when encountered. Storage/I/O errors, resource limits and cancellation fail the attempt without
 publication, so a caller may retry after resolving them. Publication is atomic alongside concurrent lists.
 
 A nonempty index is reused by later calls. `ListIndexStats.Options` and `HasIndex` report the **effective** options

@@ -175,10 +175,7 @@ func (s *scan) syntheticPages() error {
 		return nil
 	}
 	var err error
-	s.kp, err = s.r.loadKeyPages(s.ctx, s.g, &s.log, s.stats, false)
-	if err == nil {
-		s.kp.deferFirst = true
-	}
+	s.kp, err = s.r.keyPages(s.ctx, s.g, &s.log, s.stats)
 	return err
 }
 
