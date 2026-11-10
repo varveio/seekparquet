@@ -15,11 +15,14 @@ import (
 // page it decoded last. Decoded pages are never reused, so a key it
 // returns stays valid after it moves on.
 type keyPages struct {
-	r     *reader
-	part  *part
-	g     groupRef // the row group's position in the dataset
-	index *groupIndex
-	chunk *chunk
+	// deferFirst leaves cross-group certification and first-key cache warming
+	// to the list-index coordinator, after independent group decoding.
+	deferFirst bool
+	r          *reader
+	part       *part
+	g          groupRef // the row group's position in the dataset
+	index      *groupIndex
+	chunk      *chunk
 	// values are the keys of page at, next the position in them.
 	values   []parquet.Value
 	at, next int
@@ -144,7 +147,7 @@ func (k *keyPages) decode(i int) error {
 	if err := k.log.add(pageSpan{g: k.g, page: i, part: p.name, physical: c.physical, firstRow: meta.first, first: first, last: last}); err != nil {
 		return err
 	}
-	if i == 0 {
+	if i == 0 && !k.deferFirst {
 		return k.r.noteFirst(k.g, first)
 	}
 	return nil

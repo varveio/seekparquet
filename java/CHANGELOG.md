@@ -7,6 +7,11 @@ independent of the specification's draft revisions.
 
 ### Changed
 
+- Fix indexed listings with arbitrary prefix continuations: only slash-ended continuations use
+  directory-run certification. Omit both sides of chained disordered group boundaries independent
+  of worker order and cached first keys. Ordinary and synthetic group transitions share value-cache
+  cleanup, bounding retained projected pages, dictionaries and sequential readers to the current group.
+
 - `Dataset.buildListIndex` explicitly builds a budgeted in-memory directory-run index for `/` listings,
   with `ListIndexOptions` and `ListIndexStats`. Compact anchors avoid a key-page decode per wide prefix;
   unchanged pages and flat groups add no boundary storage. Dense, failed and over-budget groups/pages

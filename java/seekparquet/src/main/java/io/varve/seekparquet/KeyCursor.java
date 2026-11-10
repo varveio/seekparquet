@@ -197,6 +197,9 @@ final class KeyCursor {
         if (listIndex == null || !Arrays.equals(Bytes.wrap(prefix).successor().orElseThrow().unsafeArray(), target)) {
             return seek(target, false);
         }
+        if (prefix.length == 0 || prefix[prefix.length - 1] != '/') {
+            ctx.stats.listIndexUnsafeRun++; return seek(target, false);
+        }
         int lo = 0, hi = parts.size();
         while (lo < hi) {
             int mid = (lo + hi) >>> 1;
@@ -227,7 +230,7 @@ final class KeyCursor {
         }
         int i = lo - 1;
         if (i < 0 || !group.hasPrefix(i, prefix)) { ctx.stats.listIndexUnsafeRun++; return seek(target, false); }
-        part = p; slot = s; pf = candidate; physical = pf.groups[s]; index = pf.keyIndex(physical, ctx);
+        moveGroup(p, candidate, s, candidate.keyIndex(candidate.groups[s], ctx));
         syntheticKey = group.key(i); syntheticRow = group.rows[i];
         return seekAfterPrefix(prefix, target, (byte) '/');
     }
@@ -273,8 +276,7 @@ final class KeyCursor {
                 if (first) { ctx.stats.listIndexUnsafeRun++; return -1; }
                 byte[] key = group.key(i);
                 if (Arrays.compareUnsigned(key, prefix) < 0) { ctx.stats.listIndexUnsafeRun++; return -1; }
-                part = p; slot = s; pf = candidate; physical = pf.groups[s];
-                index = pf.keyIndex(physical, ctx);
+                moveGroup(p, candidate, s, candidate.keyIndex(candidate.groups[s], ctx));
                 syntheticKey = key; syntheticRow = group.rows[i];
                 ctx.stats.listIndexSkips++;
                 if (end != null && Arrays.compareUnsigned(key, end) >= 0) {
@@ -297,27 +299,21 @@ final class KeyCursor {
         if (p >= parts.size()) {
             return exhaust(p);
         }
-        if (p != part) {
-            pf = parts.get(p, ctx);
-            part = p;
-            index = null;
-        }
+        PartFile candidate = p == part ? pf : parts.get(p, ctx);
         long r = ordinal - parts.start(p);
         int lo = 0;
-        int hi = pf.groups.length - 1;
+        int hi = candidate.groups.length - 1;
         while (lo < hi) {
             int mid = (lo + hi + 1) >>> 1;
-            if (pf.groupStart[pf.groups[mid]] <= r) {
+            if (candidate.groupStart[candidate.groups[mid]] <= r) {
                 lo = mid;
             } else {
                 hi = mid - 1;
             }
         }
-        if (index == null || lo != slot) {
-            slot = lo;
-            physical = pf.groups[lo];
-            index = pf.keyIndex(physical, ctx);
-        }
+        KeyIndex destination = index != null && p == part && lo == slot
+                ? index : candidate.keyIndex(candidate.groups[lo], ctx);
+        moveGroup(p, candidate, lo, destination);
         long row = r - pf.groupStart[physical];
         int pg = index.pageAt(row);
         if (keys == null || decodedPart != part || decodedSlot != slot || decodedPage != pg) {
@@ -379,9 +375,7 @@ final class KeyCursor {
         if (!Arrays.equals(decoded[next], target)) {
             return seek(target, true);
         }
-        slot = s;
-        physical = pf.groups[s];
-        index = destination;
+        moveGroup(part, pf, s, destination);
         page = pg;
         keys = decoded;
         pos = next;
@@ -454,18 +448,18 @@ final class KeyCursor {
         if (p >= parts.size() || (p != part && beyondEnd(p))) {
             return exhaust(p);
         }
-        if (p != part) {
-            pf = parts.get(p, ctx);
-            part = p;
-            index = null;
-        }
-        if (index == null || s != slot) {
-            slot = s;
-            physical = pf.groups[s];
-            index = pf.keyIndex(physical, ctx);
-        }
+        PartFile candidate = p == part ? pf : parts.get(p, ctx);
+        KeyIndex destination = index != null && p == part && s == slot
+                ? index : candidate.keyIndex(candidate.groups[s], ctx);
+        moveGroup(p, candidate, s, destination);
         load(pg);
         return true;
+    }
+
+    /** Commits every ordinary or synthetic group transition before projection. */
+    private void moveGroup(int p, PartFile candidate, int s, KeyIndex destination) {
+        ctx.enterGroup(p, candidate.groups[s]);
+        part = p; pf = candidate; slot = s; physical = candidate.groups[s]; index = destination;
     }
 
     /** Decodes a key page of the current row group and checks its order against the last page decoded. */

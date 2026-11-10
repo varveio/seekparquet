@@ -269,10 +269,14 @@ retry. A nonempty completed index is reused by later build calls regardless of t
 build retains no snapshot and can be retried. Defaults are 64 MiB, one worker, and eight changes per page.
 `ListIndexStats` reports indexed, skipped and failed groups, failed parts, pages, entries, retained bytes,
 budget exhaustion and duration. Counts of skipped groups cover visited groups, not unopened parts.
+Both sides of a detected disordered group boundary are omitted, independent of worker order or
+cached first keys. Cancelled builds report decoded pages even from the unfinished batch, with zero
+retained bytes, entries and groups.
 
-Only `/` uses the index. Prefix cursors can start directly from a certified run anchor, including
+Only `/` uses the index. Slash-ended prefix cursors can start directly from a certified run anchor, including
 when page bounds share a long truncated prefix. The scan preserves its logical row after each answered skip and checks
 cancellation at every run; it allocates only the final anchor, without walking truncated page bounds.
+Other prefix cursors remain valid and use ordinary seeking.
 `ReadStats.ListIndexSkips` counts answered skips. When an index is present, `ListIndexDelimiter`,
 `ListIndexMissingGroup`, `ListIndexDensePage` and `ListIndexUnsafeRun` count every decline by reason.
 Without an index these counters stay zero. Results, exact rows, projected values and cursors are unchanged.

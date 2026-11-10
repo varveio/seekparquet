@@ -165,11 +165,14 @@ is atomic and safe alongside concurrent lists. Cancellation discards the attempt
 A nonempty completed index is reused by subsequent build calls regardless of options; empty builds
 retain no snapshot and may be retried. `ListIndexStats` reports indexed, skipped and failed groups,
 failed parts, decoded pages, retained entries and bytes, budget exhaustion and duration. Skipped counts
-cover visited groups, not unopened parts.
+cover visited groups, not unopened parts. Both sides of a detected disordered group boundary are
+omitted, independent of worker order or cached first keys.
 
-The index applies only to `/`. Prefix continuations can start directly from a certified run anchor,
+The index applies only to `/`. Slash-ended prefix continuations can start directly from a certified run anchor,
 including when page bounds share a long truncated prefix. It walks runs from the cursor's logical row, checking cancellation at
 each step without allocations or repeated page searches. Only the final anchor is materialized.
+Other prefix continuations remain valid and use ordinary seeking. Synthetic group transitions clear
+the previous group's value pages, dictionaries and sequential readers before projecting an exact row.
 `ReadStats.listIndexSkips()` counts answered skips; `listIndexDelimiter()`, `listIndexMissingGroup()`,
 `listIndexDensePage()` and `listIndexUnsafeRun()` count declines when an index is present. These counters
 remain zero without an index. Results, exact rows, values and continuations are unchanged.

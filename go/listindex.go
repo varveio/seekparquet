@@ -25,7 +25,9 @@ type ListIndexOptions struct {
 }
 
 // ListIndexStats describes a build. Failed groups remain on the ordinary read
-// path. BudgetExhausted means the next group would exceed MaxBytes.
+// path. Pages includes decoded work in a cancelled batch; cancelled builds
+// retain no bytes, entries or groups. BudgetExhausted means the next group would
+// exceed MaxBytes.
 type ListIndexStats struct {
 	GroupsIndexed, GroupsSkipped, GroupsFailed, PartsFailed int64
 	Pages, Entries, Bytes                                   int64
@@ -95,7 +97,9 @@ func (d *Dataset) BuildListIndex(ctx context.Context, opt ListIndexOptions) (sta
 	}
 	started := time.Now()
 	defer func() {
-		stats.Duration = time.Since(started)
+		if err != nil || stats.Duration == 0 {
+			stats.Duration = time.Since(started)
+		}
 		if err != nil {
 			stats.Bytes = 0
 			stats.Entries = 0
@@ -107,6 +111,7 @@ func (d *Dataset) BuildListIndex(ctx context.Context, opt ListIndexOptions) (sta
 	var readStats ReadStats
 	var previousLast []byte
 	var previousRef groupRef
+	var previousFailed, previousAdmitted bool
 outer:
 	for pi := range r.parts {
 		if err = rctx.Err(); err != nil {
@@ -149,42 +154,53 @@ outer:
 				}(j)
 			}
 			wg.Wait()
-			if err = rctx.Err(); err != nil {
-				return stats, err
-			}
 			for _, out := range results {
 				stats.Pages += out.pages
 			}
+			if err = rctx.Err(); err != nil {
+				return stats, err
+			}
 			for oi, out := range results {
-				if out.err != nil {
+				// Warm routing opportunistically. A shared-cache refusal is not
+				// a certification decision: decoded physical boundaries below
+				// determine both sides, regardless of cache or worker order.
+				if out.group.base != nil {
+					_ = r.noteFirst(out.group.g, out.group.base)
+				}
+				badBoundary := previousLast != nil && out.group.base != nil && previousRef.part == out.group.g.part && previousRef.index+1 == out.group.g.index && r.outOfOrder(previousLast, out.group.base)
+				if badBoundary && !previousFailed {
+					stats.GroupsFailed++
+					if previousAdmitted {
+						last := built.groups[len(built.groups)-1]
+						stats.Bytes -= last.memoryBytes()
+						stats.Entries -= int64(len(last.runs))
+						stats.GroupsIndexed--
+						stats.GroupsSkipped++
+						built.groups[len(built.groups)-1] = listGroup{}
+						built.groups = built.groups[:len(built.groups)-1]
+						if len(built.groups) == 0 {
+							stats.Bytes -= 256
+						}
+					}
+				}
+				// Keep the boundary even after rejecting a group: a chain of
+				// descending boundaries must exclude every participant once.
+				previousLast, previousRef = out.group.last, out.group.g
+				if previousLast == nil {
+					previousLast = out.group.base
+				}
+				previousFailed = out.err != nil || badBoundary
+				previousAdmitted = false
+				out.group.last = nil
+				if previousFailed {
 					stats.GroupsSkipped++
 					stats.GroupsFailed++
-					previousLast = nil
 					continue
 				}
 				if len(out.group.runs) == 0 {
-					previousLast = nil
 					stats.GroupsSkipped++
 					continue
 				}
-				if previousLast != nil && previousRef.part == out.group.g.part && previousRef.index+1 == out.group.g.index && r.outOfOrder(previousLast, out.group.base) {
-					// Neither side of a bad group boundary may certify a skip.
-					last := built.groups[len(built.groups)-1]
-					stats.Bytes -= last.memoryBytes()
-					stats.Entries -= int64(len(last.runs))
-					stats.GroupsIndexed--
-					built.groups[len(built.groups)-1] = listGroup{}
-					built.groups = built.groups[:len(built.groups)-1]
-					if len(built.groups) == 0 {
-						stats.Bytes -= 256
-					}
-					stats.GroupsFailed += 2
-					stats.GroupsSkipped += 2
-					previousLast = nil
-					continue
-				}
-				previousLast, previousRef = out.group.last, out.group.g
-				out.group.last = nil
 				cost := out.group.memoryBytes()
 				if len(built.groups) == 0 {
 					cost += 256
@@ -203,6 +219,7 @@ outer:
 				stats.Bytes += cost
 				stats.Entries += int64(len(out.group.runs))
 				stats.GroupsIndexed++
+				previousAdmitted = true
 			}
 			start += n
 		}
@@ -244,12 +261,20 @@ func directory(key []byte) []byte { return key[:bytes.LastIndexByte(key, '/')+1]
 func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndexOptions) (g listGroup, pages int64, err error) {
 	g.g = ref
 	st := new(ReadStats)
-	defer func() { pages = st.KeyPagesDecoded }()
+	defer func() {
+		pages = st.KeyPagesDecoded
+		if g.base == nil {
+			if first := r.group(ref).first.Load(); first != nil {
+				g.base = bytes.Clone(*first)
+			}
+		}
+	}()
 	log := pageLog{unique: r.key.Unique}
 	k, err := r.keyPages(ctx, ref, &log, st)
 	if err != nil {
 		return g, 0, err
 	}
+	k.deferFirst = true
 	var previous []byte
 	denseBefore := false
 	for pg, meta := range k.index.pages {
@@ -260,6 +285,7 @@ func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndex
 		if pg == 0 {
 			g.base = bytes.Clone(k.values[0].ByteArray())
 		}
+		g.last = bytes.Clone(k.values[len(k.values)-1].ByteArray())
 		changes := 0
 		prev := previous
 		for _, v := range k.values {
@@ -286,13 +312,15 @@ func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndex
 		previous = bytes.Clone(directory(k.values[len(k.values)-1].ByteArray()))
 		// The candidate cannot be admitted. Bound temporary storage too; the
 		// caller treats this as an over-budget candidate, not a failed group.
-		if g.memoryBytes() > opt.MaxBytes {
+		if 256+int64(len(g.base)+len(g.data))+int64(len(g.runs))*32 > opt.MaxBytes {
 			return g, pages, nil
 		}
 	}
 	// Flat groups need no directory information at all.
 	if len(g.runs) == 1 && g.runs[0].size >= 0 && len(directory(g.base)) == 0 {
-		return listGroup{}, pages, nil
+		g.runs = nil
+		g.data = nil
+		return g, pages, nil
 	}
 	g.last = bytes.Clone(k.values[len(k.values)-1].ByteArray())
 	g.base = bytes.Clone(g.base)
@@ -357,6 +385,10 @@ func (g *listGroup) compare(i int, key []byte) int {
 // without first decoding all ambiguous pages before it. Dense groups decline.
 func (s *scan) startListCursor(prefix, from []byte) (bool, error) {
 	if s.listIndex == nil {
+		return false, nil
+	}
+	if len(prefix) == 0 || prefix[len(prefix)-1] != '/' {
+		s.stats.ListIndexUnsafeRun++
 		return false, nil
 	}
 	after, ok := successor(prefix)

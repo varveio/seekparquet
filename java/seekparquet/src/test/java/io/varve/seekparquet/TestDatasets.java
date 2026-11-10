@@ -59,6 +59,8 @@ final class TestDatasets {
         int keyBoundBytes;
         int rowsPerGroup = 4;
         boolean noteColumn;
+        /** Encode a constant, non-null size per group through a dictionary. */
+        boolean dictionarySize;
         boolean unique = true;
         /** Broad alternating bounds exercise routing without monotone index metadata. */
         boolean nonMonotoneKeyBounds;
@@ -128,12 +130,22 @@ final class TestDatasets {
             for (int c = 0; c < ncols; c++) {
                 long chunkStart = out.size();
                 Chunk chunk = new Chunk();
+                boolean dictionary = c == 1 && spec.dictionarySize;
+                if (dictionary) {
+                    long value = group.getFirst().size();
+                    if (value < 0 || group.stream().anyMatch(r -> r.size() != value)) throw new IllegalArgumentException("dictionary fixture needs a constant non-null size per group");
+                    byte[] body = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(value).array();
+                    PageHeader header = new PageHeader(PageType.DICTIONARY_PAGE, body.length, body.length);
+                    header.setDictionary_page_header(new org.apache.parquet.format.DictionaryPageHeader(1, Encoding.PLAIN));
+                    Util.writePageHeader(header, chunk.bytes); chunk.bytes.write(body);
+                }
+                long dataStart = chunkStart + chunk.bytes.size();
                 for (int r0 = 0; r0 < group.size(); r0 += spec.rowsPerPage) {
                     List<TestRow> page = group.subList(r0, Math.min(group.size(), r0 + spec.rowsPerPage));
                     long pageOffset = chunkStart + chunk.bytes.size();
-                    byte[] body = pageBody(c, page);
+                    byte[] body = dictionary ? dictionaryBody(page.size()) : pageBody(c, page);
                     PageHeader header = new PageHeader(PageType.DATA_PAGE, body.length, body.length);
-                    header.setData_page_header(new DataPageHeader(page.size(), Encoding.PLAIN, Encoding.RLE, Encoding.RLE));
+                    header.setData_page_header(new DataPageHeader(page.size(), dictionary ? Encoding.RLE_DICTIONARY : Encoding.PLAIN, Encoding.RLE, Encoding.RLE));
                     ByteArrayOutputStream h = new ByteArrayOutputStream();
                     Util.writePageHeader(header, h);
                     chunk.bytes.write(h.toByteArray());
@@ -167,8 +179,9 @@ final class TestDatasets {
                 groupBytes += data.length;
                 Type type = c == 1 ? Type.INT64 : Type.BYTE_ARRAY;
                 String name = c == 0 ? spec.keyColumn : c == 1 ? "size" : "note";
-                ColumnMetaData md = new ColumnMetaData(type, List.of(Encoding.PLAIN, Encoding.RLE), List.of(name), CompressionCodec.UNCOMPRESSED,
-                        group.size(), data.length, data.length, chunkStart);
+                ColumnMetaData md = new ColumnMetaData(type, dictionary ? List.of(Encoding.PLAIN, Encoding.RLE, Encoding.RLE_DICTIONARY) : List.of(Encoding.PLAIN, Encoding.RLE), List.of(name), CompressionCodec.UNCOMPRESSED,
+                        group.size(), data.length, data.length, dataStart);
+                if (dictionary) md.setDictionary_page_offset(chunkStart);
                 ColumnChunk cc = new ColumnChunk(chunkStart);
                 cc.setMeta_data(md);
                 chunks.add(cc);
@@ -250,6 +263,16 @@ final class TestDatasets {
     /** The note value of a row: null for every third size, else "n" + size. */
     static byte[] note(TestRow row) {
         return row.size() % 3 == 0 ? null : ("n" + row.size()).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static byte[] dictionaryBody(int rows) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        boolean[] present = new boolean[rows]; Arrays.fill(present, true);
+        byte[] levels = rleLevels(present);
+        out.write(le32(levels.length)); out.write(levels);
+        out.write(1); // Dictionary-id bit width; every id is zero.
+        for (int i = 0; i < rows; i++) { out.write(2); out.write(0); }
+        return out.toByteArray();
     }
 
     private static byte[] pageBody(int column, List<TestRow> page) throws IOException {

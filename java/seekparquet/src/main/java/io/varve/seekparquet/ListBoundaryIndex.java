@@ -104,7 +104,7 @@ final class ListBoundaryIndex {
     }
 
     record Boundary(long row, int offset, int size, int shared) {}
-    private record Built(Group group, long pages, RuntimeException failure, byte[] last) {}
+    private record Built(Group group, long pages, RuntimeException failure, byte[] first, byte[] last) {}
 
     private static int directoryLength(byte[] key) {
         for (int i = key.length - 1; i >= 0; i--) if (key[i] == '/') return i + 1;
@@ -128,12 +128,12 @@ final class ListBoundaryIndex {
 
     private static Built buildGroup(PartFile part, int slot, ListIndexOptions options, ReadContext ctx) {
         long pages = 0;
+        byte[] previous = null, base = null;
         try {
             int physical = part.groups[slot];
             KeyIndex index = part.keyIndex(physical, ctx);
             List<Boundary> runs = new ArrayList<>();
             ByteArrayOutputStream data = new ByteArrayOutputStream();
-            byte[] previous = null, base = null;
             boolean denseBefore = false;
             for (int pg = 0; pg < index.pages(); pg++) {
                 ctx.checkCancelled();
@@ -163,13 +163,13 @@ final class ListBoundaryIndex {
                 if (256L + base.length + data.size() + 32L * runs.size() > options.maxBytes()) break;
             }
             if (runs.size() == 1 && runs.getFirst().size() >= 0 && directoryLength(base) == 0) {
-                return new Built(null, pages, null, null);
+                return new Built(null, pages, null, base, previous);
             }
-            return new Built(new Group(part.ordinal, slot, base, data.toByteArray(), runs), pages, null, previous.clone());
+            return new Built(new Group(part.ordinal, slot, base, data.toByteArray(), runs), pages, null, base, previous.clone());
         } catch (CancellationException e) {
             throw e;
         } catch (SeekParquetException e) {
-            return new Built(null, ctx.stats.keyPagesDecoded, e, null);
+            return new Built(null, ctx.stats.keyPagesDecoded, e, base != null ? base : part.knownFirst(part.groups[slot]), previous);
         }
     }
 
@@ -179,7 +179,8 @@ final class ListBoundaryIndex {
         boolean exhausted = false;
         List<Group> groups = new ArrayList<>();
         byte[] previousLast = null;
-        Group previousGroup = null;
+        int previousPart = -1, previousSlot = -1;
+        boolean previousFailed = false, previousAdmitted = false;
         try (var workers = Executors.newFixedThreadPool(options.workers())) {
             outer: for (int pi = 0; pi < parts.size(); pi++) {
                 ctx.checkCancelled();
@@ -212,18 +213,28 @@ final class ListBoundaryIndex {
                     }
                     for (int bi = 0; bi < results.size(); bi++) {
                         Built built = results.get(bi);
-                        if (built.failure() != null) { skipped++; failed++; previousLast = null; continue; }
                         Group group = built.group();
-                        if (group == null) { skipped++; previousLast = null; continue; }
-                        if (previousLast != null && previousGroup.part == group.part && previousGroup.slot + 1 == group.slot
-                                && (Arrays.compareUnsigned(previousLast, group.base) > 0
-                                    || (part.unique && Arrays.equals(previousLast, group.base)))) {
-                            Group removed = groups.removeLast();
-                            bytes -= removed.memoryBytes(); entries -= removed.rows.length;
-                            if (groups.isEmpty()) bytes -= 256;
-                            failed += 2; skipped += 2; previousLast = null; continue;
+                        int slot = start + bi;
+                        boolean badBoundary = previousLast != null && built.first() != null
+                                && previousPart == part.ordinal && previousSlot + 1 == slot
+                                && (Arrays.compareUnsigned(previousLast, built.first()) > 0
+                                    || (part.unique && Arrays.equals(previousLast, built.first())));
+                        if (badBoundary && !previousFailed) {
+                            failed++;
+                            if (previousAdmitted) {
+                                Group removed = groups.removeLast();
+                                bytes -= removed.memoryBytes(); entries -= removed.rows.length; skipped++;
+                                if (groups.isEmpty()) bytes -= 256;
+                            }
                         }
-                        previousLast = built.last(); previousGroup = group;
+                        // Rejected groups still contribute their decoded boundary:
+                        // chained violations exclude every participant exactly once.
+                        previousLast = built.last() != null ? built.last() : built.first();
+                        previousPart = part.ordinal; previousSlot = slot;
+                        previousFailed = built.failure() != null || badBoundary;
+                        previousAdmitted = false;
+                        if (previousFailed) { skipped++; failed++; continue; }
+                        if (group == null) { skipped++; continue; }
                         long cost = group.memoryBytes() + (groups.isEmpty() ? 256 : 0);
                         if (cost > options.maxBytes() - bytes) {
                             exhausted = true; skipped += results.size() - bi;
@@ -231,6 +242,7 @@ final class ListBoundaryIndex {
                             break outer;
                         }
                         groups.add(group); bytes += cost; entries += group.rows.length;
+                        previousAdmitted = true;
                     }
                     start += n;
                 }
