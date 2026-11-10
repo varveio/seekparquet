@@ -14,6 +14,7 @@ import (
 	"weak"
 
 	"github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go/compress"
 	"github.com/parquet-go/parquet-go/format"
 
 	seekparquet "github.com/varveio/seekparquet/go"
@@ -84,6 +85,13 @@ func TestNewPartRefuses(t *testing.T) {
 	}
 }
 
+// unindexed returns v, with no column index (-1), continuing a repeated
+// value (repetition level 1).
+func unindexed(v parquet.Value) parquet.Value {
+	v.SetRepetitionLevel(1)
+	return v
+}
+
 func TestWriteRowsRefuses(t *testing.T) {
 	for name, c := range map[string]struct {
 		unique bool
@@ -98,6 +106,10 @@ func TestWriteRowsRefuses(t *testing.T) {
 		"missing column":     {true, append(kvRows("a"), parquet.Row{parquet.ByteArrayValue([]byte("b")).Level(0, 0, 0)}), 1, "does not match"},
 		"wrong kind":         {true, append(kvRows("a"), parquet.Row{parquet.Int64Value(1).Level(0, 0, 0), parquet.NullValue().Level(0, 0, 1)}), 1, "does not match"},
 		"columns swapped":    {true, append(kvRows("a"), parquet.Row{parquet.NullValue().Level(0, 0, 1), parquet.ByteArrayValue([]byte("b")).Level(0, 0, 0)}), 1, "does not match"},
+		// A continuation (repetition level 1) of a value whose column was
+		// never set: its column index is -1.
+		"leading continuation":               {true, append(kvRows("a"), parquet.Row{unindexed(parquet.ByteArrayValue([]byte("b")))}), 1, "does not match"},
+		"leading continuation, then columns": {true, append(kvRows("a"), append(parquet.Row{unindexed(parquet.Int64Value(1))}, kvRows("b")[0]...)), 1, "does not match"},
 	} {
 		f := &memFile{}
 		w, err := NewPart(f, kvSchema, kvOptions(c.unique))
@@ -139,6 +151,49 @@ func TestWriteRowsRefuses(t *testing.T) {
 	}
 	if n, err := w.WriteRows(kvRows("a", "a", "b", "b", "b", "c")); n != 6 || err != nil {
 		t.Errorf("equal keys with groups: %d, %v", n, err)
+	}
+}
+
+// TestCodecPrecedence: PartOptions.Codec compresses the columns whose
+// schema nodes set no compression; a node that sets one keeps it.
+func TestCodecPrecedence(t *testing.T) {
+	type tagged struct {
+		Key   []byte `parquet:"key"`
+		Value string `parquet:"value,snappy"`
+		N     int64  `parquet:"n"`
+	}
+	schema := parquet.SchemaOf(new(tagged))
+	for _, c := range []struct {
+		codec compress.Codec
+		want  format.CompressionCodec
+	}{
+		{nil, format.Zstd},
+		{&parquet.Gzip, format.Gzip},
+	} {
+		opt := kvOptions(true)
+		opt.Codec = c.codec
+		f := &memFile{}
+		w, err := NewPart(f, schema, opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.WriteRows([]parquet.Row{schema.Deconstruct(nil, &tagged{Key: []byte("a"), Value: "v", N: 1})}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Seal(); err != nil {
+			t.Fatal(err)
+		}
+		file, err := parquet.OpenFile(bytes.NewReader(f.Bytes()), int64(f.Len()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]format.CompressionCodec{}
+		for _, col := range file.Metadata().RowGroups[0].Columns {
+			got[col.MetaData.PathInSchema[0]] = col.MetaData.Codec
+		}
+		if got["key"] != c.want || got["n"] != c.want || got["value"] != format.Snappy {
+			t.Errorf("Codec %v: the codecs are %v; want %v, and Snappy for the tagged column", c.codec, got, c.want)
+		}
 	}
 }
 

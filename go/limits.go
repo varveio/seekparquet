@@ -28,10 +28,18 @@ type Limits struct {
 	// index or page header. Default 256 MiB.
 	MetadataMemory int64
 	// PageBytes bounds a page's compressed and uncompressed sizes, and the
-	// size of its decoded values, dictionary pages included. Default 64 MiB.
+	// size of its decoded values' bytes, dictionary pages included. Default
+	// 64 MiB. It does not bound the memory of decoding a page: each decoded
+	// value is also held in a parquet.Value (24 bytes on 64-bit platforms),
+	// which PageValues bounds.
 	PageBytes int64
 	// PageValues bounds the number of values in one page or dictionary.
-	// Default 16,777,216.
+	// Default 16,777,216. It also bounds the parquet.Value slices a page
+	// decodes to, besides its PageBytes: up to 24 bytes per value on 64-bit
+	// platforms, twice that for an optional column (its non-null values,
+	// then every row), so 384 to 768 MiB for a page at the defaults. Each
+	// request decodes its own pages, so concurrent requests add up. Lower it
+	// to bound the memory of a page.
 	PageValues int64
 	// IndexMemory bounds the memory one Dataset retains for key page
 	// indexes and decoded row-group first-key bytes, which it keeps once

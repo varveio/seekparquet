@@ -69,6 +69,10 @@ final class TestDatasets {
         /** When set, the first two keys of the first page of the first part are swapped. */
         boolean swapFirstKeys;
         String schemaId = "test/v1";
+        /** When set, a field appended to the footer's FileMetaData (bytes before its closing stop). */
+        byte[] footerExtraField;
+        /** When set, a field appended to the header of the first key page (bytes before its closing stop). */
+        byte[] keyPageHeaderExtraField;
     }
 
     private TestDatasets() {}
@@ -135,6 +139,9 @@ final class TestDatasets {
                     header.setData_page_header(new DataPageHeader(page.size(), Encoding.PLAIN, Encoding.RLE, Encoding.RLE));
                     ByteArrayOutputStream h = new ByteArrayOutputStream();
                     Util.writePageHeader(header, h);
+                    if (c == 0 && g0 == 0 && r0 == 0 && spec.keyPageHeaderExtraField != null) {
+                        h = withField(h.toByteArray(), spec.keyPageHeaderExtraField);
+                    }
                     chunk.bytes.write(h.toByteArray());
                     chunk.bytes.write(body);
                     chunk.locations.add(new PageLocation(pageOffset, h.size() + body.length, r0));
@@ -225,10 +232,25 @@ final class TestDatasets {
         meta.setColumn_orders(orders);
         ByteArrayOutputStream footer = new ByteArrayOutputStream();
         Util.writeFileMetaData(meta, footer);
+        if (spec.footerExtraField != null) {
+            footer = withField(footer.toByteArray(), spec.footerExtraField);
+        }
         out.write(footer.toByteArray());
         out.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(footer.size()).array());
         out.write("PAR1".getBytes(StandardCharsets.US_ASCII));
         return out.toByteArray();
+    }
+
+    /** {@return a compact-protocol struct's bytes with {@code field} inserted before its closing stop} */
+    private static ByteArrayOutputStream withField(byte[] struct, byte[] field) {
+        if (struct[struct.length - 1] != 0) {
+            throw new IllegalArgumentException("not a struct ending in a stop byte");
+        }
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        b.write(struct, 0, struct.length - 1);
+        b.write(field, 0, field.length);
+        b.write(0);
+        return b;
     }
 
     /** The note value of a row: null for every third size, else "n" + size. */

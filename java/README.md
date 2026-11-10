@@ -156,8 +156,8 @@ indexes taken and loaded, page index seeks, prefix skips, and the storage reads 
 | `Dataset.PlanRanges(ctx, ranges, columns)` | `Dataset.planRanges(ranges, columns, cancellation)` | A Java `RangeQuery` always has a positive limit, so a planned range's limit is ignored rather than rejected; a range with columns is rejected (`IllegalArgumentException`), as in Go. |
 | `RangePlan.Count() (n, exact)` | `count()`, `countExact()` | |
 | `RangePlan.ProjectedBytes() (n, exact)` | `projectedBytes()`, `projectedBytesExact()` | The key column, when projected, counts nothing: Java takes its values from the key pages the scan decodes, where Go reads its chunk. A column projected twice counts once, as the scan reads it once. |
-| `RangePlan.Scan(ctx, st, fn)` | `scan(cancellation, stats, action)` | `action` stops the scan by throwing. A closed dataset is `IllegalStateException`. |
-| `RangePlan.Stats()` | `stats()` | |
+| `RangePlan.Scan(ctx, st, fn)` | `scan(cancellation, stats, action)` | `action` stops the scan by throwing. A closed dataset is `IllegalStateException`. Closing the dataset from inside `action` fails at once with `IllegalStateException`, where Go's `Close` from inside `fn` waits for ever: neither may close from inside a scan. |
+| `RangePlan.Stats()` | `stats()` | Java positions each range's ends with a cursor of its own, where Go moves one scan through every range and continues from its current row when it can: for ranges near each other, Java can count more key pages, keys and row-group openings for the same plan. Rows, counts and projected bytes do not differ. |
 | `RangePlan.Split(ctx, n)` | `split(n, cancellation)` | No shard is an empty list, not nil. |
 | `Dataset.Columns(ctx, i)` | `columns(i, cancellation)` | An index outside the parts is `IndexOutOfBoundsException`; `Column.parts()` is 1. |
 | `Column{Logical *format.LogicalType}` | `Column.logicalType()`: `Optional<LogicalType>` | `LogicalType` is a sealed interface of records, so the API does not expose parquet-java's Thrift classes. |
@@ -243,7 +243,20 @@ layers are decorators of these interfaces.
 `LocalStorage` is the only implementation in this module. It uses positioned reads on one
 `FileChannel` per part, opens parts through pinned directory handles and rejects symbolic links in each part-path component, and detects a
 part file that changes size or is replaced. Filesystems without `SecureDirectoryStream` are refused
-with a storage error; reopening after interruption uses the same pinned parent handle. Object-store adapters belong in separate modules.
+with a storage error; reopening after interruption uses the same pinned parent handle. `manifest.json` is
+read through a pinned handle on the root too, and must be a regular file (a symbolic link is refused).
+Object-store adapters belong in separate modules.
+
+Java cannot open a file without blocking on a special file, and whoever can write the dataset directory
+can replace an entry `LocalStorage` has checked as a regular file with a FIFO before it opens it. So that
+such an open cannot hold a request beyond cancellation, interruption or `close()`, each open of a part or
+of the manifest runs on a new platform thread, through its own handle on the file's directory, and the
+request stops waiting for it when cancelled (the open then ends on its own and closes what it opened). This
+costs a short-lived thread and a directory handle per part open, which happens once per part per dataset
+(again only after an interrupt closed the part's channel). An open that never returns strands its thread
+and directory handle until the file is opened for writing or the process exits; once
+`LocalStorage.MAX_STRANDED_OPENS` (64) opens through one `LocalStorage` are stranded, its further opens
+fail with a storage error instead of starting more threads.
 
 ## What opening checks, what reads check
 
@@ -269,6 +282,14 @@ does not touch it. A part's refusal ends the request that touched it and is kept
 dataset is open: every later request that touches the part, and `verify()`, is refused with the same
 code. Storage failures, limits and cancellation are not kept; the next request checks the part again.
 Concurrent first touches wait for one check. `columns()` describes the parts checked so far.
+
+A touched part stays open, with its checked footer in memory, until the dataset closes, and no limit
+bounds how many: `maxParts` bounds the manifest, the index memory budget the retained page indexes,
+and `verifyConcurrency` how many parts `verify()` checks at a time, not how many stay open.
+`LocalStorage` keeps a file channel and a directory handle per part. Size file descriptors and memory for
+the most parts one dataset will touch (`verify()` touches them all): a single pass over more parts than
+that fails when the process runs out, and opening a fresh dataset for it does not help. This is a known
+limitation, documented rather than solved: there is no cap that refuses such a pass early, and no eviction.
 
 **Verify (CHECK-3).** `Dataset.verify()` checks every part not yet checked, `verifyConcurrency` at a
 time (8 by default), then decodes every row group's first key page and each part's last, and compares

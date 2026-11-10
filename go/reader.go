@@ -53,7 +53,15 @@ type reader struct {
 	// first keys. No file I/O or page decoding runs under this lock.
 	indexMu sync.Mutex
 
-	mu        sync.RWMutex
+	// mu guards the request leases: active counts the requests in
+	// progress, and idle is signalled when it drops to zero; closed is set
+	// as close begins, so that no request starts after it, and close then
+	// waits for active. A request never waits on mu for another's lease,
+	// so a request started inside another (a Range in a Scan callback)
+	// while close waits fails with ErrClosed instead of waiting for ever.
+	mu        sync.Mutex
+	idle      sync.Cond
+	active    int
 	closed    bool
 	closing   context.Context
 	closeNow  context.CancelCauseFunc
@@ -648,19 +656,26 @@ func (p *part) at(ctx context.Context, st *ReadStats) io.ReaderAt {
 }
 
 // begin takes a read lease that close waits for, and returns the request's
-// context: it ends with ctx, or with close (cause ErrClosed).
+// context: it ends with ctx, or with close (cause ErrClosed). Once close has
+// begun (it cancels r.closing first), begin fails with ErrClosed at once.
 func (r *reader) begin(ctx context.Context) (context.Context, func(), error) {
-	r.mu.RLock()
-	if r.closed {
-		r.mu.RUnlock()
+	r.mu.Lock()
+	if r.closed || r.closing.Err() != nil {
+		r.mu.Unlock()
 		return nil, nil, ErrClosed
 	}
+	r.active++
+	r.mu.Unlock()
 	rctx, cancel := context.WithCancelCause(ctx)
 	stop := context.AfterFunc(r.closing, func() { cancel(ErrClosed) })
 	return rctx, func() {
 		stop()
 		cancel(nil)
-		r.mu.RUnlock()
+		r.mu.Lock()
+		if r.active--; r.active == 0 {
+			r.idle.Broadcast()
+		}
+		r.mu.Unlock()
 	}, nil
 }
 
@@ -680,8 +695,14 @@ func (r *reader) close() error {
 	r.closeOnce.Do(func() {
 		r.closeNow(ErrClosed)
 		r.mu.Lock()
-		defer r.mu.Unlock()
 		r.closed = true
+		if r.idle.L == nil {
+			r.idle.L = &r.mu
+		}
+		for r.active > 0 {
+			r.idle.Wait()
+		}
+		r.mu.Unlock()
 		var errs []error
 		for _, p := range r.parts {
 			if err := closeFile(p.file); err != nil {

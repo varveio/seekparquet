@@ -221,7 +221,7 @@ func TestSplitGeometries(t *testing.T) {
 // projected bytes, or the rows of a plan without columns; a plan of one
 // row group is one shard; boundaries in a repeated-key dataset decode the
 // key pages around them, in unique mode nothing, and a cancelled context
-// fails them.
+// fails a split in either mode.
 func TestSplitBalance(t *testing.T) {
 	keys := fixtureKeys(240)
 	for _, repeated := range []bool{false, true} {
@@ -247,13 +247,16 @@ func TestSplitBalance(t *testing.T) {
 				}
 			}
 		}
-		if repeated {
-			cancelled, cancel := context.WithCancel(ctx)
-			cancel()
-			plan, err := d.PlanRanges(ctx, []Range{{}}, nil)
+		// A cancelled split fails in both modes: with repeated keys at its
+		// first boundary read, with unique keys, which read nothing, by
+		// checking its context.
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		for _, columns := range [][]string{{"size"}, nil} {
+			plan, err := d.PlanRanges(ctx, []Range{{}}, columns)
 			must(t, err)
-			if _, err := plan.Split(cancelled, 4); !errors.Is(err, context.Canceled) {
-				t.Fatalf("a cancelled split: %v", err)
+			if shards, err := plan.Split(cancelled, 4); !errors.Is(err, context.Canceled) || shards != nil {
+				t.Fatalf("repeated %v, %v: a cancelled split: %d shards, %v", repeated, columns, len(shards), err)
 			}
 		}
 		plan, err := d.PlanRanges(ctx, []Range{{Start: []byte(keys[3]), End: []byte(keys[15])}}, []string{"size"})
@@ -340,12 +343,25 @@ func TestSplitRequests(t *testing.T) {
 	if err := shards[0].Scan(cancelled, nil, func(Row) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("a cancelled shard scan: %v", err)
 	}
+	// An empty plan, or n below 1, has no shard, but a cancelled context
+	// still fails the split, and so does a Close.
+	empty, err := d.PlanRanges(ctx, []Range{{Start: []byte("zzzz")}}, nil)
+	must(t, err)
+	if shards, err := empty.Split(cancelled, 4); !errors.Is(err, context.Canceled) || shards != nil {
+		t.Fatalf("a cancelled split of an empty plan: %d shards, %v", len(shards), err)
+	}
+	if shards, err := plan.Split(cancelled, 0); !errors.Is(err, context.Canceled) || shards != nil {
+		t.Fatalf("a cancelled split into no shard: %d shards, %v", len(shards), err)
+	}
 	if shards, err := plan.Split(ctx, 0); err != nil || shards != nil {
 		t.Fatalf("n 0: %v, %v", shards, err)
 	}
 	must(t, d.Close())
 	if _, err := plan.Split(ctx, 2); !errors.Is(err, ErrClosed) {
 		t.Fatalf("a split after close: %v", err)
+	}
+	if _, err := empty.Split(ctx, 2); !errors.Is(err, ErrClosed) {
+		t.Fatalf("a split of an empty plan after close: %v", err)
 	}
 }
 

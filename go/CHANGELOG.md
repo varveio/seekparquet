@@ -5,6 +5,30 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Fixed: a page whose PLAIN or BYTE_STREAM_SPLIT payload held more values than its header declares (or a
+  dictionary page more than its count) was decoded as its declared prefix, so full validation counted only
+  those and could certify the page (CHECK-5). It is now `invalid_parquet`, in reads and in validation; a
+  PLAIN Boolean page may still pad its final byte.
+- Fixed: an RLE/bit-packed stream of dictionary indexes or definition levels could hold more values than
+  the page through a repeated run, or a bit-packed run beyond its final group's padding, read as its first
+  values; it is now `invalid_parquet`, as in Java. A FIXED_LEN_BYTE_ARRAY page decoding to bytes that are
+  not a whole number of values (DELTA_BYTE_ARRAY) is too.
+- Fixed: a page header carrying a CRC of zero was not checked, parquet-go's header not telling it from
+  none; every CRC a header carries is now checked, in reads and in validation, as in Java.
+- Fixed: a request started while a `Close` waited for the requests in progress waited behind it, so a
+  request started inside a `Scan` callback (or one the callback waits for) never returned, nor did the
+  `Close`. A request started once `Close` has begun now fails with `ErrClosed` at once.
+- Fixed: `write.PartWriter.WriteRows` panicked on a row beginning with a continuation value (repetition
+  level above 0) whose column index is unset; it fails with `ErrProfile`.
+- Fixed: `RangePlan.Split` with unique keys reads nothing, and so returned shards for a cancelled context or
+  a closing dataset; it now observes its context on entry and through its loops, an empty plan's included.
+  Building many shards no
+  longer rescans the whole plan for each (O(G²) for G row groups split G ways).
+- Documented: `PartOptions.Codec` compresses the columns whose schema nodes set no compression of their own;
+  a node's compression takes precedence, as in parquet-go. `RangePlan.Scan`'s `fn` must not close the
+  Dataset. `Limits.PageBytes` is not a bound on the memory of decoding a page: `PageValues` bounds its
+  `parquet.Value` slices. A touched part keeps its file and footer until `Close`, unbounded by any limit
+  (a known limitation: no cap, no eviction).
 - The conformance adapter claims the optional `planning` capability: it answers `plan` (PlanRanges, then
   Scan, Count and ProjectedBytes) for the conformance suite's planning cases.
 - `RangePlan.Split(ctx, n)` divides a selection plan into at most `n` shards along row-group boundaries,

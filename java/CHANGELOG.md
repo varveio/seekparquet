@@ -5,6 +5,45 @@ independent of the specification's draft revisions.
 
 ## Unreleased
 
+### Fixed
+
+- A dictionary-encoded page whose values are all null, as parquet-go writes it (a bit width, then an
+  empty run), was refused as `invalid_parquet`. An RLE/bit-packed run of no values in definition levels or
+  dictionary indexes now holds nothing, as in Go: it is removed before parquet-java's decoder, which would
+  repeat its value, reads the stream. Boolean values still refuse one, as Go does. Every Go-written dataset
+  with an all-null dictionary-encoded page was unreadable.
+- A page whose PLAIN payload held more values than its header declares (or a dictionary page more than its
+  count) was read as its declared prefix; it is now `invalid_parquet`, as in Go. A PLAIN Boolean page may
+  still pad its final byte.
+- A page whose header carries a CRC is checked against it, as in Go.
+- `Dataset.close()` from inside one of its own requests on the same thread (a scan's action) waited for
+  ever; it now fails with `IllegalStateException` and changes nothing.
+- A request started on another thread while `close()` waited for the requests in progress waited behind
+  it, so a scan's action waiting for such a request never returned, nor did the close. A request started
+  once the dataset is closing now fails at once.
+- `RangePlan.split` of an empty plan, or into fewer than one shard, returned no shard for a cancelled
+  split or a closed dataset; it now fails as any split does.
+- `RangePlan.split` no longer rescans the whole plan for each shard, nor walks candidates linearly where Go
+  searches them.
+- `Dataset.columns(int)`, `columns()` and `column(name)` threw `NullPointerException` for a part with a
+  column whose `logical_type` is a member this reader's parquet-format does not know (a newer annotation);
+  the column's converted type, if any, now stands for it, as in Go.
+- `Dataset.planRanges` with columns walked every row group of a part from its first for each range, where
+  Go searches for the first: a plan of many ranges in a part of many row groups cost their product.
+- A footer, page header or page index whose Thrift structure nests more than 64 deep (an unknown field
+  of a few kilobytes of nested structs, which the shaded Thrift 0.23 runtime skips without its recursion
+  limit) overflowed the stack: `StackOverflowError` escaped the request instead of a refusal. Nesting is
+  now bounded as the Go reader's `internal/thriftcheck` bounds it, and deeper nesting is refused as
+  malformed Thrift is (`invalid_footer` for a footer, `invalid_page_index` for a key page header or
+  ColumnIndex, `invalid_parquet` for a value page).
+- `LocalStorage`: a part or `manifest.json` replaced by a FIFO between its regular-file check and its
+  open (by whoever can write the dataset directory) blocked the open until a writer appeared, and neither
+  cancellation, interruption nor `Dataset.close()` could end the request; `close()` waited for ever.
+  Opens now run on a thread of their own, through their own directory handle, and a cancelled request
+  stops waiting; at most `LocalStorage.MAX_STRANDED_OPENS` (64) such stranded opens per storage, after
+  which its opens fail with a storage error. Each part open costs a short-lived thread and a directory
+  handle. `manifest.json` is now read through a pinned root handle without following a symbolic link.
+
 ### Changed
 
 - A value column chunk's dictionary is read in one request of the bytes before the first data page its

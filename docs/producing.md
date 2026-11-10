@@ -38,7 +38,7 @@ promises. Readers and validators check the result; nothing here relaxes a rule o
 | checking a written part | `seekparquet.InspectFooter`, `seekparquet.InspectKeyPages` |
 
 `write` enforces step 3 and cannot be told otherwise: its options set the key, the schema id, the codec
-(ZSTD by default), page and row-group sizes, `created_by` and column-parallel encoding, but not the
+(ZSTD by default; a column whose schema node names its own compression keeps it), page and row-group sizes, `created_by` and column-parallel encoding, but not the
 indexes, bounds or stamps. It checks every key as it arrives (KEY-2, KEY-3, KEY-6) and fails with
 `write.ErrProfile`, naming the rule, rather than write a part a reader would refuse. It streams: it holds
 one page of rows and one row group of encoded pages, and computes the part's SHA-256 as the bytes are
@@ -77,4 +77,7 @@ validate it in full with `seekparquet.ValidateDir` (§8); the module's own tests
 they write. The conformance job validates the module's sample datasets at the
 `full` and `digest` levels with the reference adapter and with the Python validator oracle
 (`conformance/validator/`), and reads them with DuckDB
-(`conformance/harness/check_datasets.py`, fed by `go -C go run ./internal/cmd/samples DIR`).
+(`conformance/harness/check_datasets.py`, fed by `go -C go run ./internal/cmd/samples DIR`). The same
+datasets are queried through the Go and the Java readers (`check_datasets.py --target reader`): ranges,
+bounds, prefixes and delimiter listings projecting every column, paged through their cursors, against the
+source rows as PyArrow reads them.

@@ -76,8 +76,12 @@ type PartOptions struct {
 	// SchemaID is the producer's schema id, stamped on the part
 	// (STAMP-1) and repeated by the manifest.
 	SchemaID string
-	// Codec compresses every page; it must be safe for concurrent use when
-	// ColumnWorkers allows several. Nil is ZSTD at its default speed.
+	// Codec compresses the pages of every column whose schema node sets no
+	// compression of its own; a node that sets one (parquet.Compressed, or
+	// a struct tag such as `parquet:",snappy"`) keeps it, as in
+	// parquet-go. Codec must be safe for concurrent use when ColumnWorkers
+	// allows several, and so must a node's. Nil is ZSTD at its default
+	// speed.
 	Codec compress.Codec
 	// PageRows is the most rows in a page of any column; 0 is 1,024
 	// (GEO-1). A column's page also ends once its buffer reaches 1 MiB.
@@ -130,8 +134,8 @@ type span struct{ value, start, end int }
 // NewPart starts a part written to f. It checks the key column against
 // KEY-1 and the options, and fails with ErrProfile when they do not
 // describe a part of the profile. The schema is used as given, with its
-// columns' encodings and compression, except that every page is
-// compressed with opt.Codec and the key column's ColumnIndex is marked
+// columns' encodings and compression: opt.Codec compresses the columns
+// whose nodes set no compression. The key column's ColumnIndex is marked
 // ASCENDING (RG-6). The caller keeps f when NewPart fails.
 func NewPart(f PartFile, schema *parquet.Schema, opt PartOptions) (*PartWriter, error) {
 	if opt.SchemaID == "" {
@@ -308,7 +312,10 @@ func (w *PartWriter) check(row parquet.Row) ([]byte, error) {
 		switch {
 		case c == next && c < len(w.kinds) && v.RepetitionLevel() == 0:
 			next++
-		case c == next-1 && v.RepetitionLevel() > 0:
+		case c == next-1 && c >= 0 && v.RepetitionLevel() > 0:
+			// A continuation of the column before; c >= 0 refuses one
+			// that comes before any column, rather than indexing kinds
+			// with it.
 		default:
 			return nil, violation("row %d does not match the schema: value %d is of column %d, level %d", w.rows, i, c, v.RepetitionLevel())
 		}

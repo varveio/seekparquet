@@ -14,6 +14,7 @@ import (
 	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/encoding/rle"
+	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
 )
 
@@ -181,7 +182,8 @@ func (c *chunk) located(off, size int64) (*format.PageHeader, int64, []byte, err
 }
 
 // payload returns the page data after a header of length n at off, from
-// raw when it holds them, after checking its checksum when it has one.
+// raw when it holds them, after checking the CRC its header carries, when
+// it carries one (zero included).
 func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte, error) {
 	size := int64(h.CompressedPageSize)
 	var data []byte
@@ -193,10 +195,33 @@ func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte,
 			return nil, c.corrupt(err)
 		}
 	}
-	if h.CRC != 0 && uint32(h.CRC) != crc32.ChecksumIEEE(data) {
-		return nil, c.corrupt(errors.New("the page fails its checksum"))
+	if h.CRC != 0 || c.hasCRC(off, n, raw) {
+		if uint32(h.CRC) != crc32.ChecksumIEEE(data) {
+			return nil, c.corrupt(errors.New("the page fails its checksum"))
+		}
 	}
 	return data, nil
+}
+
+// crcField decodes only a page header's optional crc (field 4), keeping
+// whether it is present: format.PageHeader holds it as a plain int32, so a
+// CRC of zero reads as none.
+type crcField struct {
+	CRC *int32 `thrift:"4,optional"`
+}
+
+// hasCRC reports whether the page header of length n at off, held at the
+// start of raw or read again, carries a crc field: called only when the
+// decoded CRC is zero, to tell a stored zero from an absent one.
+func (c *chunk) hasCRC(off, n int64, raw []byte) bool {
+	if int64(len(raw)) < n {
+		raw = make([]byte, n)
+		if err := readFull(c.p.at(c.ctx, c.stats), raw, off); err != nil {
+			return false // the header was read before; a failing reread is not the page's
+		}
+	}
+	var f crcField
+	return thrift.Unmarshal(new(thrift.CompactProtocol), raw[:n], &f) == nil && f.CRC != nil
 }
 
 // dataRows returns the rows of a data page and true, or false for a page
@@ -366,7 +391,7 @@ func (c *chunk) values(enc format.Encoding, data []byte, n int) ([]parquet.Value
 
 // decodeValues decodes n values encoded with enc, after checking the value
 // counts the encoding declares and the decoded size, and requires the
-// decoded values to hold n of them.
+// decoded values to hold exactly n of them.
 func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.Values, error) {
 	var none encoding.Values
 	if !supportedEncoding(enc) {
@@ -405,10 +430,44 @@ func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.
 	if err != nil {
 		return none, c.corrupt(err)
 	}
-	if held(typ, &decoded) < int64(n) {
-		return none, c.corrupt(fmt.Errorf("the page decodes to fewer than its %d values", n))
+	if err := exactly(typ, &decoded, n); err != nil {
+		return none, c.corrupt(err)
 	}
 	return decoded, nil
+}
+
+// exactly requires decoded to hold exactly n values. The dependency's page
+// exposes only the first n of them, so a payload holding more would pass
+// every later count unnoticed (CHECK-5). The only padding allowed is that
+// of PLAIN Booleans, bit-packed into whole bytes: the final byte may hold
+// up to seven bits after the last value. (A Boolean RLE stream, with the
+// padding of its final bit-packed group, does not reach here.)
+func exactly(typ parquet.Type, decoded *encoding.Values, n int) error {
+	got := held(typ, decoded)
+	data, _ := decoded.Data()
+	switch typ.Kind() {
+	case parquet.Boolean:
+		if int64(len(data)) == (int64(n)+7)/8 {
+			return nil
+		}
+	case parquet.FixedLenByteArray:
+		// held rounds down: a DELTA_BYTE_ARRAY page can decode to a length
+		// that is not a whole number of values.
+		if int64(len(data)) == int64(n)*int64(max(typ.Length(), 1)) {
+			return nil
+		}
+		if got == int64(n) {
+			return fmt.Errorf("the page decodes to %d bytes, not %d values of %d", len(data), n, typ.Length())
+		}
+	default:
+		if got == int64(n) {
+			return nil
+		}
+	}
+	if got < int64(n) {
+		return fmt.Errorf("the page decodes to fewer than its %d values", n)
+	}
+	return fmt.Errorf("the page decodes to more than its %d values", n)
 }
 
 // held returns the number of values decoded holds.
@@ -510,10 +569,12 @@ func checkCounts(enc format.Encoding, data []byte, n int) error {
 }
 
 // checkRuns requires an RLE/bit-packed hybrid stream of the given bit width
-// to hold at most n values, allowing the padding of a final bit-packed
-// group, without decoding it.
+// to hold at most n values, without decoding it: a repeated run may not
+// hold more values than remain, and a bit-packed run only the padding of
+// its final group of eight; no run with values may follow the nth. A run
+// of no values holds nothing and is stepped over (parquet-go writes one
+// for a page of no indexes, and decodes one anywhere).
 func checkRuns(src []byte, n, width int) error {
-	limit := uint64(n) + 7 // the values, and the padding of a final bit-packed group
 	total := uint64(0)
 	for len(src) > 0 {
 		h, k := binary.Uvarint(src)
@@ -523,14 +584,19 @@ func checkRuns(src []byte, n, width int) error {
 		src = src[k:]
 		// A run of one value repeated, or groups of eight bit-packed values.
 		count, size := h>>1, uint64(width+7)/8
-		if h&1 == 1 {
-			if count > limit/8 {
-				return fmt.Errorf("the runs hold more than the page's %d values", n)
-			}
-			count, size = 8*count, count*uint64(width)
+		packed := h&1 == 1
+		if packed {
+			size = count * uint64(width)
 		}
-		if count > limit-total {
+		switch remaining := uint64(n) - min(total, uint64(n)); {
+		case count == 0:
+		case remaining == 0:
 			return fmt.Errorf("the runs hold more than the page's %d values", n)
+		case packed && count > (remaining+7)/8, !packed && count > remaining:
+			return fmt.Errorf("the runs hold more than the page's %d values", n)
+		}
+		if packed {
+			count *= 8
 		}
 		if size > uint64(len(src)) {
 			return errors.New("a run is truncated")

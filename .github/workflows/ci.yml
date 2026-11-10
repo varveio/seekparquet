@@ -109,15 +109,17 @@ jobs:
           python conformance/harness/check_indexed_access.py --language go
       - name: Go-written datasets (reference adapter, Python and Go validators, DuckDB)
         run: |
-          python -m pip install duckdb==1.4.1
+          python -m pip install duckdb==1.4.5
           (cd go && go run ./internal/cmd/samples "$RUNNER_TEMP/samples")
           python conformance/harness/check_datasets.py --adapter "python conformance/harness/reference_adapter.py" "$RUNNER_TEMP/samples"
           python conformance/harness/check_datasets.py --adapter "python conformance/validator/validator_adapter.py" "$RUNNER_TEMP/samples"
           python conformance/harness/check_datasets.py --adapter "$RUNNER_TEMP/seekparquet-conformance" "$RUNNER_TEMP/samples"
+          python conformance/harness/check_datasets.py --target reader --adapter "$RUNNER_TEMP/seekparquet-conformance" "$RUNNER_TEMP/samples"
 
   java:
     needs: changes
-    if: needs.changes.outputs.java == 'true' || needs.changes.outputs.contract == 'true'
+    # Go changes too: the Java reader reads the Go writer's datasets.
+    if: needs.changes.outputs.java == 'true' || needs.changes.outputs.contract == 'true' || needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -125,6 +127,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.13"
@@ -139,6 +145,10 @@ jobs:
           python conformance/generators/check_boolean.py --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
           python conformance/generators/check_independent.py --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance
           python conformance/harness/check_indexed_access.py --language java
+      - name: Go-written datasets (Java reader against their source rows)
+        run: |
+          (cd go && go run ./internal/cmd/samples "$RUNNER_TEMP/samples")
+          python conformance/harness/check_datasets.py --target reader --adapter java/conformance/build/install/seekparquet-conformance/bin/seekparquet-conformance "$RUNNER_TEMP/samples"
 
   ci-ok:
     if: always()
@@ -160,7 +170,7 @@ jobs:
             true/true|true/false|false/true|false/false) ;;
             *) echo "change detection gave unexpected outputs: go=$GO_NEEDED contract=$CONTRACT_NEEDED"; exit 1;;
           esac
-          if [ "$JAVA_NEEDED" = "true" ] || [ "$CONTRACT_NEEDED" = "true" ]; then
+          if [ "$JAVA_NEEDED" = "true" ] || [ "$CONTRACT_NEEDED" = "true" ] || [ "$GO_NEEDED" = "true" ]; then
             [ "$JAVA_RESULT" = "success" ] || { echo "java was needed and ended with: $JAVA_RESULT"; exit 1; }
           else
             [ "$JAVA_RESULT" = "skipped" ] || { echo "java was not needed but ended with: $JAVA_RESULT"; exit 1; }

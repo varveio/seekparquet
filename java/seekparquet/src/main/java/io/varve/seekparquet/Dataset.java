@@ -57,7 +57,17 @@ import java.util.function.Consumer;
  * page indexes, and safe for concurrent requests from many threads. Results are immutable. {@link
  * #close()} cancels the requests in progress (they end with {@link CancellationException}), waits for
  * them to return, and closes every part source it opened; requests after it fail with {@link
- * IllegalStateException}. The {@link DatasetStorage} is not closed: it belongs to the caller, and
+ * IllegalStateException}. A scan's action must not close the dataset itself: see {@link #close()}.
+ *
+ * <p>Each part a request touches stays open, with its checked footer in memory, until the dataset
+ * closes; no limit bounds how many. {@link Limits#maxParts()} bounds the manifest and the index memory
+ * budget the retained page indexes, while {@code verifyConcurrency} bounds how many parts {@link
+ * #verify()} checks at a time, not how many stay open. A long-lived dataset that touches many parts,
+ * or {@code verify()}, which touches them all, holds a source for each ({@link
+ * io.varve.seekparquet.storage.LocalStorage} keeps a file channel and a directory handle per part): size
+ * file descriptors and memory for the most parts one dataset will touch. A single pass over more parts
+ * than that fails when the process runs out, and a fresh dataset for it does not help: there is no cap
+ * that refuses it early, and no eviction. The {@link DatasetStorage} is not closed: it belongs to the caller, and
  * must stay usable until the dataset is closed, since parts are opened when first touched.
  */
 public final class Dataset implements AutoCloseable {
@@ -584,7 +594,16 @@ public final class Dataset implements AutoCloseable {
 
     Request begin(Cancellation caller) {
         caller.throwIfCancelled();
-        lifecycle.readLock().lock();
+        if (closing.isCancelled()) {
+            throw new IllegalStateException("the dataset is closed");
+        }
+        // A close waiting for the requests in progress does not hold back this one: tryLock takes the read
+        // lock past a waiting writer. A request started inside another (from a scan's action, on any
+        // thread) while the dataset closes therefore starts, and its cancellation, linked to the close,
+        // ends it at once; waiting behind the close, it would wait for the request it runs inside.
+        if (!lifecycle.readLock().tryLock()) {
+            lifecycle.readLock().lock(); // the close holds the lock: it has drained, and is closing
+        }
         if (closed) {
             lifecycle.readLock().unlock();
             throw new IllegalStateException("the dataset is closed");
@@ -601,10 +620,20 @@ public final class Dataset implements AutoCloseable {
      * Closes the dataset: cancels the requests in progress, waits for them to return, and closes every
      * part source it opened. Calling it again does nothing.
      *
+     * <p>A request cannot wait for itself: closing the dataset from inside one of its own requests on the
+     * same thread (from a {@link RangePlan#scan scan}'s action or statistics consumer) would wait forever,
+     * and fails instead, changing nothing. End the scan by throwing from the action, and close the dataset
+     * once the scan has returned.
+     *
      * @throws StorageException if closing a part source fails (every source is still closed)
+     * @throws IllegalStateException if called from inside a request of this dataset on the same thread
      */
     @Override
     public void close() {
+        if (lifecycle.getReadHoldCount() > 0) {
+            throw new IllegalStateException("the dataset cannot be closed from inside one of its own requests: "
+                    + "end the request first, then close it");
+        }
         if (!closing.isCancelled()) {
             closing.cancelWithReason("the dataset was closed");
         }

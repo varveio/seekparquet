@@ -105,6 +105,13 @@ func (plan *RangePlan) Stats() ReadStats { return plan.stats }
 // projected page holding the plan's rows once, checking every key page it
 // decodes (CHECK-2). st, when not nil, receives the scan's read
 // statistics, as Range.Stats.
+//
+// The scan holds the Dataset open while fn runs: Close waits for it to
+// return. To stop early, return an error from fn (or cancel ctx), and close
+// the Dataset after Scan has returned. fn must not call Close, nor wait for
+// a goroutine that does: Close would wait for the scan, and the scan for fn,
+// for ever. A request fn starts on the Dataset (a Range, a List, another
+// Scan) runs as any other; once Close has begun it fails with ErrClosed.
 func (plan *RangePlan) Scan(ctx context.Context, st *ReadStats, fn func(Row) error) (err error) {
 	st = resetStats(st)
 	r := plan.r
