@@ -31,20 +31,31 @@ type Limits struct {
 	// size of its decoded values' bytes, dictionary pages included. Default
 	// 64 MiB. It does not bound the memory of decoding a page: each decoded
 	// value is also held in a parquet.Value (24 bytes on 64-bit platforms),
-	// which PageValues bounds.
+	// which PageMemory bounds.
 	PageBytes int64
 	// PageValues bounds the number of values in one page or dictionary.
-	// Default 16,777,216. It also bounds the parquet.Value slices a page
-	// decodes to, besides its PageBytes: up to 24 bytes per value on 64-bit
-	// platforms, twice that for an optional column (its non-null values,
-	// then every row), so 384 to 768 MiB for a page at the defaults. Each
-	// request retains projected data-page scratch at its high-water capacity
-	// until the call ends. Besides PageBytes, header buffers can retain up to
-	// headerBytes (16 MiB, bounded by MetadataMemory); indexed raw extents
-	// include header and payload. Concurrent requests and Scan shards add up.
-	// Lower this limit and bound concurrency to reduce transient memory; IndexMemory
-	// does not account for it.
+	// Default 16,777,216. Each request retains projected data-page scratch
+	// at its high-water capacity until the call ends. Besides PageBytes,
+	// header buffers can retain up to headerBytes (16 MiB, bounded by
+	// MetadataMemory); indexed raw extents include header and payload.
+	// IndexMemory does not account for any of it.
 	PageValues int64
+	// PageMemory bounds the memory decoding one page holds, data and
+	// dictionary pages alike, key pages included, estimated from the page's
+	// header before anything is allocated for its values (pageMemory): 24
+	// bytes per value for its parquet.Value (64-bit platforms), twice that
+	// for an optional column (its non-null values, then every row), plus
+	// the bytes its decoded values hold, at most PageBytes. A page over it
+	// fails with an error wrapping ErrLimitExceeded, naming PageMemory.
+	//
+	// Default: the most PageValues and PageBytes allow, 2 × 24 × PageValues
+	// + PageBytes, so that the default refuses no page those limits admit:
+	// 832 MiB at their defaults. Set it lower to bound decoding memory; a
+	// page within PageValues and PageBytes may then be refused. The bound is
+	// per page and per request: concurrent requests, and the shards of a
+	// split plan scanned at once, each decode their own pages, so their
+	// memory adds up; bound concurrency as well.
+	PageMemory int64
 	// IndexMemory bounds the memory one Dataset retains for key page
 	// indexes and decoded row-group first-key bytes, which it keeps once
 	// loaded. This accounts for page entries and their bound bytes, plus
@@ -66,6 +77,7 @@ func (l Limits) withDefaults() Limits {
 	set(&l.MetadataMemory, 256<<20)
 	set(&l.PageBytes, 64<<20)
 	set(&l.PageValues, 1<<24)
+	set(&l.PageMemory, worstPageMemory(l.PageValues, l.PageBytes))
 	set(&l.IndexMemory, 1<<30)
 	if l.Parts <= 0 {
 		l.Parts = 1_000_000
@@ -81,3 +93,25 @@ func exceeded(format string, args ...any) error {
 // headerBytes is the most bytes a page header is read in: 16 MiB, far
 // beyond any real header, or MetadataMemory when that is less.
 func (l *Limits) headerBytes() int64 { return min(16<<20, l.MetadataMemory) }
+
+// The page memory estimate (Limits.PageMemory), in bytes, from a page header.
+const (
+	// valueBytes is the size of a parquet.Value on 64-bit platforms
+	// (unsafe.Sizeof, checked by a test): a page decodes to one per value.
+	valueBytes = 24
+	// optionalValueSlices is the number of parquet.Value slices a page of an
+	// optional column holds at once: its non-null values, then one per row.
+	optionalValueSlices = 2
+)
+
+// worstPageMemory is the most memory pageMemory estimates for a page within
+// pageValues and pageBytes: an optional column's two Value slices for every
+// value, and decoded values of pageBytes. It saturates instead of
+// overflowing.
+func worstPageMemory(pageValues, pageBytes int64) int64 {
+	per := int64(optionalValueSlices * valueBytes)
+	if pageValues > (maxInt64-pageBytes)/per {
+		return maxInt64
+	}
+	return pageValues*per + pageBytes
+}

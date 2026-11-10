@@ -271,6 +271,19 @@ limit these four buffers alone can total about 1 GiB per column. Primitive, offs
 arrays are additional, separately bounded by `maxPageValues` times their element widths. Codec state,
 dictionary entries, key pages and boundary logs add memory beyond those arrays. Capacities are not charged to the shared index budget. Caller-controlled concurrency multiplies
 this transient storage; these limits do not provide an aggregate request-memory budget.
+
+`Limits.withMaxPageMemory(bytes)` bounds the memory decoding one page holds, data and dictionary pages
+alike, key pages included, estimated from the page's header before anything is allocated for its
+values: a slot per value for its column's representation (boolean 1, int 4, long 8, byte array 24: an
+offset and a length into the arena, or a reference and an array header for keys and dictionary
+entries), a null flag per row for an optional column, and for byte arrays the arena's bytes; a
+byte-array dictionary counts 80 bytes per entry (parquet-java's `Binary` and the entry a request
+materializes) and its bytes twice. A page over it fails with `LimitExceededException` naming
+`maxPageMemory`. Its default (0, or any constructor without it) is the most `maxPageValues` and
+`maxPageBytes` allow, 832 MiB at their defaults (a byte-array dictionary of 4 Mi entries in 256 MiB),
+so the default refuses no page those limits admit; set it lower to bound decoding memory, at the cost
+of refusing pages within the other limits. The bound is per page and per request: concurrent requests
+and shards scanned at once each decode their own pages, so their memory adds up.
 `Limits.withMaxIndexMemoryBytes(bytes)` sets a dataset-wide budget for retained
 key and value indexes and retained exact row-group first keys (256 MiB by default), using conservative estimates of their decoded arrays,
 bounds and cache entries. Publication is charged once under a shared lock; a budget failure leaves

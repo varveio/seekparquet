@@ -5,6 +5,17 @@ independent of the specification's draft revisions.
 
 ## Unreleased
 
+### Added
+
+- `Limits.maxPageMemory` (a new record component; `Limits.withMaxPageMemory`) bounds the memory decoding
+  one page holds (issue #46), data and dictionary pages, key pages included: estimated from the page's
+  header before anything is allocated for its values (a slot per value for its representation, a null
+  flag per row when optional, the arena's bytes, and for byte-array dictionaries an entry of 80 bytes
+  per value and their bytes twice), it fails a page over it with `LimitExceededException` naming
+  `maxPageMemory`. Every existing constructor keeps its signature and takes the default: the most
+  `maxPageValues` and `maxPageBytes` allow (832 MiB at their defaults), so no page they admit is newly
+  refused. Concurrent requests add up.
+
 ### Fixed
 
 - `LocalStorage` refused every dataset on Windows ("the filesystem does not support secure part-path

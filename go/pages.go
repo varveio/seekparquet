@@ -315,6 +315,9 @@ func (c *chunk) decode(h *format.PageHeader, payload []byte) (_ []parquet.Value,
 			err = c.corrupt(fmt.Errorf("parquet-go failed on a page: %v", r))
 		}
 	}()
+	if err := c.checkPageMemory(h); err != nil {
+		return nil, err
+	}
 	var n int
 	var enc format.Encoding
 	var levels, data []byte
@@ -650,6 +653,9 @@ func (c *chunk) readDictionary() (parquet.Dictionary, error) {
 	if d.Encoding != format.Plain && d.Encoding != format.PlainDictionary {
 		return nil, &UnsupportedError{Code: UnsupportedEncoding, Detail: "a dictionary encoded " + d.Encoding.String() + " in part " + c.p.name}
 	}
+	if err := c.checkPageMemory(h); err != nil {
+		return nil, err
+	}
 	payload, err := c.payload(h, c.start, n, raw)
 	if err != nil {
 		return nil, err
@@ -664,6 +670,65 @@ func (c *chunk) readDictionary() (parquet.Dictionary, error) {
 	}
 	c.dict = c.col.typ.NewDictionary(c.col.index, int(d.NumValues), decoded)
 	return c.dict, nil
+}
+
+// pageMemory estimates, from a page header alone, the memory decoding the
+// page holds (Limits.PageMemory): valueBytes for each value's parquet.Value,
+// optionalValueSlices times that for an optional column, and the bytes its
+// decoded values hold: their fixed width, or for byte arrays the page's
+// uncompressed size (PLAIN and DELTA_LENGTH_BYTE_ARRAY values, and
+// dictionary indexes, take no more), or PageBytes for DELTA_BYTE_ARRAY,
+// whose shared prefixes can expand it. decodeValues refuses decoded bytes
+// beyond PageBytes, so that term is capped there. A dictionary page counts
+// as a page of one Value slice. The estimate is arithmetic only.
+func (c *chunk) pageMemory(h *format.PageHeader, optional bool) int64 {
+	var values int64
+	var enc format.Encoding
+	switch h.Type {
+	case format.DataPage:
+		values, enc = int64(h.DataPageHeader.V.NumValues), h.DataPageHeader.V.Encoding
+	case format.DataPageV2:
+		d := &h.DataPageHeaderV2.V
+		values, enc = int64(max(d.NumValues, d.NumRows)), d.Encoding
+	case format.DictionaryPage:
+		values, enc = int64(h.DictionaryPageHeader.V.NumValues), h.DictionaryPageHeader.V.Encoding
+	}
+	values = max(values, 0)
+	slices := int64(1)
+	if optional {
+		slices = optionalValueSlices
+	}
+	pageBytes := c.p.r.limits.PageBytes
+	var decoded int64
+	switch kind := c.col.typ.Kind(); kind {
+	case parquet.ByteArray:
+		decoded = int64(max(h.UncompressedPageSize, 0))
+		if enc == format.DeltaByteArray {
+			decoded = pageBytes
+		}
+	case parquet.Boolean:
+		decoded = values // at most a byte per value
+	case parquet.FixedLenByteArray:
+		decoded = values * int64(max(c.col.typ.Length(), 1))
+	case parquet.Int32, parquet.Float:
+		decoded = values * 4
+	case parquet.Int64, parquet.Double:
+		decoded = values * 8
+	default: // INT96
+		decoded = values * 12
+	}
+	return values*valueBytes*slices + min(decoded, pageBytes)
+}
+
+// checkPageMemory fails with an error wrapping ErrLimitExceeded when the
+// page whose header is h would hold more than Limits.PageMemory decoding,
+// before anything is allocated for its values.
+func (c *chunk) checkPageMemory(h *format.PageHeader) error {
+	optional := c.col.optional && h.Type != format.DictionaryPage
+	if need, limit := c.pageMemory(h, optional), c.p.r.limits.PageMemory; need > limit {
+		return exceeded("part %s: a page whose decoding holds about %d bytes (Limits.PageMemory %d)", c.p.name, need, limit)
+	}
+	return nil
 }
 
 // checkCounts checks the value counts an encoding declares inside a page
