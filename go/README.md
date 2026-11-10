@@ -355,7 +355,10 @@ pass them to work that outlives the callback. `batch.Row(i)` and `batch.Cursor(i
 Accessors panic on out-of-range indexes. `Scan` is the owning adapter over `ScanBatches`.
 
 Both scan APIs stop at the first callback error, return it, and populate read statistics on failure.
-`ScanBatches` checks cancellation before each callback; `Scan` also checks before each owning row.
+`ScanBatches` checks cancellation before each batch callback. `Scan` uses the same batch boundary:
+if its row callback cancels the context, the current batch's remaining rows are still delivered.
+Completed batches are delivered before a later decoding error, even if the failing projected page
+is within the same key page or the next key page fails to decode.
 Each concurrent or reentrant scan has its own scratch. Both hold a Dataset lease during callbacks:
 **the callback must not close the Dataset or wait for a goroutine that does**, since Close waits for
 the scan. Return an error or cancel the context to stop, and close after the scan returns. Requests

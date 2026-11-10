@@ -274,3 +274,65 @@ func TestScanBatchesStopAndReenter(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Reuse a projection slot through several groups, a part without the column,
+// then another present part. Missing values must not expose the prior page.
+func TestScanBatchesAbsentAfterPresentGroups(t *testing.T) {
+	type keyOnly struct {
+		Key []byte `parquet:"key"`
+	}
+	records := transitionRecords(384, false)
+	missing := make([]keyOnly, 128)
+	for i := range missing {
+		missing[i].Key = records[128+i].Key
+	}
+	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{
+		{Rows: records[:128], GroupRows: 32, PageBytes: 128},
+		{Rows: missing, GroupRows: 32, PageBytes: 128},
+		{Rows: records[256:], GroupRows: 32, PageBytes: 128},
+	}}), Options{})
+	columns := []string{"plain", "plain", "key"}
+	plan, err := d.PlanRanges(ctx, []Range{{}}, columns)
+	must(t, err)
+	var got []Row
+	missingBatches := 0
+	must(t, plan.ScanBatches(ctx, nil, func(b *Batch) error {
+		first := len(got)
+		absent := first >= 128 && first < 256
+		if absent {
+			missingBatches++
+		}
+		for c := range 2 {
+			values, ok := b.Column(c)
+			if absent {
+				if ok || values != nil {
+					t.Fatalf("column %d retained values from previous part", c)
+				}
+			} else if !ok || len(values) != b.Len() {
+				t.Fatalf("column %d missing from present part", c)
+			}
+		}
+		for i := 0; i < b.Len(); i++ {
+			got = append(got, b.Row(i))
+		}
+		return nil
+	}))
+	if len(got) != len(records) || missingBatches < 4 {
+		t.Fatalf("rows=%d absent batches=%d", len(got), missingBatches)
+	}
+	for i, row := range got {
+		if !bytes.Equal(row.Key, records[i].Key) || row.Offset != 0 || !bytes.Equal(row.Values[2].ByteArray(), records[i].Key) {
+			t.Fatal("key/offset", i)
+		}
+		for c := range 2 {
+			value := row.Values[c]
+			if i >= 128 && i < 256 {
+				if !value.Absent || !value.IsNull() {
+					t.Fatal("absent owning value", i, c)
+				}
+			} else if value.Absent || string(value.ByteArray()) != records[i].Plain {
+				t.Fatal("present owning value", i, c)
+			}
+		}
+	}
+}

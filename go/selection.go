@@ -117,9 +117,6 @@ func (plan *RangePlan) Stats() ReadStats { return plan.stats }
 func (plan *RangePlan) Scan(ctx context.Context, st *ReadStats, fn func(Row) error) error {
 	return plan.ScanBatches(ctx, st, func(batch *Batch) error {
 		for i := 0; i < batch.Len(); i++ {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
 			if err := fn(batch.Row(i)); err != nil {
 				return err
 			}
