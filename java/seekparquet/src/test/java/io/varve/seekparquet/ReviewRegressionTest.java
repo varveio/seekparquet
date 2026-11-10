@@ -351,17 +351,16 @@ class ReviewRegressionTest {
     }
 
     @Test
-    void retainedBudgetCoversBothKindsOfIndexAndConcurrentPublication() throws Exception {
+    void retainedBudgetCoversKeyIndexesAndConcurrentPublication() throws Exception {
         Path root = dataset(1);
-        // One key page costs 320 bytes, plus one value index costs 216 bytes.
+        // One key page costs 320 bytes. Value OffsetIndexes are kept under maxOffsetIndexMemoryBytes instead.
         Limits limits = Limits.DEFAULT.withMaxIndexMemoryBytes(400);
         try (Dataset ds = Dataset.open(LocalStorage.of(root), OpenOptions.DEFAULT.withLimits(limits), Cancellation.none());
                 var executor = java.util.concurrent.Executors.newFixedThreadPool(4)) {
             var reads = executor.invokeAll(java.util.stream.IntStream.range(0, 16)
                     .<java.util.concurrent.Callable<Integer>>mapToObj(i -> () -> ds.range(RangeQuery.all(1)).size()).toList());
             for (var read : reads) { assertEquals(1, read.get()); }
-            assertEquals("maxIndexMemoryBytes", assertThrows(LimitExceededException.class,
-                    () -> ds.range(RangeQuery.builder().limit(1).columns("size").build())).limit());
+            assertEquals(1, ds.range(RangeQuery.builder().limit(1).columns("size").build()).size());
             assertEquals(1, ds.range(RangeQuery.all(1)).size());
         }
         try (Dataset ds = Dataset.open(LocalStorage.of(root),

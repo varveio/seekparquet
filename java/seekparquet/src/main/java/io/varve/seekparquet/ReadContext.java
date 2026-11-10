@@ -36,6 +36,7 @@ final class ReadContext {
             // actual owner, rather than activeGroup, determines which cached aliases it invalidates.
             if (slot.owner != null) {
                 dictionaries.remove(slot.owner);
+                valueIndexes.remove(slot.owner);
                 valuePages.remove(slot.owner);
                 sequential.remove(slot.owner);
             }
@@ -46,6 +47,8 @@ final class ReadContext {
     }
 
     private final Map<ChunkKey, Dictionary> dictionaries = new HashMap<>();
+    /** Checked OffsetIndexes the dataset could not keep within maxOffsetIndexMemoryBytes, for this request alone. */
+    private final Map<ChunkKey, ValueIndex> valueIndexes = new HashMap<>();
     private final Map<ChunkKey, DecodedPage> valuePages = new HashMap<>();
     private final Map<ChunkKey, long[]> sequential = new HashMap<>();
 
@@ -56,6 +59,7 @@ final class ReadContext {
     void enterGroup(int part, int group) {
         if (part != activePart || group != activeGroup) {
             dictionaries.clear();
+            valueIndexes.clear();
             scratch.values().forEach(PageScratch::enterGroup);
             valuePages.clear();
             sequential.clear();
@@ -137,6 +141,14 @@ final class ReadContext {
 
     void putDictionary(ChunkKey key, Dictionary d) {
         dictionaries.put(key, d);
+    }
+
+    ValueIndex valueIndex(ChunkKey key) {
+        return valueIndexes.get(key);
+    }
+
+    void putValueIndex(ChunkKey key, ValueIndex index) {
+        valueIndexes.put(key, index);
     }
 
     DecodedPage valuePage(ChunkKey key) {

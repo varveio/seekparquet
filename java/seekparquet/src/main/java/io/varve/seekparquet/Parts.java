@@ -34,6 +34,7 @@ final class Parts {
     private final Manifest manifest;
     private final Limits limits;
     private final IndexMemory indexMemory;
+    private final OffsetIndexMemory offsetIndexMemory;
     private final Slot[] slots;
     /** The parts' first-row ordinals, computed on first use (a racy but idempotent publication). */
     private volatile long[] starts;
@@ -55,6 +56,7 @@ final class Parts {
         this.manifest = manifest;
         this.limits = limits;
         this.indexMemory = new IndexMemory(limits.maxIndexMemoryBytes());
+        this.offsetIndexMemory = new OffsetIndexMemory(limits.maxOffsetIndexMemoryBytes());
         this.slots = new Slot[manifest.parts().size()];
         for (int i = 0; i < slots.length; i++) {
             slots[i] = new Slot();
@@ -63,6 +65,11 @@ final class Parts {
 
     int size() {
         return slots.length;
+    }
+
+    /** {@return the kept OffsetIndex accounting; for tests} */
+    OffsetIndexMemory offsetIndexMemory() {
+        return offsetIndexMemory;
     }
 
     /** {@return part i's manifest entry} */
@@ -161,7 +168,7 @@ final class Parts {
                 }
                 used = true;
                 try {
-                    part = admit(staged != null ? staged.take() : PartFile.open(storage, manifest, i, ctx, indexMemory));
+                    part = admit(staged != null ? staged.take() : PartFile.open(storage, manifest, i, ctx, indexMemory, offsetIndexMemory));
                 } catch (RefusalException | UnsupportedFeatureException e) {
                     ctx.checkCancelled(); // a check cut short is not an outcome: the part stays unchecked
                     slot.refusal = e;
@@ -249,7 +256,7 @@ final class Parts {
                             continue; // its outcome is known: admitting it in turn reuses it
                         }
                         try {
-                            staged[i] = new Staged(PartFile.open(storage, manifest, i, new ReadContext(scope, limits), indexMemory), null);
+                            staged[i] = new Staged(PartFile.open(storage, manifest, i, new ReadContext(scope, limits), indexMemory, offsetIndexMemory), null);
                         } catch (RuntimeException e) {
                             staged[i] = new Staged(null, e);
                             failed.set(true);
