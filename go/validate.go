@@ -32,8 +32,9 @@ const (
 	// (PART-3, PART-4).
 	LevelProfile Level = "profile"
 	// LevelFull enumerates and decodes every page of every other stored
-	// column the same way: each page decompresses, passes its checksum when
-	// it has one, decodes, and the chunk holds exactly the row group's rows;
+	// column the same way: each page decompresses, passes its CRC when its
+	// header carries a nonzero one, decodes to exactly the values its header
+	// declares, and the chunk holds exactly the row group's rows;
 	// a column's OffsetIndex and ColumnIndex, when present, must describe
 	// exactly those pages.
 	LevelFull Level = "full"

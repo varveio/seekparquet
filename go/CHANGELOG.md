@@ -5,6 +5,20 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Fixed: a page whose PLAIN or BYTE_STREAM_SPLIT payload held more values than its header declares (or a
+  dictionary page more than its count) was decoded as its declared prefix, so full validation counted only
+  those and could certify the page (CHECK-5). It is now `invalid_parquet`, in reads and in validation; a
+  PLAIN Boolean page may still pad its final byte.
+- Fixed: `write.PartWriter.WriteRows` panicked on a row beginning with a continuation value (repetition
+  level above 0) whose column index is unset; it fails with `ErrProfile`.
+- Fixed: `RangePlan.Split` with unique keys reads nothing, and so returned shards for a cancelled context or
+  a closing dataset; it now observes its context on entry and through its loops. Building many shards no
+  longer rescans the whole plan for each (O(G²) for G row groups split G ways).
+- Documented: `PartOptions.Codec` compresses the columns whose schema nodes set no compression of their own;
+  a node's compression takes precedence, as in parquet-go. `RangePlan.Scan`'s `fn` must not close the
+  Dataset, nor start a request while another goroutine may be closing it. `Limits.PageBytes` is not a
+  bound on the memory of decoding a page: `PageValues` bounds its `parquet.Value` slices. A touched part
+  keeps its file and footer until `Close`, unbounded by any limit. A zero page CRC is not checked.
 - The conformance adapter claims the optional `planning` capability: it answers `plan` (PlanRanges, then
   Scan, Count and ProjectedBytes) for the conformance suite's planning cases.
 - `RangePlan.Split(ctx, n)` divides a selection plan into at most `n` shards along row-group boundaries,

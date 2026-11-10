@@ -181,7 +181,9 @@ func (c *chunk) located(off, size int64) (*format.PageHeader, int64, []byte, err
 }
 
 // payload returns the page data after a header of length n at off, from
-// raw when it holds them, after checking its checksum when it has one.
+// raw when it holds them, after checking the CRC its header carries, when
+// that CRC is not zero: parquet-go's header does not tell a CRC of zero
+// from none, so a zero CRC is not checked.
 func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte, error) {
 	size := int64(h.CompressedPageSize)
 	var data []byte
@@ -366,7 +368,7 @@ func (c *chunk) values(enc format.Encoding, data []byte, n int) ([]parquet.Value
 
 // decodeValues decodes n values encoded with enc, after checking the value
 // counts the encoding declares and the decoded size, and requires the
-// decoded values to hold n of them.
+// decoded values to hold exactly n of them.
 func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.Values, error) {
 	var none encoding.Values
 	if !supportedEncoding(enc) {
@@ -405,10 +407,32 @@ func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.
 	if err != nil {
 		return none, c.corrupt(err)
 	}
-	if held(typ, &decoded) < int64(n) {
-		return none, c.corrupt(fmt.Errorf("the page decodes to fewer than its %d values", n))
+	if err := exactly(typ, &decoded, n); err != nil {
+		return none, c.corrupt(err)
 	}
 	return decoded, nil
+}
+
+// exactly requires decoded to hold exactly n values. The dependency's page
+// exposes only the first n of them, so a payload holding more would pass
+// every later count unnoticed (CHECK-5). The only padding allowed is that
+// of PLAIN Booleans, bit-packed into whole bytes: the final byte may hold
+// up to seven bits after the last value. (A Boolean RLE stream, with the
+// padding of its final bit-packed group, does not reach here.)
+func exactly(typ parquet.Type, decoded *encoding.Values, n int) error {
+	got := held(typ, decoded)
+	if typ.Kind() == parquet.Boolean {
+		data, _ := decoded.Data()
+		if int64(len(data)) == (int64(n)+7)/8 {
+			return nil
+		}
+	} else if got == int64(n) {
+		return nil
+	}
+	if got < int64(n) {
+		return fmt.Errorf("the page decodes to fewer than its %d values", n)
+	}
+	return fmt.Errorf("the page decodes to more than its %d values", n)
 }
 
 // held returns the number of values decoded holds.
