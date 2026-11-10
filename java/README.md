@@ -326,22 +326,34 @@ object's real size, which the reader compares with the manifest. Caching or requ
 layers are decorators of these interfaces.
 
 `LocalStorage` is the only implementation in this module. It uses positioned reads on one
-`FileChannel` per part, opens parts through pinned directory handles and rejects symbolic links in each part-path component, and detects a
-part file that changes size or is replaced. Filesystems without `SecureDirectoryStream` are refused
-with a storage error; reopening after interruption uses the same pinned parent handle. `manifest.json` is
-read through a pinned handle on the root too, and must be a regular file (a symbolic link is refused).
-Object-store adapters belong in separate modules.
+`FileChannel` per part, resolves each part path one segment at a time from the root, refusing a symbolic
+link in any segment, requires the part and `manifest.json` to be regular files, and detects a part file
+that changes size or is replaced. Object-store adapters belong in separate modules. What it can guarantee
+depends on the platform:
 
-Java cannot open a file without blocking on a special file, and whoever can write the dataset directory
-can replace an entry `LocalStorage` has checked as a regular file with a FIFO before it opens it. So that
-such an open cannot hold a request beyond cancellation, interruption or `close()`, each open of a part or
-of the manifest runs on a new platform thread, through its own handle on the file's directory, and the
-request stops waiting for it when cancelled (the open then ends on its own and closes what it opened). This
-costs a short-lived thread and a directory handle per part open, which happens once per part per dataset
-(again only after an interrupt closed the part's channel). An open that never returns strands its thread
-and directory handle until the file is opened for writing or the process exits; once
-`LocalStorage.MAX_STRANDED_OPENS` (64) opens through one `LocalStorage` are stranded, its further opens
-fail with a storage error instead of starting more threads.
+| | Linux, macOS (secure directory streams) | Windows (plain directory streams) |
+|---|---|---|
+| Lookup | relative to a pinned handle on each directory: no later replacement of a directory can redirect it | by path, each directory checked to be a real directory (no symbolic link, junction or other reparse point) and checked again before and after every open |
+| Refused in a segment | symbolic links | symbolic links, junctions and other reparse points; `:` (drives, alternate data streams), `<>"\|?*`, a trailing dot or space, device names such as `NUL` or `COM1` |
+| File identity, before and after each open | `fileKey` (device and inode) | size, modification and creation times (Windows has no `fileKey`), and the opened file's size |
+| Reopen after an interrupt | through the same pinned handles | by path, with the directories and the file's identity checked again |
+| A FIFO swapped in after the check | cannot hold a request: each open runs on its own thread (below) | cannot occur: a named pipe cannot be a directory entry, so opens run on the caller's thread |
+
+On Windows, a replacement made between two checks, or one made to match a file's size and times, can go
+unseen: keep a dataset directory writable only by its producer. Files the JDK does not report as regular
+(cloud-storage placeholders, for example) are refused as not regular files. Other file systems without
+secure directory streams (a zip file system, for example) take the Windows route.
+
+Java cannot open a file without blocking on a special file, and on POSIX systems whoever can write the
+dataset directory can replace an entry `LocalStorage` has checked as a regular file with a FIFO before it
+opens it. So that such an open cannot hold a request beyond cancellation, interruption or `close()`, each
+open of a part or of the manifest there runs on a new platform thread, through its own handle on the
+file's directory, and the request stops waiting for it when cancelled (the open then ends on its own and
+closes what it opened). This costs a short-lived thread and a directory handle per part open, which
+happens once per part per dataset (again only after an interrupt closed the part's channel). An open that
+never returns strands its thread and directory handle until the file is opened for writing or the process
+exits; once `LocalStorage.MAX_STRANDED_OPENS` (64) opens through one `LocalStorage` are stranded, its
+further opens fail with a storage error instead of starting more threads.
 
 ## What opening checks, what reads check
 
@@ -371,7 +383,7 @@ Concurrent first touches wait for one check. `columns()` describes the parts che
 A touched part stays open, with its checked footer in memory, until the dataset closes, and no limit
 bounds how many: `maxParts` bounds the manifest, the index memory budget the retained page indexes,
 and `verifyConcurrency` how many parts `verify()` checks at a time, not how many stay open.
-`LocalStorage` keeps a file channel and a directory handle per part. Size file descriptors and memory for
+`LocalStorage` keeps a file channel per part, and on POSIX systems a directory handle too. Size file descriptors and memory for
 the most parts one dataset will touch (`verify()` touches them all): a single pass over more parts than
 that fails when the process runs out, and opening a fresh dataset for it does not help. This is a known
 limitation, documented rather than solved: there is no cap that refuses such a pass early, and no eviction.
