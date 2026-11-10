@@ -276,6 +276,12 @@ func (c closer) Close() error { c.closed.Add(1); return c.File.Close() }
 // ErrClosed instead of waiting for ever (behind the Close, which waits for
 // the scan); the scan then ends and Close returns.
 func TestRequestInsideScanWhileClosing(t *testing.T) {
+	for _, batches := range []bool{false, true} {
+		t.Run(fmt.Sprintf("batches=%t", batches), func(t *testing.T) { testRequestInsideScanWhileClosing(t, batches) })
+	}
+}
+
+func testRequestInsideScanWhileClosing(t *testing.T, batches bool) {
 	keys := fixtureKeys(60)
 	// Opened without open's cleanup Close: should the nested request wait,
 	// the test fails at its timeout rather than waiting in a cleanup.
@@ -288,7 +294,7 @@ func TestRequestInsideScanWhileClosing(t *testing.T) {
 	done := make(chan error, 1)
 	stop := errors.New("stop")
 	go func() {
-		done <- plan.Scan(ctx, nil, func(Row) error {
+		callback := func() error {
 			go func() { closed <- d.Close() }()
 			// Wait until Close has begun: it cancels requests first.
 			for d.r.closing.Err() == nil {
@@ -297,7 +303,12 @@ func TestRequestInsideScanWhileClosing(t *testing.T) {
 			_, err := d.Range(ctx, Range{Limit: 1})
 			nested <- err
 			return stop
-		})
+		}
+		if batches {
+			done <- plan.ScanBatches(ctx, nil, func(*Batch) error { return callback() })
+		} else {
+			done <- plan.Scan(ctx, nil, func(Row) error { return callback() })
+		}
 	}()
 	timeout := time.After(10 * time.Second)
 	for _, c := range []struct {

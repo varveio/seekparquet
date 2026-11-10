@@ -14,7 +14,7 @@ import (
 // RangePlan is a selection planned before it is read: every row of a set
 // of ranges, its row count, and the compressed bytes that reading the
 // projected columns of those rows will request. A plan is bound to the
-// Dataset that made it, and its Scan fails with ErrClosed once the Dataset
+// Dataset that made it, and its scans fail with ErrClosed once the Dataset
 // is closed. It is immutable and safe for concurrent use.
 //
 // A plan certifies what it decoded: the key pages at the two ends of each
@@ -22,7 +22,8 @@ import (
 // from structure, not from decoding the rows between the ends (CHECK-4):
 // the positions the ends decode, the row counts of the row groups, from
 // footers a part check verified (CHECK-1), and the OffsetIndex row
-// positions. Scan decodes every row and checks every key page it reads.
+// positions. Scan and ScanBatches decode every row and check every key page
+// they read.
 type RangePlan struct {
 	r       *reader
 	columns []string
@@ -104,98 +105,24 @@ func (plan *RangePlan) Stats() ReadStats { return plan.stats }
 // It positions at each range as Range does and decodes each key page and
 // projected page holding the plan's rows once, checking every key page it
 // decodes (CHECK-2). st, when not nil, receives the scan's read
-// statistics, as Range.Stats.
+// statistics, as Range.Stats. Rows own their keys and values; Scan adapts
+// ScanBatches by copying each row with Batch.Row.
 //
 // The scan holds the Dataset open while fn runs: Close waits for it to
 // return. To stop early, return an error from fn (or cancel ctx), and close
 // the Dataset after Scan has returned. fn must not call Close, nor wait for
 // a goroutine that does: Close would wait for the scan, and the scan for fn,
 // for ever. A request fn starts on the Dataset (a Range, a List, another
-// Scan) runs as any other; once Close has begun it fails with ErrClosed.
-func (plan *RangePlan) Scan(ctx context.Context, st *ReadStats, fn func(Row) error) (err error) {
-	st = resetStats(st)
-	r := plan.r
-	rctx, end, err := r.begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = finish(ctx, rctx, err)
-		end()
-	}()
-	columns := slices.Clone(plan.columns)
-	scratch := make([]pageScratch, len(columns))
-	s := r.newScan(rctx, nil, st)
-	// rows are a batch of one key page's rows, at their positions; pages
-	// the projected columns of row group g.
-	var rows []*Row
-	var at []position
-	var g groupRef
-	var pages []*columnPages
-	flush := func() error {
-		if len(rows) == 0 {
-			return nil
-		}
-		if len(columns) > 0 {
-			if pages == nil || at[0].g != g {
-				g = at[0].g
-				p := r.parts[g.part]
-				if err := p.checkProjection(columns); err != nil {
-					return err
-				}
-				pages = make([]*columnPages, len(columns))
-				for c, name := range columns {
-					cp, err := p.openColumn(rctx, p.groups[g.index].physical, name, st, &scratch[c])
-					if err != nil {
-						return err
-					}
-					if cp != nil {
-						cp.planned = true
-					}
-					pages[c] = cp
-				}
-			}
-			for c, cp := range pages {
-				if err := projectColumn(rows, at, c, cp); err != nil {
-					return err
-				}
-			}
-		}
-		for _, row := range rows {
-			if err := fn(*row); err != nil {
+// Scan or ScanBatches) runs as any other; once Close has begun it fails with ErrClosed.
+func (plan *RangePlan) Scan(ctx context.Context, st *ReadStats, fn func(Row) error) error {
+	return plan.ScanBatches(ctx, st, func(batch *Batch) error {
+		for i := 0; i < batch.Len(); i++ {
+			if err := fn(batch.Row(i)); err != nil {
 				return err
 			}
 		}
-		rows, at = rows[:0], at[:0]
 		return nil
-	}
-	page := -1
-	for _, sp := range plan.spans {
-		if sp.ordinal {
-			if err := s.seekOrdinal(sp.start); err != nil {
-				return err
-			}
-			s.groupKey, s.groupStart = s.key, sp.start
-		} else if err := s.start(sp.from, sp.exclusive, sp.cursor); err != nil {
-			return err
-		}
-		for o := sp.start; o < sp.end && s.key != nil; o++ {
-			if len(at) > 0 && (s.g != at[0].g || s.kp.at != page) {
-				if err := flush(); err != nil {
-					return err
-				}
-			}
-			page = s.kp.at
-			rows = append(rows, &Row{Key: bytes.Clone(s.key), Offset: s.offset(), Columns: columns, Values: make([]Value, len(columns))})
-			at = append(at, s.at())
-			if o+1 < sp.end {
-				if err := s.next(); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return flush()
+	})
 }
 
 // planRanges plans ranges; see Dataset.PlanRanges. One scan positions at

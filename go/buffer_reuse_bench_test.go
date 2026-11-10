@@ -33,7 +33,7 @@ func reuseRecords(n int) []reuseRecord {
 	return rows
 }
 
-// BenchmarkScanBufferReuse measures whole owning requests, including all workers'
+// BenchmarkScanBufferReuse measures owning and borrowed requests, including all workers'
 // allocations. Fixture generation and plan/split construction are outside the
 // measured region. Use a fixed GOMAXPROCS; AllocsPerRun would force it to one.
 func BenchmarkScanBufferReuse(b *testing.B) {
@@ -60,22 +60,44 @@ func BenchmarkScanBufferReuse(b *testing.B) {
 	for _, workers := range []int{1, 2} {
 		shards, err := plan.Split(ctx, workers)
 		must(b, err)
-		b.Run(fmt.Sprintf("Scan/workers=%d", workers), func(b *testing.B) {
-			b.ReportAllocs()
-			for b.Loop() {
-				var wg sync.WaitGroup
-				errs := make([]error, len(shards))
-				for i, shard := range shards {
-					wg.Go(func() { errs[i] = shard.Scan(ctx, nil, func(Row) error { return nil }) })
+		for _, mode := range []string{"Scan", "ScanBatches"} {
+			b.Run(fmt.Sprintf("%s/workers=%d", mode, workers), func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					var wg sync.WaitGroup
+					errs := make([]error, len(shards))
+					for i, shard := range shards {
+						wg.Go(func() {
+							if mode == "ScanBatches" {
+								errs[i] = shard.ScanBatches(ctx, nil, func(*Batch) error { return nil })
+							} else {
+								errs[i] = shard.Scan(ctx, nil, func(Row) error { return nil })
+							}
+						})
+					}
+					wg.Wait()
+					for _, err := range errs {
+						must(b, err)
+					}
 				}
-				wg.Wait()
-				for _, err := range errs {
-					must(b, err)
-				}
-			}
-			b.ReportMetric(n, "rows/op")
-		})
+				b.ReportMetric(n, "rows/op")
+			})
+		}
+
 	}
+	keyPlan, err := d.PlanRanges(ctx, []Range{{}}, nil)
+	must(b, err)
+	b.Run("ScanBatchesKeysOnly", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			must(b, keyPlan.ScanBatches(ctx, nil, func(*Batch) error { return nil }))
+		}
+		b.ReportMetric(n, "rows/op")
+	})
+	lengths := map[int]int{}
+	must(b, plan.ScanBatches(ctx, nil, func(batch *Batch) error { lengths[batch.Len()]++; return nil }))
+	b.Logf("batch length distribution: %v", lengths)
+
 	b.Run("Range", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
