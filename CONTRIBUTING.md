@@ -35,6 +35,33 @@ Questions go in GitHub issues for now.
 
 Changing fixture bytes needs a reason in the pull request; see [conformance/README.md](conformance/README.md).
 
+## Continuous integration
+
+`ci-ok` is the required aggregate check. For affected Go code, PRs run format/vet/module checks,
+all tests and fuzz seeds in three Linux race shards, and the complete Windows suite without the
+race detector. Java still reads Go-written datasets on every Go change. Conformance and Java
+checks retain their full assertions when selected; source selection does not select individual tests.
+
+The expensive root-package differential tests each have a shard; the remainder includes every
+other root test and every other package. `go-lint` checks the live Go test inventory for exactly
+one shard per test. New tests and packages enter the remainder automatically; renaming a dedicated
+test fails that check. Reproduce a shard from the repository root with
+`python3 scripts/ci/go-shards.py --run differential` (or `randomized`, `rest`), or verify the
+inventory with `--check`. Race runs use `-count=1` and keep JSON diagnostics for 14 days.
+
+Full macOS race tests run on every `main` push, daily at 05:17 UTC, and manual workflow dispatch.
+PRs also run them for Go dependency/platform paths, CI changes, unknown inputs, deletions/renames,
+or the `ci:full` label. Documentation-only PRs may skip runtime suites. Missing base/diff data
+selects full validation; a failed diff fails CI. Main, scheduled and manual runs always select
+all suites. Label changes reevaluate the policy; superseded PR runs cancel, while main runs
+remain independent. Deferring ordinary PR macOS tests trades earlier platform feedback for a
+shorter PR loop; a failing main/nightly platform check still requires a fix.
+
+Go module caches are shared per platform and dependency set; build caches are separate
+per toolchain, job and race shard. Only main pushes save Go caches, and cache maintenance bounds old generations.
+Gradle and pip also cache dependencies, including caches scoped to individual PRs.
+Caches never substitute for running Go tests.
+
 ## Developer Certificate of Origin
 
 Contributions are accepted under the [Developer Certificate of Origin][dco]. Add a `Signed-off-by` line to

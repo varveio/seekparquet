@@ -18,6 +18,14 @@ import (
 	"github.com/varveio/seekparquet/go/internal/testutil"
 )
 
+// listIndexCase keeps immutable requests and the unindexed oracle's owned
+// results so independent index configurations can reuse the same scenarios.
+type listIndexCase struct {
+	query List
+	want  []Entry
+	err   error
+}
+
 func TestListIndexDifferential(t *testing.T) {
 	keys := []string{"/", "//", "//x", "a", "a/", "a//x", "a/0", "a/b/", "a/b/x", "a/c", "ab", "root"}
 	for _, head := range []string{"wide/", strings.Repeat("q", 160) + "/", strings.Repeat("\xff", 160) + "/"} {
@@ -46,55 +54,73 @@ func TestListIndexDifferential(t *testing.T) {
 			}
 		}
 	}
-	for _, cap := range []int{1, 2, 0, 1000000} {
-		for _, budget := range []int64{1, 2048, 1 << 24} {
-			indexed := open(t, dir, Options{})
-			stats, err := indexed.BuildListIndex(ctx, ListIndexOptions{MaxBytes: budget, MaxChangesPerPage: cap, Workers: 2})
+	// The unindexed oracle is identical for every cap and budget. Retain
+	// owned results once, including every cursor/end/limit combination.
+	var cases []listIndexCase
+	for prefix := range prefixes {
+		for _, delim := range []byte{'/', 'f'} {
+			q := List{Prefix: []byte(prefix), Delimiter: delim, Limit: 1000, Columns: []string{"size", "name"}}
+			all, err := plain.List(ctx, q)
 			must(t, err)
-			if stats.Bytes > budget {
-				t.Fatalf("budget: %+v", stats)
+			cursors := []*Cursor{nil}
+			for i, e := range all {
+				if i < 4 || i == len(all)-1 {
+					cursors = append(cursors, e.Cursor())
+				}
 			}
-			for prefix := range prefixes {
-				for _, delim := range []byte{'/', 'f'} {
-					q := List{Prefix: []byte(prefix), Delimiter: delim, Limit: 1000, Columns: []string{"size", "name"}}
-					all, err := plain.List(ctx, q)
-					must(t, err)
-					cursors := []*Cursor{nil}
-					for i, e := range all {
-						if i < 4 || i == len(all)-1 {
-							cursors = append(cursors, e.Cursor())
-						}
-					}
-					ends := [][]byte{nil}
-					if len(all) > 1 {
-						k := all[1].Bytes()
-						ends = append(ends, bytes.Clone(k), append(bytes.Clone(k), 0))
-						pos, _ := slices.BinarySearch(keys, string(k))
-						if pos < len(keys) {
-							anchor := []byte(keys[pos])
-							ends = append(ends, anchor, append(bytes.Clone(anchor), 0), bytes.Clone(anchor[:len(anchor)-1]))
-						}
-						if len(k) > 0 {
-							ends = append(ends, bytes.Clone(k[:len(k)-1]))
-						}
-					}
-					for _, cursor := range cursors {
-						for _, end := range ends {
-							for _, limit := range []int{1, 2, 4, 1000} {
-								q.Cursor = cursor
-								q.End = end
-								q.Limit = limit
-								want, e1 := plain.List(ctx, q)
-								got, e2 := indexed.List(ctx, q)
-								if e1 != nil || e2 != nil || !reflect.DeepEqual(want, got) {
-									t.Fatalf("cap=%d budget=%d prefix=%q cursor=%+v end=%q limit=%d errors=%v/%v\nwant=%v\ngot=%v", cap, budget, prefix, cursor, end, limit, e1, e2, entriesOf(want), entriesOf(got))
-								}
-							}
-						}
+			ends := [][]byte{nil}
+			if len(all) > 1 {
+				k := all[1].Bytes()
+				ends = append(ends, bytes.Clone(k), append(bytes.Clone(k), 0))
+				pos, _ := slices.BinarySearch(keys, string(k))
+				if pos < len(keys) {
+					anchor := []byte(keys[pos])
+					ends = append(ends, anchor, append(bytes.Clone(anchor), 0), bytes.Clone(anchor[:len(anchor)-1]))
+				}
+				if len(k) > 0 {
+					ends = append(ends, bytes.Clone(k[:len(k)-1]))
+				}
+			}
+			for _, cursor := range cursors {
+				for _, end := range ends {
+					for _, limit := range []int{1, 2, 4, 1000} {
+						q.Cursor = cursor
+						q.End = end
+						q.Limit = limit
+						want, err := plain.List(ctx, q)
+						must(t, err)
+						cases = append(cases, listIndexCase{query: q, want: want})
 					}
 				}
 			}
 		}
+	}
+	// Two isolated workers bound open datasets and index-build concurrency,
+	// even on CI machines with a large GOMAXPROCS.
+	caps := []int{1, 2, 0, 1000000}
+	for worker := range 2 {
+		t.Run(fmt.Sprintf("worker-%d", worker), func(t *testing.T) {
+			t.Parallel()
+			for i := worker; i < len(caps); i += 2 {
+				cap := caps[i]
+				for _, budget := range []int64{1, 2048, 1 << 24} {
+					t.Run(fmt.Sprintf("cap-%d/budget-%d", cap, budget), func(t *testing.T) {
+						indexed := open(t, dir, Options{})
+						stats, err := indexed.BuildListIndex(ctx, ListIndexOptions{MaxBytes: budget, MaxChangesPerPage: cap, Workers: 2})
+						must(t, err)
+						if stats.Bytes > budget {
+							t.Fatalf("budget: %+v", stats)
+						}
+						for _, tc := range cases {
+							got, err := indexed.List(ctx, tc.query)
+							if err != nil || !reflect.DeepEqual(tc.want, got) {
+								t.Fatalf("cap=%d budget=%d prefix=%q cursor=%+v end=%q limit=%d error=%v\nwant=%v\ngot=%v", cap, budget, tc.query.Prefix, tc.query.Cursor, tc.query.End, tc.query.Limit, err, entriesOf(tc.want), entriesOf(got))
+							}
+						}
+					})
+				}
+			}
+		})
 	}
 }
 
