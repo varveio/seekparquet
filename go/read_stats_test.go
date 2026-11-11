@@ -331,3 +331,26 @@ func TestReadStatsIndexRefused(t *testing.T) {
 		t.Fatalf("refused index: %+v", st)
 	}
 }
+
+// TestReadStatsAdd: Add sums every field, so that a field added later and
+// not summed fails here.
+func TestReadStatsAdd(t *testing.T) {
+	var a, b, want ReadStats
+	va, vb, vw := reflect.ValueOf(&a).Elem(), reflect.ValueOf(&b).Elem(), reflect.ValueOf(&want).Elem()
+	for i := range va.NumField() {
+		if va.Field(i).Kind() != reflect.Int64 {
+			t.Fatalf("field %s is not an int64", va.Type().Field(i).Name)
+		}
+		va.Field(i).SetInt(int64(i + 1))
+		vb.Field(i).SetInt(int64(100 * (i + 1)))
+		vw.Field(i).SetInt(int64(101 * (i + 1)))
+	}
+	a.Add(b)
+	if a != want {
+		t.Fatalf("%+v, want %+v", a, want)
+	}
+	a.Add(ReadStats{})
+	if a != want {
+		t.Fatal("adding zero changed the counts")
+	}
+}

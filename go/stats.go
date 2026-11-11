@@ -3,10 +3,12 @@
 
 package seekparquet
 
-// ReadStats counts the work of one Range or List request, one PlanRanges
-// (RangePlan.Stats) or one RangePlan.Scan. Set it as the request's Stats
-// field, or pass it to Scan, to receive it. The counts are exact for the request
-// and are filled whether it succeeds or fails, up to the point it stopped.
+// ReadStats counts the work of one operation: Dataset.Rows, Get, Scan or
+// List, Dataset.Plan, Plan.Split or Plan.Scan. Pass a *ReadStats as the
+// operation's statistics argument to receive it: it is reset when the
+// operation starts and filled as it runs. The counts are exact for the
+// operation and are filled whether it succeeds or fails, up to the point it
+// stopped. Add sums the counts of several operations.
 //
 // They are diagnostics of this reader's access path, not part of the
 // SeekParquet format contract: another reader, or a later version of this
@@ -85,4 +87,28 @@ func resetStats(st *ReadStats) *ReadStats {
 	}
 	*st = ReadStats{}
 	return st
+}
+
+// Add adds every count of o to st: the work of several operations, such as
+// a plan, its split and the scans of its shards.
+func (st *ReadStats) Add(o ReadStats) {
+	st.ListIndexSkips += o.ListIndexSkips
+	st.ListIndexDelimiter += o.ListIndexDelimiter
+	st.ListIndexMissingGroup += o.ListIndexMissingGroup
+	st.ListIndexDensePage += o.ListIndexDensePage
+	st.ListIndexUnsafeRun += o.ListIndexUnsafeRun
+	st.PartsOpened += o.PartsOpened
+	st.KeyPagesDecoded += o.KeyPagesDecoded
+	st.ValuePagesDecoded += o.ValuePagesDecoded
+	st.KeysDecoded += o.KeysDecoded
+	st.RowGroupsOpened += o.RowGroupsOpened
+	st.IndexLoads += o.IndexLoads
+	st.PageIndexSeeks += o.PageIndexSeeks
+	st.PrefixSkips += o.PrefixSkips
+	st.GroupsSkipped += o.GroupsSkipped
+	st.SourceReads += o.SourceReads
+	st.SourceBytes += o.SourceBytes
+	st.ReadAheadReads += o.ReadAheadReads
+	st.ReadAheadUnused += o.ReadAheadUnused
+	st.ReadAheadUnusedBytes += o.ReadAheadUnusedBytes
 }
