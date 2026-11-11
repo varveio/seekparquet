@@ -59,6 +59,8 @@ final class TestDatasets {
         /** Rows per page of the {@code size} and {@code note} columns when positive, else {@code rowsPerPage}. */
         int sizeRowsPerPage;
         int noteRowsPerPage;
+        /** Encode the {@code size} column's plain pages BYTE_STREAM_SPLIT. */
+        boolean byteStreamSplitSize;
         int keyBoundBytes;
         int rowsPerGroup = 4;
         boolean noteColumn;
@@ -174,10 +176,12 @@ final class TestDatasets {
                     List<TestRow> page = group.subList(r0, Math.min(group.size(), r0 + perPage));
                     long pageOffset = chunkStart + chunk.bytes.size();
                     boolean dictionaryPage = dictionary && (!spec.mixedValuePages || (r0 / perPage) % 2 == 0);
-                    byte[] body = dictionaryPage ? (c == 1 ? dictionaryBody(page.size()) : dictionaryNotes(page, entries)) : pageBody(c, page);
+                    boolean split = c == 1 && spec.byteStreamSplitSize && !dictionaryPage;
+                    byte[] body = dictionaryPage ? (c == 1 ? dictionaryBody(page.size()) : dictionaryNotes(page, entries)) : pageBody(c, page, split);
                     byte[] compressed = compress(body, codec);
                     PageHeader header = new PageHeader(PageType.DATA_PAGE, body.length, compressed.length);
-                    header.setData_page_header(new DataPageHeader(page.size(), dictionaryPage ? Encoding.RLE_DICTIONARY : Encoding.PLAIN, Encoding.RLE, Encoding.RLE));
+                    header.setData_page_header(new DataPageHeader(page.size(), dictionaryPage ? Encoding.RLE_DICTIONARY
+                            : split ? Encoding.BYTE_STREAM_SPLIT : Encoding.PLAIN, Encoding.RLE, Encoding.RLE));
                     ByteArrayOutputStream h = new ByteArrayOutputStream();
                     Util.writePageHeader(header, h);
                     if (c == 0 && g0 == 0 && r0 == 0 && spec.keyPageHeaderExtraField != null) {
@@ -361,7 +365,7 @@ final class TestDatasets {
         return out.toByteArray();
     }
 
-    private static byte[] pageBody(int column, List<TestRow> page) throws IOException {
+    private static byte[] pageBody(int column, List<TestRow> page, boolean split) throws IOException {
         ByteArrayOutputStream b = new ByteArrayOutputStream();
         if (column == 0) {
             for (TestRow r : page) {
@@ -377,6 +381,15 @@ final class TestDatasets {
         byte[] levels = rleLevels(present);
         b.write(le32(levels.length));
         b.write(levels);
+        if (split) {
+            long[] sizes = page.stream().mapToLong(TestRow::size).filter(v -> v >= 0).toArray();
+            for (int k = 0; k < 8; k++) {
+                for (long v : sizes) {
+                    b.write((int) (v >>> (8 * k)));
+                }
+            }
+            return b.toByteArray();
+        }
         for (int i = 0; i < page.size(); i++) {
             if (!present[i]) {
                 continue;

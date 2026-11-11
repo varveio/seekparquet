@@ -21,6 +21,10 @@ independent of the specification's draft revisions.
   cancels a scan and waits for its callback, and closing from inside one fails as it does from `scan`. The
   existing `scan` and `range` paths are unchanged; tests hold the batch paths to them over every valid
   conformance dataset.
+- `BYTE_STREAM_SPLIT` values, outside the ENC-1 baseline, are decoded as the Go reader decodes them:
+  `FLOAT`, `DOUBLE`, `INT32`, `INT64` and `FIXED_LEN_BYTE_ARRAY` columns, a page holding exactly its values;
+  another type is `invalid_parquet`, as in Go. Such pages were reported as `unsupported_encoding`. A
+  Go-written dataset of every such type reads identically through both conformance adapters.
 - `Limits.maxPageMemory` (a new record component; `Limits.withMaxPageMemory`) bounds the memory decoding
   one page holds (issue #46), data and dictionary pages, key pages included: estimated from the page's
   header before anything is allocated for its values (a slot per value for its representation, a null

@@ -516,8 +516,10 @@ data in the pages a request decodes is `invalid_parquet` (CHECK-5).
   conformance adapter answers `validate` with `unsupported_operation`.
 - Writing datasets.
 - Projecting nested or repeated columns, or `INT96` (reported as `unsupported_projection`).
-- BROTLI, LZO and Hadoop-framed LZ4 compression, `BYTE_STREAM_SPLIT` encoding, and modular
-  encryption (reported as unsupported).
+- BROTLI, LZO and Hadoop-framed LZ4 compression, and modular encryption (reported as unsupported).
+  The Go reader also decodes BROTLI. Beyond the ENC-1 baseline, this reader decodes LZ4_RAW and, as the
+  Go reader does, `BYTE_STREAM_SPLIT` values of `FLOAT`, `DOUBLE`, `INT32`, `INT64` and
+  `FIXED_LEN_BYTE_ARRAY` columns (another type is `invalid_parquet`).
 - The planned indexed-access conformance suite. The reader is index-guided, but passing the
   semantic suite does not prove that.
 

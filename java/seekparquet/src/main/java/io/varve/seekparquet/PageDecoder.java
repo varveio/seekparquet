@@ -406,6 +406,9 @@ final class PageDecoder {
             throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_PROJECTION, where + ": " + type + " values");
         }
         try {
+            if (encoding == Encoding.BYTE_STREAM_SPLIT) {
+                return byteStreamSplit(col, data, from, to, n, nonNull, nulls, ints, longs, binaries, scratch);
+            }
             if (encoding == Encoding.PLAIN && (type == Column.Type.FLOAT || type == Column.Type.DOUBLE
                     || type == Column.Type.INT32 || type == Column.Type.INT64)) {
                 // Fixed-width PLAIN values are read as raw little-endian bits, so that floating-point
@@ -505,6 +508,66 @@ final class PageDecoder {
             throw new DataException("the page values do not decode (" + encoding + ")", e);
         }
         return new ColumnPage(type, n, nulls, bools, ints, longs, binaries);
+    }
+
+    /**
+     * Decodes BYTE_STREAM_SPLIT values, as the Go reader does: {@code FLOAT}, {@code DOUBLE}, {@code INT32},
+     * {@code INT64} and {@code FIXED_LEN_BYTE_ARRAY}, each value's {@code width} bytes split into {@code width}
+     * streams of {@code nonNull} bytes, byte {@code b} of value {@code j} at {@code b * nonNull + j}. The page
+     * holds exactly its values (CHECK-5); another type is malformed, as Go refuses it.
+     */
+    private static ColumnPage byteStreamSplit(ColumnSpec col, byte[] data, int from, int to, int n, int nonNull,
+            boolean[] nulls, int[] ints, long[] longs, byte[][] binaries, PageScratch scratch) throws DataException {
+        Column.Type type = col.type();
+        int width = switch (type) {
+            case INT32, FLOAT -> 4;
+            case INT64, DOUBLE -> 8;
+            case FIXED_LEN_BYTE_ARRAY -> col.typeLength();
+            default -> throw new DataException("BYTE_STREAM_SPLIT values in a " + type + " column");
+        };
+        if (width <= 0 || (long) nonNull * width != to - from) {
+            throw new DataException(nonNull + " BYTE_STREAM_SPLIT values are not " + (to - from) + " bytes");
+        }
+        if (type == Column.Type.FIXED_LEN_BYTE_ARRAY) {
+            byte[] arena = binaries == null ? (scratch.arena = PageScratch.grow(scratch.arena, to - from)) : null;
+            int[] offsets = binaries == null ? scratch.offsets(n) : null;
+            int[] lengths = binaries == null ? scratch.lengths(n) : null;
+            for (int i = 0, j = 0; i < n; i++) {
+                if (nulls != null && nulls[i]) {
+                    continue;
+                }
+                byte[] dst = arena != null ? arena : new byte[width];
+                int at = arena != null ? j * width : 0;
+                for (int b = 0; b < width; b++) {
+                    dst[at + b] = data[from + b * nonNull + j];
+                }
+                if (arena != null) {
+                    offsets[i] = at;
+                    lengths[i] = width;
+                } else {
+                    binaries[i] = dst;
+                }
+                j++;
+            }
+            return arena != null ? new ColumnPage(type, n, nulls, null, null, null, null, arena, offsets, lengths)
+                    : new ColumnPage(type, n, nulls, null, null, null, binaries);
+        }
+        for (int i = 0, j = 0; i < n; i++) {
+            if (nulls != null && nulls[i]) {
+                continue;
+            }
+            long v = 0;
+            for (int b = 0; b < width; b++) {
+                v |= (data[from + b * nonNull + j] & 0xFFL) << (8 * b);
+            }
+            if (ints != null) {
+                ints[i] = (int) v;
+            } else {
+                longs[i] = v;
+            }
+            j++;
+        }
+        return new ColumnPage(type, n, nulls, null, ints, longs, null);
     }
 
     private static ColumnPage binaryValues(ColumnSpec col, Encoding encoding, byte[] data, int from, int to,
