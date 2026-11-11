@@ -99,7 +99,9 @@ type part struct {
 	ready atomic.Bool
 
 	// The fields below are set by the check, before ready; file and size
-	// are set from the start when the part was given open.
+	// are set from the start when the part was given open, and footer when
+	// it was given with its footer already read and checked (readFooter),
+	// which the check then uses instead of reading it again.
 	file   io.ReaderAt
 	size   int64
 	footer *parquet.File
@@ -194,7 +196,7 @@ func openParts(ctx context.Context, inputs []partInput, key Key, opt Options) (_
 		if in.file == nil && in.rows <= 0 {
 			return nil, fmt.Errorf("seekparquet: part %s has no file", in.name)
 		}
-		p := &part{r: r, name: in.name, file: in.file, size: in.size, rows: in.rows,
+		p := &part{r: r, name: in.name, file: in.file, size: in.size, footer: in.footer, rows: in.rows,
 			minKey: bytes.Clone(in.minKey), maxKey: bytes.Clone(in.maxKey), check: make(chan struct{}, 1)}
 		r.parts = append(r.parts, p)
 		if p.minKey == nil || p.maxKey == nil {
@@ -303,7 +305,7 @@ func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) 
 // fills it in. The caller holds p.check.
 func (r *reader) checkPart(ctx context.Context, i int, st *ReadStats) error {
 	p := r.parts[i]
-	in := partInput{name: p.name, file: p.file, size: p.size}
+	in := partInput{name: p.name, file: p.file, size: p.size, footer: p.footer}
 	if r.fetch != nil { // counts the part opened once the Source opens it
 		var err error
 		if in, err = r.fetch(ctx, i, st); err != nil {
@@ -324,7 +326,7 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 	footer := in.footer
 	if footer == nil {
 		var err error
-		if footer, err = readFooter(ctx, in.name, in.file, in.size, &r.limits, st); err != nil {
+		if footer, err = readFooter(ctx, in.name, in.file, in.size, &r.limits, st, footerWindow); err != nil {
 			return err
 		}
 	}

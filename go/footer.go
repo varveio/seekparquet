@@ -74,19 +74,42 @@ func readFull(at io.ReaderAt, p []byte, off int64) error {
 // errEncrypted reports an encrypted part (FILE-2).
 var errEncrypted = &UnsupportedError{Code: UnsupportedEncryption, Detail: "the part uses Parquet modular encryption"}
 
-// prefetched serves reads that fall inside data, the bytes at off, from
-// memory, and every other read from r.
+// prefetched serves reads that fall inside data, the bytes at off, or
+// inside head, the file's first bytes, from memory, and every other read
+// from r.
 type prefetched struct {
 	r    io.ReaderAt
 	off  int64
 	data []byte
+	head []byte
 }
 
 func (p prefetched) ReadAt(b []byte, off int64) (int, error) {
 	if off >= p.off && off-p.off <= int64(len(p.data)) && int64(len(b)) <= int64(len(p.data))-(off-p.off) {
 		return copy(b, p.data[off-p.off:]), nil
 	}
+	if off >= 0 && off <= int64(len(p.head)) && int64(len(b)) <= int64(len(p.head))-off {
+		return copy(b, p.head[off:]), nil
+	}
 	return p.r.ReadAt(b, off)
+}
+
+// footerWindow is the most bytes readFooter reads speculatively from a
+// part's end, so that a footer up to that size takes one read with its
+// trailer. A larger footer takes one more read, of the bytes before the
+// window.
+const footerWindow = 64 << 10
+
+// testFooterRetained, when set by a test, receives the reader readFooter
+// gives parquet-go to keep, and the window it read the file's end into.
+var testFooterRetained func(retained prefetched, window []byte)
+
+// ownCopy returns a copy of b in an allocation of its own, whose capacity
+// is its length.
+func ownCopy(b []byte) []byte {
+	c := make([]byte, len(b))
+	copy(c, b)
+	return c
 }
 
 // decodeBounded decodes one thrift struct into v from raw after
@@ -117,7 +140,18 @@ func decodeBounded(raw []byte, v any, budget int64) (int, error) {
 // A fault in the data is a *RefusalError; an encrypted part an
 // *UnsupportedError; a limit or storage failure an error. Its reads are
 // counted in st, which may be nil.
-func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits, st *ReadStats) (_ *parquet.File, err error) {
+//
+// The file's end is read in one window of up to maxWindow bytes (at least
+// its 8-byte trailer, at most the largest footer Limits.FooterBytes admits
+// with its trailer): it holds the trailer and, when the footer fits, the
+// footer, so that a footer within the window costs one read besides the
+// head magic, and a larger one a second, of the bytes before the window. A
+// file no larger than the window is read whole, its head with it, in one
+// read. Otherwise the head magic is read first, as its own 4 bytes. A
+// maxWindow of 0 reads the trailer alone, then the footer: the file's head
+// and footer, nothing else (InspectFooter). Nothing is allocated from the
+// declared footer length before it is checked.
+func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits, st *ReadStats, maxWindow int64) (_ *parquet.File, err error) {
 	at := storageReader{r: bind(ctx, file), st: st}
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidFooter, name, -1, format, args...)
@@ -125,17 +159,29 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	if size < 12 {
 		return nil, bad("the file is too short to be Parquet")
 	}
-	var head, tail [8]byte
-	if err := readFull(at, head[:4], 0); err != nil {
+	window := min(size, max(maxWindow, 8))
+	if lim.FooterBytes < window-8 {
+		window = max(lim.FooterBytes, 0) + 8
+	}
+	var head []byte
+	if window < size {
+		head = make([]byte, 4)
+		if err := readFull(at, head, 0); err != nil {
+			return nil, footerError(ctx, name, err)
+		}
+	}
+	win := make([]byte, window)
+	if err := readFull(at, win, size-window); err != nil {
 		return nil, footerError(ctx, name, err)
 	}
-	if err := readFull(at, tail[:], size-8); err != nil {
-		return nil, footerError(ctx, name, err)
+	if head == nil {
+		head = win[:4:4]
 	}
-	if string(head[:4]) == "PARE" || string(tail[4:]) == "PARE" {
+	tail := win[window-8:]
+	if string(head) == "PARE" || string(tail[4:]) == "PARE" {
 		return nil, errEncrypted
 	}
-	if string(head[:4]) != "PAR1" || string(tail[4:]) != "PAR1" {
+	if string(head) != "PAR1" || string(tail[4:]) != "PAR1" {
 		return nil, bad("the file does not begin and end with PAR1")
 	}
 	n := int64(binary.LittleEndian.Uint32(tail[:4]))
@@ -145,9 +191,16 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	if n > lim.FooterBytes {
 		return nil, exceeded("part %s: the footer is %d bytes (Limits.FooterBytes %d)", name, n, lim.FooterBytes)
 	}
-	raw := make([]byte, n+8)
-	if err := readFull(at, raw, size-8-n); err != nil {
-		return nil, footerError(ctx, name, err)
+	var raw []byte
+	if n+8 <= window {
+		raw = win[window-8-n:]
+	} else {
+		// The footer starts before the window: read the bytes before it.
+		raw = make([]byte, n+8)
+		copy(raw[n+8-window:], win)
+		if err := readFull(at, raw[:n+8-window], size-8-n); err != nil {
+			return nil, footerError(ctx, name, err)
+		}
 	}
 	var meta format.FileMetaData
 	used, err := decodeBounded(raw[:n], &meta, lim.MetadataMemory)
@@ -178,12 +231,23 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 		footer = append(footer, "PAR1"...)
 		end = size - 8 - n + int64(len(footer))
 	}
+	// The opened file keeps the bytes it is given for as long as the part
+	// is open: exactly the footer with its trailer and the head magic, in
+	// slices of their own, so that the speculative window is not pinned
+	// with them.
+	footer, head = ownCopy(footer), ownCopy(head)
 	defer func() {
 		if r := recover(); r != nil {
 			err = bad("parquet-go failed on the footer: %v", r)
 		}
 	}()
-	f, err := parquet.OpenFile(prefetched{at, size - 8 - n, footer}, end,
+	// parquet-go reads the head magic and the footer again: both are served
+	// from the bytes checked above, not read from the source a second time.
+	retained := prefetched{r: at, off: size - 8 - n, data: footer, head: head}
+	if testFooterRetained != nil {
+		testFooterRetained(retained, win)
+	}
+	f, err := parquet.OpenFile(retained, end,
 		parquet.SkipPageIndex(true), parquet.SkipBloomFilters(true), parquet.ReadBufferSize(4096))
 	if err != nil {
 		return nil, footerError(ctx, name, err)

@@ -239,7 +239,7 @@ func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entr
 	if in.size != entry.Bytes {
 		return partInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the file is %d bytes, its manifest entry %d", in.size, entry.Bytes)
 	}
-	footer, err := readFooter(ctx, entry.Path, f, in.size, lim, st)
+	footer, err := readFooter(ctx, entry.Path, f, in.size, lim, st, footerWindow)
 	if err != nil {
 		return partInput{}, err
 	}
