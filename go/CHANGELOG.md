@@ -5,6 +5,15 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- A part's footer is read in fewer reads: one speculative read of the part's last 64 KiB (bounded by
+  `Limits.FooterBytes`, the whole part when smaller) holds the trailer and, when it fits, the footer, with
+  a 4-byte read of the head magic only for a part larger than the window and one more read only for a
+  footer larger than it. The footer and the head magic are no longer read a second time when parquet-go
+  opens the checked footer. A footer took four reads; it now takes one (part up to 64 KiB), two, or three
+  (footer over 64 KiB). `SourceBytes` grows by up to 64 KiB per part opened. Every check and refusal is
+  unchanged. `InspectFooter` and `InspectKeyPages` still read only the head magic and the footer (and the
+  key page indexes), now once instead of twice.
+
 - `RangePlan.ScanBatches`, `Dataset.RangeBatches` and `RangePlan.Scan` reuse one set of key page buffers
   per call (read, decompressed and decoded bytes, offsets, dictionary indexes), as projected value pages
   already did: each key page overwrites the one before after the callbacks borrowing it have returned.

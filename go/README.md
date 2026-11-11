@@ -264,8 +264,10 @@ return of memory to the OS.
 ## Cost model
 
 Opening reads the manifest: one read, whatever the number of parts. A read is routed to a part by its
-manifest bounds; the first read to touch a part opens it and reads its footer (a few reads, counted in
-`ReadStats.PartsOpened` and `SourceReads`), so a cold query costs the manifest plus one footer per part it
+manifest bounds; the first read to touch a part opens it and reads its footer (counted in
+`ReadStats.PartsOpened` and `SourceReads`: the last 64 KiB of the part in one read, the whole part when it is
+smaller, plus a 4-byte read of its head when it is larger, and one more read when the footer is larger than
+that window), so a cold query costs the manifest plus one footer per part it
 touches, independent of the part count. Within the part, a read is routed by a binary search over its row groups' first
 keys; the first time a row group is needed, its key page index is loaded and its first key page decoded, and
 both are kept (`Limits.IndexMemory` accounts for key-page entries, their bound bytes,
