@@ -36,6 +36,8 @@ dependencies {
 tasks.named<Test>("test") {
     // Tests read the shared conformance fixtures from the repository.
     systemProperty("seekparquet.conformance", rootProject.projectDir.resolve("../conformance").canonicalPath)
+    // -Pseekparquet.test.readAhead=n runs every listing that asks for none with read-ahead n (ReadAheadSwitch).
+    providers.gradleProperty("seekparquet.test.readAhead").orNull?.let { systemProperty("seekparquet.test.readAhead", it) }
 }
 
 publishing {

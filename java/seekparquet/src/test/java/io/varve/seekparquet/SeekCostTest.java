@@ -31,12 +31,19 @@ import java.nio.file.Files;
 import io.varve.seekparquet.storage.LocalStorage;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Deterministic storage-call/byte regressions, not timing or throughput benchmarks. */
 class SeekCostTest {
     @TempDir Path tmp;
+
+    /** The bounds here are on the reads of listings without read-ahead: ReadAheadSwitch does not apply. */
+    @BeforeEach
+    void noReadAhead() {
+        ReadAhead.testDefault = 0;
+    }
 
     @Test
     void coldFinalKeyUsesLogarithmicProbesAndBoundedIndexOverfetch() throws IOException {

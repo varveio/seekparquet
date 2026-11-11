@@ -30,7 +30,7 @@ class IndexedAccessTest {
     /**
      * Counts the storage reads. A part's footer reads, made when a request first touches the part
      * (CHECK-1), are counted in {@code footers}, apart from the reads the query itself makes: the tail
-     * window, and a footer longer than it, which ends where the footer length begins.
+     * window, and the bytes of a footer longer than it, which end where the window begins.
      */
     static final class CountingStorage implements DatasetStorage {
         final LocalStorage local;
@@ -70,7 +70,7 @@ class IndexedAccessTest {
                 public ByteBuffer read(long position, int length, Cancellation c) throws IOException {
                     long end = position + length;
                     if (end == inner.size() && length == Math.min(inner.size(), PartFile.TAIL_WINDOW)
-                            || end == inner.size() - 8 && length > PartFile.TAIL_WINDOW - 8) {
+                            || inner.size() > PartFile.TAIL_WINDOW && end == inner.size() - PartFile.TAIL_WINDOW) {
                         footers.incrementAndGet();
                         return inner.read(position, length, c);
                     }

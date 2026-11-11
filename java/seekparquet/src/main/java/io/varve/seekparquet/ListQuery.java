@@ -33,13 +33,18 @@ import java.util.Optional;
  * @param limit the most entries returned; positive (QUERY-1)
  * @param cursor the tagged continuation, when present
  * @param columns the columns to project for row entries, by exact top-level name, in order
+ * @param readAhead the number of key pages the listing may read ahead concurrently; 0, the default,
+ *     for none (see {@link Builder#readAhead(int)})
  */
 public record ListQuery(
         Bytes prefix,
         byte delimiter,
         Optional<Bytes> end,
         int limit,
-        List<String> columns, Optional<Continuation> cursor) {
+        List<String> columns, Optional<Continuation> cursor, int readAhead) {
+
+    /** The largest read-ahead a listing uses: a larger {@link #readAhead()} is read as it. */
+    public static final int MAX_READ_AHEAD = 64;
 
     /**
      * Creates a listing query.
@@ -50,7 +55,9 @@ public record ListQuery(
      * @param limit the limit
      * @param cursor the tagged continuation
      * @param columns the projected columns
-     * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1)
+     * @param readAhead the key pages read ahead, at least 0
+     * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1), or {@code readAhead}
+     *     is negative
      */
     public ListQuery {
         Objects.requireNonNull(prefix, "prefix");
@@ -60,6 +67,24 @@ public record ListQuery(
         if (limit <= 0) {
             throw new IllegalArgumentException("limit " + limit + " is not a positive integer");
         }
+        if (readAhead < 0) {
+            throw new IllegalArgumentException("read-ahead " + readAhead + " is negative");
+        }
+    }
+
+    /**
+     * Creates a listing query that reads no key page ahead.
+     *
+     * @param prefix the prefix
+     * @param delimiter the delimiter byte
+     * @param end the exclusive upper bound
+     * @param limit the limit
+     * @param columns the projected columns
+     * @param cursor the tagged continuation
+     * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1)
+     */
+    public ListQuery(Bytes prefix, byte delimiter, Optional<Bytes> end, int limit, List<String> columns, Optional<Continuation> cursor) {
+        this(prefix, delimiter, end, limit, columns, cursor, 0);
     }
 
     /**
@@ -80,6 +105,7 @@ public record ListQuery(
         b.limit = limit;
         b.columns = columns;
         b.cursor = cursor;
+        b.readAhead = readAhead;
         return b;
     }
 
@@ -106,6 +132,7 @@ public record ListQuery(
         private int limit;
         private List<String> columns = List.of();
         private Optional<Continuation> cursor = Optional.empty();
+        private int readAhead;
 
         private Builder(byte delimiter) {
             this.delimiter = delimiter;
@@ -175,13 +202,48 @@ public record ListQuery(
         }
 
         /**
+         * Sets how many key pages the listing may read ahead concurrently: 0, the default, for none; a
+         * value above {@link #MAX_READ_AHEAD} is read as it.
+         *
+         * <p>A listing that skips from common prefix to common prefix reads one key page after each, one
+         * after another: over an object store, one round trip per prefix. With read-ahead, after each
+         * entry the listing predicts, from the checked key page index of the row group it is in, the key
+         * pages it will decode next (after a common prefix, the first page whose maximum reaches the
+         * prefix's successor; after a row, the next page) and reads up to this many of them concurrently,
+         * on virtual threads, so that it waits for about one read per {@code readAhead} pages instead of
+         * one per page. The prediction stays within the row group the listing is in.
+         *
+         * <p>Pages read ahead are checked exactly as pages read when decoded are (CHECK-2): the entries,
+         * errors and refusals are the same with or without read-ahead. A page predicted wrongly (shortened
+         * or overlapping page bounds, RG-5, RG-6) is read and transferred for nothing ({@link
+         * ReadStats#readAheadUnused()}); a read ahead that fails, or throws, is not used, and the page is
+         * read again when the listing reaches it. Memory: a request holds at most {@code readAhead} times
+         * 1 MiB of pages read ahead and not yet used, and at most 4 times {@code readAhead} pages, until
+         * the listing uses or passes them or ends; a key page above that budget, or above {@link
+         * Limits#maxPageBytes()}, is not read ahead. The reads ahead end, and are waited for, before the
+         * listing returns, including when it fails, is cancelled, or the dataset closes.
+         *
+         * <p>It pays where a read waits on a round trip (an object store), not on a local file. A listing
+         * with delimiter {@code '/'} reads no page ahead while a list index ({@link
+         * Dataset#buildListIndex}) is built, whether or not the index serves a given row group.
+         *
+         * @param readAhead the key pages read ahead, at least 0
+         * @return this builder
+         */
+        public Builder readAhead(int readAhead) {
+            this.readAhead = readAhead;
+            return this;
+        }
+
+        /**
          * Builds the query.
          *
          * @return the query
-         * @throws IllegalArgumentException if the limit is not set or not positive
+         * @throws IllegalArgumentException if the limit is not set or not positive, or the read-ahead is
+         *     negative
          */
         public ListQuery build() {
-            return new ListQuery(prefix, delimiter, end, limit, columns, cursor);
+            return new ListQuery(prefix, delimiter, end, limit, columns, cursor, readAhead);
         }
     }
 }
