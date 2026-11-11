@@ -142,7 +142,7 @@ func TestFailedPlanAndSplitStats(t *testing.T) {
 	d := open(t, dir, OpenOptions{})
 	st := ReadStats{GroupsSkipped: 5}
 	plan, err := d.Plan(ctx, []Selection{{Span: PrefixSpan([]byte("c/"))}, {Span: PrefixSpan([]byte("d/"))}}, []string{"size"}, &st)
-	if CodeOf(err) != CodeStampMismatch || plan != nil {
+	if RefusalCodeOf(err) != CodeStampMismatch || plan != nil {
 		t.Fatalf("plan over a bad part: %v", err)
 	}
 	if st.PartsOpened != 2 || st.SourceReads < 2 || st.GroupsSkipped != 0 {
@@ -248,5 +248,41 @@ func TestCursorConstructors(t *testing.T) {
 	}
 	if !bytes.Equal(PrefixCursor([]byte("a/")).Prefix, []byte("a/")) {
 		t.Fatal("prefix bytes")
+	}
+}
+
+// TestCachedRefusalDetached: a part's refusal is returned to each read as
+// a copy of its own, so that changing one does not change what a later
+// read is told.
+func TestCachedRefusalDetached(t *testing.T) {
+	dir := write(t, lazyParts())
+	rewrite(t, dir, 3, func(m *format.FileMetaData) { m.KeyValueMetadata = nil })
+	d := open(t, dir, OpenOptions{})
+	read := func() *RefusalError {
+		_, err := d.Rows(ctx, Query{Selection: Selection{Span: PrefixSpan([]byte("d/"))}, Limit: 1}, nil)
+		var refusal *RefusalError
+		if !errors.As(err, &refusal) || refusal.Code != CodeStampMismatch {
+			t.Fatalf("%v", err)
+		}
+		return refusal
+	}
+	first := read()
+	want := *first
+	first.Code, first.Part, first.Detail, first.Key = "changed", "changed", "changed", []byte("changed")
+	for range 2 {
+		again := read()
+		if again == first || again.Code != want.Code || again.Part != want.Part || again.Detail != want.Detail || again.Key != nil {
+			t.Fatalf("cached refusal changed: %+v", again)
+		}
+		again.Detail = "changed again"
+	}
+	// detach copies an unsupported error too, and a refusal's key.
+	detached := detach(&UnsupportedError{Code: UnsupportedEncoding, Detail: "x"}).(*UnsupportedError)
+	if detached.Code != UnsupportedEncoding || detached.Detail != "x" {
+		t.Fatal("unsupported detach")
+	}
+	r := &RefusalError{Code: CodeKeyOrder, Key: []byte("k")}
+	if c := detach(r).(*RefusalError); c == r || &c.Key[0] == &r.Key[0] || string(c.Key) != "k" {
+		t.Fatal("refusal detach shares its key")
 	}
 }

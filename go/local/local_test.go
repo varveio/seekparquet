@@ -372,7 +372,7 @@ func TestCommitRefuses(t *testing.T) {
 	}
 	bad = m
 	bad.SchemaID = ""
-	if ok, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, bad); ok || seekparquet.CodeOf(err) != seekparquet.CodeInvalidManifest {
+	if ok, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, bad); ok || seekparquet.RefusalCodeOf(err) != seekparquet.CodeInvalidManifest {
 		t.Errorf("invalid manifest: %v, %v", ok, err)
 	}
 	if exists(root, seekparquet.ManifestName) {

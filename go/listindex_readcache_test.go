@@ -112,7 +112,7 @@ func TestListIndexOrdinaryOrderChecks(t *testing.T) {
 			} else {
 				_, err = d.Rows(ctx, Query{Limit: 100}, nil)
 			}
-			if CodeOf(err) != CodeKeyOrder {
+			if RefusalCodeOf(err) != CodeKeyOrder {
 				t.Fatalf("indexed=%v list=%v: %v", indexed, listing, err)
 			}
 		}

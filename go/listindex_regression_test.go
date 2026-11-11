@@ -47,7 +47,7 @@ func TestListIndexRegressionDescendingFirstKeys(t *testing.T) {
 	q := ListQuery{Delimiter: '/', Limit: 2}
 	want, e1 := plain.List(ctx, q, nil)
 	got, e2 := d.List(ctx, q, nil)
-	if CodeOf(e1) != CodeKeyOrder || CodeOf(e2) != CodeKeyOrder {
+	if RefusalCodeOf(e1) != CodeKeyOrder || RefusalCodeOf(e2) != CodeKeyOrder {
 		t.Fatalf("plain=%v/%v indexed=%v/%v", entriesOf(want), e1, entriesOf(got), e2)
 	}
 	if st.GroupsFailed != 2 || st.GroupsIndexed != 1 {
@@ -148,7 +148,7 @@ func TestListIndexRegressionBoundaryCertification(t *testing.T) {
 					t.Fatal("certified a disordered neighbor")
 				}
 				_, err = d.List(ctx, ListQuery{Delimiter: '/', Limit: 2}, nil)
-				if CodeOf(err) != CodeKeyOrder {
+				if RefusalCodeOf(err) != CodeKeyOrder {
 					t.Fatalf("suppressed refusal: %v", err)
 				}
 			}
@@ -285,7 +285,7 @@ func TestListIndexRegressionMultiPart(t *testing.T) {
 	}
 	for _, d := range []*Dataset{before, after} {
 		_, e := d.List(ctx, ListQuery{Delimiter: '/', Limit: 100}, nil)
-		if CodeOf(e) != CodeMissingPart {
+		if RefusalCodeOf(e) != CodeMissingPart {
 			t.Fatal(e)
 		}
 	}

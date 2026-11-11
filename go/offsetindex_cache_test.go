@@ -149,7 +149,7 @@ func TestOffsetIndexCacheMalformed(t *testing.T) {
 			must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
 			d := open(t, dir, OpenOptions{})
 			for i := range 3 {
-				if _, err := d.Rows(ctx, Query{Limit: 200, Columns: []string{"size"}}, nil); CodeOf(err) != CodeInvalidParquet {
+				if _, err := d.Rows(ctx, Query{Limit: 200, Columns: []string{"size"}}, nil); RefusalCodeOf(err) != CodeInvalidParquet {
 					t.Fatalf("request %d: got %v, want invalid_parquet", i, err)
 				}
 			}

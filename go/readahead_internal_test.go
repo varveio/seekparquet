@@ -181,7 +181,7 @@ func TestListReadAheadRefusals(t *testing.T) {
 		for _, n := range []int{0, 2, 16} {
 			d := open(t, dir, OpenOptions{})
 			_, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 1000, ReadAhead: n}, nil)
-			if CodeOf(err) == "" {
+			if RefusalCodeOf(err) == "" {
 				t.Fatalf("%s, ReadAhead %d: %v, want a refusal", flaw.name, n, err)
 			}
 			errs = append(errs, err.Error())

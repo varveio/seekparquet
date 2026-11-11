@@ -223,7 +223,7 @@ func TestReadStatsFailingRequest(t *testing.T) {
 	// order. The page counts when decoded, before it is checked.
 	var st ReadStats
 	_, err := d.Rows(ctx, Query{Limit: 1000}, &st)
-	if CodeOf(err) != CodeKeyOrder {
+	if RefusalCodeOf(err) != CodeKeyOrder {
 		t.Fatalf("got %v, want key_order", err)
 	}
 	checkStats(t, "refused range", st, ReadStats{KeyPagesDecoded: 4, KeysDecoded: 80, RowGroupsOpened: 1, IndexLoads: 1, SourceReads: 6}, src)
@@ -308,7 +308,7 @@ func TestReadStatsFailedDecodeNotCounted(t *testing.T) {
 	h := &format.PageHeader{Type: format.DataPage, UncompressedPageSize: int32(len(data)) + 1}
 	h.DataPageHeader.V = format.DataPageHeader{NumValues: 10, Encoding: format.DeltaBinaryPacked}
 	h.DataPageHeader.Valid = true
-	if _, err := c.decode(h, append(data, 0)); CodeOf(err) != CodeInvalidParquet {
+	if _, err := c.decode(h, append(data, 0)); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("got %v", err)
 	}
 	if *c.pages != 0 {

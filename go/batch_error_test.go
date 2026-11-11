@@ -86,7 +86,7 @@ func TestScanDeliversBatchesBeforePageError(t *testing.T) {
 					} else {
 						err = scanRows(ctx, plan, &st, func(row Row) error { got = append(got, row); return nil })
 					}
-					if CodeOf(err) != CodeInvalidParquet {
+					if RefusalCodeOf(err) != CodeInvalidParquet {
 						t.Fatalf("error %v, want invalid_parquet", err)
 					}
 					checkScanDeliveryRows(t, got, want)

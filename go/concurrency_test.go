@@ -255,7 +255,7 @@ func TestOpenPartsOwnership(t *testing.T) {
 	failing[0].minKey, failing[0].maxKey = []byte("a"), []byte("d")
 	r, err = openParts(ctx, failing, unique, OpenOptions{})
 	must(t, err)
-	if err := r.verify(ctx); CodeOf(err) != CodeBoundsMismatch {
+	if err := r.verify(ctx); RefusalCodeOf(err) != CodeBoundsMismatch {
 		t.Fatalf("bounds: %v", err)
 	}
 	must(t, r.close())

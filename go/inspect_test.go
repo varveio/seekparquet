@@ -213,7 +213,7 @@ func TestInspectReadsNoPages(t *testing.T) {
 	if index == 0 {
 		t.Errorf("InspectKeyPages read no page index")
 	}
-	if _, err := InspectKeyPages(bytes.NewReader(raw), size, "size"); CodeOf(err) != CodeStampMismatch {
+	if _, err := InspectKeyPages(bytes.NewReader(raw), size, "size"); RefusalCodeOf(err) != CodeStampMismatch {
 		t.Errorf("another key column: %v", err)
 	}
 }
@@ -224,7 +224,7 @@ func TestInspectRefusals(t *testing.T) {
 	path := partFile(dir, 0)
 	for name, c := range map[string]struct {
 		edit func(kv map[string][]string)
-		code Code
+		code RefusalCode
 	}{
 		"missing stamp":    {func(kv map[string][]string) { delete(kv, StampSchemaID) }, CodeStampMismatch},
 		"twice":            {func(kv map[string][]string) { kv[StampKeyUnique] = []string{"true", "true"} }, CodeStampMismatch},
@@ -235,11 +235,11 @@ func TestInspectRefusals(t *testing.T) {
 		"no key column":    {func(kv map[string][]string) { kv[StampKeyColumn] = []string{"nope"} }, CodeInvalidKeyColumn},
 	} {
 		raw := stampedCopy(t, path, c.edit)
-		if _, err := InspectFooter(bytes.NewReader(raw), int64(len(raw))); CodeOf(err) != c.code {
+		if _, err := InspectFooter(bytes.NewReader(raw), int64(len(raw))); RefusalCodeOf(err) != c.code {
 			t.Errorf("%s: %v, want %s", name, err, c.code)
 		}
 	}
-	if _, err := InspectFooter(bytes.NewReader([]byte("PAR1 not parquet PAR1")), 21); CodeOf(err) != CodeInvalidFooter {
+	if _, err := InspectFooter(bytes.NewReader([]byte("PAR1 not parquet PAR1")), 21); RefusalCodeOf(err) != CodeInvalidFooter {
 		t.Errorf("not Parquet: %v", err)
 	}
 }

@@ -77,7 +77,7 @@ func parseManifest(raw []byte, lim *Limits) (*manifest.Manifest, error) {
 		var e *manifest.Error
 		switch {
 		case errors.As(err, &e):
-			return nil, refuse(Code(e.Code), "%s: %s", ManifestName, e.Detail)
+			return nil, refuse(RefusalCode(e.Code), "%s: %s", ManifestName, e.Detail)
 		case errors.Is(err, manifest.ErrTooManyParts):
 			return nil, exceeded(LimitParts, -1, int64(lim.Parts), "%s lists more parts", ManifestName)
 		}

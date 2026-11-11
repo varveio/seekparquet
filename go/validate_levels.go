@@ -136,7 +136,7 @@ func checkIndexedHeader(ctx context.Context, p *part, physical, i int, loc pageL
 	}
 	h, n, _, err := p.pageHeader(ctx, physical, p.key.index, loc.offset, end, nil)
 	if err != nil {
-		if CodeOf(err) == CodeInvalidParquet {
+		if RefusalCodeOf(err) == CodeInvalidParquet {
 			return bad("its OffsetIndex entry does not locate a page header")
 		}
 		return err
@@ -252,7 +252,7 @@ func (v *validator) profile(lr *LevelReport) error {
 			if err != nil {
 				return err
 			}
-			bad := func(code Code, row int64, key []byte, format string, args ...any) error {
+			bad := func(code RefusalCode, row int64, key []byte, format string, args ...any) error {
 				e := refusePart(code, p.name, physical, format, args...)
 				e.Row, e.Key = row, bytes.Clone(key)
 				return e
@@ -672,7 +672,7 @@ func (v *validator) digest(lr *LevelReport) error {
 		var e *manifest.Error
 		switch {
 		case errors.As(err, &e):
-			return refuse(Code(e.Code), "%s: %s", ManifestName, e.Detail)
+			return refuse(RefusalCode(e.Code), "%s: %s", ManifestName, e.Detail)
 		case errors.Is(err, manifest.ErrTooManyParts):
 			return exceeded(LimitParts, -1, int64(v.limits.Parts), "%s lists more parts", ManifestName)
 		}

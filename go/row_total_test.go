@@ -49,7 +49,7 @@ func TestDatasetRowTotalLimit(t *testing.T) {
 				defer d.Close()
 			}
 			if tc.tooLarge {
-				if !errors.Is(err, ErrLimitExceeded) || CodeOf(err) != "" {
+				if !errors.Is(err, ErrLimitExceeded) || RefusalCodeOf(err) != "" {
 					t.Fatalf("OpenDataset: %v, want non-refusal ErrLimitExceeded", err)
 				}
 				if src.opened.Load() != src.closed.Load() {
@@ -104,7 +104,7 @@ func TestOverflowCannotSkipRepeatedKeyTail(t *testing.T) {
 	dir := write(t, doc)
 	declarePartRows(t, dir, 0, 1<<62)
 	declarePartRows(t, dir, 1, 1<<62)
-	if err := openErr(dir, OpenOptions{}); !errors.Is(err, ErrLimitExceeded) || CodeOf(err) != "" {
+	if err := openErr(dir, OpenOptions{}); !errors.Is(err, ErrLimitExceeded) || RefusalCodeOf(err) != "" {
 		t.Fatalf("overflowing repeated-key dataset: %v, want non-refusal ErrLimitExceeded", err)
 	}
 }

@@ -22,7 +22,7 @@ func TestDirFIFO(t *testing.T) {
 	go func() { done <- openErr(dir, OpenOptions{}) }()
 	select {
 	case err := <-done:
-		if CodeOf(err) != CodeMissingPart {
+		if RefusalCodeOf(err) != CodeMissingPart {
 			t.Fatalf("got %v, want missing_part", err)
 		}
 	case <-time.After(10 * time.Second):

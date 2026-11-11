@@ -467,7 +467,7 @@ func TestBufferReuseSurplusDictionary(t *testing.T) {
 	must(t, err)
 	_, err = cp.c.values(format.Plain, plainByteArray("a larger live data page"), 1)
 	must(t, err)
-	if _, err = cp.c.dictionary(); CodeOf(err) != CodeInvalidParquet {
+	if _, err = cp.c.dictionary(); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("surplus dictionary: %v", err)
 	}
 }

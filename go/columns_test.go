@@ -111,10 +111,10 @@ func TestColumnsInconsistent(t *testing.T) {
 		if len(cols) != 2 || cols[1].Name != "size" || cols[1].Type != types[first] {
 			t.Fatalf("part %d: %+v", first, cols)
 		}
-		if _, err := d.Columns(ctx, 1-first); CodeOf(err) != CodeInconsistentColumn {
+		if _, err := d.Columns(ctx, 1-first); RefusalCodeOf(err) != CodeInconsistentColumn {
 			t.Fatalf("part %d after %d: %v, want inconsistent_column", 1-first, first, err)
 		}
-		if err := d.Verify(ctx); CodeOf(err) != CodeInconsistentColumn {
+		if err := d.Verify(ctx); RefusalCodeOf(err) != CodeInconsistentColumn {
 			t.Fatalf("Verify: %v, want inconsistent_column", err)
 		}
 		if again, err := d.Columns(ctx, first); err != nil || !reflect.DeepEqual(again, cols) {

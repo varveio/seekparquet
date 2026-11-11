@@ -85,12 +85,12 @@ func TestSurplusValuesAreRefused(t *testing.T) {
 				if len(values) != 3 {
 					t.Fatalf("%d values", len(values))
 				}
-				if _, err := chunk.values(c.enc, c.excess, 3); CodeOf(err) != CodeInvalidParquet {
+				if _, err := chunk.values(c.enc, c.excess, 3); RefusalCodeOf(err) != CodeInvalidParquet {
 					t.Fatalf("a payload of 4 values decoded as 3: %v", err)
 				}
 				// Dictionaries use the allocating path, even during a reusable scan.
 				if c.enc == format.Plain {
-					if _, err := testChunk(c.typ).decodeValues(format.Plain, c.excess, 3); CodeOf(err) != CodeInvalidParquet {
+					if _, err := testChunk(c.typ).decodeValues(format.Plain, c.excess, 3); RefusalCodeOf(err) != CodeInvalidParquet {
 						t.Fatalf("a dictionary of 4 values decoded as 3: %v", err)
 					}
 				}
@@ -104,7 +104,7 @@ func TestSurplusValuesAreRefused(t *testing.T) {
 		if _, err := testChunk(parquet.BooleanType).values(format.Plain, bytes.Repeat([]byte{0xff}, size), n); err != nil {
 			t.Fatalf("%d Booleans in %d bytes: %v", n, size, err)
 		}
-		if _, err := testChunk(parquet.BooleanType).values(format.Plain, make([]byte, size+1), n); CodeOf(err) != CodeInvalidParquet {
+		if _, err := testChunk(parquet.BooleanType).values(format.Plain, make([]byte, size+1), n); RefusalCodeOf(err) != CodeInvalidParquet {
 			t.Fatalf("%d Booleans in %d bytes: %v", n, size+1, err)
 		}
 	}
@@ -125,7 +125,7 @@ func TestSurplusValuesInDataPages(t *testing.T) {
 	if _, err := required.decode(page(2, make([]byte, 16)), make([]byte, 16)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := required.decode(page(2, make([]byte, 24)), make([]byte, 24)); CodeOf(err) != CodeInvalidParquet {
+	if _, err := required.decode(page(2, make([]byte, 24)), make([]byte, 24)); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("a required page of 3 values declaring 2: %v", err)
 	}
 	// Definition levels: one RLE run of three values, 1, 0, 1 bit-packed.
@@ -142,7 +142,7 @@ func TestSurplusValuesInDataPages(t *testing.T) {
 	if len(got) != 3 || !got[1].IsNull() || got[0].IsNull() || got[2].IsNull() {
 		t.Fatalf("got %v", got)
 	}
-	if _, err := c.decode(page(3, optional(3)), optional(3)); CodeOf(err) != CodeInvalidParquet {
+	if _, err := c.decode(page(3, optional(3)), optional(3)); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("an optional page of 2 non-null values holding 3: %v", err)
 	}
 }
@@ -162,7 +162,7 @@ func TestSurplusRunValues(t *testing.T) {
 		"a run after the last value":      {1, 2, 0, 2, 0},
 		"two bit-packed groups":           {1, 5, 0, 0},
 	} {
-		if _, err := c.values(format.RLEDictionary, data, 1); CodeOf(err) != CodeInvalidParquet {
+		if _, err := c.values(format.RLEDictionary, data, 1); RefusalCodeOf(err) != CodeInvalidParquet {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -218,7 +218,7 @@ func TestFixedLengthDeltaIsExact(t *testing.T) {
 	if v, err := testChunk(typ).values(format.DeltaByteArray, encode("abcd"), 1); err != nil || len(v) != 1 {
 		t.Fatalf("one value of four bytes: %d values, %v", len(v), err)
 	}
-	if _, err := testChunk(typ).values(format.DeltaByteArray, encode("abcde"), 1); CodeOf(err) != CodeInvalidParquet {
+	if _, err := testChunk(typ).values(format.DeltaByteArray, encode("abcde"), 1); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("five bytes as one value of four: %v", err)
 	}
 }
@@ -240,7 +240,7 @@ func TestZeroCRCIsChecked(t *testing.T) {
 		n, err := decodeBounded(raw, &h, 1<<20)
 		must(t, err)
 		_, err = testChunk(parquet.Int64Type).payload(&h, 0, int64(n), append(raw, data...))
-		if wantFail := crc != nil && *crc == 0; (CodeOf(err) == CodeInvalidParquet) != wantFail || !wantFail && err != nil {
+		if wantFail := crc != nil && *crc == 0; (RefusalCodeOf(err) == CodeInvalidParquet) != wantFail || !wantFail && err != nil {
 			t.Errorf("crc %v: %v", crc, err)
 		}
 	}
@@ -273,7 +273,7 @@ func TestZeroCRCWithReusedHeader(t *testing.T) {
 			copy(raw, file[:len(raw)])
 			got, err := c.payload(&h, 0, int64(n), raw)
 			wantFail := crc != nil && *crc == 0
-			if (CodeOf(err) == CodeInvalidParquet) != wantFail || !wantFail && (err != nil || !bytes.Equal(got, data)) {
+			if (RefusalCodeOf(err) == CodeInvalidParquet) != wantFail || !wantFail && (err != nil || !bytes.Equal(got, data)) {
 				t.Errorf("reuse=%t crc=%v: %v", reuse, crc, err)
 			}
 		}

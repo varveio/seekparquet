@@ -284,7 +284,7 @@ func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) 
 	case p.ready.Load():
 		return p, nil
 	case p.err != nil:
-		return nil, p.err
+		return nil, detach(p.err)
 	}
 	if err := r.checkPart(ctx, i, st); err != nil {
 		if ctx.Err() != nil { // a check cut short is not an outcome: the part stays unchecked
@@ -292,8 +292,11 @@ func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) 
 		}
 		var refusal *RefusalError
 		var unsupported *UnsupportedError
-		if errors.As(err, &refusal) || errors.As(err, &unsupported) {
-			p.err = err
+		switch {
+		case errors.As(err, &refusal):
+			p.err = detach(refusal)
+		case errors.As(err, &unsupported):
+			p.err = detach(unsupported)
 		}
 		return nil, err
 	}

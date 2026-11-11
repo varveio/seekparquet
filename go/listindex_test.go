@@ -192,7 +192,7 @@ func TestListIndexFailureAndCancellation(t *testing.T) {
 		t.Fatalf("%+v", st)
 	}
 	_, err = d.List(ctx, ListQuery{Prefix: []byte("a/f"), Delimiter: '/', Limit: 1000}, nil)
-	if CodeOf(err) != CodeKeyOrder {
+	if RefusalCodeOf(err) != CodeKeyOrder {
 		t.Fatalf("%v", err)
 	}
 	c, cancel := context.WithCancel(ctx)
@@ -331,7 +331,7 @@ func TestListIndexDisorderedGroupBoundary(t *testing.T) {
 		t.Fatalf("%+v", st)
 	}
 	_, err = d.Rows(ctx, Query{Limit: 1000}, nil)
-	if CodeOf(err) != CodeKeyOrder {
+	if RefusalCodeOf(err) != CodeKeyOrder {
 		t.Fatal(err)
 	}
 }

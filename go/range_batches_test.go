@@ -607,13 +607,13 @@ func TestRangeBatchesRefusals(t *testing.T) {
 
 func checkRangeBatchesRefusal(t *testing.T, dir string, rng Query, delivered int) {
 	t.Helper()
-	if _, err := open(t, dir, OpenOptions{}).Rows(ctx, rng, nil); CodeOf(err) != CodeInvalidParquet {
+	if _, err := open(t, dir, OpenOptions{}).Rows(ctx, rng, nil); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("Range: %v, want invalid_parquet", err)
 	}
 	var st ReadStats
 	n := 0
 	err := open(t, dir, OpenOptions{}).Scan(ctx, rng, &st, func(b *Batch) error { n += b.Len(); return nil })
-	if CodeOf(err) != CodeInvalidParquet || n != delivered || st.ValuePagesDecoded == 0 {
+	if RefusalCodeOf(err) != CodeInvalidParquet || n != delivered || st.ValuePagesDecoded == 0 {
 		t.Fatalf("RangeBatches: %v after %d rows (want %d), stats %+v", err, n, delivered, st)
 	}
 }

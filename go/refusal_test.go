@@ -59,7 +59,7 @@ type sizeString struct {
 func TestOpenRefusals(t *testing.T) {
 	cases := []struct {
 		name    string
-		code    Code
+		code    RefusalCode
 		dataset testutil.Dataset
 		mutate  func(t *testing.T, dir string)
 	}{
@@ -162,7 +162,7 @@ func TestOpenRefusals(t *testing.T) {
 func TestVerify(t *testing.T) {
 	cases := []struct {
 		name    string
-		code    Code
+		code    RefusalCode
 		dataset testutil.Dataset
 		mutate  func(t *testing.T, dir string)
 	}{
@@ -184,11 +184,11 @@ func TestVerify(t *testing.T) {
 			if c.mutate != nil {
 				c.mutate(t, dir)
 			}
-			if err := verifyErr(dir, OpenOptions{}); CodeOf(err) != c.code {
+			if err := verifyErr(dir, OpenOptions{}); RefusalCodeOf(err) != c.code {
 				t.Fatalf("Verify: %v, want %s", err, c.code)
 			}
 			d := open(t, dir, OpenOptions{})
-			if _, err := d.Rows(ctx, Query{Limit: 100}, nil); CodeOf(err) != c.code {
+			if _, err := d.Rows(ctx, Query{Limit: 100}, nil); RefusalCodeOf(err) != c.code {
 				t.Fatalf("read: %v, want %s", err, c.code)
 			}
 		})
@@ -219,7 +219,7 @@ func TestReadRefusals(t *testing.T) {
 	}
 	cases := []struct {
 		name    string
-		code    Code
+		code    RefusalCode
 		dataset testutil.Dataset
 		check   func(t *testing.T, err error)
 	}{
@@ -253,13 +253,13 @@ func TestReadRefusals(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			d := open(t, write(t, c.dataset), OpenOptions{})
 			_, err := d.Rows(ctx, Query{Limit: 1000}, nil)
-			if CodeOf(err) != c.code {
+			if RefusalCodeOf(err) != c.code {
 				t.Fatalf("range: %v, want %s", err, c.code)
 			}
 			if c.check != nil {
 				c.check(t, err)
 			}
-			if _, err = d.List(ctx, ListQuery{Delimiter: '/', Limit: 1000}, nil); CodeOf(err) != c.code {
+			if _, err = d.List(ctx, ListQuery{Delimiter: '/', Limit: 1000}, nil); RefusalCodeOf(err) != c.code {
 				t.Fatalf("list: %v, want %s", err, c.code)
 			}
 			// A read that never reaches the fault succeeds (CHECK-4).
@@ -305,7 +305,7 @@ func TestShortenedMaximum(t *testing.T) {
 		defer d2.Close()
 		_, err = d2.Rows(ctx, Query{Limit: 1000}, nil)
 	}
-	if CodeOf(err) != CodeInvalidPageIndex {
+	if RefusalCodeOf(err) != CodeInvalidPageIndex {
 		t.Fatalf("shortened maximum: %v", err)
 	}
 }
@@ -325,7 +325,7 @@ func TestCorruptValuePage(t *testing.T) {
 	if rows, err := d.Rows(ctx, Query{Limit: 10}, nil); err != nil || len(rows) != 3 {
 		t.Fatalf("keys only: %d rows, %v", len(rows), err)
 	}
-	if _, err := d.Rows(ctx, Query{Limit: 10, Columns: []string{"size"}}, nil); CodeOf(err) != CodeInvalidParquet {
+	if _, err := d.Rows(ctx, Query{Limit: 10, Columns: []string{"size"}}, nil); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("projection: %v", err)
 	}
 }
@@ -339,7 +339,7 @@ func TestUnsupported(t *testing.T) {
 	must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
 	err := openErr(dir, OpenOptions{})
 	var u *UnsupportedError
-	if !errors.As(err, &u) || u.Code != UnsupportedEncryption || CodeOf(err) != "" {
+	if !errors.As(err, &u) || u.Code != UnsupportedEncryption || RefusalCodeOf(err) != "" {
 		t.Fatalf("encrypted footer: %v", err)
 	}
 

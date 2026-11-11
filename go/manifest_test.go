@@ -52,7 +52,7 @@ func TestManifestRefusals(t *testing.T) {
 	for _, path := range invalid {
 		raw, err := os.ReadFile(path)
 		must(t, err)
-		if _, err := ParseManifest(raw, Limits{}); CodeOf(err) != CodeInvalidManifest {
+		if _, err := ParseManifest(raw, Limits{}); RefusalCodeOf(err) != CodeInvalidManifest {
 			t.Errorf("%s: %v, want invalid_manifest", path, err)
 		}
 	}
@@ -60,7 +60,7 @@ func TestManifestRefusals(t *testing.T) {
 	part := `{"path":"data/a.parquet","rows":1,"bytes":10,"min_key_base64":"YQ==","max_key_base64":"YQ=="}`
 	for name, c := range map[string]struct {
 		raw  string
-		code Code
+		code RefusalCode
 	}{
 		"not JSON":             {`{"format":`, CodeInvalidManifest},
 		"trailing data":        {head + `"parts":[]} {}`, CodeInvalidManifest},
@@ -76,7 +76,7 @@ func TestManifestRefusals(t *testing.T) {
 		"later draft revision": {strings.Replace(head, `"draft_revision":1`, `"draft_revision":2`, 1) + `"parts":[]}`, CodeUnsupportedVersion},
 		"final format":         {strings.Replace(head, `"format_version":0,"draft_revision":1`, `"format_version":1`, 1) + `"parts":[]}`, CodeUnsupportedVersion},
 	} {
-		if _, err := ParseManifest([]byte(c.raw), Limits{}); CodeOf(err) != c.code {
+		if _, err := ParseManifest([]byte(c.raw), Limits{}); RefusalCodeOf(err) != c.code {
 			t.Errorf("%s: %v, want %s", name, err, c.code)
 		}
 	}
@@ -129,7 +129,7 @@ func TestManifestExtensionsPreserved(t *testing.T) {
 		}
 	}
 	m.Extensions = json.RawMessage(`[1]`)
-	if _, err := MarshalManifest(m); CodeOf(err) != CodeInvalidManifest {
+	if _, err := MarshalManifest(m); RefusalCodeOf(err) != CodeInvalidManifest {
 		t.Errorf("array extensions: %v", err)
 	}
 }
@@ -179,7 +179,7 @@ func TestMarshalManifestRefuses(t *testing.T) {
 	}
 	for name, c := range map[string]struct {
 		edit func(*Manifest)
-		code Code
+		code RefusalCode
 	}{
 		"zero version":      {func(m *Manifest) { m.Version = Version{} }, CodeInvalidManifest},
 		"later revision":    {func(m *Manifest) { m.Version.DraftRevision = 2 }, CodeUnsupportedVersion},
@@ -196,7 +196,7 @@ func TestMarshalManifestRefuses(t *testing.T) {
 	} {
 		m := good()
 		c.edit(&m)
-		if _, err := MarshalManifest(m); CodeOf(err) != c.code {
+		if _, err := MarshalManifest(m); RefusalCodeOf(err) != c.code {
 			t.Errorf("%s: %v, want %s", name, err, c.code)
 		}
 	}

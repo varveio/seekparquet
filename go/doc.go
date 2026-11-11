@@ -94,7 +94,7 @@
 //
 // # Errors
 //
-// A *RefusalError reports data that breaks the specification (CodeOf
+// A *RefusalError reports data that breaks the specification (RefusalCodeOf
 // returns its code). ErrInvalidRequest reports a malformed request, such as
 // a limit that is not positive or a prefix cursor on a range. An
 // *UnsupportedError reports valid data this reader does not handle, such

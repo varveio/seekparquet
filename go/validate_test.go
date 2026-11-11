@@ -171,7 +171,7 @@ func TestValidateOmittedPage(t *testing.T) {
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	v := &validator{ctx: ctx, limits: Limits{}.withDefaults(), d: d}
 	lr := LevelReport{Level: LevelProfile}
-	if err := v.profile(&lr); CodeOf(err) != CodeInvalidPageIndex || lr.At.Page != 0 {
+	if err := v.profile(&lr); RefusalCodeOf(err) != CodeInvalidPageIndex || lr.At.Page != 0 {
 		t.Fatalf("profile alone: %v at %s", err, lr.At)
 	}
 
@@ -519,7 +519,7 @@ func TestValidateStorageAndContext(t *testing.T) {
 	report, err := Validate(ctx, failingSource{dirOf(t, dir)}, ValidateOptions{})
 	must(t, err)
 	lr, _ := report.Level(LevelStructural)
-	if lr.Result != Incomplete || !strings.HasPrefix(lr.Reason, "storage") || CodeOf(lr.Err) != "" {
+	if lr.Result != Incomplete || !strings.HasPrefix(lr.Reason, "storage") || RefusalCodeOf(lr.Err) != "" {
 		t.Fatalf("storage failure: %s", describeReport(report))
 	}
 	cancelled, cancel := context.WithCancel(ctx)
@@ -618,7 +618,7 @@ func TestValidateDictionaryPage(t *testing.T) {
 	c, err := p.openChunk(ctx, 0, p.leaves["name"], &v.st, &v.pages)
 	must(t, err)
 	err = v.walk(c, 200, func(_ int, loc pageLoc, _ *format.PageHeader, _ int64, _ []byte) (int64, error) { return loc.rows, nil })
-	if CodeOf(err) != CodeInvalidParquet {
+	if RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("walk without decoding: %v", err)
 	}
 }
@@ -675,7 +675,7 @@ func TestValidateStructuralRowGroupLocation(t *testing.T) {
 	report, err := ValidateDir(ctx, dir, ValidateOptions{Level: LevelStructural})
 	must(t, err)
 	lr, ok := report.Level(LevelStructural)
-	if !ok || CodeOf(lr.Failure) != CodeMissingSortingColumns || lr.At.Part != testutil.PartPath(0) || lr.At.RowGroup != 1 {
+	if !ok || RefusalCodeOf(lr.Failure) != CodeMissingSortingColumns || lr.At.Part != testutil.PartPath(0) || lr.At.RowGroup != 1 {
 		t.Fatalf("structural: %+v", lr)
 	}
 }

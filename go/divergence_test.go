@@ -35,7 +35,7 @@ func TestRLEValuesOnlyForBooleans(t *testing.T) {
 	payload := []byte{0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, 0x0f, 0, 0, 0}
 	for _, typ := range []parquet.Type{parquet.Int32Type, parquet.Int64Type, parquet.FloatType, parquet.DoubleType,
 		parquet.ByteArrayType, parquet.FixedLenByteArrayType(4)} {
-		if _, err := testChunk(typ).values(format.RLE, payload, 3); CodeOf(err) != CodeInvalidParquet {
+		if _, err := testChunk(typ).values(format.RLE, payload, 3); RefusalCodeOf(err) != CodeInvalidParquet {
 			t.Errorf("%s: %v, want invalid_parquet", typ, err)
 		}
 	}
@@ -55,10 +55,10 @@ func TestRLEValuesOnlyForBooleans(t *testing.T) {
 func TestPlainByteArrayLengthsStayInThePage(t *testing.T) {
 	buffer := append(plainByteArray("aaaa", "bbbb"), 0x15, 0x16) // two bytes of what follows the page
 	page := buffer[:len(buffer)-3]                               // "bbbb" one byte short; capacity beyond
-	if v, err := testChunk(parquet.ByteArrayType).values(format.Plain, page, 2); CodeOf(err) != CodeInvalidParquet {
+	if v, err := testChunk(parquet.ByteArrayType).values(format.Plain, page, 2); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("a value overrunning its page: %v, %v", v, err)
 	}
-	if _, err := testChunk(parquet.ByteArrayType).decodeValues(format.Plain, page, 2); CodeOf(err) != CodeInvalidParquet {
+	if _, err := testChunk(parquet.ByteArrayType).decodeValues(format.Plain, page, 2); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("a dictionary value overrunning its page: %v", err)
 	}
 	if _, err := testChunk(parquet.ByteArrayType).values(format.Plain, buffer[:len(buffer)-2], 2); err != nil {
@@ -126,14 +126,14 @@ func TestShortDictionaryValue(t *testing.T) {
 	}
 	lengthenLastValue(t, partFile(dir, 0), chunk.DictionaryPageOffset, 3)
 	d := open(t, dir, OpenOptions{})
-	if _, err := d.Rows(ctx, Query{Limit: 100, Columns: []string{"name"}}, nil); CodeOf(err) != CodeInvalidParquet {
+	if _, err := d.Rows(ctx, Query{Limit: 100, Columns: []string{"name"}}, nil); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Errorf("Range: %v", err)
 	}
 	plan, err := open(t, dir, OpenOptions{}).Plan(ctx, []Selection{{}}, []string{"name"}, nil)
 	if err == nil {
 		err = scanRows(ctx, plan, nil, func(Row) error { return nil })
 	}
-	if CodeOf(err) != CodeInvalidParquet {
+	if RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Errorf("plan: %v", err)
 	}
 	report, err := ValidateDir(ctx, dir, ValidateOptions{})
@@ -168,7 +168,7 @@ func TestShortValueWithoutOffsetIndex(t *testing.T) {
 	}
 	lengthenLastValue(t, partFile(dir, 0), off, values)
 	rows, err := open(t, dir, OpenOptions{}).Rows(ctx, Query{Limit: 100, Columns: []string{"blob"}}, nil)
-	if CodeOf(err) != CodeInvalidParquet {
+	if RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("got %d rows (row %d: %q), %v; want invalid_parquet", len(rows), values-1, valueAt(rows, values-1), err)
 	}
 }
@@ -206,7 +206,7 @@ func TestRunValuesFitTheirWidth(t *testing.T) {
 		}
 	}
 	// Booleans [true, false, true] as repeated runs of 02, 00, 02.
-	if v, err := testChunk(parquet.BooleanType).values(format.RLE, []byte{6, 0, 0, 0, 2, 2, 2, 0, 2, 2}, 3); CodeOf(err) != CodeInvalidParquet {
+	if v, err := testChunk(parquet.BooleanType).values(format.RLE, []byte{6, 0, 0, 0, 2, 2, 2, 0, 2, 2}, 3); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("Boolean runs of 2: %v, %v", v, err)
 	}
 }
@@ -227,7 +227,7 @@ func TestDefinitionLevelsAboveOne(t *testing.T) {
 	payload = append(payload, make([]byte, 8*4)...)
 	c := testChunk(parquet.Int64Type)
 	c.col.optional = true
-	if v, err := c.decode(v1Page(3, payload), payload); CodeOf(err) != CodeInvalidParquet {
+	if v, err := c.decode(v1Page(3, payload), payload); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("levels 2, 0, 2: %v, %v", v, err)
 	}
 }
@@ -243,7 +243,7 @@ func TestAllNullDictionaryPageWithoutIndexes(t *testing.T) {
 	if v, err := c.values(format.RLEDictionary, nil, 0); err != nil || len(v) != 0 {
 		t.Fatalf("no index for no value: %v, %v", v, err)
 	}
-	if _, err := c.values(format.RLEDictionary, nil, 1); CodeOf(err) != CodeInvalidParquet {
+	if _, err := c.values(format.RLEDictionary, nil, 1); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("no index for one value: %v", err)
 	}
 	// A whole page: three null rows, no index bytes.
@@ -279,7 +279,7 @@ func TestDataPageV2Levels(t *testing.T) {
 		t.Fatalf("a valid page: %v, %v", v, err)
 	}
 	for _, nulls := range []int32{0, 2} {
-		if _, err := optional.decode(page(3, nulls, 0, 2, payload), payload); CodeOf(err) != CodeInvalidParquet {
+		if _, err := optional.decode(page(3, nulls, 0, 2, payload), payload); RefusalCodeOf(err) != CodeInvalidParquet {
 			t.Errorf("num_nulls %d for one null: %v", nulls, err)
 		}
 	}
@@ -289,19 +289,19 @@ func TestDataPageV2Levels(t *testing.T) {
 		t.Fatalf("a valid required page: %v", err)
 	}
 	withRep := append([]byte{0}, values...)
-	if _, err := required.decode(page(3, 0, 1, 0, withRep), withRep); CodeOf(err) != CodeInvalidParquet {
+	if _, err := required.decode(page(3, 0, 1, 0, withRep), withRep); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Errorf("repetition levels: %v", err)
 	}
 	withDef := append([]byte{2, 0}, values...)
-	if _, err := required.decode(page(3, 0, 0, 2, withDef), withDef); CodeOf(err) != CodeInvalidParquet {
+	if _, err := required.decode(page(3, 0, 0, 2, withDef), withDef); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Errorf("definition levels of a REQUIRED column: %v", err)
 	}
-	if _, err := required.decode(page(3, 1, 0, 0, values), values); CodeOf(err) != CodeInvalidParquet {
+	if _, err := required.decode(page(3, 1, 0, 0, values), values); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Errorf("a null in a REQUIRED column: %v", err)
 	}
 	// The optional page under an index of the column as REQUIRED (its schema
 	// says so) is refused, not read as values shifted by the level bytes.
-	if v, err := required.decode(page(3, 1, 0, 2, payload), payload); CodeOf(err) != CodeInvalidParquet {
+	if v, err := required.decode(page(3, 1, 0, 2, payload), payload); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Errorf("levels under a REQUIRED schema: %v, %v", v, err)
 	}
 }
@@ -382,7 +382,7 @@ func TestWalkedPagesAddUp(t *testing.T) {
 		dir, first := build(t)
 		// Pages 2, 2, 2, 1 rows: the third (rows 4 and 5) straddles the end.
 		insertAtChunkStart(t, partFile(dir, 0), 1, first)
-		if got, err := open(t, dir, OpenOptions{}).Rows(ctx, Query{Limit: 10, Columns: []string{"n"}}, nil); CodeOf(err) != CodeInvalidParquet {
+		if got, err := open(t, dir, OpenOptions{}).Rows(ctx, Query{Limit: 10, Columns: []string{"n"}}, nil); RefusalCodeOf(err) != CodeInvalidParquet {
 			t.Fatalf("%d rows, %v", len(got), err)
 		}
 	})
@@ -392,7 +392,7 @@ func TestWalkedPagesAddUp(t *testing.T) {
 		zero, err := thrift.Marshal(new(thrift.CompactProtocol), h)
 		must(t, err)
 		insertAtChunkStart(t, partFile(dir, 0), 1, zero)
-		if got, err := open(t, dir, OpenOptions{}).Rows(ctx, Query{Limit: 10, Columns: []string{"n"}}, nil); CodeOf(err) != CodeInvalidParquet {
+		if got, err := open(t, dir, OpenOptions{}).Rows(ctx, Query{Limit: 10, Columns: []string{"n"}}, nil); RefusalCodeOf(err) != CodeInvalidParquet {
 			t.Fatalf("%d rows, %v", len(got), err)
 		}
 		report, err := ValidateDir(ctx, dir, ValidateOptions{})
@@ -433,7 +433,7 @@ func TestDeltaLengthsCoverTheBytes(t *testing.T) {
 			t.Fatalf("%s: value 3 is %q", c.enc, got)
 		}
 		for name, edited := range map[string][]byte{"surplus bytes": append(slices.Clone(page), "XYZ"...), "a missing byte": page[:len(page)-1]} {
-			if v, err := testChunk(parquet.ByteArrayType).values(c.enc, edited, 8); CodeOf(err) != CodeInvalidParquet {
+			if v, err := testChunk(parquet.ByteArrayType).values(c.enc, edited, 8); RefusalCodeOf(err) != CodeInvalidParquet {
 				got := ""
 				if len(v) > 3 {
 					got = string(v[3].ByteArray())
@@ -459,7 +459,7 @@ func TestDeltaBitWidthByValueType(t *testing.T) {
 		out = append(out, make([]byte, 32*int(width)/8)...) // the first miniblock
 		return append(out, make([]byte, tail)...)
 	}
-	if _, err := testChunk(parquet.Int32Type).values(format.DeltaBinaryPacked, stream(33, 0), 2); CodeOf(err) != CodeInvalidParquet {
+	if _, err := testChunk(parquet.Int32Type).values(format.DeltaBinaryPacked, stream(33, 0), 2); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Errorf("INT32, width 33: %v", err)
 	}
 	if v, err := testChunk(parquet.Int64Type).values(format.DeltaBinaryPacked, stream(33, 0), 2); err != nil || len(v) != 2 {
@@ -470,7 +470,7 @@ func TestDeltaBitWidthByValueType(t *testing.T) {
 		if enc == format.DeltaByteArray {
 			page = slices.Concat(stream(0, 0), page)
 		}
-		if _, err := testChunk(parquet.ByteArrayType).values(enc, page, 2); CodeOf(err) != CodeInvalidParquet {
+		if _, err := testChunk(parquet.ByteArrayType).values(enc, page, 2); RefusalCodeOf(err) != CodeInvalidParquet {
 			t.Errorf("%s lengths, width 33: %v", enc, err)
 		}
 	}
@@ -487,7 +487,7 @@ func TestChunkMetadataMatchesSchema(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
 			rewrite(t, dir, 0, change)
-			if err := openErr(dir, OpenOptions{}); CodeOf(err) != CodeInvalidFooter {
+			if err := openErr(dir, OpenOptions{}); RefusalCodeOf(err) != CodeInvalidFooter {
 				t.Fatalf("got %v, want invalid_footer", err)
 			}
 		})

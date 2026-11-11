@@ -343,10 +343,10 @@ func TestOpenPartsKey(t *testing.T) {
 	}
 	r, err = openPartsOf(t, dir, 1, Key{Column: "id", Unique: true}, false, OpenOptions{})
 	must(t, err)
-	if _, err := r.readRange(ctx, Query{Limit: 10}, nil); CodeOf(err) != CodeKeyOrder {
+	if _, err := r.readRange(ctx, Query{Limit: 10}, nil); RefusalCodeOf(err) != CodeKeyOrder {
 		t.Fatalf("equal keys declared unique: %v", err)
 	}
-	if _, err := openPartsOf(t, dir, 1, Key{Column: "key", Unique: true}, false, OpenOptions{}); CodeOf(err) != CodeInvalidKeyColumn {
+	if _, err := openPartsOf(t, dir, 1, Key{Column: "key", Unique: true}, false, OpenOptions{}); RefusalCodeOf(err) != CodeInvalidKeyColumn {
 		t.Fatalf("a key column the parts lack: %v", err)
 	}
 }
@@ -362,20 +362,20 @@ func TestRepeatedRefusals(t *testing.T) {
 	}
 	t.Run("decrease inside a page", func(t *testing.T) {
 		d := open(t, repeated(testutil.Part{}, []string{"a", "b", "b", "a", "c"}), OpenOptions{})
-		if _, err := d.Rows(ctx, Query{Limit: 10}, nil); CodeOf(err) != CodeKeyOrder {
+		if _, err := d.Rows(ctx, Query{Limit: 10}, nil); RefusalCodeOf(err) != CodeKeyOrder {
 			t.Fatalf("got %v, want key_order", err)
 		}
 	})
 	t.Run("decrease between row groups", func(t *testing.T) {
 		d := open(t, repeated(testutil.Part{GroupRows: 2}, []string{"a", "b", "b", "a", "c", "c"}), OpenOptions{})
-		if _, err := d.Rows(ctx, Query{Limit: 10}, nil); CodeOf(err) != CodeKeyOrder {
+		if _, err := d.Rows(ctx, Query{Limit: 10}, nil); RefusalCodeOf(err) != CodeKeyOrder {
 			t.Fatalf("got %v, want key_order", err)
 		}
 	})
 	// The group b spans both parts.
 	split := repeated(testutil.Part{}, []string{"a", "b"}, []string{"b", "c"})
 	t.Run("group across parts, manifest bounds", func(t *testing.T) {
-		if err := openErr(split, OpenOptions{}); CodeOf(err) != CodeInvalidManifest {
+		if err := openErr(split, OpenOptions{}); RefusalCodeOf(err) != CodeInvalidManifest {
 			t.Fatalf("got %v, want invalid_manifest", err)
 		}
 	})
@@ -387,19 +387,19 @@ func TestRepeatedRefusals(t *testing.T) {
 			inputs = append(inputs, partInput{name: testutil.PartPath(i), file: bytes.NewReader(raw), size: int64(len(raw)),
 				minKey: []byte(b[0]), maxKey: []byte(b[1])})
 		}
-		if _, err := openParts(ctx, inputs, Key{Column: "key"}, OpenOptions{}); CodeOf(err) != CodeBoundsMismatch {
+		if _, err := openParts(ctx, inputs, Key{Column: "key"}, OpenOptions{}); RefusalCodeOf(err) != CodeBoundsMismatch {
 			t.Fatalf("got %v, want bounds_mismatch", err)
 		}
 	})
 	t.Run("group across parts, no bounds", func(t *testing.T) {
 		r, err := openPartsOf(t, split, 2, Key{Column: "key"}, false, OpenOptions{})
 		must(t, err)
-		if _, err := r.readRange(ctx, Query{Limit: 10}, nil); CodeOf(err) != CodeKeyOrder {
+		if _, err := r.readRange(ctx, Query{Limit: 10}, nil); RefusalCodeOf(err) != CodeKeyOrder {
 			t.Fatalf("range: got %v, want key_order", err)
 		}
 		r, err = openPartsOf(t, split, 2, Key{Column: "key"}, false, OpenOptions{})
 		must(t, err)
-		if err := r.verify(ctx); CodeOf(err) != CodeKeyOrder {
+		if err := r.verify(ctx); RefusalCodeOf(err) != CodeKeyOrder {
 			t.Fatalf("verify: got %v, want key_order", err)
 		}
 	})

@@ -468,8 +468,8 @@ func encodeValue(v seekparquet.Value) (map[string]any, error) {
 func failure(err error) response {
 	var unsupported *seekparquet.UnsupportedError
 	switch {
-	case seekparquet.CodeOf(err) != "":
-		return response{"status": "refused", "code": string(seekparquet.CodeOf(err)), "message": err.Error()}
+	case seekparquet.RefusalCodeOf(err) != "":
+		return response{"status": "refused", "code": string(seekparquet.RefusalCodeOf(err)), "message": err.Error()}
 	case errors.Is(err, seekparquet.ErrInvalidRequest):
 		return response{"status": "invalid_request", "message": err.Error()}
 	case errors.As(err, &unsupported):

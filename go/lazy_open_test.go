@@ -77,18 +77,18 @@ func TestLazyPartRefusal(t *testing.T) {
 		t.Fatalf("read of a good part: %d rows, %v", len(rows), err)
 	}
 	for _, rng := range []Query{Query{Selection: Selection{Span: PrefixSpan([]byte("d/"))}, Limit: 1}, {Selection: Selection{Span: Span{Start: []byte("c/f020")}}, Limit: 10}, Query{Selection: Selection{Span: PrefixSpan([]byte("d/"))}, Limit: 1}} {
-		if _, err := d.Rows(ctx, rng, nil); CodeOf(err) != CodeStampMismatch {
+		if _, err := d.Rows(ctx, rng, nil); RefusalCodeOf(err) != CodeStampMismatch {
 			t.Fatalf("%s: %v, want stamp_mismatch", describe(rng), err)
 		}
 	}
 	var st ReadStats
-	if _, err := d.List(ctx, ListQuery{Prefix: []byte("d/"), Limit: 5}, &st); CodeOf(err) != CodeStampMismatch || st.PartsOpened != 0 {
+	if _, err := d.List(ctx, ListQuery{Prefix: []byte("d/"), Limit: 5}, &st); RefusalCodeOf(err) != CodeStampMismatch || st.PartsOpened != 0 {
 		t.Fatalf("list after the refusal: %v, %d parts opened", err, st.PartsOpened)
 	}
-	if _, err := d.List(ctx, ListQuery{Prefix: []byte("d/"), Limit: 5}, nil); CodeOf(err) != CodeStampMismatch {
+	if _, err := d.List(ctx, ListQuery{Prefix: []byte("d/"), Limit: 5}, nil); RefusalCodeOf(err) != CodeStampMismatch {
 		t.Fatalf("list: %v, want stamp_mismatch", err)
 	}
-	if err := d.Verify(ctx); CodeOf(err) != CodeStampMismatch {
+	if err := d.Verify(ctx); RefusalCodeOf(err) != CodeStampMismatch {
 		t.Fatalf("Verify: %v, want stamp_mismatch", err)
 	}
 	if src.opened.Load() != 5 || src.closed.Load() != 2 {
@@ -118,14 +118,14 @@ func TestLazyColumnConsistency(t *testing.T) {
 			t.Fatalf("first touch of %s: %v", first, err)
 		}
 		other := map[string]string{"a": "b", "b": "a"}[first]
-		if _, err := d.Rows(ctx, Query{Selection: Selection{Span: KeySpan([]byte(other))}, Limit: 1}, nil); CodeOf(err) != CodeInconsistentColumn {
+		if _, err := d.Rows(ctx, Query{Selection: Selection{Span: KeySpan([]byte(other))}, Limit: 1}, nil); RefusalCodeOf(err) != CodeInconsistentColumn {
 			t.Fatalf("%s after %s: %v, want inconsistent_column", other, first, err)
 		}
 		if _, err := d.Rows(ctx, Query{Selection: Selection{Span: KeySpan([]byte(first))}, Limit: 1, Columns: []string{"size"}}, nil); err != nil {
 			t.Fatalf("%s again: %v", first, err)
 		}
 	}
-	if err := openErr(dir, OpenOptions{}); CodeOf(err) != CodeInconsistentColumn {
+	if err := openErr(dir, OpenOptions{}); RefusalCodeOf(err) != CodeInconsistentColumn {
 		t.Fatalf("every part: %v, want inconsistent_column", err)
 	}
 }
@@ -158,7 +158,7 @@ func TestLazyRefusedPartCounted(t *testing.T) {
 	rewrite(t, dir, 1, func(m *format.FileMetaData) { m.KeyValueMetadata = nil })
 	d := open(t, dir, OpenOptions{})
 	var st ReadStats
-	if _, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Prefix: []byte("b/")}}, Limit: 5}, &st); CodeOf(err) != CodeStampMismatch {
+	if _, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Prefix: []byte("b/")}}, Limit: 5}, &st); RefusalCodeOf(err) != CodeStampMismatch {
 		t.Fatalf("%v, want stamp_mismatch", err)
 	}
 	if st.PartsOpened != 1 || st.SourceReads == 0 {
@@ -237,10 +237,10 @@ func TestLazyCancelledCheckNotKept(t *testing.T) {
 	d, err := OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
-	if _, err := d.Rows(cctx, Query{Selection: Selection{Span: PrefixSpan([]byte("b/"))}, Limit: 5}, nil); !errors.Is(err, context.Canceled) || CodeOf(err) != "" {
+	if _, err := d.Rows(cctx, Query{Selection: Selection{Span: PrefixSpan([]byte("b/"))}, Limit: 5}, nil); !errors.Is(err, context.Canceled) || RefusalCodeOf(err) != "" {
 		t.Fatalf("cancelled first touch: %v, want context.Canceled", err)
 	}
-	if _, err := d.Rows(ctx, Query{Selection: Selection{Span: PrefixSpan([]byte("b/"))}, Limit: 5}, nil); CodeOf(err) != CodeStampMismatch {
+	if _, err := d.Rows(ctx, Query{Selection: Selection{Span: PrefixSpan([]byte("b/"))}, Limit: 5}, nil); RefusalCodeOf(err) != CodeStampMismatch {
 		t.Fatalf("second touch: %v, want stamp_mismatch", err)
 	}
 	if src.opened != 2 {
@@ -261,7 +261,7 @@ func TestLazyListBoundsBeforeTouch(t *testing.T) {
 	if rows, err := d.Rows(ctx, Query{Selection: Selection{Span: PrefixSpan([]byte("a/"))}, Limit: 10}, nil); err != nil || len(rows) != 0 {
 		t.Fatalf("range: %v, %v", rows, err)
 	}
-	if _, err := d.Rows(ctx, Query{Selection: Selection{Span: PrefixSpan([]byte("b/"))}, Limit: 10}, nil); CodeOf(err) != CodeMissingPart {
+	if _, err := d.Rows(ctx, Query{Selection: Selection{Span: PrefixSpan([]byte("b/"))}, Limit: 10}, nil); RefusalCodeOf(err) != CodeMissingPart {
 		t.Fatalf("touching the part: %v, want missing_part", err)
 	}
 }

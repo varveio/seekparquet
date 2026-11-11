@@ -33,7 +33,7 @@ import (
 func TestSortingColumnIndexes(t *testing.T) {
 	cases := []struct {
 		name  string
-		code  Code // "" when the part is read
+		code  RefusalCode // "" when the part is read
 		apply func(m *format.FileMetaData)
 	}{
 		{"first entry negative", CodeMissingSortingColumns, func(m *format.FileMetaData) { m.RowGroups[0].SortingColumns[0].ColumnIdx = -1 }},
@@ -49,10 +49,10 @@ func TestSortingColumnIndexes(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
 			rewrite(t, dir, 0, c.apply)
-			if err := openErr(dir, OpenOptions{}); CodeOf(err) != c.code {
+			if err := openErr(dir, OpenOptions{}); RefusalCodeOf(err) != c.code {
 				t.Fatalf("OpenDir: %v, want %q", err, c.code)
 			}
-			if _, err := openPartsOf(t, dir, 1, unique, false, OpenOptions{}); CodeOf(err) != c.code {
+			if _, err := openPartsOf(t, dir, 1, unique, false, OpenOptions{}); RefusalCodeOf(err) != c.code {
 				t.Fatalf("openParts: %v, want %q", err, c.code)
 			}
 			if c.code == "" {
@@ -93,7 +93,7 @@ func TestHostileFooters(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
 			rewrite(t, dir, 0, c.apply)
-			if err := openErr(dir, OpenOptions{}); CodeOf(err) != CodeInvalidFooter {
+			if err := openErr(dir, OpenOptions{}); RefusalCodeOf(err) != CodeInvalidFooter {
 				t.Fatalf("got %v, want invalid_footer", err)
 			}
 		})
@@ -122,7 +122,7 @@ func TestFooterAllocation(t *testing.T) {
 	dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
 	// Field 2 (schema), a list of structs with a varint size of 2^31-1.
 	replaceFooter(t, dir, []byte{0x29, 0xfc, 0xff, 0xff, 0xff, 0xff, 0x07, 0x00})
-	if err := openErr(dir, OpenOptions{}); CodeOf(err) != CodeInvalidFooter {
+	if err := openErr(dir, OpenOptions{}); RefusalCodeOf(err) != CodeInvalidFooter {
 		t.Fatalf("huge list count: %v", err)
 	}
 	// 100,000 empty schema elements: 100 KB of input, megabytes decoded.
@@ -131,7 +131,7 @@ func TestFooterAllocation(t *testing.T) {
 	raw = append(raw, bytes.Repeat([]byte{0}, 100_000)...)
 	raw = append(raw, 0)
 	replaceFooter(t, dir, raw)
-	if err := openErr(dir, OpenOptions{Limits: Limits{MetadataMemory: 1 << 20}}); !errors.Is(err, ErrLimitExceeded) || CodeOf(err) != "" {
+	if err := openErr(dir, OpenOptions{Limits: Limits{MetadataMemory: 1 << 20}}); !errors.Is(err, ErrLimitExceeded) || RefusalCodeOf(err) != "" {
 		t.Fatalf("decoded size: %v", err)
 	}
 	if err := openErr(dir, OpenOptions{Limits: Limits{FooterBytes: 1000}}); !errors.Is(err, ErrLimitExceeded) {
@@ -165,7 +165,7 @@ func TestLimits(t *testing.T) {
 		"index memory":     {IndexMemory: 64},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := read(lim); !errors.Is(err, ErrLimitExceeded) || CodeOf(err) != "" {
+			if err := read(lim); !errors.Is(err, ErrLimitExceeded) || RefusalCodeOf(err) != "" {
 				t.Fatalf("%+v: %v", lim, err)
 			}
 		})
@@ -200,7 +200,7 @@ func TestFixedLengthConsistency(t *testing.T) {
 		"top-level": {Parts: []testutil.Part{{Rows: []four{{Key: []byte("a")}}}, {Rows: []eight{{Key: []byte("b")}}}}},
 		"nested":    {Parts: []testutil.Part{{Rows: []nested4{{Key: []byte("a")}}}, {Rows: []nested8{{Key: []byte("b")}}}}},
 	} {
-		if err := openErr(write(t, ds), OpenOptions{}); CodeOf(err) != CodeInconsistentColumn {
+		if err := openErr(write(t, ds), OpenOptions{}); RefusalCodeOf(err) != CodeInconsistentColumn {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
@@ -221,7 +221,7 @@ func TestColumnOrdersCardinality(t *testing.T) {
 	} {
 		dir := write(t, parts(testutil.Part{}, []string{"a"}))
 		rewrite(t, dir, 0, apply)
-		if err := openErr(dir, OpenOptions{}); CodeOf(err) != CodeInvalidKeyColumn {
+		if err := openErr(dir, OpenOptions{}); RefusalCodeOf(err) != CodeInvalidKeyColumn {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
@@ -396,7 +396,7 @@ func TestEncodedCountsAreChecked(t *testing.T) {
 			if n := allocated(func() { _, err = testChunk(c.typ).decodeValues(c.enc, c.data, 10) }); n > 1<<20 {
 				t.Fatalf("allocated %d bytes", n)
 			}
-			if c.limit && !errors.Is(err, ErrLimitExceeded) || !c.limit && CodeOf(err) != CodeInvalidParquet {
+			if c.limit && !errors.Is(err, ErrLimitExceeded) || !c.limit && RefusalCodeOf(err) != CodeInvalidParquet {
 				t.Fatalf("got %v", err)
 			}
 		})
@@ -413,7 +413,7 @@ func TestEncodedCountsAreChecked(t *testing.T) {
 		"index range":  cat([]byte{1}, uvarint(10<<1), []byte{1}),
 	} {
 		t.Run("dictionary "+name, func(t *testing.T) {
-			if _, err := c.values(format.RLEDictionary, data, 10); CodeOf(err) != CodeInvalidParquet {
+			if _, err := c.values(format.RLEDictionary, data, 10); RefusalCodeOf(err) != CodeInvalidParquet {
 				t.Fatalf("got %v", err)
 			}
 		})
@@ -480,7 +480,7 @@ func TestPageDeclarationsAreChecked(t *testing.T) {
 				}
 				editPageHeader(t, partFile(dir, 0), off, func(h *format.PageHeader) { h.UncompressedPageSize += c.delta })
 				d := open(t, dir, OpenOptions{})
-				if _, err := d.Rows(ctx, Query{Limit: 100, Columns: []string{c.column}}, nil); CodeOf(err) != CodeInvalidParquet {
+				if _, err := d.Rows(ctx, Query{Limit: 100, Columns: []string{c.column}}, nil); RefusalCodeOf(err) != CodeInvalidParquet {
 					t.Fatalf("got %v, want invalid_parquet", err)
 				}
 				if rows, err := d.Rows(ctx, Query{Limit: 100}, nil); err != nil || len(rows) != 40 {
@@ -528,7 +528,7 @@ func TestCorruptValueOffsetIndex(t *testing.T) {
 			copy(at, encoded)
 			must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
 			d := open(t, dir, OpenOptions{})
-			if _, err := d.Rows(ctx, Query{Limit: 200, Columns: []string{"size"}}, nil); CodeOf(err) != CodeInvalidParquet {
+			if _, err := d.Rows(ctx, Query{Limit: 200, Columns: []string{"size"}}, nil); RefusalCodeOf(err) != CodeInvalidParquet {
 				t.Fatalf("got %v, want invalid_parquet", err)
 			}
 		})

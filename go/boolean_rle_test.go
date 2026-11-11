@@ -50,7 +50,7 @@ func TestBooleanRLEBoundaries(t *testing.T) {
 
 func TestBooleanRLEMalformedAndLimits(t *testing.T) {
 	for _, data := range [][]byte{nil, {1, 0, 0, 0}, booleanStream(0, 1), booleanStream(4), booleanStream(0x80), booleanStream(2, 1), booleanStream(6, 1), booleanStream(3, 1, 2, 1)} {
-		if _, err := testChunk(parquet.BooleanType).values(format.RLE, data, 2); CodeOf(err) != CodeInvalidParquet {
+		if _, err := testChunk(parquet.BooleanType).values(format.RLE, data, 2); RefusalCodeOf(err) != CodeInvalidParquet {
 			t.Fatalf("%x: %v", data, err)
 		}
 	}

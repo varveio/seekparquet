@@ -130,7 +130,7 @@ type chunk struct {
 	// code refuses a page its index entry does not describe:
 	// invalid_page_index for the key column (RG-3, RG-7), invalid_parquet
 	// for a value column (CHECK-5).
-	code Code
+	code RefusalCode
 	// first is the offset of the chunk's first data page when an
 	// OffsetIndex gives it, so that what precedes it is the dictionary's
 	// extent; zero when not known.
@@ -313,7 +313,7 @@ func (c *chunk) indexedPage(i int, loc pageLoc) (*format.PageHeader, []byte, err
 	}
 	h, n, raw, err := c.located(loc.offset, loc.size, loc.rows)
 	if err != nil {
-		if CodeOf(err) == CodeInvalidParquet {
+		if RefusalCodeOf(err) == CodeInvalidParquet {
 			return nil, nil, bad("its OffsetIndex entry does not locate a page header")
 		}
 		return nil, nil, err
