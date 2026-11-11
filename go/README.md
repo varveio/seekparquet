@@ -284,6 +284,17 @@ reads it again, never failing for it. A listing
 resumes after each common prefix at the prefix's successor, skipping the pages wholly under it, but the page
 it lands on, and the pages around a prefix's boundaries, still decode some of the keys under it.
 
+**Key page read-ahead for listings.** Each of those resumes reads one key page, one after another: over an
+object store a listing of 100 common prefixes waits for about 100 round trips. `List.ReadAhead` (default 0,
+off) lets a listing predict, from the row group's key page index, the pages it will decode next and read up to
+that many of them concurrently, holding at most 1 MiB per slot of pages read and not yet used. The pages read
+ahead are checked as any page read is, and the entries do not change; a page predicted wrongly (shortened or
+overlapping page bounds) costs its read, counted in `ReadStats.ReadAheadUnused` and `ReadAheadUnusedBytes`. The
+prediction stays within the row group the listing is in, and a `/` listing the list index serves reads nothing
+ahead. With a 5 ms wait per read, a cold listing of 100 folders of 4,000 keys (1,024-row key pages) took 570 ms
+without read-ahead, and 106 ms (`ReadAhead: 8`) or 71 ms (`ReadAhead: 16`) with it, for the same 105 reads. On
+a local file it saves nothing and costs a goroutine per read ahead: leave it off there.
+
 **Optional slash listing index.** A server that needs predictable wide-prefix listing latency can call:
 
 ```go

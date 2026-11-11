@@ -5,6 +5,17 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- `List.ReadAhead` (default 0, off; at most 64): a listing predicts from the checked key page index of the
+  row group it is in the key pages it will decode next (after each common prefix, the first page whose
+  maximum reaches the prefix's successor) and reads up to that many of them concurrently, holding at most
+  1 MiB per slot of pages read ahead and not yet used. The page read path takes those bytes instead of
+  reading them and checks them as before; entries and every other count are unchanged. `ReadStats` gains
+  `ReadAheadReads`, `ReadAheadUnused` and `ReadAheadUnusedBytes` (the reads also count in `SourceReads` and
+  `SourceBytes`). With a 5 ms wait per read, a cold 100-folder listing (4,000 keys per folder, 1,024-row
+  pages) takes 106 ms with `ReadAhead: 8` instead of 570 ms, for the same 105 reads. The read-ahead does not
+  cross row groups or parts, is not used by `Range` or batch scans, and is off for a `/` listing the list
+  index serves.
+
 - A part's footer is read in fewer reads: one speculative read of the part's last 64 KiB (bounded by
   `Limits.FooterBytes`, the whole part when smaller) holds the trailer and, when it fits, the footer, with
   a 4-byte read of the head magic only for a part larger than the window and one more read only for a
