@@ -7,6 +7,25 @@ independent of the specification's draft revisions.
 
 ### Added
 
+- Borrowed batch scans, the Go reader's `RangePlan.ScanBatches` and `Dataset.RangeBatches`:
+  `RangePlan.scanBatches(...)` and `Dataset.rangeBatches(query, ...)`, each with the three overloads of `scan`
+  (cancellation, read statistics), hand the rows `scan` and `range` return to a callback as `Batch`es read
+  through primitive accessors (`BatchColumn`: `isAbsent`, `type`, `isNull`, a getter per physical type,
+  floating-point bits, and `length`/`copyBytes`/`byteBuffer` for byte arrays; keys through `keyLength`,
+  `copyKey`, `compareKey`, `keyBuffer`), without a `Row`, `Value` or `Bytes` object per row. A batch never
+  crosses a row group, a key page, a projected page or a gap between a plan's ranges. It is borrowed: valid only
+  until the callback returns, after which its accessors throw `IllegalStateException`; `row(i)`,
+  `continuation(i)`, `key(i)`, `value(i)` and `bytes(i)` make owning copies. `rangeBatches` plans nothing and
+  takes a range's bounds, cursor, columns and limit, with its errors and limits; its read statistics are the
+  range's when the callbacks return normally. Cancellation is also checked before every callback; `close()`
+  cancels a scan and waits for its callback, and closing from inside one fails as it does from `scan`. The
+  existing `scan` and `range` paths are unchanged; tests hold the batch paths to them over every valid
+  conformance dataset.
+- `BYTE_STREAM_SPLIT` values, outside the ENC-1 baseline, are decoded as the Go reader decodes them:
+  `FLOAT`, `DOUBLE`, `INT32`, `INT64` and `FIXED_LEN_BYTE_ARRAY` columns, a page holding exactly its values;
+  another type is `invalid_parquet`, as in Go. Such pages were reported as `unsupported_encoding`. Tests decode
+  pages encoded by parquet-java's writers (exact bits, with and without nulls, wrong sizes refused) and read an
+  optional split column through range reads, scans and batch scans.
 - `Limits.maxPageMemory` (a new record component; `Limits.withMaxPageMemory`) bounds the memory decoding
   one page holds (issue #46), data and dictionary pages, key pages included: estimated from the page's
   header before anything is allocated for its values (a slot per value for its representation, a null

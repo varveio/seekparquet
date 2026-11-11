@@ -443,6 +443,97 @@ public final class Dataset implements AutoCloseable {
     }
 
     /**
+     * Hands {@code action} the rows of a range read as borrowed batches; see {@link #rangeBatches(RangeQuery,
+     * Cancellation, Consumer, Consumer)}.
+     *
+     * @param query the query
+     * @param action receives each batch, borrowed until it returns
+     * @throws RefusalException if the data breaks the specification
+     * @throws UnsupportedFeatureException if a projected column is nested, repeated or {@code INT96}, or a page uses a
+     *     codec or encoding this reader does not implement
+     * @throws LimitExceededException if the limit or a declared size exceeds the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws CancellationException if the dataset is closed meanwhile, or the thread interrupted
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public void rangeBatches(RangeQuery query, Consumer<? super Batch> action) {
+        rangeBatches(query, Cancellation.none(), stats -> {}, action);
+    }
+
+    /**
+     * Hands {@code action} the rows of a range read as borrowed batches, ending early when {@code
+     * cancellation} is cancelled; see {@link #rangeBatches(RangeQuery, Cancellation, Consumer, Consumer)}.
+     *
+     * @param query the query
+     * @param cancellation the request's cancellation
+     * @param action receives each batch, borrowed until it returns
+     * @throws RefusalException if the data breaks the specification
+     * @throws UnsupportedFeatureException if a projected column is nested, repeated or {@code INT96}, or a page uses a
+     *     codec or encoding this reader does not implement
+     * @throws LimitExceededException if the limit or a declared size exceeds the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public void rangeBatches(RangeQuery query, Cancellation cancellation, Consumer<? super Batch> action) {
+        rangeBatches(query, cancellation, stats -> {}, action);
+    }
+
+    /**
+     * Hands {@code action}, in serial calls on this thread, the rows {@link #range(RangeQuery, Cancellation,
+     * Consumer)} returns for {@code query}, as borrowed {@link Batch}es instead of {@link Row}s: its bounds,
+     * cursor, columns and limit mean what they mean to a range read, and its errors are a range read's. It
+     * plans nothing: it opens each projected column chunk when it reaches its row group, reads a dictionary
+     * only for a page that uses it, and reads no OffsetIndex beyond the rows it hands over. It stops at the
+     * limit without moving past it; a range with no rows never calls {@code action}.
+     *
+     * <p>{@link Batch} sets out the boundaries (never crossing a row group, a key page or a projected page;
+     * the last batch ends at the limit or the upper bound) and the lifetime: a batch is read-only and
+     * borrowed until {@code action} returns, and {@link Batch#row}, {@link Batch#continuation} make the
+     * owning rows and continuations a range read returns. {@code stats} receives the request's read
+     * statistics when it ends, whether it succeeds or fails (zero counts when it fails to start); when every
+     * call of {@code action} returns normally they are those of the same range read against the same caches.
+     *
+     * <p>An exception {@code action} throws ends the request and propagates unchanged; batches already handed
+     * over stand, as they do before a read error or a refusal. Cancellation is checked as a range read checks
+     * it, and also before every call of {@code action}. The request holds the dataset open while {@code
+     * action} runs: {@link #close()} cancels it and waits for {@code action} to return. Closing the dataset
+     * from inside {@code action} fails with {@link IllegalStateException}, and {@code action} must not wait
+     * for another thread that is closing it. Concurrent and nested requests have storage of their own.
+     *
+     * @param query the query
+     * @param cancellation the request's cancellation
+     * @param stats receives the request's read statistics
+     * @param action receives each batch, borrowed until it returns
+     * @throws RefusalException if the data breaks the specification
+     * @throws UnsupportedFeatureException if a projected column is nested, repeated or {@code INT96}, or a page uses a
+     *     codec or encoding this reader does not implement
+     * @throws LimitExceededException if the limit or a declared size exceeds the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public void rangeBatches(RangeQuery query, Cancellation cancellation, Consumer<? super ReadStats> stats,
+            Consumer<? super Batch> action) {
+        java.util.Objects.requireNonNull(action, "action");
+        Request started;
+        try {
+            checkResultLimit(query.limit());
+            checkProjection(query.columns());
+            started = begin(cancellation);
+        } catch (RuntimeException e) {
+            throw notStarted(stats, e);
+        }
+        try (Request request = started) {
+            try {
+                Queries.rangeBatches(parts, query, request.ctx, action);
+            } finally {
+                stats.accept(request.ctx.stats.snapshot());
+            }
+        }
+    }
+
+    /**
      * Plans reading the rows of {@code ranges}; see {@link #planRanges(List, List, Cancellation)}.
      *
      * @param ranges the ranges, read whole

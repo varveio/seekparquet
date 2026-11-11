@@ -148,7 +148,8 @@ with `slf4j-nop` 1.7.36; this also resolves its SLF4J API to 1.7.36. The library
 Scope limits: validation and SHA-256 verification are not implemented; no validator target is
 claimed. Nested/repeated value projection and INT96 are unsupported, as permitted by COL-3.
 BROTLI, LZO, framed LZ4 and modular encryption are unsupported. LZ4_RAW is supported in addition
-to the mandatory codecs. No format requirement for the reader target is intentionally omitted.
+to the mandatory codecs, and `BYTE_STREAM_SPLIT` (decoded by the reader itself, not parquet-java) in
+addition to the mandatory encodings. No format requirement for the reader target is intentionally omitted.
 
 ## Notes for maintenance
 

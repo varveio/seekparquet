@@ -183,6 +183,78 @@ public final class RangePlan {
     }
 
     /**
+     * Hands {@code action} the plan's rows as borrowed batches; see {@link #scanBatches(Cancellation,
+     * Consumer, Consumer)}.
+     *
+     * @param action receives each batch, borrowed until it returns
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public void scanBatches(Consumer<? super Batch> action) {
+        scanBatches(Cancellation.none(), stats -> {}, action);
+    }
+
+    /**
+     * Hands {@code action} the plan's rows as borrowed batches, ending early when {@code cancellation} is
+     * cancelled; see {@link #scanBatches(Cancellation, Consumer, Consumer)}.
+     *
+     * @param cancellation the scan's cancellation
+     * @param action receives each batch, borrowed until it returns
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public void scanBatches(Cancellation cancellation, Consumer<? super Batch> action) {
+        scanBatches(cancellation, stats -> {}, action);
+    }
+
+    /**
+     * Hands {@code action}, in serial calls on this thread, the rows {@link #scan(Cancellation, Consumer,
+     * Consumer)} yields, in dataset order, as borrowed {@link Batch}es instead of {@link Row}s: the same
+     * rows, offsets and values, with the plan's {@link #columns()} as the batches' projection slots. It reads
+     * what {@code scan} reads, each counted extent of {@link #projectedBytes()} in one request, a chunk's
+     * dictionary before its first page, and checks every key page it decodes (CHECK-2).
+     *
+     * <p>{@link Batch} sets out the boundaries (never crossing a row group, a key page, a projected page, or
+     * a gap between the plan's ranges) and the lifetime: a batch is read-only and borrowed until {@code
+     * action} returns, and {@link Batch#row} makes the owning row {@code scan} yields. An exception {@code
+     * action} throws ends the scan and propagates; batches already handed over stand, as they do before a
+     * read error or a refusal. Cancellation is checked as {@code scan} checks it, and also before every call
+     * of {@code action}. {@code stats} receives the scan's read statistics when it ends, whether it succeeds
+     * or fails (zero counts when it fails to start).
+     *
+     * <p>The scan holds the dataset open while {@code action} runs: {@link Dataset#close()} cancels it and
+     * waits for it. Closing the dataset from inside {@code action} fails with {@link IllegalStateException},
+     * and {@code action} must not wait for another thread that is closing it. Concurrent scans, of one plan
+     * or of its shards, and scans nested in an action have storage of their own.
+     *
+     * @param cancellation the scan's cancellation
+     * @param stats receives the scan's read statistics
+     * @param action receives each batch, borrowed until it returns
+     * @throws RefusalException if data the scan decodes breaks the specification
+     * @throws UnsupportedFeatureException if a page uses a codec or encoding this reader does not implement
+     * @throws LimitExceededException if a page declares a size above the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public void scanBatches(Cancellation cancellation, Consumer<? super ReadStats> stats, Consumer<? super Batch> action) {
+        java.util.Objects.requireNonNull(action, "action");
+        try (Dataset.Request request = dataset.begin(cancellation, stats)) {
+            ReadContext ctx = request.ctx;
+            try {
+                BatchScan batches = new BatchScan(columns, ctx, ctx.forPlannedValues());
+                KeyCursor cursor = new KeyCursor(dataset.parts(), null, ctx);
+                for (Span span : spans) {
+                    boolean ok = span.bounds() == null ? cursor.seekOrdinal(span.start()) : span.bounds().position(cursor);
+                    if (ok) {
+                        batches.walk(cursor, span.end() - span.start(), null, null, action);
+                    }
+                }
+            } finally {
+                stats.accept(ctx.stats.snapshot());
+            }
+        }
+    }
+
+    /**
      * Divides the plan into at most {@code n} shards; see {@link #split(int, Cancellation)}.
      *
      * @param n the most shards

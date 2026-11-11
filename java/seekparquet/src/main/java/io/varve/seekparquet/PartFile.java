@@ -807,13 +807,23 @@ final class PartFile implements AutoCloseable {
 
     /** {@return the value of a projected column at a row of a physical row group} */
     Value value(int physical, ColumnSpec col, long row, ReadContext ctx) {
+        ReadContext.DecodedPage page = page(physical, col, row, ctx);
+        return page.page().value((int) (row - page.firstRow()));
+    }
+
+    /**
+     * {@return the decoded page of a projected value column holding a row of a physical row group}: the
+     * request's current page of the column when it holds the row, else the page decoded into the column's
+     * scratch, which then replaces it. Its storage is valid until the column's next page is decoded.
+     */
+    ReadContext.DecodedPage page(int physical, ColumnSpec col, long row, ReadContext ctx) {
         ReadContext.ChunkKey key = new ReadContext.ChunkKey(ordinal, physical, col.leaf());
         ReadContext.DecodedPage page = ctx.valuePage(key);
         if (page == null || row < page.firstRow() || row >= page.firstRow() + page.page().rows) {
             page = valuePage(physical, col, row, key, ctx);
             ctx.putValuePage(key, page);
         }
-        return page.page().value((int) (row - page.firstRow()));
+        return page;
     }
 
     private ReadContext.DecodedPage valuePage(int physical, ColumnSpec col, long row, ReadContext.ChunkKey key, ReadContext ctx) {

@@ -60,7 +60,28 @@ final class ColumnPage {
         };
     }
 
-    private Bytes ownBytes(int i) {
+    /** {@return the owning bytes of binary row {@code i}, not null} */
+    Bytes ownBytes(int i) {
         return arena == null ? Bytes.wrap(binaries[i]) : Bytes.of(arena, offsets[i], lengths[i]);
+    }
+
+    /** {@return the length of binary row {@code i}, not null} */
+    int length(int i) {
+        return arena == null ? binaries[i].length : lengths[i];
+    }
+
+    /** Copies binary row {@code i}, not null, to {@code dst} at {@code at}. */
+    void copy(int i, byte[] dst, int at) {
+        if (arena == null) {
+            System.arraycopy(binaries[i], 0, dst, at, binaries[i].length);
+        } else {
+            System.arraycopy(arena, offsets[i], dst, at, lengths[i]);
+        }
+    }
+
+    /** {@return a read-only view of binary row {@code i}, not null, over this page's storage} */
+    java.nio.ByteBuffer view(int i) {
+        java.nio.ByteBuffer b = arena == null ? java.nio.ByteBuffer.wrap(binaries[i]) : java.nio.ByteBuffer.wrap(arena, offsets[i], lengths[i]);
+        return b.slice().asReadOnlyBuffer();
     }
 }
