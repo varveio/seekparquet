@@ -156,6 +156,8 @@ func folderDataset(t testing.TB, folders, perFolder, pageRows, repeat int) strin
 	schema := parquet.NewSchema("listing", parquet.Group{"key": parquet.String()})
 	opt := local.DatasetOptions{
 		Part: write.PartOptions{Key: seekparquet.Key{Column: "key", Unique: repeat <= 1}, SchemaID: "test/readahead/v1", PageRows: pageRows},
+		// Windows cannot sync a directory; the tests only read what they wrote.
+		AllowUnsynced: runtime.GOOS == "windows",
 	}
 	if err := local.WriteDir(context.Background(), dir, schema, &folderRows{folders: folders, perFolder: perFolder, repeat: repeat}, opt); err != nil {
 		t.Fatal(err)
