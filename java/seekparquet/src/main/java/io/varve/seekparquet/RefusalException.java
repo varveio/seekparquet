@@ -26,14 +26,14 @@ public final class RefusalException extends SeekParquetException {
     /** The part at fault, or null. */
     private final String part;
 
-    /** The physical row group at fault, or -1. */
-    private final int rowGroup;
+    /** The physical row group at fault, or null, including in streams written before locations existed. */
+    private final Integer rowGroup;
 
-    /** The 0-based row within the row group, or -1. */
-    private final long row;
+    /** The 0-based row within the row group, or null. */
+    private final Long row;
 
     /** The offending key, or null. */
-    private final Bytes key;
+    private final byte[] key;
 
     /**
      * Creates a refusal.
@@ -69,9 +69,9 @@ public final class RefusalException extends SeekParquetException {
         super(code.id() + (messagePart == null ? "" : " in part " + messagePart) + ": " + detail, null);
         this.code = Objects.requireNonNull(code);
         this.part = part;
-        this.rowGroup = part == null ? -1 : rowGroup;
-        this.row = this.rowGroup < 0 ? -1 : row;
-        this.key = key == null ? null : Bytes.of(key);
+        this.rowGroup = part == null || rowGroup < 0 ? null : rowGroup;
+        this.row = this.rowGroup == null || row < 0 ? null : row;
+        this.key = key == null ? null : key.clone();
     }
 
     /** {@return the refusal code} */
@@ -89,7 +89,7 @@ public final class RefusalException extends SeekParquetException {
      * part's footer, when the fault lies in one row group}
      */
     public OptionalInt rowGroup() {
-        return rowGroup < 0 ? OptionalInt.empty() : OptionalInt.of(rowGroup);
+        return rowGroup == null ? OptionalInt.empty() : OptionalInt.of(rowGroup);
     }
 
     /**
@@ -97,7 +97,7 @@ public final class RefusalException extends SeekParquetException {
      * lies at one row}
      */
     public OptionalLong row() {
-        return row < 0 ? OptionalLong.empty() : OptionalLong.of(row);
+        return row == null ? OptionalLong.empty() : OptionalLong.of(row);
     }
 
     /**
@@ -105,6 +105,6 @@ public final class RefusalException extends SeekParquetException {
      * below the key before it, or equal to it when keys are unique}
      */
     public Optional<Bytes> key() {
-        return Optional.ofNullable(key);
+        return Optional.ofNullable(key).map(Bytes::of);
     }
 }

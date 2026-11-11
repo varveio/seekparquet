@@ -14,7 +14,8 @@ independent of the specification's draft revisions.
   refusals carry the row group; `invalid_key` and `key_order` in a page also the row; `key_order` also the key;
   a `key_order` found against a neighbouring decoded page is located at the later of the two pages, as in Go.
   Manifest, part-level and dataset-level refusals carry none. Messages and codes are unchanged, and the
-  existing constructors and accessors are source-compatible.
+  existing constructors and accessors are source-compatible. Refusals remain Java-serializable, including
+  their key bytes; serialized refusals written before locations existed retain unknown locations.
 - Borrowed batch scans, the Go reader's `RangePlan.ScanBatches` and `Dataset.RangeBatches`:
   `RangePlan.scanBatches(...)` and `Dataset.rangeBatches(query, ...)`, each with the three overloads of `scan`
   (cancellation, read statistics), hand the rows `scan` and `range` return to a callback as `Batch`es read
