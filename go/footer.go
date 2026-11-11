@@ -100,6 +100,18 @@ func (p prefetched) ReadAt(b []byte, off int64) (int, error) {
 // window.
 const footerWindow = 64 << 10
 
+// testFooterRetained, when set by a test, receives the reader readFooter
+// gives parquet-go to keep, and the window it read the file's end into.
+var testFooterRetained func(retained prefetched, window []byte)
+
+// ownCopy returns a copy of b in an allocation of its own, whose capacity
+// is its length.
+func ownCopy(b []byte) []byte {
+	c := make([]byte, len(b))
+	copy(c, b)
+	return c
+}
+
 // decodeBounded decodes one thrift struct into v from raw after
 // thriftcheck has shown that its lengths fit and its decoded size is
 // within budget. It returns the number of bytes the struct occupies.
@@ -219,6 +231,11 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 		footer = append(footer, "PAR1"...)
 		end = size - 8 - n + int64(len(footer))
 	}
+	// The opened file keeps the bytes it is given for as long as the part
+	// is open: exactly the footer with its trailer and the head magic, in
+	// slices of their own, so that the speculative window is not pinned
+	// with them.
+	footer, head = ownCopy(footer), ownCopy(head)
 	defer func() {
 		if r := recover(); r != nil {
 			err = bad("parquet-go failed on the footer: %v", r)
@@ -226,7 +243,11 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	}()
 	// parquet-go reads the head magic and the footer again: both are served
 	// from the bytes checked above, not read from the source a second time.
-	f, err := parquet.OpenFile(prefetched{r: at, off: size - 8 - n, data: footer, head: head}, end,
+	retained := prefetched{r: at, off: size - 8 - n, data: footer, head: head}
+	if testFooterRetained != nil {
+		testFooterRetained(retained, win)
+	}
+	f, err := parquet.OpenFile(retained, end,
 		parquet.SkipPageIndex(true), parquet.SkipBloomFilters(true), parquet.ReadBufferSize(4096))
 	if err != nil {
 		return nil, footerError(ctx, name, err)

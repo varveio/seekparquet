@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"testing"
@@ -121,6 +123,96 @@ func TestFooterWindowRefusals(t *testing.T) {
 	}
 	if largeFooter <= 1000 {
 		t.Fatalf("the large part's footer, %d bytes, is within the tight limit", largeFooter)
+	}
+}
+
+// failAt is a ReaderAt over raw that fails a read starting at off.
+type failAt struct {
+	*bytes.Reader
+	off int64
+}
+
+var errBoom = errors.New("boom")
+
+func (f failAt) ReadAt(p []byte, off int64) (int, error) {
+	if off == f.off {
+		return 0, errBoom
+	}
+	return f.Reader.ReadAt(p, off)
+}
+
+// TestFooterWindowEdgeRefusals: a file shorter than 12 bytes, a declared
+// footer length of 0, and a storage error on the read of the bytes before
+// the window end as they do when the footer is read exactly (maxWindow 0).
+func TestFooterWindowEdgeRefusals(t *testing.T) {
+	small, _, huge, _, _, hugeFooter := footerParts(t)
+	lim := Limits{}.withDefaults()
+	zero := bytes.Clone(small)
+	copy(zero[len(zero)-8:], []byte{0, 0, 0, 0})
+	for _, tc := range []struct {
+		name string
+		raw  []byte
+		at   func([]byte) io.ReaderAt
+		want func(error) bool
+	}{
+		{"shorter than 12", small[:11], nil, isInvalidFooter},
+		{"empty", nil, nil, isInvalidFooter},
+		{"footer length 0", zero, nil, isInvalidFooter},
+		{"storage error before the window", huge, func(raw []byte) io.ReaderAt {
+			return failAt{bytes.NewReader(raw), int64(len(raw)) - 8 - hugeFooter}
+		}, func(err error) bool {
+			var r *RefusalError
+			return errors.Is(err, errBoom) && !errors.As(err, &r)
+		}},
+	} {
+		var texts []string
+		for _, window := range []int64{footerWindow, 0} {
+			var at io.ReaderAt = bytes.NewReader(tc.raw)
+			if tc.at != nil {
+				at = tc.at(tc.raw)
+			}
+			_, err := readFooter(ctx, "p", at, int64(len(tc.raw)), &lim, nil, window)
+			if !tc.want(err) {
+				t.Errorf("%s, window %d: %v", tc.name, window, err)
+			}
+			texts = append(texts, fmt.Sprint(err))
+		}
+		if texts[0] != texts[1] {
+			t.Errorf("%s: window error %q, exact read's %q", tc.name, texts[0], texts[1])
+		}
+	}
+}
+
+// TestFooterWindowNotRetained: what the opened file keeps of the window
+// read is exactly the footer with its trailer and the head magic, in
+// allocations of their own, so that the 64 KiB window is not pinned for as
+// long as the part is open.
+func TestFooterWindowNotRetained(t *testing.T) {
+	small, large, huge, smallFooter, largeFooter, hugeFooter := footerParts(t)
+	lim := Limits{}.withDefaults()
+	for _, tc := range []struct {
+		name   string
+		raw    []byte
+		footer int64
+	}{{"small", small, smallFooter}, {"large", large, largeFooter}, {"huge", huge, hugeFooter}} {
+		var got []prefetched
+		var window []byte
+		testFooterRetained = func(p prefetched, win []byte) { got, window = append(got, p), win }
+		_, err := readFooter(ctx, "p", bytes.NewReader(tc.raw), int64(len(tc.raw)), &lim, nil, footerWindow)
+		testFooterRetained = nil
+		must(t, err)
+		if len(got) != 1 {
+			t.Fatalf("%s: %d readers", tc.name, len(got))
+		}
+		p := got[0]
+		if int64(len(p.data)) != tc.footer+8 || cap(p.data) != len(p.data) || len(p.head) != 4 || cap(p.head) != 4 {
+			t.Errorf("%s: retained footer len %d cap %d (want %d), head len %d cap %d", tc.name, len(p.data), cap(p.data), tc.footer+8, len(p.head), cap(p.head))
+		}
+		for what, b := range map[string][]byte{"footer": p.data, "head": p.head} {
+			if overlaps(b, window) {
+				t.Errorf("%s: the retained %s is a slice of the %d-byte window", tc.name, what, len(window))
+			}
+		}
 	}
 }
 

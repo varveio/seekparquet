@@ -21,7 +21,8 @@ versioning; while it is v0, minor versions may change the API.
   a 4-byte read of the head magic only for a part larger than the window and one more read only for a
   footer larger than it. The footer and the head magic are no longer read a second time when parquet-go
   opens the checked footer. A footer took four reads; it now takes one (part up to 64 KiB), two, or three
-  (footer over 64 KiB). `SourceBytes` grows by up to 64 KiB per part opened. Every check and refusal is
+  (footer over 64 KiB). `SourceBytes` grows by up to 64 KiB per part opened; the window is freed once the footer is checked, and an open part
+  retains only its footer, trailer and head magic, as before. Every check and refusal is
   unchanged. `InspectFooter` and `InspectKeyPages` still read only the head magic and the footer (and the
   key page indexes), now once instead of twice.
 
