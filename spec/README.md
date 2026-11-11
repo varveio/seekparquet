@@ -3,6 +3,7 @@
 | File | What it is |
 |---|---|
 | [format-1.md](format-1.md) | The normative specification of format 1. **Draft revision 1.** |
+| [cursor-token-1.md](cursor-token-1.md) | The cursor token, version 1: a canonical text encoding of continuation cursors for protocols. Not part of the format; it changes no file or query result. |
 | [manifest.schema.json](manifest.schema.json) | JSON Schema for `manifest.json` (structure only; the semantic rules are in the specification). |
 | [refusal-codes.json](refusal-codes.json) | The stable refusal codes, what each means, which requirements it covers and when a reader must detect it. |
 | [status.json](status.json) | Machine-readable status: draft or final, the draft revision, the on-disk version, the pinned conformance revision. |

@@ -2,6 +2,12 @@
 
 Unreleased draft revision 1 is edited in place; no format has been released.
 
+## Protocol documents
+
+- [cursor-token-1.md](cursor-token-1.md) adds version 1 of the cursor token (`spc1.r.<key>.<offset>`,
+  `spc1.p.<prefix>`), a canonical text encoding of PAGE-1 cursors for protocols, with golden vectors in
+  `conformance/vectors/`. It affects no valid file and no query result, and needs no draft revision.
+
 ## Draft revision 1 (unreleased)
 
 First public draft of format 1. Files carry `format_version` 0, `draft_revision` 1.
