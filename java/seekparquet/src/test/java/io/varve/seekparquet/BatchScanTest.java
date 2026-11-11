@@ -321,6 +321,20 @@ class BatchScanTest {
                 plan.scanBatches(batch -> sizes.add(batch.size()));
                 assertEquals(List.of(2, 1), sizes.subList(0, 2), columns.toString());
                 assertEquals(9, sizes.stream().mapToInt(Integer::intValue).sum());
+                // A gap inside one page of every projected column and of the keys (rows 0..2 share a page of 7, 5
+                // and 3 rows): rows 0 and 2 are one page's neighbours but still two batches.
+                RangePlan inPage = d.planRanges(List.of(
+                        RangeQuery.builder().start(Bytes.utf8(key(0))).end(Bytes.utf8(key(1))).limit(1).build(),
+                        RangeQuery.builder().start(Bytes.utf8(key(2))).end(Bytes.utf8(key(3))).limit(1).build()), columns);
+                List<List<String>> batches = new ArrayList<>();
+                inPage.scanBatches(batch -> {
+                    List<String> keys = new ArrayList<>();
+                    for (int i = 0; i < batch.size(); i++) {
+                        keys.add(batch.key(i).toStringUtf8());
+                    }
+                    batches.add(keys);
+                });
+                assertEquals(List.of(List.of(key(0)), List.of(key(2))), batches, columns.toString());
             }
         }
     }
@@ -611,45 +625,60 @@ class BatchScanTest {
 
     /**
      * Over a plan of one optional INT64 column, a batch scan read through the typed accessors allocates no
-     * object per row beyond the pages both decode, where a row scan makes a row, a value and a key per row.
+     * object per row. The scan itself allocates a fresh key array per row (the key page decodes one: 24
+     * bytes for these keys) and the pages' storage; measured here, 71 to 160 bytes per row depending on how far
+     * the JIT has got, against 290 or more for a row scan, which also makes a row, its value list, a value and a
+     * key wrapper per row. Two assertions, neither comparing with the row path (whose allocations the JIT may
+     * remove): the batch scan stays under 224 bytes per row in its best round, and reading every row through
+     * the accessors adds no more than 16 bytes per row to a scan whose action reads nothing (it adds more than
+     * 150 when the action makes an owning {@link Batch#row}). Allocation is counted per thread, so other
+     * threads do not disturb it; the median over many rounds absorbs a JIT transition between two of them.
      */
     @Test
     void batchScansAllocateNoObjectPerRow() throws IOException {
         TestDatasets.Spec spec = new TestDatasets.Spec();
         spec.rowsPerGroup = 4096;
         spec.rowsPerPage = 512;
-        try (Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(16384, 2)))) {
+        int rows = 16384;
+        try (Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(rows, 2)))) {
             RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size"));
             com.sun.management.ThreadMXBean bean = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
             long[] sum = new long[1];
-            Runnable rows = () -> plan.scan(row -> {
-                if (row.values().getFirst() instanceof Value.Int64 v) {
-                    sum[0] += v.value() + row.key().length();
-                }
-            });
-            Runnable batches = () -> plan.scanBatches(batch -> {
+            int[] seen = new int[1];
+            Consumer<Batch> idle = batch -> seen[0] += batch.size();
+            Consumer<Batch> reading = batch -> {
                 BatchColumn size = batch.column(0);
                 for (int i = 0; i < batch.size(); i++) {
                     if (!size.isNull(i)) {
                         sum[0] += size.getLong(i) + batch.keyLength(i);
                     }
                 }
-            });
-            for (int warm = 0; warm < 5; warm++) {
-                rows.run();
-                batches.run();
+                seen[0] += batch.size();
+            };
+            for (int warm = 0; warm < 40; warm++) {
+                plan.scanBatches(reading);
             }
             long tid = Thread.currentThread().threadId();
-            long before = bean.getThreadAllocatedBytes(tid);
-            rows.run();
-            long perRowScan = (bean.getThreadAllocatedBytes(tid) - before) / 16384;
-            before = bean.getThreadAllocatedBytes(tid);
-            batches.run();
-            long perRowBatch = (bean.getThreadAllocatedBytes(tid) - before) / 16384;
+            long best = Long.MAX_VALUE;
+            long[] extra = new long[15];
+            for (int round = 0; round < extra.length; round++) {
+                seen[0] = 0;
+                long before = bean.getThreadAllocatedBytes(tid);
+                plan.scanBatches(idle);
+                long idleBytes = bean.getThreadAllocatedBytes(tid) - before;
+                assertEquals(rows, seen[0]);
+                seen[0] = 0;
+                before = bean.getThreadAllocatedBytes(tid);
+                plan.scanBatches(reading);
+                long readingBytes = bean.getThreadAllocatedBytes(tid) - before;
+                assertEquals(rows, seen[0]);
+                best = Math.min(best, readingBytes / rows);
+                extra[round] = (readingBytes - idleBytes) / rows;
+            }
             assertTrue(sum[0] != 0);
-            // Both decode the same key and value pages (a key array per row among them); a row scan also makes
-            // a row, its value list, a value and a key wrapper per row, about 170 bytes on a 64-bit JVM.
-            assertTrue(perRowScan - perRowBatch >= 96, "batch " + perRowBatch + " B/row, scan " + perRowScan + " B/row");
+            java.util.Arrays.sort(extra);
+            assertTrue(best < 224, "a batch scan allocated " + best + " B/row at best");
+            assertTrue(extra[extra.length / 2] <= 16, "reading through the accessors allocated " + extra[extra.length / 2] + " B/row");
         }
     }
 

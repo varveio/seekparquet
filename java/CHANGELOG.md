@@ -23,8 +23,9 @@ independent of the specification's draft revisions.
   conformance dataset.
 - `BYTE_STREAM_SPLIT` values, outside the ENC-1 baseline, are decoded as the Go reader decodes them:
   `FLOAT`, `DOUBLE`, `INT32`, `INT64` and `FIXED_LEN_BYTE_ARRAY` columns, a page holding exactly its values;
-  another type is `invalid_parquet`, as in Go. Such pages were reported as `unsupported_encoding`. A
-  Go-written dataset of every such type reads identically through both conformance adapters.
+  another type is `invalid_parquet`, as in Go. Such pages were reported as `unsupported_encoding`. Tests decode
+  pages encoded by parquet-java's writers (exact bits, with and without nulls, wrong sizes refused) and read an
+  optional split column through range reads, scans and batch scans.
 - `Limits.maxPageMemory` (a new record component; `Limits.withMaxPageMemory`) bounds the memory decoding
   one page holds (issue #46), data and dictionary pages, key pages included: estimated from the page's
   header before anything is allocated for its values (a slot per value for its representation, a null

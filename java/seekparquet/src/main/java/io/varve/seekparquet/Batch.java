@@ -25,7 +25,8 @@ import java.util.Objects;
  * throws {@link IndexOutOfBoundsException}.
  *
  * <p>The action may have other threads read the batch while it runs, but it must wait for them before it
- * returns.
+ * returns. The batch's end of life is published with a volatile write, so a thread that reads it after
+ * the action returns sees it retired.
  */
 public final class Batch {
 
@@ -35,7 +36,7 @@ public final class Batch {
     private final int from;
     private final int size;
     private final BatchColumn[] values;
-    private boolean live = true;
+    private volatile boolean live = true;
 
     Batch(List<String> columns, byte[][] keys, long[] offsets, int from, int size, BatchColumn.Source[] sources) {
         this.columns = columns;
