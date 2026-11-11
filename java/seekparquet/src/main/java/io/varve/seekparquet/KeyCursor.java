@@ -445,6 +445,74 @@ final class KeyCursor {
         return true;
     }
 
+    /** {@return whether a '/' listing may land on list-index anchors: a list index is built} */
+    boolean listIndexed() {
+        return listIndex != null && listIndex.groups.length != 0;
+    }
+
+    /**
+     * Predicts the key pages a listing will decode next in the row group the cursor is on, and reads ahead
+     * those not yet pending, as far as {@code ahead} has room, at most one per entry the listing can still
+     * return ({@code remaining}). The cursor is on the key whose entry the listing has just emitted: a common
+     * prefix c, after which it seeks to successor(c) and lands on the first page from the current one whose
+     * maximum reaches it ({@link KeyIndex#pageFor}), or a row, after which it decodes the next page once the
+     * current one is done. A predicted page's maximum then stands for the entry after it: its common prefix,
+     * or a row when it has none. Bounds may be shortened or overlap (RG-5, RG-6), so a prediction may be
+     * wrong, which costs a read, never a result. It stops at the row group's end and at a page beginning at
+     * or after the cursor's upper bound.
+     */
+    void readAhead(ReadAhead ahead, byte[] prefix, byte delimiter, int remaining) {
+        if (ahead == null || remaining <= 0 || exhausted || syntheticKey != null || keys == null || index == null) {
+            return;
+        }
+        byte[] cur = commonPrefix(keys[pos], prefix, delimiter);
+        if (!ahead.predictFrom(pf, physical, page, cur == null)) {
+            return;
+        }
+        int at = page;
+        for (int n = 0; n < remaining;) {
+            int j = at + 1;
+            if (cur != null) {
+                var next = Bytes.wrap(cur).successor();
+                if (next.isEmpty()) {
+                    return;
+                }
+                j = index.pageFor(at, next.get().unsafeArray(), false);
+                if (j == at) {
+                    // The next entry may be on this page: predict past its maximum's common prefix when that is later.
+                    byte[] c = commonPrefix(index.hi[at], prefix, delimiter);
+                    if (c != null && Arrays.compareUnsigned(c, cur) > 0) {
+                        cur = c;
+                        continue;
+                    }
+                    j = at + 1;
+                }
+            }
+            if (j >= index.pages() || end != null && Arrays.compareUnsigned(index.lo[j], end) >= 0) {
+                return;
+            }
+            if (!ahead.fetch(pf, physical, j, index.offset[j], index.size[j])) {
+                return;
+            }
+            n++;
+            at = j;
+            cur = commonPrefix(index.hi[j], prefix, delimiter);
+        }
+    }
+
+    /** {@return the common prefix of {@code key} after {@code prefix} through the first {@code delimiter}, or null} */
+    private static byte[] commonPrefix(byte[] key, byte[] prefix, byte delimiter) {
+        if (key.length < prefix.length || !Arrays.equals(key, 0, prefix.length, prefix, 0, prefix.length)) {
+            return null;
+        }
+        for (int i = prefix.length; i < key.length; i++) {
+            if (key[i] == delimiter) {
+                return Arrays.copyOf(key, i + 1);
+            }
+        }
+        return null;
+    }
+
     /** Decodes from (part, slot, page) forward until a key satisfies the target. */
     private boolean decodeForward(int p, int s, int pg, byte[] target, boolean exclusive) {
         if (!enter(p, s, pg)) {

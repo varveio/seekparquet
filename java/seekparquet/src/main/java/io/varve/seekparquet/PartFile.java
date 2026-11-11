@@ -43,7 +43,7 @@ import org.apache.parquet.format.SortingColumn;
  */
 final class PartFile implements AutoCloseable {
 
-    /** How much of a part's tail the first read fetches, to get the footer in one read. */
+    /** The most of a part's end the first footer read fetches, to get the footer in one read ({@link #footerWindow}). */
     static final int TAIL_WINDOW = 64 * 1024;
 
     private static final String STAMP_VERSION = "seekparquet.format_version";
@@ -294,13 +294,30 @@ final class PartFile implements AutoCloseable {
                 offsetIndexMemory);
     }
 
-    private static FileMetaData readFooter(PartSource source, String name, long size, ReadContext ctx) {
+    /**
+     * {@return how many bytes of a part's end {@link #readFooter} reads first} The last {@link #TAIL_WINDOW}
+     * bytes, or the whole part when it is smaller, but never more than the largest footer {@link
+     * Limits#maxFooterBytes()} admits with its 8-byte trailer.
+     */
+    static int footerWindow(long size, Limits limits) {
+        return (int) Math.min(Math.min(size, TAIL_WINDOW), limits.maxFooterBytes() + 8L);
+    }
+
+    /**
+     * Reads and decodes a part's footer: one read of the part's end ({@link #footerWindow}), which holds the
+     * trailer and, when it fits, the footer; a footer larger than the window costs one more read, of exactly
+     * the footer bytes before it. The trailer is checked, and the footer length against the part's size and
+     * {@link Limits#maxFooterBytes()}, before anything is allocated from it. Only the footer's own bytes are
+     * kept, in an array of their own, never the window.
+     */
+    static FileMetaData readFooter(PartSource source, String name, long size, ReadContext ctx) {
         if (size < 12) {
             throw refuse(RefusalCode.INVALID_FOOTER, name, "the part is too short to be Parquet");
         }
-        int tailLength = (int) Math.min(size, TAIL_WINDOW);
-        ByteBuffer tail = read(source, name, size - tailLength, tailLength, ctx);
-        int end = tail.position() + tailLength;
+        int window = footerWindow(size, ctx.limits);
+        ByteBuffer tail = read(source, name, size - window, window, ctx);
+        int start = tail.position();
+        int end = start + window;
         byte[] magic = new byte[4];
         tail.duplicate().position(end - 4).get(magic);
         String m = new String(magic, StandardCharsets.ISO_8859_1);
@@ -318,10 +335,14 @@ final class PartFile implements AutoCloseable {
             throw new LimitExceededException("maxFooterBytes", footerLength, ctx.limits.maxFooterBytes(), "part " + name);
         }
         byte[] footer = new byte[(int) footerLength];
-        if (footerLength + 8 <= tailLength) {
+        if (footerLength + 8 <= window) {
             tail.duplicate().position(end - 8 - (int) footerLength).get(footer);
         } else {
-            read(source, name, size - 8 - footerLength, (int) footerLength, ctx).get(footer);
+            // The footer starts before the window: read only the bytes before it.
+            int inWindow = window - 8;
+            int before = (int) footerLength - inWindow;
+            read(source, name, size - 8 - footerLength, before, ctx).get(footer, 0, before);
+            tail.duplicate().position(start).get(footer, before, inWindow);
         }
         try {
             return Thrift.fileMetaData(footer);
@@ -429,6 +450,14 @@ final class PartFile implements AutoCloseable {
         } catch (IOException e) {
             throw new StorageException("read part " + name, e);
         }
+    }
+
+    /**
+     * Reads {@code length} bytes at {@code position} for a listing's read-ahead, on its own thread: uncounted
+     * (the read-ahead counts its reads for the request) and unchecked (the bytes are checked when taken).
+     */
+    ByteBuffer readAhead(long position, int length, Cancellation cancellation) throws IOException {
+        return source.read(position, length, cancellation);
     }
 
     private byte[] readBytes(long position, int length, ReadContext ctx) {
@@ -585,7 +614,11 @@ final class PartFile implements AutoCloseable {
         String where = "row group " + physical + " key page " + page + ": ";
         int sz = index.size[page];
         checkPageSize(sz, ctx);
-        byte[] raw = readBytes(index.offset[page], sz, ctx);
+        // Bytes a listing read ahead for exactly this extent are checked below as bytes read here are.
+        byte[] raw = ctx.readAhead == null ? null : ctx.readAhead.take(this, index.offset[page], sz);
+        if (raw == null) {
+            raw = readBytes(index.offset[page], sz, ctx);
+        }
         PageHeader header;
         int headerLength;
         try {

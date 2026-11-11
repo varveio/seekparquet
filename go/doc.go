@@ -77,8 +77,8 @@
 // goroutines: the shards' scans together yield the plan's rows, each once,
 // and their counts and bytes add up to the plan's. Splitting is a
 // convenience of this package over the query model, not a format rule: the
-// specification and the conformance protocol do not define it, and the
-// Java reader does not have it.
+// specification and the conformance protocol do not define it. The Java
+// reader has it as RangePlan.split.
 //
 // # Equal keys and pagination
 //

@@ -99,8 +99,23 @@ final class Queries {
         if (parts.size() == 0 || (to != null && to.length == 0) || (to != null && from != null && Arrays.compareUnsigned(from, to) >= 0)) {
             return List.of();
         }
-        List<String> columns = q.columns();
         KeyCursor cursor = new KeyCursor(parts, to, ctx);
+        // With a list index built, a '/' listing reads no page ahead, even for a row group the index declines:
+        // the index answers its skips without decoding the pages a read-ahead would predict.
+        try (ReadAhead ahead = delimiter == '/' && cursor.listIndexed() ? null : ReadAhead.open(ctx, q.readAhead())) {
+            ctx.readAhead = ahead;
+            return list(q, cursor, ahead, from, exclusive, to, ctx);
+        } finally {
+            ctx.readAhead = null;
+        }
+    }
+
+    private static List<ListEntry> list(ListQuery q, KeyCursor cursor, ReadAhead ahead, byte[] from, boolean exclusive, byte[] to,
+            ReadContext ctx) {
+        byte[] prefix = q.prefix().unsafeArray();
+        byte delimiter = q.delimiter();
+        Continuation tagged = q.cursor().orElse(null);
+        List<String> columns = q.columns();
         List<ListEntry> out = new ArrayList<>(Math.min(q.limit(), 1024));
         boolean ok = tagged instanceof Continuation.CommonPrefix c && delimiter == '/'
                 ? cursor.seekPrefixCursor(c.bytes().unsafeArray(), from) : cursor.seek(from, exclusive);
@@ -123,6 +138,7 @@ final class Queries {
                 if (out.size() == q.limit()) {
                     break;
                 }
+                cursor.readAhead(ahead, prefix, delimiter, q.limit() - out.size());
                 ok = cursor.next();
                 continue;
             }
@@ -137,6 +153,7 @@ final class Queries {
             if (next.isEmpty()) {
                 break;
             }
+            cursor.readAhead(ahead, prefix, delimiter, q.limit() - out.size());
             ctx.stats.prefixSkips++;
             ok = cursor.seekAfterPrefix(common, next.get().unsafeArray(), delimiter);
         }

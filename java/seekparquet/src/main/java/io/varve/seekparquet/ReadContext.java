@@ -28,6 +28,8 @@ final class ReadContext {
     // Only requested value columns acquire slots; duplicate projections share their current page.
     private final Map<String, PageScratch> scratch = new HashMap<>();
     final Codecs.State codecs = new Codecs.State();
+    /** A listing's read-ahead of key pages, which {@link PartFile#keyPage} takes pages from; null for none. */
+    ReadAhead readAhead;
 
     PageScratch scratch(ColumnSpec col, ChunkKey chunk) {
         PageScratch slot = scratch.computeIfAbsent(col.name(), ignored -> new PageScratch());

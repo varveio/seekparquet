@@ -7,6 +7,23 @@ independent of the specification's draft revisions.
 
 ### Added
 
+- Key page read-ahead for delimited listings, the Go reader's `List.ReadAhead`: `ListQuery.Builder.readAhead(n)`
+  (a new record component `readAhead()`, default 0, off; a value above `ListQuery.MAX_READ_AHEAD`, 64, is read
+  as it; a negative one is `IllegalArgumentException`). After each entry a listing predicts, from the checked
+  key page index of the row group it is in, the key pages it will decode next (after a common prefix, the
+  first page whose maximum reaches the prefix's successor; after a row, the next page) and reads up to `n` of
+  them concurrently on virtual threads, holding at most 1 MiB per slot of pages read and not yet used and at
+  most `4 * n` pages. The key page read takes those bytes instead of reading them and checks them exactly as
+  before: entries, errors, refusal codes and every count but the reads and bytes of unused pages are those
+  without read-ahead, including on corrupted parts. `ReadStats` gains `readAheadReads`, `readAheadUnused` and
+  `readAheadUnusedBytes` (the reads also count in `sourceReads` and `sourceBytes`); a page predicted wrongly is
+  read for nothing. A read ahead that fails or throws, whatever it throws, is not used and the page is read
+  again. The reads run under a cancellation linked to the request's, and are ended and waited for before the
+  listing returns, including when it fails, is cancelled or the dataset closes. A `/` listing reads nothing
+  ahead while a list index is built; the prediction stays within a row group; `range` and the scans do not
+  read ahead. With a 10 ms wait per read, a cold listing of 60 folders (400 keys each, 100-row key pages)
+  took about 640 ms without read-ahead and about 115 ms with `readAhead(8)`, for the same reads.
+  The existing `ListQuery` and `ReadStats` constructors remain, with no read-ahead.
 - Structured refusal locations, the Go reader's `RefusalError` fields: `RefusalException` gains `rowGroup()`
   (`OptionalInt`, the physical row group in the part's footer), `row()` (`OptionalLong`, 0-based within that row
   group) and `key()` (`Optional<Bytes>`, a copy), beside `code()` and `part()`. They are filled wherever the
@@ -102,6 +119,14 @@ independent of the specification's draft revisions.
 
 ### Changed
 
+- A part's footer is read in fewer bytes: the first read of a part's end, the last 64 KiB or the whole part
+  when smaller, is now never more than `Limits.maxFooterBytes` plus the 8-byte trailer, and a footer larger
+  than that window costs one more read of only the footer bytes before it (it read the whole footer again).
+  Still one read for a footer within the window and two above it; the window is not kept once the footer is
+  decoded. Every check, refusal code and message is unchanged, including for truncated parts and garbage
+  tails. As before, the reader does not read a part's leading magic, so a footer within the window is one
+  read whatever the part's size (the Go reader, which checks the leading magic, reads it apart for a part
+  larger than the window).
 - The checked page locations of each projected column chunk's OffsetIndex, kept once a request has loaded
   them so that later requests do not read and decode them again, are now bounded by the new
   `Limits.maxOffsetIndexMemoryBytes` (default 256 MiB, `withMaxOffsetIndexMemoryBytes`, apart from
