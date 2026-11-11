@@ -175,10 +175,25 @@ class BatchScanTest {
         return stats.get();
     }
 
+    /** A plan's scan statistics, on a dataset of its own so that no earlier request warms its caches. */
+    private static ReadStats scanStats(Path root, List<RangeQuery> ranges, List<String> columns, boolean batches) {
+        AtomicReference<ReadStats> stats = new AtomicReference<>();
+        try (Dataset d = Dataset.open(root)) {
+            RangePlan plan = d.planRanges(ranges, columns);
+            if (batches) {
+                plan.scanBatches(Cancellation.none(), stats::set, batch -> {});
+            } else {
+                plan.scan(Cancellation.none(), stats::set, row -> {});
+            }
+        }
+        return stats.get();
+    }
+
     /**
      * Over every valid conformance dataset, with every projectable column, the key, an absent column and a
      * duplicate: a batch range read returns the rows, and the read statistics, of a range read for sampled
-     * bounds, prefixes, lookups, limits and cursors; a batch scan of a plan the rows of its scan.
+     * bounds, prefixes, lookups, limits and cursors; a batch scan of a plan the rows, and the read statistics,
+     * of its scan.
      */
     @ParameterizedTest
     @MethodSource("validDatasets")
@@ -197,6 +212,8 @@ class BatchScanTest {
             plan.scan(scanned::add);
             assertEquals(all, scanned, name);
             assertEquals(all, rows(plan::scanBatches), name);
+            assertEquals(scanStats(root, List.of(RangeQuery.all(1)), columns, false),
+                    scanStats(root, List.of(RangeQuery.all(1)), columns, true), name);
 
             List<RangeQuery> ranges = RangePlanTest.ranges(all);
             for (RangeQuery q : ranges) {
@@ -228,6 +245,9 @@ class BatchScanTest {
                 p.scan(want::add);
                 assertEquals(p.count(), want.size());
                 assertEquals(want, rows(p::scanBatches), name + " " + set);
+                if (i % 5 == 0) {
+                    assertEquals(scanStats(root, set, columns, false), scanStats(root, set, columns, true), name + " " + set);
+                }
             }
         }
     }
