@@ -264,8 +264,10 @@ return of memory to the OS.
 ## Cost model
 
 Opening reads the manifest: one read, whatever the number of parts. A read is routed to a part by its
-manifest bounds; the first read to touch a part opens it and reads its footer (a few reads, counted in
-`ReadStats.PartsOpened` and `SourceReads`), so a cold query costs the manifest plus one footer per part it
+manifest bounds; the first read to touch a part opens it and reads its footer (counted in
+`ReadStats.PartsOpened` and `SourceReads`: the last 64 KiB of the part in one read, the whole part when it is
+smaller, plus a 4-byte read of its head when it is larger, and one more read when the footer is larger than
+that window), so a cold query costs the manifest plus one footer per part it
 touches, independent of the part count. Within the part, a read is routed by a binary search over its row groups' first
 keys; the first time a row group is needed, its key page index is loaded and its first key page decoded, and
 both are kept (`Limits.IndexMemory` accounts for key-page entries, their bound bytes,
@@ -281,6 +283,19 @@ within `Limits.OffsetIndexMemory` (default 256 MiB, apart from `IndexMemory`); p
 reads it again, never failing for it. A listing
 resumes after each common prefix at the prefix's successor, skipping the pages wholly under it, but the page
 it lands on, and the pages around a prefix's boundaries, still decode some of the keys under it.
+
+**Key page read-ahead for listings.** Each of those resumes reads one key page, one after another: over an
+object store a listing of 100 common prefixes waits for about 100 round trips. `List.ReadAhead` (default 0,
+off) lets a listing predict, from the row group's key page index, the pages it will decode next and read up to
+that many of them concurrently, holding at most 1 MiB per slot of pages read and not yet used (a request with
+`ReadAhead: 64` can hold 64 MiB). The pages read ahead are checked as any page read is, and the entries do not
+change; a page predicted wrongly (shortened or overlapping page bounds) is read and transferred for nothing and
+held until the scan passes it or the key scan ends, counted in `ReadStats.ReadAheadUnused` and
+`ReadAheadUnusedBytes`. The reads ahead end when the key scan does, before values are projected. The
+prediction stays within the row group the listing is in. With a list index built, a `/` listing reads nothing
+ahead, including a row group the index declines; other delimiters read ahead as usual. With a 5 ms wait per read, a cold listing of 100 folders of 4,000 keys (1,024-row key pages) took 570 ms
+without read-ahead, and 106 ms (`ReadAhead: 8`) or 71 ms (`ReadAhead: 16`) with it, for the same 105 reads. On
+a local file it saves nothing and costs a goroutine per read ahead: leave it off there.
 
 **Optional slash listing index.** A server that needs predictable wide-prefix listing latency can call:
 

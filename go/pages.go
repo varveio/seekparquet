@@ -139,6 +139,9 @@ type chunk struct {
 	dictRead bool
 	stats    *ReadStats
 	pages    *int64 // the counter of the data pages decoded: key or value pages
+	// ahead, when set, holds key pages a listing read ahead: located takes
+	// a page's bytes from it instead of reading them (readAhead).
+	ahead *readAhead
 }
 
 // openChunk checks a column chunk before any of its pages is read: a codec
@@ -181,7 +184,11 @@ func (c *chunk) located(off, size, rows int64) (*format.PageHeader, int64, []byt
 	if lim := &c.p.r.limits; size > lim.PageBytes+lim.headerBytes() {
 		return c.header(off)
 	}
-	return c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, rows, c.end, c.stats, c.scratch)
+	var pre []byte
+	if c.ahead != nil {
+		pre, _ = c.ahead.take(c.p, off, size)
+	}
+	return c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, rows, c.end, c.stats, c.scratch, pre)
 }
 
 // payload returns the page data after a header of length n at off, from
@@ -1140,15 +1147,19 @@ func (p *part) pageHeaderInto(ctx context.Context, physical, column int, off, en
 // page, header included, in a single read, and decodes and checks its
 // header as pageHeader does, in a column chunk ending at end; rows is the
 // rows its OffsetIndex entry gives, or -1 (decodeHeader). The caller
-// bounds size (chunk.located).
-func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, rows, end int64, st *ReadStats, scratch *pageScratch) (*format.PageHeader, int64, []byte, error) {
+// bounds size (chunk.located). pre, when not nil, holds those size bytes,
+// read ahead (readAhead): they are checked exactly as bytes it reads.
+func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, rows, end int64, st *ReadStats, scratch *pageScratch, pre []byte) (*format.PageHeader, int64, []byte, error) {
 	bad := p.badPage(physical, column, off)
 	if off < 0 || off >= end || size > end-off {
 		return nil, 0, nil, bad("outside the column chunk")
 	}
-	raw, err := p.readPage(ctx, off, size, st, bad, scratch)
-	if err != nil {
-		return nil, 0, nil, err
+	raw := pre
+	if int64(len(raw)) != size {
+		var err error
+		if raw, err = p.readPage(ctx, off, size, st, bad, scratch); err != nil {
+			return nil, 0, nil, err
+		}
 	}
 	h, n, err := p.decodeHeader(raw, end-off, true, rows, bad)
 	return h, n, raw, err

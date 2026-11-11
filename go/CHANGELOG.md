@@ -5,6 +5,29 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- `List.ReadAhead` (default 0, off; at most 64): a listing predicts from the checked key page index of the
+  row group it is in the key pages it will decode next (after each common prefix, the first page whose
+  maximum reaches the prefix's successor) and reads up to that many of them concurrently, holding at most
+  1 MiB per slot of pages read ahead and not yet used (`ReadAhead: 64` can hold 64 MiB per request). The page
+  read path takes those bytes instead of reading them and checks them as before; entries and every other count are unchanged. `ReadStats` gains
+  `ReadAheadReads`, `ReadAheadUnused` and `ReadAheadUnusedBytes` (the reads also count in `SourceReads` and
+  `SourceBytes`); a page predicted wrongly is read and transferred for nothing and held until the scan passes
+  it or the key scan ends. With a 5 ms wait per read, a cold 100-folder listing (4,000 keys per folder, 1,024-row
+  pages) takes 106 ms with `ReadAhead: 8` instead of 570 ms, for the same 105 reads. The read-ahead does not
+  cross row groups or parts, is not used by `Range` or batch scans, and is off for every `/` listing while a
+  list index is built, including for a row group the index declines. The reads ahead end when the key scan
+  ends, before values are projected.
+
+- A part's footer is read in fewer reads: one speculative read of the part's last 64 KiB (bounded by
+  `Limits.FooterBytes`, the whole part when smaller) holds the trailer and, when it fits, the footer, with
+  a 4-byte read of the head magic only for a part larger than the window and one more read only for a
+  footer larger than it. The footer and the head magic are no longer read a second time when parquet-go
+  opens the checked footer. A footer took four reads; it now takes one (part up to 64 KiB), two, or three
+  (footer over 64 KiB). `SourceBytes` grows by up to 64 KiB per part opened; the window is freed once the footer is checked, and an open part
+  retains only its footer, trailer and head magic, as before. Every check and refusal is
+  unchanged. `InspectFooter` and `InspectKeyPages` still read only the head magic and the footer (and the
+  key page indexes), now once instead of twice.
+
 - `RangePlan.ScanBatches`, `Dataset.RangeBatches` and `RangePlan.Scan` reuse one set of key page buffers
   per call (read, decompressed and decoded bytes, offsets, dictionary indexes), as projected value pages
   already did: each key page overwrites the one before after the callbacks borrowing it have returned.

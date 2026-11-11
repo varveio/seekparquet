@@ -68,6 +68,13 @@ type ReadStats struct {
 	// requested. They include the footer, page index and page header reads
 	// made on behalf of the request.
 	SourceReads, SourceBytes int64
+	// ReadAheadReads is the number of key pages a listing read ahead
+	// (List.ReadAhead), each in one read counted in SourceReads and
+	// SourceBytes; ReadAheadUnused and ReadAheadUnusedBytes are the pages
+	// of them, and their bytes, that it did not use: wrong predictions,
+	// pages past where the listing stopped, and reads that failed (the
+	// page is then read again).
+	ReadAheadReads, ReadAheadUnused, ReadAheadUnusedBytes int64
 }
 
 // resetStats zeroes st for a new request, or returns a throwaway one when
@@ -100,5 +107,8 @@ func (st ReadStats) minus(o ReadStats) ReadStats {
 		GroupsSkipped:         st.GroupsSkipped - o.GroupsSkipped,
 		SourceReads:           st.SourceReads - o.SourceReads,
 		SourceBytes:           st.SourceBytes - o.SourceBytes,
+		ReadAheadReads:        st.ReadAheadReads - o.ReadAheadReads,
+		ReadAheadUnused:       st.ReadAheadUnused - o.ReadAheadUnused,
+		ReadAheadUnusedBytes:  st.ReadAheadUnusedBytes - o.ReadAheadUnusedBytes,
 	}
 }

@@ -120,7 +120,7 @@ type readerOnly struct{ io.ReaderAt }
 func inspect(r io.ReaderAt, size int64) (*reader, Footer, error) {
 	ctx := context.Background()
 	lim := Limits{}.withDefaults()
-	footer, err := readFooter(ctx, "", r, size, &lim, nil)
+	footer, err := readFooter(ctx, "", r, size, &lim, nil, 0)
 	if err != nil {
 		return nil, Footer{}, err
 	}

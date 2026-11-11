@@ -272,7 +272,9 @@ func TestOpenReads(t *testing.T) {
 	if lazy != 1 {
 		t.Fatalf("a lazy open of 4 parts made %d reads, want the manifest's one", lazy)
 	}
-	if eager < lazy+4*3+20*3 {
+	// A part of up to 64 KiB has its footer read in one read with its
+	// trailer and head (readFooter), a larger one in two.
+	if eager < lazy+4*1+20*3 {
 		t.Fatalf("Verify made %d reads, the open %d: it did not read every footer and row group", eager, lazy)
 	}
 	r1, err1 := d1.Range(ctx, Range{Start: []byte(keys[1234]), Limit: 50})

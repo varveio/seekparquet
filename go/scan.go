@@ -46,6 +46,9 @@ type scan struct {
 	keyScratch *pageScratch
 	groupOwned []byte
 	retire     func(*scan) // keyReuse.retire
+	// ahead, when set, is a listing's read-ahead of key pages, given to
+	// every walker the scan opens (readAhead).
+	ahead *readAhead
 }
 
 func (r *reader) newScan(ctx context.Context, end []byte, st *ReadStats) *scan {
@@ -192,8 +195,12 @@ func (s *scan) syntheticPages() error {
 // keyScratch when the scan has it.
 func (s *scan) keyPages(g groupRef) (*keyPages, error) {
 	kp, err := s.r.keyPages(s.ctx, g, &s.log, s.stats)
-	if err != nil || s.keyScratch == nil {
+	if err != nil {
 		return kp, err
+	}
+	kp.chunk.ahead = s.ahead
+	if s.keyScratch == nil {
+		return kp, nil
 	}
 	kp.chunk.scratch, kp.reuse = s.keyScratch, s.keepGroupKey
 	return kp, nil

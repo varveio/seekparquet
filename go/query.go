@@ -172,6 +172,28 @@ type List struct {
 	Columns []string
 	// Stats receives the request's read statistics, as Range.Stats.
 	Stats *ReadStats
+	// ReadAhead, when positive, is the number of key pages the listing may
+	// read ahead concurrently (at most 64): within the row group it is
+	// in, it predicts from the key page index the pages it will decode
+	// next, after each common prefix at the prefix's successor, and reads
+	// them in the background, so that a listing that skips from prefix to
+	// prefix waits for about one read per ReadAhead pages instead of one
+	// per page. Memory: the request holds at most ReadAhead times 1 MiB of
+	// pages read ahead and not yet used, and at most 4 times ReadAhead
+	// pages, until the scan uses or passes them or the key scan ends. Pages
+	// read ahead are checked as any page read is, and the entries are the
+	// same with or without it. A page predicted wrongly is read and
+	// transferred for nothing, and held until the scan passes it or the
+	// key scan ends (ReadStats.ReadAheadUnused counts such reads). Each
+	// read runs in its own goroutine, ended and waited for when the key
+	// scan ends, before the values are projected and before List returns;
+	// a panic of the Source's ReadAt in one is treated as a failed read
+	// ahead. It pays where a read waits on a round trip (an object store),
+	// not on a local file. Zero, the default, reads no page ahead; a
+	// negative value is an invalid request. A listing with delimiter '/'
+	// reads no page ahead when a list index (Dataset.BuildListIndex) is
+	// built, whether or not the index serves a given row group.
+	ReadAhead int
 }
 
 // Entry is one listing entry: exactly one of CommonPrefix and Row is set.
@@ -295,6 +317,9 @@ func (r *reader) readRange(ctx context.Context, rng Range, st *ReadStats) (_ []R
 // readList returns the entries of req; see Dataset.List.
 func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Entry, err error) {
 	st = resetStats(st)
+	if req.ReadAhead < 0 {
+		return nil, invalidRequest("read-ahead %d is negative", req.ReadAhead)
+	}
 	ctx, done, err := r.request(ctx, req.Cursor, true, req.Limit, req.Columns)
 	if err != nil {
 		return nil, err
@@ -322,6 +347,17 @@ func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Ent
 		return nil, nil
 	}
 	s := r.newScan(ctx, end, st)
+	ahead := req.ReadAhead
+	if ahead == 0 {
+		ahead = testListReadAhead
+	}
+	// With a list index built, a '/' listing runs without a read-ahead,
+	// even for a row group the index declines: the index answers its
+	// skips without decoding the pages a read-ahead would predict.
+	if s.listIndex == nil || len(s.listIndex.groups) == 0 || req.Delimiter != '/' {
+		s.ahead = r.newReadAhead(ctx, ahead)
+		defer s.ahead.close(st)
+	}
 	var l listing
 	if req.Cursor != nil && req.Cursor.Key != nil {
 		err = s.start(from, false, req.Cursor)
@@ -344,6 +380,7 @@ func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Ent
 			if !ok || len(l.out) == req.Limit {
 				break
 			}
+			s.readAhead(&req, req.Limit-len(l.out))
 			st.PrefixSkips++
 			if handled, err := s.skipList(prefix, req.Delimiter); err != nil {
 				return nil, err
@@ -359,10 +396,15 @@ func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Ent
 		if len(l.out) == req.Limit {
 			break
 		}
+		s.readAhead(&req, req.Limit-len(l.out))
 		if err := s.next(); err != nil {
 			return nil, err
 		}
 	}
+	// The key scan is over, and the projection reads no key page ahead
+	// (chunk.ahead is the key scan's): end the reads ahead now. The deferred
+	// close is the safety net for the returns above.
+	s.ahead.close(st)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
