@@ -5,10 +5,15 @@ package seekparquet
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"os"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/varveio/seekparquet/go/internal/testutil"
 )
@@ -219,5 +224,169 @@ func TestListReadAheadListIndex(t *testing.T) {
 	}
 	if counts[1] != counts[0] || counts[0].ListIndexSkips == 0 {
 		t.Fatalf("with the index: ReadAhead 8 %+v, without %+v", counts[1], counts[0])
+	}
+}
+
+// TestListReadAheadManyPages: a listing over one row group of about 30,000
+// key pages (60,000 keys, 16-byte pages) costs no more with read-ahead than
+// without: the read-ahead's bookkeeping does not grow with the pages it
+// has been through. The entries, reads and bytes are identical in both
+// modes (the pages here are all used: every key is its own entry).
+func TestListReadAheadManyPages(t *testing.T) {
+	noTestReadAhead(t)
+	keys := make([]string, 60000)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("k%08d", i)
+	}
+	dir := write(t, parts(testutil.Part{PageBytes: 16}, keys))
+	var took [2]time.Duration
+	var stats [2]ReadStats
+	var entries [2][]string
+	for mode, n := range []int{0, 64} {
+		d := open(t, dir, Options{})
+		// Warm the Dataset's caches (footer, indexes) so the comparison is the scan's.
+		_, err := d.List(ctx, List{Delimiter: '/', Limit: 1, ReadAhead: n})
+		must(t, err)
+		start := time.Now()
+		got, err := d.List(ctx, List{Delimiter: '/', Limit: 100000, ReadAhead: n, Stats: &stats[mode]})
+		took[mode] = time.Since(start)
+		must(t, err)
+		entries[mode] = entriesOf(got)
+	}
+	t.Logf("ReadAhead 0: %v, ReadAhead 64: %v; %+v", took[0], took[1], stats[1])
+	if len(entries[0]) != len(keys) || !slices.Equal(entries[0], entries[1]) {
+		t.Fatalf("%d and %d entries, want %d alike", len(entries[0]), len(entries[1]), len(keys))
+	}
+	if stats[1].ReadAheadReads == 0 {
+		t.Fatalf("nothing was read ahead: %+v", stats[1])
+	}
+	extra := stats[1]
+	extra.SourceReads -= extra.ReadAheadUnused
+	extra.SourceBytes -= extra.ReadAheadUnusedBytes
+	extra.ReadAheadReads, extra.ReadAheadUnused, extra.ReadAheadUnusedBytes = 0, 0, 0
+	if extra != stats[0] {
+		t.Fatalf("counts differ beyond the unused reads ahead:\n got %+v\nwant %+v", extra, stats[0])
+	}
+	if limit := 5*took[0] + time.Second; took[1] > limit {
+		t.Fatalf("ReadAhead 64 took %v, ReadAhead 0 %v (limit %v)", took[1], took[0], limit)
+	}
+}
+
+// TestListReadAheadByteFlips: whatever a single flipped byte does to a part
+// (its header, a page, an index, the footer), a listing reports the same
+// error and returns the same entries with read-ahead as without it: what
+// is read ahead is checked as any page read is, and a page read ahead and
+// never decoded changes nothing. Every stride-th offset of the part is
+// flipped.
+func TestListReadAheadByteFlips(t *testing.T) {
+	noTestReadAhead(t)
+	var keys []string
+	for i := range 400 {
+		keys = append(keys, fmt.Sprintf("d%02d/f%04d", i/8, i))
+	}
+	dir := write(t, parts(testutil.Part{PageBytes: 128}, keys))
+	file := partFile(dir, 0)
+	orig, err := os.ReadFile(file)
+	must(t, err)
+	stride := 11
+	var failed, ahead int
+	for off := 0; off < len(orig); off += stride {
+		flipped := bytes.Clone(orig)
+		flipped[off] ^= 0x55
+		must(t, os.WriteFile(file, flipped, 0o644))
+		var texts, got []string
+		for _, n := range []int{0, 3, 40} {
+			var st ReadStats
+			text, entries := "", ""
+			d, err := OpenDir(ctx, dir, Options{})
+			if err == nil {
+				var out []Entry
+				out, err = d.List(ctx, List{Delimiter: '/', Limit: 1000, ReadAhead: n, Stats: &st})
+				entries = fmt.Sprint(entriesOf(out))
+				_ = d.Close()
+			}
+			if err != nil {
+				text = err.Error()
+			}
+			texts, got = append(texts, text), append(got, entries)
+			ahead += int(st.ReadAheadReads)
+		}
+		if texts[0] != texts[1] || texts[0] != texts[2] || got[0] != got[1] || got[0] != got[2] {
+			t.Fatalf("byte %d flipped: errors %q, entries differ: %v", off, texts, got[0] != got[1] || got[0] != got[2])
+		}
+		if texts[0] != "" {
+			failed++
+		}
+	}
+	must(t, os.WriteFile(file, orig, 0o644))
+	t.Logf("%d bytes, every %dth flipped: %d refused or failed, %d pages read ahead", len(orig), stride, failed, ahead)
+	if failed == 0 || ahead == 0 {
+		t.Fatalf("%d flips failed, %d pages read ahead", failed, ahead)
+	}
+}
+
+// panicSource panics in ReadAt when it is called from a read-ahead's
+// goroutine, once per extent.
+type panicSource struct {
+	Source
+	mu     sync.Mutex
+	seen   map[int64]bool
+	panics int
+}
+
+type panicFile struct {
+	SourceFile
+	s *panicSource
+}
+
+func (s *panicSource) Open(ctx context.Context, path string) (SourceFile, error) {
+	f, err := s.Source.Open(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	return panicFile{f, s}, nil
+}
+
+func (f panicFile) ReadAt(p []byte, off int64) (int, error) {
+	var stack [4096]byte
+	if strings.Contains(string(stack[:runtime.Stack(stack[:], false)]), "(*readAhead).fetch") {
+		f.s.mu.Lock()
+		first := !f.s.seen[off]
+		f.s.seen[off] = true
+		if first {
+			f.s.panics++
+		}
+		f.s.mu.Unlock()
+		if first {
+			panic("the source failed")
+		}
+	}
+	return f.SourceFile.ReadAt(p, off)
+}
+
+// TestListReadAheadSourcePanic: a panic in the Source's ReadAt in a
+// read-ahead's goroutine does not end the process: the page is read again
+// by the scan, and the listing returns what it returns without read-ahead.
+func TestListReadAheadSourcePanic(t *testing.T) {
+	noTestReadAhead(t)
+	var keys []string
+	for i := range 600 {
+		keys = append(keys, fmt.Sprintf("d%02d/f%04d", i/6, i))
+	}
+	dir := write(t, parts(testutil.Part{PageBytes: 128}, keys))
+	src := &panicSource{Source: dirOf(t, dir), seen: map[int64]bool{}}
+	d, err := OpenDataset(ctx, src, Options{})
+	must(t, err)
+	t.Cleanup(func() { _ = d.Close() })
+	want, err := open(t, dir, Options{}).List(ctx, List{Delimiter: '/', Limit: 1000})
+	must(t, err)
+	var st ReadStats
+	got, err := d.List(ctx, List{Delimiter: '/', Limit: 1000, ReadAhead: 4, Stats: &st})
+	must(t, err)
+	if !slices.Equal(entriesOf(got), entriesOf(want)) {
+		t.Fatalf("entries %q, want %q", entriesOf(got), entriesOf(want))
+	}
+	if src.panics == 0 || st.ReadAheadReads < int64(src.panics) || st.ReadAheadUnused < int64(src.panics) {
+		t.Fatalf("%d panics, stats %+v", src.panics, st)
 	}
 }

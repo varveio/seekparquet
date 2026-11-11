@@ -287,11 +287,13 @@ it lands on, and the pages around a prefix's boundaries, still decode some of th
 **Key page read-ahead for listings.** Each of those resumes reads one key page, one after another: over an
 object store a listing of 100 common prefixes waits for about 100 round trips. `List.ReadAhead` (default 0,
 off) lets a listing predict, from the row group's key page index, the pages it will decode next and read up to
-that many of them concurrently, holding at most 1 MiB per slot of pages read and not yet used. The pages read
-ahead are checked as any page read is, and the entries do not change; a page predicted wrongly (shortened or
-overlapping page bounds) costs its read, counted in `ReadStats.ReadAheadUnused` and `ReadAheadUnusedBytes`. The
-prediction stays within the row group the listing is in, and a `/` listing the list index serves reads nothing
-ahead. With a 5 ms wait per read, a cold listing of 100 folders of 4,000 keys (1,024-row key pages) took 570 ms
+that many of them concurrently, holding at most 1 MiB per slot of pages read and not yet used (a request with
+`ReadAhead: 64` can hold 64 MiB). The pages read ahead are checked as any page read is, and the entries do not
+change; a page predicted wrongly (shortened or overlapping page bounds) is read and transferred for nothing and
+held until the scan passes it or the key scan ends, counted in `ReadStats.ReadAheadUnused` and
+`ReadAheadUnusedBytes`. The reads ahead end when the key scan does, before values are projected. The
+prediction stays within the row group the listing is in. With a list index built, a `/` listing reads nothing
+ahead, including a row group the index declines; other delimiters read ahead as usual. With a 5 ms wait per read, a cold listing of 100 folders of 4,000 keys (1,024-row key pages) took 570 ms
 without read-ahead, and 106 ms (`ReadAhead: 8`) or 71 ms (`ReadAhead: 16`) with it, for the same 105 reads. On
 a local file it saves nothing and costs a goroutine per read ahead: leave it off there.
 
