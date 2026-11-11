@@ -35,8 +35,9 @@ SEEKPARQUET_BENCH_PARTS=10,1000 GOMAXPROCS=2 go -C go test -run '^$' -bench '^Be
 The bounded default is 10 parts. Explicitly setting `SEEKPARQUET_BENCH_PARTS`
 allows 1 through 100000 parts, including the proposed 100000-part stress case.
 That case is optional: generation, disk space, manifest limits, memory and the
-per-process file-descriptor limit can prevent completion. Each open retains one
-file handle per part. An implementation limit failure is not a format refusal.
+per-process file-descriptor limit can prevent completion. Opening reads only the
+manifest; each part a read touches keeps one file handle until the dataset
+closes. An implementation limit failure is not a format refusal.
 Use a disposable environment sized for the chosen count and record its limits.
 
 Each part has 128 unique, sorted keys, 32 rows per row group, a 512-byte page
@@ -49,10 +50,13 @@ pages or a huge repeated-key group.
 
 `OpenDir` reports elapsed open plus close. `OpenCounted` separately measures
 `OpenDataset` plus close over the same directory source wrapped to count actual
-`SourceFile.ReadAt` calls and their requested buffer lengths (including manifest
-and footer reads). Queries exclude open, close and priming from timing and
-counters. Each cold query starts with a new dataset; each warm query first
-executes the identical query once on that dataset. Warm means reader caches,
+`SourceFile.ReadAt` calls and their requested buffer lengths. Opening reads the
+manifest and opens no part, so an open is one read whose size grows with the
+manifest. Queries exclude open, close and priming from timing and counters.
+Each cold query starts with a new dataset, so it includes the first touch of
+every part it routes to: opening the part and reading and checking its footer.
+Each warm query first executes the identical query once on that dataset, so
+the parts it needs are already open. Warm means reader caches,
 not guaranteed elimination of data-page reads. Generated data and earlier runs
 can already populate the operating-system cache, so neither open is a cold-disk
 measurement. Read counts are logical source calls, not physical disk operations,
@@ -62,24 +66,34 @@ keys but is not an independent interoperability qualification.
 
 ### Recorded smoke measurement
 
-A single-iteration run on 2026-11-08 used Linux amd64, AMD EPYC 9V74,
-Go 1.26.10, and `GOMAXPROCS=2`, in the managed workspace. No cache flush or
-resource isolation was performed. These numbers demonstrate execution and
-instrumentation; repeat with longer runs before drawing latency conclusions.
-The 100000-part case was not run.
+Both commands above were run on 2026-11-11 on Linux amd64, Intel(R) Xeon(R)
+Processor @ 2.10GHz (as `/proc/cpuinfo` names it), Go 1.27.4, and
+`GOMAXPROCS=2`, in a shared managed workspace. No cache flush or resource
+isolation was performed. The table is from the second command: each elapsed
+time is the median of its three `-count` runs of three iterations each. Read
+counts and requested bytes were the same in every run. These numbers
+demonstrate execution and instrumentation; repeat with longer runs before
+drawing latency conclusions. The 100000-part case was not run.
 
 | Operation | 10 parts elapsed (ms) | 1000 parts elapsed (ms) | 1000 parts ReadAt calls | 1000 parts requested bytes |
 | --- | ---: | ---: | ---: | ---: |
-| OpenDir + close | 1.556 | 237.750 | uninstrumented | uninstrumented |
-| Counted open + close | 0.691 | 138.601 | 4001 | 1782178 |
-| Cold point | 0.082 | 0.218 | 9 | 5249 |
-| Warm point | 0.014 | 0.117 | 3 | 1880 |
-| Cold range100 | 0.104 | 0.291 | 26 | 11552 |
-| Warm range100 | 0.070 | 0.095 | 18 | 10957 |
-| Cold delimiter | 0.117 | 5.473 | 300 | 168379 |
-| Warm delimiter | 0.136 | 2.436 | 300 | 168483 |
-| Cold late resume | 0.052 | 0.160 | 10 | 6785 |
-| Warm late resume | 0.031 | 0.075 | 4 | 3416 |
+| OpenDir + close | 0.124 | 7.350 | uninstrumented | uninstrumented |
+| Counted open + close | 0.089 | 7.606 | 1 | 230178 |
+| Cold point | 0.126 | 0.162 | 13 | 4142 |
+| Warm point | 0.018 | 0.021 | 2 | 974 |
+| Cold range100 | 0.205 | 0.439 | 30 | 8795 |
+| Warm range100 | 0.076 | 0.096 | 14 | 6577 |
+| Cold delimiter | 0.611 | 8.375 | 700 | 236494 |
+| Warm delimiter | 0.082 | 1.160 | 300 | 79094 |
+| Cold late resume | 0.122 | 0.289 | 14 | 4784 |
+| Warm late resume | 0.021 | 0.025 | 3 | 1616 |
+
+At 1000 parts the open is one read of the 230178-byte manifest and opens no
+part. Cold point, range and resume queries
+touch one part and make the same number of reads at 10 and 1000 parts. The
+delimiter listing returns one common prefix per part, so at 1000 parts it
+touches 100 parts and at 10 parts all ten; at both sizes it made 7 reads per
+touched part cold and 3 warm (70/30 at 10 parts, 700/300 at 1000).
 
 The open runs occur sequentially, so their times cannot isolate instrumentation
 overhead. This harness does not measure retained heap, retained footer/index
@@ -89,8 +103,8 @@ production capacity or remote-cost claims. No object-store adapter ships here;
 remote qualification remains open. A future adapter must preserve immutable
 object identity across reads/retries and propagate cancellation and storage
 errors. Measure actual requests and bytes at that adapter separately from
-reader counters. Lazy validation would require an explicit contract design;
-this benchmark does not relax CHECK-1.
+reader counters. The benchmark does not relax CHECK-1: every part a query
+touches is checked on that first touch.
 
 ## Decisions before stable adoption
 

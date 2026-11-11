@@ -70,6 +70,83 @@ merge rows; write to an object store; replace, extend or delete an existing data
 A producer that needs any of these, or its own part rotation and recovery, drives `write` and `local`
 itself, as swath does.
 
+## Writing a dataset with pyarrow
+
+pyarrow can write a valid part when it is told to. This is a recipe, checked with pyarrow 26.0.1 and
+`seekparquet validate --level full`, not a supported writer: nothing here checks keys as they are written,
+and a future pyarrow may change a default it relies on. The settings that matter:
+
+- the key is a non-nullable `binary` (or `string`) field, so Parquet writes it `REQUIRED` (KEY-1);
+- `write_page_index=True` writes the ColumnIndex and OffsetIndex (RG-2);
+- `sorting_columns=[pq.SortingColumn(i)]`, with `i` the key's column index, sets RG-1;
+- the five `seekparquet.*` stamps go in the Arrow schema metadata, which pyarrow copies into the footer
+  with its default `store_schema=True`. With `store_schema=False` it drops them, and validation reports
+  `stamp_mismatch`;
+- `data_page_size=1, write_batch_size=1024` ends a page every 1,024 rows (GEO-1).
+
+The rows must already be sorted by key in unsigned byte order, which is how Python compares `bytes`; pyarrow
+does not check it. The manifest is written by hand after the part. One part:
+
+```python
+import base64, json, os
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+root = "example-dataset"
+schema_id = "example/objects/v1"
+keys = sorted(f"logs/2026/{i:05d}.json".encode() for i in range(5000))  # bytes sort unsigned
+stamps = {
+    "seekparquet.format_version": "0",
+    "seekparquet.draft_revision": "1",
+    "seekparquet.schema_id": schema_id,
+    "seekparquet.key_column": "key",
+    "seekparquet.key_unique": "true",
+}
+schema = pa.schema(
+    [pa.field("key", pa.binary(), nullable=False), pa.field("size", pa.int64())],
+    metadata=stamps,
+)
+table = pa.table({"key": keys, "size": [len(k) * 100 for k in keys]}, schema=schema)
+
+part = "data/part-00000.parquet"
+os.makedirs(os.path.join(root, "data"))
+pq.write_table(
+    table,
+    os.path.join(root, part),
+    write_page_index=True,
+    sorting_columns=[pq.SortingColumn(0)],  # column 0 is the key
+    data_page_size=1,  # with write_batch_size, ends a page every 1,024 rows
+    write_batch_size=1024,
+)
+
+manifest = {
+    "format": "seekparquet",
+    "format_version": 0,
+    "draft_revision": 1,
+    "schema_id": schema_id,
+    "key": {"column": "key", "unique": True},
+    "parts": [{
+        "path": part,
+        "rows": table.num_rows,
+        "bytes": os.path.getsize(os.path.join(root, part)),
+        "min_key_base64": base64.b64encode(keys[0]).decode(),
+        "max_key_base64": base64.b64encode(keys[-1]).decode(),
+    }],
+}
+with open(os.path.join(root, "manifest.json"), "w") as f:
+    json.dump(manifest, f)
+```
+
+Then check it:
+
+```
+go -C go run ./cmd/seekparquet validate --level full /path/to/example-dataset
+```
+
+The example does not sync the part or install the manifest atomically; a producer does both (steps 4
+and 5). DuckDB 2.0's `COPY ... TO` cannot produce a valid part today: its key column is `OPTIONAL`, and it
+writes no page index and no `sorting_columns`, so validation reports `invalid_key_column`.
+
 ## Checking the output
 
 Open the dataset with `seekparquet.OpenDir` and call `Dataset.Verify` to check every part now, and
