@@ -102,12 +102,17 @@ final class Queries {
         KeyCursor cursor = new KeyCursor(parts, to, ctx);
         // With a list index built, a '/' listing reads no page ahead, even for a row group the index declines:
         // the index answers its skips without decoding the pages a read-ahead would predict.
+        List<ListEntry> out;
         try (ReadAhead ahead = delimiter == '/' && cursor.listIndexed() ? null : ReadAhead.open(ctx, q.readAhead())) {
             ctx.readAhead = ahead;
-            return list(q, cursor, ahead, from, exclusive, to, ctx);
+            out = list(q, cursor, ahead, from, exclusive, to, ctx);
         } finally {
             ctx.readAhead = null;
         }
+        // Closing the read-ahead waits for its reads: a cancellation, interrupt or close meanwhile ends the request.
+        // A failure thrown above is kept as it is (this check is not reached).
+        ctx.checkCancelled();
+        return out;
     }
 
     private static List<ListEntry> list(ListQuery q, KeyCursor cursor, ReadAhead ahead, byte[] from, boolean exclusive, byte[] to,

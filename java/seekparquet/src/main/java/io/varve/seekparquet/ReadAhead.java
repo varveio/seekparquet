@@ -45,6 +45,9 @@ final class ReadAhead implements AutoCloseable {
      */
     static volatile int testDefault;
 
+    /** When set, runs as a read-ahead begins to close, before it cancels its reads and waits for them. For tests. */
+    static volatile Runnable testClosing;
+
     /** When set, receives each read-ahead as it closes. For tests. */
     static volatile Consumer<ReadAhead> testClosed;
 
@@ -95,7 +98,11 @@ final class ReadAhead implements AutoCloseable {
         final Extent extent;
         final int group;
         final int page;
-        final CompletableFuture<Outcome> outcome = new CompletableFuture<>();
+        /**
+         * The read's outcome, completed by its thread; set to null when the page is retired, so that a page
+         * taken or dropped holds no bytes while it waits in the queue (only {@link #held} bytes stay reachable).
+         */
+        CompletableFuture<Outcome> outcome = new CompletableFuture<>();
         /** Taken or dropped: no longer pending, and counted. */
         boolean gone;
 
@@ -166,7 +173,9 @@ final class ReadAhead implements AutoCloseable {
         held += size;
         inFlight.incrementAndGet();
         try {
-            threads.execute(() -> read(e));
+            // The read's thread is given the extent and the future, not the page, which the request's thread retires.
+            CompletableFuture<Outcome> outcome = e.outcome;
+            threads.execute(() -> read(extent, outcome));
         } catch (RejectedExecutionException failure) {
             // No thread for it: the page is read when the cursor reaches it.
             inFlight.decrementAndGet();
@@ -176,13 +185,12 @@ final class ReadAhead implements AutoCloseable {
     }
 
     /** Runs on the read's own thread. Whatever the storage throws, the outcome is published, and the read counted as ended. */
-    private void read(Page e) {
+    private void read(Extent x, CompletableFuture<Outcome> outcome) {
         byte[] raw = null;
         boolean read = false;
         try {
             if (!scope.isCancelled()) {
                 read = true;
-                Extent x = e.extent;
                 ByteBuffer b = x.part.readAhead(x.offset, x.size, scope);
                 if (b != null && b.remaining() == x.size) {
                     raw = new byte[x.size];
@@ -195,7 +203,7 @@ final class ReadAhead implements AutoCloseable {
             raw = null;
         } finally {
             inFlight.decrementAndGet();
-            e.outcome.complete(new Outcome(raw, read));
+            outcome.complete(new Outcome(raw, read));
         }
     }
 
@@ -236,6 +244,8 @@ final class ReadAhead implements AutoCloseable {
         held -= e.extent.size;
         e.gone = true;
         Outcome o = e.outcome.getNow(null);
+        // Release the bytes now: the queue may keep the page until it reaches the front or is compacted.
+        e.outcome = null;
         if (o == null || !o.read) {
             return;
         }
@@ -280,6 +290,10 @@ final class ReadAhead implements AutoCloseable {
             return;
         }
         closed = true;
+        Runnable closing = testClosing;
+        if (closing != null) {
+            closing.run();
+        }
         try {
             scope.cancel();
         } catch (RuntimeException listener) {
@@ -315,6 +329,29 @@ final class ReadAhead implements AutoCloseable {
         if (hook != null) {
             hook.accept(this);
         }
+    }
+
+    /**
+     * {@return the bytes of pages read ahead that this read-ahead still references} For tests: at most
+     * {@link #held}, whatever the queue holds.
+     */
+    long retainedBytes() {
+        java.util.Set<Page> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        seen.addAll(queue);
+        seen.addAll(pending.values());
+        long bytes = 0;
+        for (Page e : seen) {
+            Outcome o = e.outcome == null ? null : e.outcome.getNow(null);
+            if (o != null && o.raw != null) {
+                bytes += o.raw.length;
+            }
+        }
+        return bytes;
+    }
+
+    /** {@return the bytes of the pages pending} For tests. */
+    long held() {
+        return held;
     }
 
     /** {@return the reads in flight} For tests: zero once closed. */

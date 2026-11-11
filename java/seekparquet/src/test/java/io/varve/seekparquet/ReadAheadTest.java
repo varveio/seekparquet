@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -51,6 +53,7 @@ class ReadAheadTest {
     void restoreDefaultReadAhead() {
         ReadAhead.testDefault = savedDefault;
         ReadAhead.testClosed = null;
+        ReadAhead.testClosing = null;
     }
 
     private static final String SEGMENTS = "crawl-data/CC-MAIN-2024-18/segments/";
@@ -104,14 +107,13 @@ class ReadAheadTest {
     }
 
     /**
-     * 60 folders of 400 keys in 100-row key pages, with a 10 ms wait per read: without read-ahead the
-     * listing makes its page reads one after another; with read-ahead they overlap, at most that many read
-     * ahead (and the listing's own read) at once, for the same entries, pages, reads and bytes. The test
-     * compares the two wall clocks with each other only, by a wide margin: about 65 waits one after another
-     * against about 65 / 8.
+     * 60 folders of 400 keys in 100-row key pages, with a 10 ms wait per read: the same entries, key pages,
+     * reads and bytes with read-ahead as without, never more reads at once than the read-ahead and the
+     * listing's own read. The wall-clock times are printed as an illustration only; nothing here asserts on
+     * time ({@link #readsAheadOverlapBeforeAnyIsReleased} shows the overlap with gates).
      */
     @Test
-    void aSlowSourceListsInFewerRoundTrips() throws IOException {
+    void aSlowSourceListsAlike() throws IOException {
         MemoryStorage storage = MemoryStorage.of(folders("latency", 60, 400, 100, 1));
         long delay = TimeUnit.MILLISECONDS.toNanos(10);
         ListQuery off = ListQuery.builder((byte) '/').prefix(Bytes.utf8(SEGMENTS)).limit(1000).build();
@@ -126,15 +128,63 @@ class ReadAheadTest {
             assertEquals(base.entries, on.entries, "ReadAhead " + n);
             assertEquals(base.stats.keyPagesDecoded(), on.stats.keyPagesDecoded(), "ReadAhead " + n + ": key pages decoded");
             assertTrue(on.maxInFlight <= n + 1, "ReadAhead " + n + ": " + on.maxInFlight + " reads at once");
-            assertTrue(on.maxInFlight > 1, "ReadAhead " + n + ": no reads overlapped");
             assertTrue(on.stats.readAheadReads() > 0, "ReadAhead " + n + ": nothing read ahead");
             // Exact page bounds predict every page: the pages read ahead and unused are at most those past the end.
             assertTrue(on.stats.readAheadUnused() <= n && on.reads <= base.reads + n,
                     "ReadAhead " + n + ": " + on.stats + " against " + base.stats);
-            if (n == 8) {
-                assertTrue(on.wallNanos * 2 < base.wallNanos, "ReadAhead 8 took " + on.wallNanos / 1e6 + " ms, without "
-                        + base.wallNanos / 1e6 + " ms");
+        }
+    }
+
+    /**
+     * With every read ahead held at a gate, a listing with read-ahead n has exactly n reads ahead in flight at
+     * once, and never more, before any of them is released; once they are, it returns the entries, pages and
+     * reads of the listing without read-ahead, the source's counts matching ReadStats.
+     */
+    @Test
+    void readsAheadOverlapBeforeAnyIsReleased() throws Exception {
+        MemoryStorage storage = MemoryStorage.of(folders("gated", 60, 400, 100, 1));
+        ListQuery off = ListQuery.builder((byte) '/').prefix(Bytes.utf8(SEGMENTS)).limit(1000).build();
+        Measured base = measure(storage.copy(), 0, off);
+        for (int n : new int[] {2, 8, 32}) {
+            MemoryStorage s = storage.copy();
+            try (Dataset d = Dataset.open(s)) {
+                s.reset();
+                CompletableFuture<Void> gate = new CompletableFuture<>();
+                s.readAheadGate = gate;
+                AtomicReference<ReadStats> stats = new AtomicReference<>();
+                AtomicReference<Object> result = new AtomicReference<>();
+                Thread lister = Thread.ofPlatform().start(() -> {
+                    try {
+                        result.set(d.list(off.toBuilder().readAhead(n).build(), Cancellation.none(), stats::set));
+                    } catch (Throwable e) {
+                        result.set(e);
+                    }
+                });
+                awaitAtLeast(s.readAheadInFlight, n, "ReadAhead " + n + ": reads ahead in flight");
+                assertEquals(n, s.readAheadInFlight.get(), "ReadAhead " + n);
+                assertEquals(n, s.maxReadAheadInFlight.get(), "ReadAhead " + n);
+                gate.complete(null);
+                lister.join(TimeUnit.SECONDS.toMillis(30));
+                assertFalse(lister.isAlive(), "ReadAhead " + n + ": the listing did not end");
+                assertEquals(base.entries, result.get(), "ReadAhead " + n);
+                ReadStats st = stats.get();
+                assertEquals(n, s.maxReadAheadInFlight.get(), "ReadAhead " + n + ": more reads ahead at once than its width");
+                assertTrue(s.maxInFlight.get() <= n + 1, "ReadAhead " + n + ": " + s.maxInFlight.get() + " reads at once");
+                assertEquals(0, s.inFlight.get());
+                assertEquals(s.reads.get(), st.sourceReads());
+                assertEquals(s.bytes.get(), st.sourceBytes());
+                assertEquals(base.stats, beyondUnused(st), "ReadAhead " + n + ": " + st);
+                assertTrue(st.readAheadReads() >= n && st.readAheadUnused() <= n, "ReadAhead " + n + ": " + st);
             }
+        }
+    }
+
+    /** Waits for {@code counter} to reach {@code n}; the deadline only guards against a hang. */
+    private static void awaitAtLeast(java.util.concurrent.atomic.AtomicInteger counter, int n, String what) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (counter.get() < n) {
+            assertTrue(System.nanoTime() < deadline, what + ": " + counter.get() + ", want " + n);
+            Thread.sleep(1);
         }
     }
 
@@ -501,6 +551,8 @@ class ReadAheadTest {
             want = d.list(ListQuery.builder((byte) '/').limit(1000).build());
         }
         Set<Long> seen = ConcurrentHashMap.newKeySet();
+        java.util.concurrent.atomic.AtomicInteger sequence = new java.util.concurrent.atomic.AtomicInteger();
+        Set<String> thrown = ConcurrentHashMap.newKeySet();
         Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
         List<Throwable> escaped = Collections.synchronizedList(new ArrayList<>());
         Thread.setDefaultUncaughtExceptionHandler((t, e) -> escaped.add(e));
@@ -508,11 +560,19 @@ class ReadAheadTest {
             MemoryStorage throwing = storage.copy();
             throwing.hook = (path, position, length) -> {
                 if (MemoryStorage.onReadAheadThread() && seen.add(position)) {
-                    switch (seen.size() % 4) {
-                        case 0 -> throw new IllegalStateException("the source failed");
-                        case 1 -> throw new IOException("the source failed");
-                        case 2 -> throw new AssertionError("the source failed");
-                        default -> throw new StackOverflowError("the source failed");
+                    // Each new extent takes the next case, so that every kind of throwable is thrown.
+                    Throwable t = switch (sequence.getAndIncrement() % 4) {
+                        case 0 -> new IllegalStateException("the source failed");
+                        case 1 -> new IOException("the source failed");
+                        case 2 -> new AssertionError("the source failed");
+                        default -> new StackOverflowError("the source failed");
+                    };
+                    thrown.add(t.getClass().getSimpleName());
+                    switch (t) {
+                        case IOException e -> throw e;
+                        case RuntimeException e -> throw e;
+                        case Error e -> throw e;
+                        default -> throw new AssertionError(t);
                     }
                 }
             };
@@ -521,7 +581,8 @@ class ReadAheadTest {
                 List<ListEntry> got = d.list(ListQuery.builder((byte) '/').limit(1000).readAhead(4).build(), Cancellation.none(), st::set);
                 assertEquals(want, got);
             }
-            assertTrue(seen.size() >= 4, "only " + seen.size() + " reads ahead threw");
+            assertEquals(Set.of("IllegalStateException", "IOException", "AssertionError", "StackOverflowError"), thrown,
+                    "the throwables thrown inside reads ahead");
             assertTrue(st.get().readAheadUnused() >= seen.size() && st.get().readAheadReads() >= seen.size(), st.get().toString());
             assertTrue(escaped.isEmpty(), "escaped a read-ahead thread: " + escaped);
         } finally {
@@ -679,5 +740,146 @@ class ReadAheadTest {
         assertEquals(1, closed.size());
         assertNotNull(closed.get(0));
         assertEquals(ListQuery.MAX_READ_AHEAD, closed.get(0).slots);
+    }
+
+    /**
+     * A page taken or dropped holds no bytes, however long the queue keeps it: with a distant prediction still
+     * in flight at the front of the queue, hundreds of nearer pages are read ahead and taken behind it, and
+     * the read-ahead references no page bytes but those of pages still pending.
+     */
+    @Test
+    void retiredPagesReleaseTheirBytes() throws IOException {
+        List<TestRow> rows = new ArrayList<>();
+        for (int i = 0; i < 2000; i++) {
+            rows.add(TestRow.of(String.format("k%06d", i), i));
+        }
+        Spec spec = new Spec();
+        spec.rowsPerPage = 4;
+        spec.sizeRowsPerPage = rows.size();
+        spec.rowsPerGroup = rows.size();
+        MemoryStorage storage = MemoryStorage.of(TestDatasets.write(tmp.resolve("retired"), spec, List.of(rows)));
+        byte[] raw = storage.parts.values().iterator().next();
+        try (Dataset d = Dataset.open(storage)) {
+            ReadContext ctx = new ReadContext(Cancellation.create(), Limits.DEFAULT);
+            PartFile part = d.parts().get(0, ctx);
+            int physical = part.groups[0];
+            KeyIndex index = part.keyIndex(physical, ctx);
+            int distant = index.pages() - 1;
+            CompletableFuture<Void> release = new CompletableFuture<>();
+            storage.hook = (path, position, length) -> {
+                if (MemoryStorage.onReadAheadThread() && position == index.offset[distant]) {
+                    release.join(); // held until the end, whatever the cancellation
+                }
+            };
+            ReadAhead ahead = ReadAhead.open(ctx, 8);
+            try {
+                assertTrue(ahead.predictFrom(part, physical, 0, false));
+                assertTrue(ahead.fetch(part, physical, distant, index.offset[distant], index.size[distant]));
+                long taken = 0;
+                for (int pg = 1; pg <= 300; pg++) {
+                    ahead.predictFrom(part, physical, pg - 1, false);
+                    assertTrue(ahead.fetch(part, physical, pg, index.offset[pg], index.size[pg]), "page " + pg);
+                    byte[] got = ahead.take(part, index.offset[pg], index.size[pg]);
+                    assertNotNull(got, "page " + pg);
+                    int from = (int) index.offset[pg];
+                    assertTrue(java.util.Arrays.equals(raw, from, from + index.size[pg], got, 0, got.length), "page " + pg);
+                    taken += got.length;
+                    assertEquals(0, ahead.retainedBytes(), "page " + pg + ": bytes retained by pages taken");
+                    assertEquals(index.size[distant], ahead.held(), "page " + pg);
+                }
+                assertTrue(taken > 0);
+            } finally {
+                release.complete(null);
+                ahead.close();
+            }
+            assertEquals(0, ahead.retainedBytes());
+            assertEquals(301, ctx.stats.readAheadReads);
+            assertEquals(1, ctx.stats.readAheadUnused);
+            assertEquals(index.size[distant], ctx.stats.readAheadUnusedBytes);
+        }
+    }
+
+    /**
+     * A listing that has its entries but is still waiting for reads ahead to end (they ignore cancellation)
+     * fails with {@link CancellationException} when, during that wait, its cancellation is cancelled, its
+     * thread interrupted (the interrupt stays set) or the dataset closed; with none of them it returns its
+     * entries. Latches order every step: no timing is involved.
+     */
+    @Test
+    void cancellationWhileReadsAheadEndFailsTheListing() throws Exception {
+        MemoryStorage storage = MemoryStorage.of(folders("shutdown", 20, 400, 100, 1));
+        for (String how : List.of("none", "cancel", "interrupt", "close")) {
+            MemoryStorage s = storage.copy();
+            Dataset d = Dataset.open(s);
+            CompletableFuture<Void> release = new CompletableFuture<>();
+            try {
+                // Rows (no key holds '|'), all on the first key page: the pages 1 to 8 read ahead after the first
+                // row are never used, and their reads are held until released, whatever the cancellation.
+                ListQuery query = ListQuery.builder((byte) '|').limit(50).readAhead(8).build();
+                d.list(query.toBuilder().readAhead(0).limit(1).build()); // opens the part and its index
+                s.hook = (path, position, length) -> {
+                    if (MemoryStorage.onReadAheadThread()) {
+                        release.join();
+                    }
+                };
+                CountDownLatch closing = new CountDownLatch(1);
+                ReadAhead.testClosing = () -> {
+                    // The listing has its entries and is closing its read-ahead: once a read ahead is outstanding,
+                    // let the test act while the read-ahead waits for it.
+                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+                    while (s.readAheadInFlight.get() == 0 && System.nanoTime() < deadline) {
+                        Thread.onSpinWait();
+                    }
+                    closing.countDown();
+                };
+                Cancellation cancel = Cancellation.create();
+                AtomicReference<Object> result = new AtomicReference<>();
+                AtomicReference<Boolean> interruptedAfter = new AtomicReference<>();
+                Thread lister = Thread.ofPlatform().start(() -> {
+                    try {
+                        result.set(d.list(query, cancel));
+                    } catch (Throwable e) {
+                        result.set(e);
+                    }
+                    interruptedAfter.set(Thread.currentThread().isInterrupted());
+                });
+                assertTrue(closing.await(30, TimeUnit.SECONDS), how + ": the read-ahead did not close");
+                assertTrue(s.readAheadInFlight.get() > 0, how + ": no read ahead was outstanding at close");
+                Thread closer = null;
+                switch (how) {
+                    case "cancel" -> cancel.cancel();
+                    case "interrupt" -> lister.interrupt();
+                    case "close" -> {
+                        closer = Thread.ofPlatform().start(d::close);
+                        // close() cancels the requests, then waits for this one: it is waiting once it is blocked.
+                        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+                        while (closer.getState() != Thread.State.WAITING) {
+                            assertTrue(System.nanoTime() < deadline, "close did not start waiting");
+                            Thread.sleep(1);
+                        }
+                    }
+                    default -> { }
+                }
+                release.complete(null);
+                lister.join(TimeUnit.SECONDS.toMillis(30));
+                assertFalse(lister.isAlive(), how + ": the listing did not end");
+                if (closer != null) {
+                    closer.join(TimeUnit.SECONDS.toMillis(30));
+                    assertFalse(closer.isAlive());
+                }
+                if (how.equals("none")) {
+                    assertInstanceOf(List.class, result.get(), how);
+                    assertEquals(50, ((List<?>) result.get()).size());
+                } else {
+                    assertInstanceOf(CancellationException.class, result.get(), how);
+                }
+                assertEquals(how.equals("interrupt"), interruptedAfter.get(), how + ": the interrupt flag");
+                assertEquals(0, s.inFlight.get(), how);
+            } finally {
+                ReadAhead.testClosing = null;
+                release.complete(null);
+                d.close();
+            }
+        }
     }
 }

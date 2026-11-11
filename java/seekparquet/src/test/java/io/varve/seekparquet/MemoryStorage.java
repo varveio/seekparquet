@@ -48,6 +48,9 @@ final class MemoryStorage implements DatasetStorage {
     final AtomicInteger inFlight = new AtomicInteger();
     final AtomicInteger maxInFlight = new AtomicInteger();
     final AtomicInteger readAheadInFlight = new AtomicInteger();
+    final AtomicInteger maxReadAheadInFlight = new AtomicInteger();
+    /** When set, a read made by a read-ahead thread waits until it is opened (or the read's cancellation is cancelled). */
+    volatile java.util.concurrent.CompletableFuture<Void> readAheadGate;
     /** The read-ahead threads that read. */
     final Set<Thread> readAheadThreads = ConcurrentHashMap.newKeySet();
 
@@ -117,12 +120,16 @@ final class MemoryStorage implements DatasetStorage {
                 maxInFlight.accumulateAndGet(n, Math::max);
                 if (ahead) {
                     readAheadThreads.add(Thread.currentThread());
-                    readAheadInFlight.incrementAndGet();
+                    maxReadAheadInFlight.accumulateAndGet(readAheadInFlight.incrementAndGet(), Math::max);
                 }
                 try {
                     Hook h = hook;
                     if (h != null) {
                         h.before(path, position, length);
+                    }
+                    java.util.concurrent.CompletableFuture<Void> gate = readAheadGate;
+                    if (ahead && gate != null) {
+                        awaitGate(c, gate);
                     }
                     Long special = readAheadDelayNanos;
                     pause(c, ahead && special != null ? special : delayNanos);
@@ -152,6 +159,20 @@ final class MemoryStorage implements DatasetStorage {
             Thread.currentThread().interrupt();
             throw new java.io.InterruptedIOException("interrupted");
         }
+    }
+
+    /** Waits for {@code gate} to open, or {@code c} to be cancelled. */
+    private static void awaitGate(Cancellation c, java.util.concurrent.CompletableFuture<Void> gate) throws IOException {
+        var cancelled = new java.util.concurrent.CompletableFuture<Void>();
+        try (Cancellation.Registration r = c.onCancel(() -> cancelled.complete(null))) {
+            java.util.concurrent.CompletableFuture.anyOf(gate, cancelled).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new java.io.InterruptedIOException("interrupted");
+        } catch (java.util.concurrent.ExecutionException e) {
+            throw new IOException(e.getCause());
+        }
+        c.throwIfCancelled();
     }
 
     private static boolean awaitForever(CountDownLatch latch) throws InterruptedException {

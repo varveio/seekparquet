@@ -19,10 +19,12 @@ independent of the specification's draft revisions.
   `readAheadUnusedBytes` (the reads also count in `sourceReads` and `sourceBytes`); a page predicted wrongly is
   read for nothing. A read ahead that fails or throws, whatever it throws, is not used and the page is read
   again. The reads run under a cancellation linked to the request's, and are ended and waited for before the
-  listing returns, including when it fails, is cancelled or the dataset closes. A `/` listing reads nothing
+  listing returns, including when it fails, is cancelled or the dataset closes; a cancellation, interrupt or
+  close during that wait fails the listing. A page's bytes are released once it is taken or passed. A `/` listing reads nothing
   ahead while a list index is built; the prediction stays within a row group; `range` and the scans do not
-  read ahead. With a 10 ms wait per read, a cold listing of 60 folders (400 keys each, 100-row key pages)
-  took about 640 ms without read-ahead and about 115 ms with `readAhead(8)`, for the same reads.
+  read ahead. As an illustration (one run, not asserted by any test): with a simulated 10 ms wait per read, a
+  cold listing of 60 folders (400 keys each, 100-row key pages) took about 640 ms without read-ahead and about
+  115 ms with `readAhead(8)`, for the same reads.
   The existing `ListQuery` and `ReadStats` constructors remain, with no read-ahead.
 - Structured refusal locations, the Go reader's `RefusalError` fields: `RefusalException` gains `rowGroup()`
   (`OptionalInt`, the physical row group in the part's footer), `row()` (`OptionalLong`, 0-based within that row

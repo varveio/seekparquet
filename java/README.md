@@ -280,13 +280,17 @@ overlapping page bounds, RG-5, RG-6) is read and transferred for nothing and hel
 ends, counted in `ReadStats.readAheadUnused` and `readAheadUnusedBytes`. A read ahead that fails, or whose storage
 read throws anything, is not used: the page is read again when the listing reaches it. The reads ahead run under
 a cancellation linked to the request's, so cancelling it or closing the dataset ends them, and the listing waits
-for every one before it returns, including when it fails: none outlives the request. The prediction stays within
+for every one before it returns, including when it fails: none outlives the request. A cancellation, interrupt or
+`close()` that comes while it waits fails the listing with `CancellationException`. A page's bytes are released
+as soon as the listing takes or passes it. The prediction stays within
 the row group the listing is in; `range` and the scans do not read ahead. With a list index built, a `/` listing
 reads nothing ahead, including in a row group the index declines; other delimiters read ahead as usual.
 
-With a 10 ms wait per read, a cold listing of 60 folders of 400 keys (100-row key pages) took about 640 ms
-without read-ahead, 345 ms with `readAhead(2)`, 115 ms with `readAhead(8)` and 52 ms with `readAhead(32)`, for the
-same reads (`ReadAheadTest`). On a local file it saves nothing and costs a virtual thread per page read ahead:
+As an illustration only (one run on one machine, printed by `ReadAheadTest` and not asserted): with a simulated
+10 ms wait per read, a cold listing of 60 folders of 400 keys (100-row key pages) took about 640 ms without
+read-ahead, 345 ms with `readAhead(2)`, 115 ms with `readAhead(8)` and 52 ms with `readAhead(32)`, for the same
+reads. What the tests do assert is the overlap itself: with reads held at a gate, `readAhead(n)` has exactly `n`
+reads ahead in flight before any is released, and never more. On a local file it saves nothing and costs a virtual thread per page read ahead:
 leave it off there.
 
 ### Parity with the Go reader
