@@ -66,6 +66,28 @@ final class KeyCursor {
         return syntheticKey != null ? syntheticKey : keys[pos];
     }
 
+    /**
+     * {@return the keys of the current key page} The current key is at {@link #pagePosition()}. Valid after
+     * a seek or next that returned true, from a cursor that is not on a list-index anchor (only listings
+     * land on those). Key pages are decoded into arrays of their own, never reused.
+     */
+    byte[][] pageKeys() {
+        if (syntheticKey != null) {
+            throw new IllegalStateException("the cursor is on a list-index anchor");
+        }
+        return keys;
+    }
+
+    /** {@return the group offsets of the current key page's rows}, as {@link #pageKeys()} */
+    long[] pageOffsets() {
+        return offsets;
+    }
+
+    /** {@return the index of the current key in {@link #pageKeys()}} */
+    int pagePosition() {
+        return pos;
+    }
+
     /** The part of the current key. */
     PartFile partFile() {
         return pf;

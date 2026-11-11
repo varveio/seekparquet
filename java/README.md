@@ -133,6 +133,53 @@ try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 }
 ```
 
+### Batch scans
+
+`RangePlan.scanBatches(...)` and `Dataset.rangeBatches(query, ...)` hand the rows `scan` and `range` return to a
+callback as borrowed `Batch`es instead of `Row`s, read through primitive accessors without a `Row`, `Value` or
+`Bytes` object per row. `rangeBatches` takes a `RangeQuery` exactly as `range` does (bounds, prefix, cursor,
+columns and a limit, with its errors and limits) and plans nothing: it reads what `range` reads, a dictionary
+only for a page that uses it, and stops at the limit. `scanBatches` reads what `scan` reads. Each has the three
+overloads of `scan`: with a `Cancellation`, and with a `Consumer<ReadStats>` that receives the request's counts
+whether it succeeds or fails; when every callback returns normally, `rangeBatches` counts what the same `range`
+counts against the same caches.
+
+```java
+plan.scanBatches(cancel, stats -> log(stats), batch -> {
+    BatchColumn size = batch.column(0);                 // projection slot 0, in request order
+    for (int i = 0; i < batch.size(); i++) {
+        int n = batch.copyKey(i, keyBuffer, 0);         // or keyLength(i), compareKey(i, bytes), keyBuffer(i)
+        if (size.isAbsent()) {                          // the batch's part has no such column (COL-2)
+            absent(keyBuffer, n);
+        } else if (!size.isNull(i)) {
+            total += size.getLong(i);                   // getBoolean, getInt, getFloat(Bits), getDouble(Bits)
+        }
+    }
+});
+```
+
+`Batch` has `size()`, `columns()`, `offset(i)` (the row's offset in its group of equal keys), the key accessors
+and `column(c)`; a `BatchColumn` has `isAbsent()`, `type()` (the physical type in the batch's part), `isNull(i)`,
+a getter per physical type (floating-point values also as their exact bits), and for byte arrays `length(i)`,
+`copyBytes(i, dst, offset)` and `byteBuffer(i)`. A projected key column is a `BYTE_ARRAY` slot holding the keys;
+duplicate projections are slots of their own. Reading another type than the slot's, a null row or an absent slot
+throws `IllegalStateException`; an index outside the batch, `IndexOutOfBoundsException`.
+
+A batch is a positive run of consecutive rows that never crosses a row group, a key page, a page of any
+projected column, or a gap between a plan's ranges; batches may be smaller, and their size is not promised.
+**A batch, its columns, and the buffers `keyBuffer` and `byteBuffer` return are borrowed: read-only and valid
+only until the callback returns.** Using a batch or its column afterwards throws `IllegalStateException`; a
+buffer view kept past it may show bytes of a later page. `row(i)`, `continuation(i)`, `key(i)`,
+`BatchColumn.value(i)` and `BatchColumn.bytes(i)` make owning copies: the rows and continuations `scan` and
+`range` return, which may be kept. The `ByteBuffer` views and owning copies allocate.
+
+An exception the callback throws ends the request and propagates unchanged; batches already handed over stand,
+as they do before a read error or refusal. Cancellation is checked as `scan` and `range` check it, and also before
+every callback. The request holds the dataset open while the callback runs: `close()` from another thread
+cancels it and waits for the callback to return, and closing the dataset from inside the callback fails with
+`IllegalStateException`. Concurrent and nested requests have storage of their own. `scan` and `range` keep their
+own row paths; the batch paths return the same rows (tested over every conformance dataset).
+
 ### Typed columns
 
 `Dataset.columns(part)` returns one part's top-level columns, in schema order, from the footer the dataset
@@ -207,7 +254,7 @@ pages, build time, retained bytes and entries. Without the environment variable 
 
 ### Read statistics
 
-`range`, `list` and `RangePlan.scan` accept a `Consumer<ReadStats>` that receives the request's counts when
+`range`, `list`, `rangeBatches`, `RangePlan.scan` and `RangePlan.scanBatches` accept a `Consumer<ReadStats>` that receives the request's counts when
 it ends, whether it succeeds or fails: parts opened, key and value pages decoded, keys decoded, row-group key
 indexes taken and loaded, page index seeks, prefix skips, and the storage reads and bytes requested.
 `RangePlan.stats()` holds planning's. They describe this reader's access path, not the format.
@@ -223,6 +270,9 @@ indexes taken and loaded, page index seeks, prefix skips, and the storage reads 
 | `RangePlan.Scan(ctx, st, fn)` | `scan(cancellation, stats, action)` | `action` stops the scan by throwing. A closed dataset is `IllegalStateException`. Closing the dataset from inside `action` fails at once with `IllegalStateException`, where Go's `Close` from inside `fn` waits for ever: neither may close from inside a scan. |
 | `RangePlan.Stats()` | `stats()` | Java positions each range's ends with a cursor of its own, where Go moves one scan through every range and continues from its current row when it can: for ranges near each other, Java can count more key pages, keys and row-group openings for the same plan. Rows, counts and projected bytes do not differ. |
 | `RangePlan.Split(ctx, n)` | `split(n, cancellation)` | No shard is an empty list, not nil. |
+| `RangePlan.ScanBatches(ctx, st, fn)` | `scanBatches(cancellation, stats, action)` | Same rows, boundaries and lifetime; it reads what Java's `scan` reads. `Batch.Column(c)` returning Go `[]parquet.Value` is `Batch.column(c)`, a `BatchColumn` read by row through typed accessors; Go's `Key(i) []byte` is `copyKey`, `keyLength`, `compareKey` or `keyBuffer`, since Java hands out no array of its page storage: key arrays and dictionary entries are shared with owning results and the dataset's caches. Go's accessors panic on a bad index and a retained batch is undefined; Java throws `IndexOutOfBoundsException`, and `IllegalStateException` for a batch used after its callback. A null action is `NullPointerException`. |
+| `Dataset.RangeBatches(ctx, rng, fn)` | `rangeBatches(query, cancellation, stats, action)` | As `scanBatches`. Go's nil `fn` is `ErrInvalidRequest`. |
+| `Batch.Row(i)`, `Batch.Cursor(i)` | `row(i)`, `continuation(i)` | |
 | `Dataset.Columns(ctx, i)` | `columns(i, cancellation)` | An index outside the parts is `IndexOutOfBoundsException`; `Column.parts()` is 1. |
 | `Column{Logical *format.LogicalType}` | `Column.logicalType()`: `Optional<LogicalType>` | `LogicalType` is a sealed interface of records, so the API does not expose parquet-java's Thrift classes. |
 | `Limits.OffsetIndexMemory` | `Limits.maxOffsetIndexMemoryBytes()`, `withMaxOffsetIndexMemoryBytes(bytes)` | Same default (256 MiB), charge (32 bytes per page plus 64 per chunk) and fallback past it. Go's zero means the default; Java's limits must be positive. |
@@ -261,7 +311,9 @@ Existing range, list and scan results own their keys and binary values. Key page
 always decode without scratch; their arrays are permanent and may be shared by results and caches.
 Dictionary binary entries are also immutable and shared by returned values. The result boundary copies
 binary values from reusable plain/delta arenas before those buffers can change. Rows, values, read-only
-byte views and continuations can be retained after later reads or after the dataset closes. There is no borrowed public result API.
+byte views and continuations can be retained after later reads or after the dataset closes. Batch scans
+(`scanBatches`, `rangeBatches`) are the borrowed result API: their batches read the request's page storage
+directly, and only their owning copies outlive the callback.
 Storage reads still use the `PartSource` buffer contract; this optimization does not remove source
 buffer allocations or Parquet header/decoder allocations.
 
@@ -320,7 +372,7 @@ public API never returns or accepts `null`; optional values are `Optional`.
 
 `Dataset` is safe for concurrent requests from many threads. Footers and checked page indexes are
 shared and immutable once loaded; concurrent first touches of a part wait for one check. Each request decodes its own pages. Queries, results, `Bytes`,
-`Manifest` and `Value`s are immutable. `Cancellation` is thread-safe. Query builders are not.
+`Manifest` and `Value`s are immutable; a `Batch` is borrowed by its callback (see [Batch scans](#batch-scans)). `Cancellation` is thread-safe. Query builders are not.
 
 ## Storage
 

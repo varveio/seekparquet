@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /** The query algorithms of spec §6, over a {@link KeyCursor}. */
 final class Queries {
@@ -50,6 +51,23 @@ final class Queries {
             ok = cursor.next();
         }
         return Collections.unmodifiableList(rows);
+    }
+
+    /**
+     * The rows {@link #range} returns, handed to {@code action} as borrowed batches: positioned as a range
+     * read is, it stops at the limit without moving past it, and at the first key beyond the bounds.
+     */
+    static void rangeBatches(Parts parts, RangeQuery q, ReadContext ctx, Consumer<? super Batch> action) {
+        Bounds b = Bounds.of(q);
+        if (parts.size() == 0 || b.empty()) {
+            return;
+        }
+        KeyCursor cursor = new KeyCursor(parts, b.end(), ctx);
+        if (!b.position(cursor)) {
+            return;
+        }
+        byte[] prefix = q.prefix().unsafeArray();
+        new BatchScan(q.columns(), ctx, ctx.forValues()).walk(cursor, q.limit(), b.end(), prefix.length == 0 ? null : prefix, action);
     }
 
     /**

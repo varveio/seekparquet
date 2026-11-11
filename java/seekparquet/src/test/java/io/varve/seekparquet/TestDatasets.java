@@ -56,6 +56,9 @@ final class TestDatasets {
     /** What to write, and which faults to inject. */
     static final class Spec {
         int rowsPerPage = 2;
+        /** Rows per page of the {@code size} and {@code note} columns when positive, else {@code rowsPerPage}. */
+        int sizeRowsPerPage;
+        int noteRowsPerPage;
         int keyBoundBytes;
         int rowsPerGroup = 4;
         boolean noteColumn;
@@ -165,10 +168,12 @@ final class TestDatasets {
                     chunk.bytes.write(compressed);
                 }
                 long dataStart = chunkStart + chunk.bytes.size();
-                for (int r0 = 0; r0 < group.size(); r0 += spec.rowsPerPage) {
-                    List<TestRow> page = group.subList(r0, Math.min(group.size(), r0 + spec.rowsPerPage));
+                int perPage = c == 1 && spec.sizeRowsPerPage > 0 ? spec.sizeRowsPerPage
+                        : c == 2 && spec.noteRowsPerPage > 0 ? spec.noteRowsPerPage : spec.rowsPerPage;
+                for (int r0 = 0; r0 < group.size(); r0 += perPage) {
+                    List<TestRow> page = group.subList(r0, Math.min(group.size(), r0 + perPage));
                     long pageOffset = chunkStart + chunk.bytes.size();
-                    boolean dictionaryPage = dictionary && (!spec.mixedValuePages || (r0 / spec.rowsPerPage) % 2 == 0);
+                    boolean dictionaryPage = dictionary && (!spec.mixedValuePages || (r0 / perPage) % 2 == 0);
                     byte[] body = dictionaryPage ? (c == 1 ? dictionaryBody(page.size()) : dictionaryNotes(page, entries)) : pageBody(c, page);
                     byte[] compressed = compress(body, codec);
                     PageHeader header = new PageHeader(PageType.DATA_PAGE, body.length, compressed.length);
@@ -200,7 +205,7 @@ final class TestDatasets {
                     }
                     if (c == 0 && spec.nonMonotoneKeyBounds) {
                         chunk.mins.set(chunk.mins.size() - 1, ByteBuffer.wrap(new byte[] {'a'}));
-                        if ((g0 / spec.rowsPerGroup + r0 / spec.rowsPerPage) % 2 == 0) {
+                        if ((g0 / spec.rowsPerGroup + r0 / perPage) % 2 == 0) {
                             chunk.maxs.set(chunk.maxs.size() - 1, ByteBuffer.wrap(new byte[] {'z'}));
                         }
                     }

@@ -125,6 +125,14 @@ final class ReadContext {
         return new ReadContext(cancellation, limits, stats, true);
     }
 
+    /**
+     * {@return a context of the same request for a batch scan's value columns}, as {@link
+     * #forPlannedValues()} but reading a dictionary only for a page that uses it, as a range read does.
+     */
+    ReadContext forValues() {
+        return new ReadContext(cancellation, limits, stats, false);
+    }
+
     void checkCancelled() {
         cancellation.throwIfCancelled();
     }
