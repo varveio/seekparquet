@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -163,12 +164,26 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	if err := checkMetadata(name, &meta); err != nil {
 		return nil, err
 	}
+	// parquet-go decodes the footer again from the bytes it reads. When the
+	// checked footer holds what the dependency would refuse or mishandle
+	// but the format ignores, it gets a re-encoded footer without it, at
+	// the same offset: everything before the footer is read as stored.
+	footer, end := raw, size
+	if forParquetGo(&meta) {
+		encoded, err := thrift.Marshal(new(thrift.CompactProtocol), &meta)
+		if err != nil {
+			return nil, bad("re-encode the footer: %v", err)
+		}
+		footer = binary.LittleEndian.AppendUint32(encoded, uint32(len(encoded)))
+		footer = append(footer, "PAR1"...)
+		end = size - 8 - n + int64(len(footer))
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			err = bad("parquet-go failed on the footer: %v", r)
 		}
 	}()
-	f, err := parquet.OpenFile(prefetched{at, size - 8 - n, raw}, size,
+	f, err := parquet.OpenFile(prefetched{at, size - 8 - n, footer}, end,
 		parquet.SkipPageIndex(true), parquet.SkipBloomFilters(true), parquet.ReadBufferSize(4096))
 	if err != nil {
 		return nil, footerError(ctx, name, err)
@@ -211,8 +226,8 @@ func checkMetadata(name string, meta *format.FileMetaData) error {
 			return bad(g, "the row count is invalid")
 		}
 		total += rg.NumRows
-		if len(rg.Columns) != leaves {
-			return bad(g, "the row group has %d column chunks for %d leaf columns", len(rg.Columns), leaves)
+		if len(rg.Columns) != len(leaves) {
+			return bad(g, "the row group has %d column chunks for %d leaf columns", len(rg.Columns), len(leaves))
 		}
 		for c := range rg.Columns {
 			chunk := &rg.Columns[c]
@@ -222,15 +237,21 @@ func checkMetadata(name string, meta *format.FileMetaData) error {
 			if chunk.CryptoMetadata.Value != nil || len(chunk.EncryptedColumnMetadata) > 0 {
 				return errEncrypted
 			}
-		}
-		for i, s := range rg.SortingColumns {
-			if s.ColumnIdx >= 0 && int(s.ColumnIdx) < leaves {
-				continue
+			// The chunk's metadata describes the leaf it holds: the reader
+			// decodes by the schema's type, so a chunk claiming another is
+			// not this column's data.
+			if md := &chunk.MetaData; md.Type != leaves[c].typ || !slices.Equal(md.PathInSchema, leaves[c].path) {
+				return bad(g, "column chunk %d (%s %s) does not describe its schema leaf (%s %s)", c,
+					strings.Join(md.PathInSchema, "."), md.Type, strings.Join(leaves[c].path, "."), leaves[c].typ)
 			}
-			if i == 0 && rg.NumRows > 0 {
+		}
+		// RG-1: only the first entry matters; an entry after it that names
+		// no column is ignored, and forParquetGo drops it before the
+		// dependency, which would index out of range, sees it.
+		if len(rg.SortingColumns) > 0 && rg.NumRows > 0 {
+			if s := rg.SortingColumns[0]; s.ColumnIdx < 0 || int(s.ColumnIdx) >= len(leaves) {
 				return refusePart(CodeMissingSortingColumns, name, g, "the first sorting column names no column (index %d)", s.ColumnIdx)
 			}
-			return bad(g, "sorting column %d names no column (index %d)", i, s.ColumnIdx)
 		}
 	}
 	if total != meta.NumRows {
@@ -239,16 +260,29 @@ func checkMetadata(name string, meta *format.FileMetaData) error {
 	return nil
 }
 
+// schemaLeaf is a leaf column of a checked schema: its path from the root
+// (the root's name excluded) and its physical type.
+type schemaLeaf struct {
+	path []string
+	typ  format.Type
+}
+
 // checkSchema checks that the schema elements form one tree in depth-first
 // order, the root's children consuming every element, and that every leaf
-// has a valid physical type and annotation. It returns the leaf count.
-func checkSchema(schema []format.SchemaElement) (int, error) {
+// has a valid physical type and annotation. It returns the leaves in order.
+func checkSchema(schema []format.SchemaElement) ([]schemaLeaf, error) {
 	if len(schema) == 0 {
-		return 0, errors.New("the schema is empty")
+		return nil, errors.New("the schema is empty")
 	}
-	pos, leaves := 1, 0
+	pos := 1
+	var leaves []schemaLeaf
+	var path []string
 	var walk func(se *format.SchemaElement, depth int) error
 	walk = func(se *format.SchemaElement, depth int) error {
+		if depth > 0 {
+			path = append(path, se.Name)
+			defer func() { path = path[:len(path)-1] }()
+		}
 		if depth > 64 {
 			return errors.New("the schema is nested too deeply")
 		}
@@ -260,7 +294,7 @@ func checkSchema(schema []format.SchemaElement) (int, error) {
 			return fmt.Errorf("column %q has a negative child count", se.Name)
 		}
 		if !isGroup || children == 0 {
-			leaves++
+			leaves = append(leaves, schemaLeaf{path: slices.Clone(path), typ: se.Type.V})
 			return checkLeaf(se)
 		}
 		if se.Type.Valid {
@@ -280,15 +314,57 @@ func checkSchema(schema []format.SchemaElement) (int, error) {
 	}
 	root := &schema[0]
 	if n, ok := root.NumChildren.Get(); !ok || n <= 0 {
-		return 0, errors.New("the schema root has no columns")
+		return nil, errors.New("the schema root has no columns")
 	}
 	if err := walk(root, 0); err != nil {
-		return 0, err
+		return nil, err
 	}
 	if pos != len(schema) {
-		return 0, fmt.Errorf("the schema has %d elements outside its tree", len(schema)-pos)
+		return nil, fmt.Errorf("the schema has %d elements outside its tree", len(schema)-pos)
 	}
 	return leaves, nil
+}
+
+// forParquetGo removes, from a checked footer, what the format lets a
+// reader ignore but parquet-go refuses or mishandles, and reports whether
+// it changed anything:
+//   - sorting_columns entries that name no column, other than a non-empty
+//     row group's first (refused by checkMetadata): RG-1 ignores entries
+//     after the first, and parquet-go would index out of range on them;
+//   - row-group ordinals that are set and differ from the row groups'
+//     positions: they serve encryption only (FILE-2), and parquet-go's
+//     OpenFile refuses them. They are cleared, which parquet-go reads as
+//     omitted.
+func forParquetGo(meta *format.FileMetaData) bool {
+	changed := false
+	leaves := 0
+	for _, se := range meta.Schema[1:] {
+		if n, ok := se.NumChildren.Get(); !ok || n == 0 {
+			leaves++
+		}
+	}
+	allZero, allPositions := true, true // what parquet-go accepts
+	for g := range meta.RowGroups {
+		rg := &meta.RowGroups[g]
+		kept := rg.SortingColumns[:0:0]
+		for i, s := range rg.SortingColumns {
+			if s.ColumnIdx >= 0 && int(s.ColumnIdx) < leaves || i == 0 && rg.NumRows > 0 {
+				kept = append(kept, s)
+			}
+		}
+		if len(kept) != len(rg.SortingColumns) {
+			rg.SortingColumns, changed = kept, true
+		}
+		allZero = allZero && rg.Ordinal == 0
+		allPositions = allPositions && int(rg.Ordinal) == g
+	}
+	if !allZero && !allPositions {
+		for g := range meta.RowGroups {
+			meta.RowGroups[g].Ordinal = 0
+		}
+		changed = true
+	}
+	return changed
 }
 
 // checkLeaf checks a leaf's physical type and that its annotation is one

@@ -377,9 +377,12 @@ func TestBufferReuseProjectionSlotAllocations(t *testing.T) {
 	}
 }
 
-// This end-to-end borrowed budget includes fresh per-call scratch, headers,
-// keys, dictionaries and indexes. It guards against reintroducing row copies;
-// it is not the proposed <0.01 allocations/row acceptance target.
+// This end-to-end borrowed budget includes fresh per-call scratch (key pages
+// included), headers, dictionaries and indexes. It guards against
+// reintroducing row copies or per-page key storage; it is not the proposed
+// <0.01 allocations/row acceptance target. Measured (Go 1.27.4,
+// linux/amd64): 0.16 allocations and 24 bytes per row, 0.19 and 101 under
+// -race; 0.24 and 113 before key pages were reused.
 func TestScanBatchesAllocationsPerRow(t *testing.T) {
 	const n = 32768
 	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: reuseRecords(n), GroupRows: 4096, PageBytes: 4096, Compression: parquet.Compression(&zstd.Codec{})}}}), Options{})
@@ -407,7 +410,7 @@ func TestScanBatchesAllocationsPerRow(t *testing.T) {
 	bytes := float64(after.TotalAlloc-before.TotalAlloc) / float64(runs*n)
 	t.Logf("whole borrowed ScanBatches: %.4f allocations/row, %.2f bytes/row", allocations, bytes)
 	// Race builds discard pool entries; keep headroom for that measured churn.
-	if allocations > 0.35 || bytes > 400 {
+	if allocations > 0.25 || bytes > 150 {
 		t.Fatalf("borrowed allocation budget exceeded: %.4f allocations/row, %.2f bytes/row", allocations, bytes)
 	}
 }

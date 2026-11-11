@@ -357,6 +357,36 @@ func (d *Dataset) Range(ctx context.Context, rng Range) ([]Row, error) {
 	return d.r.readRange(ctx, rng, rng.Stats)
 }
 
+// RangeBatches visits rng's rows in order, in serial callbacks: the rows
+// Range returns, as borrowed batches. Bounds, Cursor, Columns and a positive
+// Limit mean exactly what they mean to Range, and its errors are Range's; a
+// nil fn is ErrInvalidRequest too. It opens the projected chunks of each row
+// group as it reaches it, with no plan: it does not position at the upper
+// bound or read the OffsetIndexes of the rest of the range first, and, as
+// Range, reads a dictionary only for a page that uses it. It stops at Limit
+// without advancing to the next row. Decoding and checking still cover the
+// whole pages holding the rows it returns.
+//
+// Batch documents the boundaries (never crossing a row group, a key page or
+// a projected page); the last batch ends at the limit or the upper bound.
+// The batch, its keys, slices and bytes are read-only and borrowed until fn
+// returns; Batch.Row and Batch.Cursor make owning copies, the rows and
+// cursors Range would return. A range with no rows calls no fn. rng.Stats is
+// reset on entry and records the reads made, including on error; do not
+// share it between concurrent calls.
+//
+// An error fn returns stops the scan and is returned unchanged, unless Close
+// ended the scan, when ErrClosed wraps it as it wraps every request's error.
+// Read errors and refusals end the scan; batches already handed over stand.
+// Cancellation is checked as Range checks it, before each part, key page and
+// value page read, and also before every callback; a scan that reaches its
+// limit or its end returns nil. Close cancels the scan and waits for fn to
+// return: fn must not call Close, nor wait for a goroutine that does.
+// Concurrent and reentrant calls have independent scratch.
+func (d *Dataset) RangeBatches(ctx context.Context, rng Range, fn func(*Batch) error) error {
+	return d.r.rangeBatches(ctx, rng, keyReuse{}, fn)
+}
+
 // List returns the entries of req. After a common prefix it continues at
 // the prefix's successor through the routing index and the page index
 // instead of decoding the keys under it, and a row group whose first key

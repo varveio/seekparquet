@@ -325,27 +325,27 @@ func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndex
 		log.spans = log.spans[:1]
 		pages++
 		if pg == 0 {
-			g.base = bytes.Clone(k.values[0].ByteArray())
+			g.base = bytes.Clone(k.page.key(0))
 		}
-		g.last = bytes.Clone(k.values[len(k.values)-1].ByteArray())
+		g.last = bytes.Clone(k.page.key(k.page.len() - 1))
 		changes := 0
 		prev := previous
-		for _, v := range k.values {
-			dir := directory(v.ByteArray())
+		for j := range k.page.len() {
+			dir := directory(k.page.key(j))
 			if prev != nil && !bytes.Equal(prev, dir) {
 				changes++
 			}
 			prev = dir
 		}
 		if changes > opt.MaxChangesPerPage {
-			g.add(meta.first, k.values[0].ByteArray())
+			g.add(meta.first, k.page.key(0))
 			g.runs[len(g.runs)-1].size = ^g.runs[len(g.runs)-1].size
 			g.runs[len(g.runs)-1].denseThrough++
 			g.dense = true
 			denseBefore = true
 		} else {
-			for j, v := range k.values {
-				key := v.ByteArray()
+			for j := range k.page.len() {
+				key := k.page.key(j)
 				dir := directory(key)
 				if pg == 0 && j == 0 || denseBefore && j == 0 || !bytes.Equal(previous, dir) {
 					g.add(meta.first+int64(j), key)
@@ -354,7 +354,7 @@ func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndex
 			}
 			denseBefore = false
 		}
-		previous = bytes.Clone(directory(k.values[len(k.values)-1].ByteArray()))
+		previous = bytes.Clone(directory(k.page.key(k.page.len() - 1)))
 		// The candidate cannot be admitted. Bound temporary storage too; the
 		// caller treats this as an over-budget candidate, not a failed group.
 		// A flat run retains nothing if the entire group stays flat. Finish
@@ -370,7 +370,7 @@ func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndex
 		g.data = nil
 		return g, pages, nil
 	}
-	g.last = bytes.Clone(k.values[len(k.values)-1].ByteArray())
+	g.last = bytes.Clone(k.page.key(k.page.len() - 1))
 	g.base = bytes.Clone(g.base)
 	g.data = append(make([]byte, 0, len(g.data)), g.data...)
 	g.runs = append(make([]listBoundary, 0, len(g.runs)), g.runs...)

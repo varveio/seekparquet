@@ -6,10 +6,10 @@ package io.varve.seekparquet;
 import io.airlift.compress.lz4.Lz4Decompressor;
 import io.airlift.compress.snappy.SnappyDecompressor;
 import io.airlift.compress.zstd.ZstdDecompressor;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.zip.GZIPInputStream;
+import java.util.zip.CRC32;
+import java.util.zip.DataFormatException;
+import java.util.zip.Inflater;
 import org.apache.parquet.format.CompressionCodec;
 
 /**
@@ -88,18 +88,92 @@ final class Codecs {
             return out;
         } catch (DataException | UnsupportedFeatureException e) {
             throw e;
-        } catch (RuntimeException | IOException e) {
+        } catch (RuntimeException e) {
             throw new DataException("the page does not decompress (" + codec + ")", e);
         }
     }
 
-    private static int gunzip(byte[] in, int off, int len, byte[] out, int size) throws IOException, DataException {
-        try (GZIPInputStream z = new GZIPInputStream(new ByteArrayInputStream(in, off, len), 8192)) {
-            int n = z.readNBytes(out, 0, size);
-            if (z.read() >= 0) {
-                throw new DataException("the GZIP page decompresses to more than the " + size + " bytes it declares");
+    private static final int FHCRC = 2;
+    private static final int FEXTRA = 4;
+    private static final int FNAME = 8;
+    private static final int FCOMMENT = 16;
+
+    /**
+     * Decompresses a GZIP page, which must be exactly one gzip member (RFC 1952): its header, one
+     * deflate stream and its CRC-32 and size trailer, with no byte after it. Parquet writers write one
+     * member per page, and the Go reader refuses anything after it: a second member or other trailing
+     * bytes, which {@code GZIPInputStream} would read or ignore.
+     */
+    static int gunzip(byte[] in, int off, int len, byte[] out, int size) throws DataException {
+        int end = off + len;
+        int p = off;
+        if (len < 18 || (in[p] & 0xFF) != 0x1F || (in[p + 1] & 0xFF) != 0x8B || in[p + 2] != 8) {
+            throw new DataException("the GZIP page is not a gzip member");
+        }
+        int flags = in[p + 3] & 0xFF;
+        p += 10;
+        if ((flags & FEXTRA) != 0) {
+            if (end - p < 2) {
+                throw new DataException("a truncated gzip header");
+            }
+            p += 2 + ((in[p] & 0xFF) | (in[p + 1] & 0xFF) << 8);
+        }
+        for (int field : new int[] {FNAME, FCOMMENT}) {
+            if ((flags & field) != 0) {
+                while (p < end && in[p] != 0) {
+                    p++;
+                }
+                p++; // the terminating zero
+            }
+        }
+        if ((flags & FHCRC) != 0) {
+            if (p + 2 > end) {
+                throw new DataException("a truncated gzip header");
+            }
+            CRC32 crc = new CRC32();
+            crc.update(in, off, p - off);
+            if (((in[p] & 0xFF) | (in[p + 1] & 0xFF) << 8) != (int) (crc.getValue() & 0xFFFF)) {
+                throw new DataException("the gzip header fails its checksum");
+            }
+            p += 2;
+        }
+        if (p > end) {
+            throw new DataException("a truncated gzip header");
+        }
+        Inflater inflater = new Inflater(true);
+        try {
+            inflater.setInput(in, p, end - p);
+            int n = 0;
+            byte[] probe = new byte[1];
+            while (!inflater.finished()) {
+                int k = n < size ? inflater.inflate(out, n, size - n) : inflater.inflate(probe);
+                if (k > 0 && n == size) {
+                    throw new DataException("the GZIP page decompresses to more than the " + size + " bytes it declares");
+                }
+                n += k;
+                if (k == 0 && !inflater.finished() && (inflater.needsInput() || inflater.needsDictionary())) {
+                    throw new DataException("a truncated GZIP page");
+                }
+            }
+            int trailer = end - inflater.getRemaining();
+            if (inflater.getRemaining() != 8) {
+                throw new DataException(inflater.getRemaining() < 8 ? "a truncated gzip trailer"
+                        : "the GZIP page has " + (inflater.getRemaining() - 8) + " bytes after its gzip member");
+            }
+            CRC32 crc = new CRC32();
+            crc.update(out, 0, n);
+            if (le32(in, trailer) != (int) crc.getValue() || le32(in, trailer + 4) != n) {
+                throw new DataException("the GZIP page fails its CRC-32 or size check");
             }
             return n;
+        } catch (DataFormatException e) {
+            throw new DataException("the GZIP page does not inflate", e);
+        } finally {
+            inflater.end();
         }
+    }
+
+    private static int le32(byte[] b, int at) {
+        return (b[at] & 0xFF) | (b[at + 1] & 0xFF) << 8 | (b[at + 2] & 0xFF) << 16 | (b[at + 3] & 0xFF) << 24;
     }
 }
