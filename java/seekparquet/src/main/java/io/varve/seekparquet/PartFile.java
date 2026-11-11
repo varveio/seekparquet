@@ -109,12 +109,17 @@ final class PartFile implements AutoCloseable {
         this.valueIndexes = new AtomicReferenceArray<>(groupRows.length * schema.leaves.size());
     }
 
-    private RefusalException refuse(RefusalCode code, String detail) {
-        return refuse(code, name, detail);
+    /** A refusal of this part located in a physical row group. */
+    private RefusalException refuse(RefusalCode code, int physical, String detail) {
+        return new RefusalException(code, name, detail, physical, -1, null);
     }
 
     private static RefusalException refuse(RefusalCode code, String part, String detail) {
         return new RefusalException(code, part, detail);
+    }
+
+    private static RefusalException refuse(RefusalCode code, String part, int group, String detail) {
+        return new RefusalException(code, part, detail, group, -1, null);
     }
 
     // ------------------------------------------------------------------
@@ -171,11 +176,11 @@ final class PartFile implements AutoCloseable {
         for (int g = 0; g < rowGroups.size(); g++) {
             List<ColumnChunk> chunks = rowGroups.get(g).getColumns();
             if (chunks == null) {
-                throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has no column list");
+                throw refuse(RefusalCode.INVALID_FOOTER, name, g, "row group " + g + " has no column list");
             }
             for (ColumnChunk cc : chunks) {
                 if (cc.isSetFile_path()) {
-                    throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has a column chunk in another file (file_path "
+                    throw refuse(RefusalCode.INVALID_FOOTER, name, g, "row group " + g + " has a column chunk in another file (file_path "
                             + cc.getFile_path() + ")");
                 }
                 if (cc.isSetCrypto_metadata() || cc.isSetEncrypted_column_metadata()) {
@@ -197,7 +202,7 @@ final class PartFile implements AutoCloseable {
         for (int g = 0; g < rowGroups.size(); g++) {
             RowGroup rg = rowGroups.get(g);
             if (rg.getColumns().size() != leaves) {
-                throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has " + rg.getColumns().size()
+                throw refuse(RefusalCode.INVALID_FOOTER, name, g, "row group " + g + " has " + rg.getColumns().size()
                         + " column chunks for " + leaves + " leaf columns");
             }
             for (int c = 0; c < leaves; c++) {
@@ -205,7 +210,7 @@ final class PartFile implements AutoCloseable {
             }
             long rows = rg.getNum_rows();
             if (rows < 0 || total + rows < total) {
-                throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " declares " + rows + " rows");
+                throw refuse(RefusalCode.INVALID_FOOTER, name, g, "row group " + g + " declares " + rows + " rows");
             }
             total += rows;
             groupRows[g] = rows;
@@ -268,11 +273,11 @@ final class PartFile implements AutoCloseable {
             }
             List<SortingColumn> sorting = rowGroups.get(g).getSorting_columns();
             if (sorting == null || sorting.isEmpty()) {
-                throw refuse(RefusalCode.MISSING_SORTING_COLUMNS, name, "row group " + g + " declares no sorting columns");
+                throw refuse(RefusalCode.MISSING_SORTING_COLUMNS, name, g, "row group " + g + " declares no sorting columns");
             }
             SortingColumn first = sorting.get(0);
             if (first.getColumn_idx() != key.leaf() || first.isDescending()) {
-                throw refuse(RefusalCode.MISSING_SORTING_COLUMNS, name, "row group " + g + " is not sorted by key ascending first");
+                throw refuse(RefusalCode.MISSING_SORTING_COLUMNS, name, g, "row group " + g + " is not sorted by key ascending first");
             }
             groups[k++] = g;
         }
@@ -329,18 +334,18 @@ final class PartFile implements AutoCloseable {
     private static void checkChunk(ColumnChunk cc, SchemaElement leaf, List<String> path, long size, String name, int g) {
         ColumnMetaData md = cc.getMeta_data();
         if (md == null) {
-            throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has a column chunk without metadata");
+            throw refuse(RefusalCode.INVALID_FOOTER, name, g, "row group " + g + " has a column chunk without metadata");
         }
         if (!path.equals(md.getPath_in_schema()) || md.getNum_values() < 0 || md.getTotal_uncompressed_size() < 0) {
-            throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has inconsistent column metadata for " + path);
+            throw refuse(RefusalCode.INVALID_FOOTER, name, g, "row group " + g + " has inconsistent column metadata for " + path);
         }
         if (md.getType() != leaf.getType()) {
-            throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has a column chunk of type " + md.getType() + " for a "
+            throw refuse(RefusalCode.INVALID_FOOTER, name, g, "row group " + g + " has a column chunk of type " + md.getType() + " for a "
                     + leaf.getType() + " column " + leaf.getName());
         }
         long[] range = chunkRange(md);
         if (range == null || range[1] > size) {
-            throw refuse(RefusalCode.INVALID_FOOTER, name, "row group " + g + " has a column chunk outside the part (column " + leaf.getName() + ")");
+            throw refuse(RefusalCode.INVALID_FOOTER, name, g, "row group " + g + " has a column chunk outside the part (column " + leaf.getName() + ")");
         }
     }
 
@@ -473,14 +478,14 @@ final class PartFile implements AutoCloseable {
         if (!cc.isSetColumn_index_offset() || !cc.isSetColumn_index_length() || !cc.isSetOffset_index_offset() || !cc.isSetOffset_index_length()
                 || cc.getColumn_index_offset() == 0 || cc.getColumn_index_length() == 0 || cc.getOffset_index_offset() == 0
                 || cc.getOffset_index_length() == 0) {
-            throw refuse(RefusalCode.MISSING_PAGE_INDEX, where + "the key column lacks a ColumnIndex or an OffsetIndex");
+            throw refuse(RefusalCode.MISSING_PAGE_INDEX, physical, where + "the key column lacks a ColumnIndex or an OffsetIndex");
         }
         long ciOff = cc.getColumn_index_offset();
         long oiOff = cc.getOffset_index_offset();
         int ciLen = cc.getColumn_index_length();
         int oiLen = cc.getOffset_index_length();
         if (ciOff < 0 || ciLen < 0 || ciOff > size - ciLen || oiOff < 0 || oiLen < 0 || oiOff > size - oiLen) {
-            throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + "a key page index lies outside the part");
+            throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "a key page index lies outside the part");
         }
         ColumnMetaData md = cc.getMeta_data();
         Codecs.checkSupported(md.getCodec(), "part " + name);
@@ -491,17 +496,17 @@ final class PartFile implements AutoCloseable {
         try {
             ci = Thrift.columnIndex(raw[0]);
         } catch (DataException e) {
-            throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + "the key ColumnIndex does not parse: " + e.getMessage());
+            throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "the key ColumnIndex does not parse: " + e.getMessage());
         }
         try {
             oi = Thrift.offsetIndex(raw[1]);
         } catch (DataException e) {
-            throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + "the key OffsetIndex does not parse: " + e.getMessage());
+            throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "the key OffsetIndex does not parse: " + e.getMessage());
         }
         try {
             index = KeyIndex.check(ci, oi, groupRows[physical], range[0], range[1], utf8Key);
         } catch (DataException e) {
-            throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + e.getMessage());
+            throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + e.getMessage());
         }
         if (!retain) {
             ctx.stats.rowGroupsOpened++;
@@ -530,7 +535,7 @@ final class PartFile implements AutoCloseable {
         }
         ctx.enterGroup(ordinal, physical);
         byte[][] decoded = keyPage(physical, keyIndex(physical, ctx), 0, ctx);
-        ctx.checkKeyPage(this, physical, 0, decoded);
+        ctx.checkKeyPage(this, physical, 0, 0, decoded);
         return rememberFirst(physical, decoded[0]);
     }
 
@@ -588,42 +593,44 @@ final class PartFile implements AutoCloseable {
             header = h.value();
             headerLength = h.length();
         } catch (DataException e) {
-            throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + "its OffsetIndex entry does not locate a page header");
+            throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "its OffsetIndex entry does not locate a page header");
         }
         if (header.getType() != PageType.DATA_PAGE && header.getType() != PageType.DATA_PAGE_V2) {
-            throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + "its OffsetIndex entry locates a " + header.getType() + ", not a data page");
+            throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "its OffsetIndex entry locates a " + header.getType() + ", not a data page");
         }
         if (header.getCompressed_page_size() < 0 || (long) headerLength + header.getCompressed_page_size() != sz) {
-            throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + "its OffsetIndex entry does not locate exactly one page");
+            throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "its OffsetIndex entry does not locate exactly one page");
         }
         long rows;
         try {
             rows = PageDecoder.rowsOf(header);
         } catch (DataException e) {
-            throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + e.getMessage());
+            throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + e.getMessage());
         }
         if (rows != index.rows[page]) {
-            throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + "the page holds " + rows + " rows, its OffsetIndex entry " + index.rows[page]);
+            throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "the page holds " + rows + " rows, its OffsetIndex entry " + index.rows[page]);
         }
         ColumnPage decoded = decode(physical, keySpec, header, ByteBuffer.wrap(raw, headerLength, sz - headerLength), ctx, where);
         ctx.stats.keyPagesDecoded++;
         ctx.stats.keysDecoded += decoded.rows;
         if (decoded.rows != rows) {
-            throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + "the page holds " + decoded.rows + " keys, its OffsetIndex entry " + rows);
+            throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "the page holds " + decoded.rows + " keys, its OffsetIndex entry " + rows);
         }
         byte[][] keys = decoded.binaries;
         for (int i = 0; i < keys.length; i++) {
             byte[] key = keys[i];
             if (key.length == 0 || (utf8Key && !Utf8.isValid(key))) {
-                throw refuse(RefusalCode.INVALID_KEY, where + "row " + (index.firstRow[page] + i) + " holds an empty key or a string key that is not UTF-8");
+                throw new RefusalException(RefusalCode.INVALID_KEY, name, where + "row " + (index.firstRow[page] + i)
+                        + " holds an empty key or a string key that is not UTF-8", physical, index.firstRow[page] + i, null);
             }
             if (i > 0 && (Arrays.compareUnsigned(keys[i - 1], key) > 0
                     || (unique && Arrays.equals(keys[i - 1], key)))) {
-                throw refuse(RefusalCode.KEY_ORDER, where + "row " + (index.firstRow[page] + i) + " does not sort after the row before it");
+                throw new RefusalException(RefusalCode.KEY_ORDER, name, where + "row " + (index.firstRow[page] + i)
+                        + " does not sort after the row before it", physical, index.firstRow[page] + i, key);
             }
         }
         if (Arrays.compareUnsigned(keys[0], index.lo[page]) < 0 || Arrays.compareUnsigned(keys[keys.length - 1], index.hi[page]) > 0) {
-            throw refuse(RefusalCode.INVALID_PAGE_INDEX, where + "the page holds a key outside its ColumnIndex bounds");
+            throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "the page holds a key outside its ColumnIndex bounds");
         }
         return keys;
     }
@@ -650,7 +657,7 @@ final class PartFile implements AutoCloseable {
             return PageDecoder.decodeData(header, body, col, md.getCodec(), () -> dictionary(physical, col, ctx), ctx.limits,
                     "part " + name + " " + where, scratch(physical, col, ctx), ctx.codecs);
         } catch (DataException e) {
-            throw refuse(RefusalCode.INVALID_PARQUET, where + e.getMessage());
+            throw refuse(RefusalCode.INVALID_PARQUET, physical, where + e.getMessage());
         }
     }
 
@@ -771,7 +778,7 @@ final class PartFile implements AutoCloseable {
         int len = cc.getOffset_index_length();
         String where = "row group " + physical + " column " + schema.leaves.get(leaf).getName() + ": ";
         if (off <= 0 || len < 0 || off > size - len) {
-            throw refuse(RefusalCode.INVALID_PARQUET, where + "its OffsetIndex lies outside the part");
+            throw refuse(RefusalCode.INVALID_PARQUET, physical, where + "its OffsetIndex lies outside the part");
         }
         if (len > ctx.limits.maxIndexBytes()) {
             throw new LimitExceededException("maxIndexBytes", len, ctx.limits.maxIndexBytes(), "part " + name);
@@ -782,7 +789,7 @@ final class PartFile implements AutoCloseable {
         try {
             index = ValueIndex.check(Thrift.offsetIndex(raw), groupRows[physical], range[0], range[1]);
         } catch (DataException e) {
-            throw refuse(RefusalCode.INVALID_PARQUET, where + "its OffsetIndex is invalid: " + e.getMessage());
+            throw refuse(RefusalCode.INVALID_PARQUET, physical, where + "its OffsetIndex is invalid: " + e.getMessage());
         }
         offsetIndexMemory.keep(valueIndexes, slot, index);
         return Optional.of(index);
@@ -846,7 +853,7 @@ final class PartFile implements AutoCloseable {
                 try {
                     dictionary(physical, col, ctx);
                 } catch (DataException e) {
-                    throw refuse(RefusalCode.INVALID_PARQUET, where + e.getMessage());
+                    throw refuse(RefusalCode.INVALID_PARQUET, physical, where + e.getMessage());
                 }
             }
             int p = vi.pageOf(row);
@@ -860,16 +867,16 @@ final class PartFile implements AutoCloseable {
                 header = h.value();
                 headerLength = h.length();
             } catch (DataException e) {
-                throw refuse(RefusalCode.INVALID_PARQUET, where + "its OffsetIndex entry " + p + " does not locate a page header");
+                throw refuse(RefusalCode.INVALID_PARQUET, physical, where + "its OffsetIndex entry " + p + " does not locate a page header");
             }
             if ((long) headerLength + header.getCompressed_page_size() != sz) {
-                throw refuse(RefusalCode.INVALID_PARQUET, where + "its OffsetIndex entry " + p + " does not locate exactly one page");
+                throw refuse(RefusalCode.INVALID_PARQUET, physical, where + "its OffsetIndex entry " + p + " does not locate exactly one page");
             }
             long want = vi.rowsOf(p, groupRowCount);
             ColumnPage decoded = decode(physical, col, header, ByteBuffer.wrap(raw, headerLength, sz - headerLength), ctx, where);
             ctx.stats.valuePagesDecoded++;
             if (decoded.rows != want) {
-                throw refuse(RefusalCode.INVALID_PARQUET, where + "page " + p + " holds " + decoded.rows + " values for " + want + " rows");
+                throw refuse(RefusalCode.INVALID_PARQUET, physical, where + "page " + p + " holds " + decoded.rows + " values for " + want + " rows");
             }
             return new ReadContext.DecodedPage(vi.firstRow[p], decoded);
         }
@@ -914,7 +921,7 @@ final class PartFile implements AutoCloseable {
                 at = next;
             }
         } catch (DataException e) {
-            throw refuse(RefusalCode.INVALID_PARQUET, where + e.getMessage());
+            throw refuse(RefusalCode.INVALID_PARQUET, physical, where + e.getMessage());
         }
     }
 

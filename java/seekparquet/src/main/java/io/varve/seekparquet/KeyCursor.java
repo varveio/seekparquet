@@ -421,7 +421,7 @@ final class KeyCursor {
         countSeek(s, pg);
         ctx.enterGroup(part, pf.groups[s]);
         byte[][] decoded = pf.keyPage(pf.groups[s], destination, pg, ctx);
-        ctx.checkKeyPage(pf, pf.groups[s], pg, decoded);
+        ctx.checkKeyPage(pf, pf.groups[s], pg, destination.firstRow[pg], decoded);
         int next = (int) (r - destination.firstRow[pg]);
         if (!Arrays.equals(decoded[next], target)) {
             return seek(target, true);
@@ -518,7 +518,7 @@ final class KeyCursor {
         countSeek(slot, pg);
         ctx.enterGroup(part, physical);
         byte[][] decoded = pf.keyPage(physical, index, pg, ctx);
-        ctx.checkKeyPage(pf, physical, pg, decoded);
+        ctx.checkKeyPage(pf, physical, pg, index.firstRow[pg], decoded);
         boolean adjacent = decodedPart == part
                 && ((decodedSlot == slot && decodedPage + 1 == pg)
                     || (decodedSlot + 1 == slot && pg == 0 && decodedLastPage));
