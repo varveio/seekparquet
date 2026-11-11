@@ -206,7 +206,7 @@ func TestListIndexRegressionSparseDenseSparse(t *testing.T) {
 		t.Fatalf("missing exact folder after dense transition: %+v", entries)
 	}
 	exact := entries[6].Exact
-	if string(exact.Key) != "g/" || exact.Offset != 0 || len(exact.Values) != 1 || exact.Values[0].Absent || exact.Values[0].IsNull() || exact.Values[0].Int64() != 20 {
+	if string(exact.Key) != "g/" || exact.Offset != 0 || len(exact.Values) != 1 || exact.Values[0].Absent() || exact.Values[0].IsNull() || exact.Values[0].Int64() != 20 {
 		t.Fatalf("wrong projected folder: %+v", exact)
 	}
 	if projected.ListIndexSkips < 3 || projected.ListIndexDensePage == 0 || projected.ValuePagesDecoded == 0 {

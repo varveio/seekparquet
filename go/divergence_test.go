@@ -175,7 +175,7 @@ func TestShortValueWithoutOffsetIndex(t *testing.T) {
 
 func valueAt(rows []Row, i int) []byte {
 	if i < len(rows) && len(rows[i].Values) > 0 {
-		return rows[i].Values[0].ByteArray()
+		return rows[i].Values[0].Bytes()
 	}
 	return nil
 }

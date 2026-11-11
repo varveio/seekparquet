@@ -19,8 +19,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/parquet-go/parquet-go"
-
 	"github.com/varveio/seekparquet/go"
 	"github.com/varveio/seekparquet/go/internal/manifest"
 )
@@ -436,24 +434,24 @@ var errInt96 = &seekparquet.UnsupportedError{Code: seekparquet.UnsupportedProjec
 // encodeValue encodes a projected value as its physical Parquet value.
 func encodeValue(v seekparquet.Value) (map[string]any, error) {
 	switch {
-	case v.Absent:
+	case v.Absent():
 		return map[string]any{"absent": true}, nil
 	case v.IsNull():
 		return map[string]any{"null": true}, nil
 	}
 	switch v.Kind() {
-	case parquet.Boolean:
+	case seekparquet.KindBoolean:
 		return map[string]any{"bool": v.Boolean()}, nil
-	case parquet.Int32:
+	case seekparquet.KindInt32:
 		return map[string]any{"int": strconv.FormatInt(int64(v.Int32()), 10)}, nil
-	case parquet.Int64:
+	case seekparquet.KindInt64:
 		return map[string]any{"int": strconv.FormatInt(v.Int64(), 10)}, nil
-	case parquet.Float:
+	case seekparquet.KindFloat:
 		return map[string]any{"float32": fmt.Sprintf("%08x", math.Float32bits(v.Float()))}, nil
-	case parquet.Double:
+	case seekparquet.KindDouble:
 		return map[string]any{"float64": fmt.Sprintf("%016x", math.Float64bits(v.Double()))}, nil
-	case parquet.ByteArray, parquet.FixedLenByteArray:
-		return map[string]any{"bytes_base64": base64.StdEncoding.EncodeToString(v.ByteArray())}, nil
+	case seekparquet.KindByteArray, seekparquet.KindFixedLenByteArray:
+		return map[string]any{"bytes_base64": base64.StdEncoding.EncodeToString(v.Bytes())}, nil
 	}
 	return nil, errInt96
 }

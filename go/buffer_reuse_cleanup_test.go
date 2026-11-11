@@ -82,7 +82,7 @@ func TestBufferReusePhysicalTransitions(t *testing.T) {
 					}
 					for i, row := range rows {
 						w := records[i]
-						if !bytes.Equal(row.Key, w.Key) || row.Values[0].Boolean() != w.RLE || row.Values[1].Boolean() != w.Plain || !bytes.Equal(row.Values[2].ByteArray(), w.Fixed[:]) || !bytes.Equal(row.Values[3].ByteArray(), w.Bytes) {
+						if !bytes.Equal(row.Key, w.Key) || row.Values[0].Boolean() != w.RLE || row.Values[1].Boolean() != w.Plain || !bytes.Equal(row.Values[2].Bytes(), w.Fixed[:]) || !bytes.Equal(row.Values[3].Bytes(), w.Bytes) {
 							t.Fatalf("row %d: %v", i, row.Values)
 						}
 					}
@@ -288,7 +288,7 @@ func TestBufferReuseRangeHighWaterCapacity(t *testing.T) {
 		t.Fatalf("small pages=%d rows=%d", small, len(rows))
 	}
 	for i, row := range rows {
-		if !bytes.Equal(row.Values[0].ByteArray(), records[i].Value) {
+		if !bytes.Equal(row.Values[0].Bytes(), records[i].Value) {
 			t.Fatal("corrupted value", i)
 		}
 	}

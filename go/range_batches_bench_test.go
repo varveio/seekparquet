@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/parquet-go/parquet-go"
 	"github.com/varveio/seekparquet/go/internal/testutil"
 )
 
@@ -69,10 +68,10 @@ func BenchmarkRangeBatches(b *testing.B) {
 			must(b, d.RangeBatches(ctx, rng, func(batch *Batch) error {
 				n += batch.Len()
 				for c := range rangeBatchesBenchColumns {
-					values, _ := batch.Column(c)
-					for _, v := range values {
-						if v.Kind() == parquet.ByteArray {
-							sum += len(v.ByteArray())
+					col := batch.Column(c)
+					for i := range col.Len() {
+						if v := col.Value(i); v.Kind() == KindByteArray {
+							sum += len(v.Bytes())
 						} else if !v.IsNull() {
 							sum += int(v.Int64() & 1)
 						}

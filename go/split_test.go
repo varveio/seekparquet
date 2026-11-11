@@ -29,7 +29,7 @@ var splitCounts = []int{1, 2, 3, 7, 64}
 func scanRow(row Row) string {
 	s := fmt.Sprintf("%q/%d", row.Key, row.Offset)
 	if len(row.Values) > 0 {
-		if v := row.Values[0]; v.IsNull() {
+		if v := row.Values[0]; v.IsNull() || v.Absent() { // the oracle's value is null when absent
 			s += "=null"
 		} else {
 			s += fmt.Sprintf("=%d", v.Int64())

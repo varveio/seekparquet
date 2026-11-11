@@ -99,7 +99,7 @@ func TestRangePagesToCompletion(t *testing.T) {
 					break
 				}
 				for i, row := range page {
-					if row.Offset != 0 || row.Values[0].Absent || row.Values[0].IsNull() {
+					if row.Offset != 0 || row.Values[0].Absent() || row.Values[0].IsNull() {
 						t.Fatalf("%s: row %d: offset %d, size %v", describe(rng), i, row.Offset, row.Values[0])
 					}
 				}

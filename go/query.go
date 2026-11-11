@@ -11,18 +11,6 @@ import (
 	"github.com/parquet-go/parquet-go"
 )
 
-// Value is one projected value of a row. Values are parquet-go values
-// (parquet.Value): this package commits to parquet-go's value types rather
-// than inventing its own, so a value's Kind is its column's physical type
-// in the row's part.
-type Value struct {
-	// Absent reports that the row's part has no such column (COL-2). An
-	// absent value is also null (IsNull is true), so check Absent first
-	// where the two must be told apart.
-	Absent bool
-	parquet.Value
-}
-
 // Row is one row of a result: its key, its offset in its equal-key group,
 // and the values of the projected columns, in request order. A Row owns
 // its key and value bytes. Columns is the result's own copy of the
@@ -506,11 +494,11 @@ func (r *reader) project(ctx context.Context, rows []*Row, at []position, column
 func projectColumn(rows []*Row, at []position, c int, cp *columnPages) error {
 	if cp == nil {
 		for _, row := range rows {
-			row.Values[c] = Value{Absent: true}
+			row.Values[c] = Value{absent: true}
 		}
 		return nil
 	}
 	return cp.read(at, func(k int, v parquet.Value) {
-		rows[k].Values[c] = Value{Value: v.Clone()}
+		rows[k].Values[c] = Value{v: v.Clone()}
 	})
 }

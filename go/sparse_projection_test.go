@@ -126,23 +126,23 @@ func TestSparseProjectionSkipsPages(t *testing.T) {
 			for i, at := range selected {
 				source := records[at.g.index*200+int(at.row)]
 				values := out[i].Values
-				if values[1].Int64() != source.Size || !values[2].Absent {
+				if values[1].Int64() != source.Size || !values[2].Absent() {
 					t.Fatalf("row %d values: %v", i, values)
 				}
 				if source.Name == nil {
 					if !values[0].IsNull() {
 						t.Fatalf("row %d: want null", i)
 					}
-				} else if string(values[0].ByteArray()) != *source.Name {
+				} else if string(values[0].Bytes()) != *source.Name {
 					t.Fatalf("row %d: wrong name", i)
 				}
 			}
 			// A caller can mutate returned bytes without changing the dictionary
 			// or another result, and the next request gets independent values.
-			out[0].Values[0].ByteArray()[0] = 'X'
+			out[0].Values[0].Bytes()[0] = 'X'
 			again := []*Row{{}}
 			must(t, d.r.project(ctx, again, selected[:1], columns, &ReadStats{}))
-			if string(again[0].Values[0].ByteArray()) != *records[0].Name {
+			if string(again[0].Values[0].Bytes()) != *records[0].Name {
 				t.Fatal("projected bytes alias retained dictionary data")
 			}
 		})

@@ -124,7 +124,7 @@ func TestScanBatchesPoisonRetiredStorage(t *testing.T) {
 				if !owning {
 					must(t, plan.ScanBatches(ctx, nil, func(b *Batch) error {
 						for c := range 4 {
-							v, _ := b.Column(c)
+							v, _ := rawColumn(b, c)
 							borrowed[c] = append(borrowed[c], v)
 							if c == 0 {
 								for _, value := range v {
@@ -156,14 +156,14 @@ func TestScanBatchesPoisonRetiredStorage(t *testing.T) {
 				}
 				for i, row := range kept[start:] {
 					w := records[i]
-					if !bytes.Equal(row.Key, w.Key) || row.Offset != 0 || string(row.Values[1].ByteArray()) != w.Plain || !row.Values[2].IsNull() || row.Values[3].Int64() != w.Number || !bytes.Equal(row.Values[4].ByteArray(), w.Key) || !row.Values[5].Absent {
+					if !bytes.Equal(row.Key, w.Key) || row.Offset != 0 || string(row.Values[1].Bytes()) != w.Plain || !row.Values[2].IsNull() || row.Values[3].Int64() != w.Number || !bytes.Equal(row.Values[4].Bytes(), w.Key) || !row.Values[5].Absent() {
 						t.Fatal("poisoned owning row", i)
 					}
 					if w.Dict == nil {
 						if !row.Values[0].IsNull() {
 							t.Fatal("null", i)
 						}
-					} else if string(row.Values[0].ByteArray()) != *w.Dict {
+					} else if string(row.Values[0].Bytes()) != *w.Dict {
 						t.Fatal("poisoned dictionary", i)
 					}
 				}

@@ -301,7 +301,7 @@ func TestNamedRepeatedKeyAndLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%s: %v", describe(rng), err)
 	}
-	if len(rows) != 2 || rows[1].Offset != 1 || rows[1].Values[1].Int64() != 8 || !rows[0].Values[2].Absent {
+	if len(rows) != 2 || rows[1].Offset != 1 || rows[1].Values[1].Int64() != 8 || !rows[0].Values[2].Absent() {
 		t.Fatalf("%s: %+v", describe(rng), rows)
 	}
 }
@@ -319,7 +319,7 @@ func TestNamedKeyAlongsideOrdinaryKeyColumn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 2 || rows[1].Offset != 1 || string(rows[0].Values[0].ByteArray()) != "z" || string(rows[1].Values[0].ByteArray()) != "y" {
+	if len(rows) != 2 || rows[1].Offset != 1 || string(rows[0].Values[0].Bytes()) != "z" || string(rows[1].Values[0].Bytes()) != "y" {
 		t.Fatalf("wrong key column or file order: %+v", rows)
 	}
 }

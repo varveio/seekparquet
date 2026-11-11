@@ -48,7 +48,7 @@ func collectRangeBatches(t *testing.T, d *Dataset, rng Range, ordinal func(key [
 		}
 		object = b
 		for c := range rng.Columns {
-			if values, ok := b.Column(c); ok && (len(values) != b.Len() || cap(values) != len(values)) {
+			if values, ok := rawColumn(b, c); ok && (len(values) != b.Len() || cap(values) != len(values)) {
 				t.Fatalf("column %d: len %d cap %d, batch %d", c, len(values), cap(values), b.Len())
 			}
 		}

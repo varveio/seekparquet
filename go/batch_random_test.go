@@ -184,18 +184,18 @@ func checkBatchOracleRows(t *testing.T, label string, got []Row, want []batchOra
 			bad("columns")
 		}
 		v := g.Values
-		if string(v[0].ByteArray()) != w.rec.Plain || string(v[5].ByteArray()) != w.rec.Plain {
+		if string(v[0].Bytes()) != w.rec.Plain || string(v[5].Bytes()) != w.rec.Plain {
 			bad("plain")
 		}
 		for _, c := range []int{1, 7} {
-			if v[c].Absent || (w.rec.Dict == nil) != v[c].IsNull() || w.rec.Dict != nil && string(v[c].ByteArray()) != *w.rec.Dict {
+			if v[c].Absent() || (w.rec.Dict == nil) != v[c].IsNull() || w.rec.Dict != nil && string(v[c].Bytes()) != *w.rec.Dict {
 				bad("dict " + batchOracleString(w.rec.Dict))
 			}
 		}
-		if !bytes.Equal(v[2].ByteArray(), w.rec.Key) || v[3].Int64() != w.rec.Num || !v[4].Absent {
+		if !bytes.Equal(v[2].Bytes(), w.rec.Key) || v[3].Int64() != w.rec.Num || !v[4].Absent() {
 			bad("key/num/missing")
 		}
-		if (w.rec.Opt == nil) != v[6].IsNull() || w.rec.Opt != nil && string(v[6].ByteArray()) != *w.rec.Opt {
+		if (w.rec.Opt == nil) != v[6].IsNull() || w.rec.Opt != nil && string(v[6].Bytes()) != *w.rec.Opt {
 			bad("opt")
 		}
 	}
@@ -264,7 +264,7 @@ func checkBatchOracleBatches(t *testing.T, plan *RangePlan, shards []*RangePlan,
 						t.Fatal("cursor")
 					}
 					for col := range batchOracleColumns {
-						vals, ok := b.Column(col)
+						vals, ok := rawColumn(b, col)
 						if ok != (col != 4) || ok && len(vals) != b.Len() {
 							t.Fatalf("column %d", col)
 						}

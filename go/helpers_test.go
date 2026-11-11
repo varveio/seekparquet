@@ -9,12 +9,14 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/format"
 
 	"github.com/varveio/seekparquet/go/internal/testutil"
@@ -323,4 +325,32 @@ func describe(req any) string {
 			short(r.Prefix), r.Delimiter, short(r.End), cursorString(r.Cursor), r.Limit, r.Columns)
 	}
 	return fmt.Sprint(req)
+}
+
+// rawColumn returns projection slot c's borrowed parquet-go values, as the
+// batch holds them, and whether the part has the column: for tests that
+// inspect or poison the decoded storage itself. An absent column's values
+// are the batch's shared nulls.
+func rawColumn(b *Batch, c int) ([]parquet.Value, bool) {
+	v := b.Column(c)
+	return v.values, v.Present()
+}
+
+// equalValue reports whether two values are equal: kind, absence and
+// value, floats by their bits.
+func equalValue(a, b Value) bool {
+	if a.Absent() != b.Absent() || a.Kind() != b.Kind() || a.IsNull() != b.IsNull() {
+		return false
+	}
+	switch a.Kind() {
+	case KindFloat:
+		return math.Float32bits(a.Float()) == math.Float32bits(b.Float())
+	case KindDouble:
+		return math.Float64bits(a.Double()) == math.Float64bits(b.Double())
+	case KindByteArray, KindFixedLenByteArray:
+		return bytes.Equal(a.Bytes(), b.Bytes())
+	case KindInt96:
+		return a.Int96() == b.Int96()
+	}
+	return a.Boolean() == b.Boolean() && a.Int32() == b.Int32() && a.Int64() == b.Int64()
 }

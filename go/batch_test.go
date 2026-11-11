@@ -107,7 +107,7 @@ func TestScanBatchesBoundariesAndValues(t *testing.T) {
 				}
 				lengths[b.Len()]++
 				for c := range transitionColumns {
-					values, ok := b.Column(c)
+					values, ok := rawColumn(b, c)
 					if ok != (c != 6) || ok && (len(values) != b.Len() || cap(values) != len(values)) {
 						t.Fatalf("column %d: len=%d cap=%d ok=%v", c, len(values), cap(values), ok)
 					}
@@ -171,9 +171,9 @@ func TestScanBatchesRepeatedOffsetsAndShards(t *testing.T) {
 	for k, p := range plans {
 		wg.Go(func() {
 			errs[k] = p.ScanBatches(ctx, nil, func(b *Batch) error {
-				values, _ := b.Column(0)
-				keys, _ := b.Column(1)
-				duplicate, _ := b.Column(2)
+				values, _ := rawColumn(b, 0)
+				keys, _ := rawColumn(b, 1)
+				duplicate, _ := rawColumn(b, 2)
 				for i, v := range values {
 					n := v.Int64()
 					if b.Offset(i) != n%23 || !bytes.Equal(b.Key(i), rows[n].Key) || !bytes.Equal(keys[i].ByteArray(), rows[n].Key) || duplicate[i].Int64() != n {
@@ -215,9 +215,9 @@ func TestScanBatchesAbsentAndEmptyProjection(t *testing.T) {
 					t.Fatal("projection")
 				}
 				for c := range columns {
-					v, ok := b.Column(c)
+					v, ok := rawColumn(b, c)
 					absent := c == 1 || n/2 == 1
-					if ok == absent || row.Values[c].Absent != absent {
+					if ok == absent || row.Values[c].Absent() != absent {
 						t.Fatal("absent", n, c)
 					}
 					if !absent && v[i].Int64() != int64(n%2) {
@@ -303,10 +303,15 @@ func TestScanBatchesAbsentAfterPresentGroups(t *testing.T) {
 			missingBatches++
 		}
 		for c := range 2 {
-			values, ok := b.Column(c)
+			values, ok := rawColumn(b, c)
 			if absent {
-				if ok || values != nil {
+				if ok || len(values) != b.Len() || b.Column(c).Kind() != KindNone {
 					t.Fatalf("column %d retained values from previous part", c)
+				}
+				for i := range values {
+					if values[i] != (parquet.Value{}) || !b.Column(c).Value(i).Absent() {
+						t.Fatalf("column %d retained values from previous part", c)
+					}
 				}
 			} else if !ok || len(values) != b.Len() {
 				t.Fatalf("column %d missing from present part", c)
@@ -321,16 +326,16 @@ func TestScanBatchesAbsentAfterPresentGroups(t *testing.T) {
 		t.Fatalf("rows=%d absent batches=%d", len(got), missingBatches)
 	}
 	for i, row := range got {
-		if !bytes.Equal(row.Key, records[i].Key) || row.Offset != 0 || !bytes.Equal(row.Values[2].ByteArray(), records[i].Key) {
+		if !bytes.Equal(row.Key, records[i].Key) || row.Offset != 0 || !bytes.Equal(row.Values[2].Bytes(), records[i].Key) {
 			t.Fatal("key/offset", i)
 		}
 		for c := range 2 {
 			value := row.Values[c]
 			if i >= 128 && i < 256 {
-				if !value.Absent || !value.IsNull() {
+				if !value.Absent() || value.IsNull() {
 					t.Fatal("absent owning value", i, c)
 				}
-			} else if value.Absent || string(value.ByteArray()) != records[i].Plain {
+			} else if value.Absent() || string(value.Bytes()) != records[i].Plain {
 				t.Fatal("present owning value", i, c)
 			}
 		}

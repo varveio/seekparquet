@@ -69,26 +69,26 @@ func TestProjection(t *testing.T) {
 	}
 	// Part 0 has only flag: the rest is absent, which is not null.
 	a, b := rows[0], rows[1]
-	if a.Values[0].Absent || !a.Values[0].Boolean() || b.Values[0].Absent || !b.Values[0].IsNull() {
+	if a.Values[0].Absent() || !a.Values[0].Boolean() || b.Values[0].Absent() || !b.Values[0].IsNull() {
 		t.Fatalf("flag: %+v, %+v", a.Values[0], b.Values[0])
 	}
 	for c := 1; c < len(columns); c++ {
-		if !a.Values[c].Absent || !a.Values[c].IsNull() {
+		if !a.Values[c].Absent() || a.Values[c].IsNull() {
 			t.Fatalf("column %s of part 0 is not absent: %+v", columns[c], a.Values[c])
 		}
 	}
 	t0, t1 := rows[2], rows[3]
 	if t0.Values[1].Int32() != 0 || t0.Values[2].Int64() != math.MaxInt64 || math.Float32bits(t0.Values[3].Float()) != 0x80000000 ||
-		!math.IsInf(t0.Values[4].Double(), 1) || string(t0.Values[5].ByteArray()) != "\x00" || string(t0.Values[6].ByteArray()) != "\x00\x00\xff\x7f" ||
+		!math.IsInf(t0.Values[4].Double(), 1) || string(t0.Values[5].Bytes()) != "\x00" || string(t0.Values[6].Bytes()) != "\x00\x00\xff\x7f" ||
 		t0.Values[7].Int64() != 0 {
 		t.Fatalf("t0 values %v", t0.Values)
 	}
 	for c := 0; c < 6; c++ {
-		if t1.Values[c].Absent || !t1.Values[c].IsNull() {
+		if t1.Values[c].Absent() || !t1.Values[c].IsNull() {
 			t.Fatalf("t1 column %s: %+v, want null", columns[c], t1.Values[c])
 		}
 	}
-	if !t1.Values[8].Absent {
+	if !t1.Values[8].Absent() {
 		t.Fatal("a column no part has is not absent")
 	}
 	if v, ok := t1.Value("a.b"); !ok || v.Int64() != 1 {
@@ -130,7 +130,7 @@ func TestProjection(t *testing.T) {
 }
 
 func sameValue(a, b Value) bool {
-	return a.Absent == b.Absent && a.IsNull() == b.IsNull() && parquet.Equal(a.Value, b.Value)
+	return a.Absent() == b.Absent() && a.IsNull() == b.IsNull() && parquet.Equal(a.v, b.v)
 }
 
 // TestRowsOwnTheirBytes changes everything a read was given and returned:
@@ -145,10 +145,10 @@ func TestRowsOwnTheirBytes(t *testing.T) {
 		t.Fatal("Row.Columns aliases the request")
 	}
 	rows[0].Key[0] = 'z'
-	copy(rows[0].Values[1].ByteArray(), "XXXX")
+	copy(rows[0].Values[1].Bytes(), "XXXX")
 	again, _ := d.Range(ctx, Range{Limit: 3, Columns: []string{"size", "name"}})
-	if string(again[0].Key) != "a" || string(again[0].Values[1].ByteArray()) != "name-0" || string(rows[1].Key) != "b" {
-		t.Fatalf("a result's bytes are shared: %q %q", again[0].Key, again[0].Values[1].ByteArray())
+	if string(again[0].Key) != "a" || string(again[0].Values[1].Bytes()) != "name-0" || string(rows[1].Key) != "b" {
+		t.Fatalf("a result's bytes are shared: %q %q", again[0].Key, again[0].Values[1].Bytes())
 	}
 }
 
@@ -224,7 +224,7 @@ func TestPageVersionsAndCodecs(t *testing.T) {
 				rng := Range{Start: []byte(keys[123]), Limit: 300, Columns: []string{"size", "name"}}
 				rows, err := d.Range(ctx, rng)
 				must(t, err)
-				if !slices.Equal(keysOf(rows), keys[123:423]) || rows[0].Values[0].Int64() != 123 || string(rows[1].Values[1].ByteArray()) != "name-124" {
+				if !slices.Equal(keysOf(rows), keys[123:423]) || rows[0].Values[0].Int64() != 123 || string(rows[1].Values[1].Bytes()) != "name-124" {
 					t.Fatalf("%s: %d rows", describe(rng), len(rows))
 				}
 			})

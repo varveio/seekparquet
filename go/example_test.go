@@ -140,7 +140,7 @@ func ExampleRange_projection() {
 		fmt.Print(string(row.Key))
 		for i, v := range row.Values {
 			switch {
-			case v.Absent:
+			case v.Absent():
 				fmt.Printf(" %s=absent", row.Columns[i])
 			case v.IsNull():
 				fmt.Printf(" %s=null", row.Columns[i])

@@ -108,10 +108,10 @@ func BenchmarkScanBatchesLongKeys(b *testing.B) {
 			*sum += len(k) + int(k[len(k)-1])
 		}
 		for c := range columns {
-			values, _ := batch.Column(c)
-			for _, v := range values {
-				if v.Kind() == parquet.ByteArray {
-					*sum += len(v.ByteArray())
+			col := batch.Column(c)
+			for i := range col.Len() {
+				if v := col.Value(i); v.Kind() == seekparquet.KindByteArray {
+					*sum += len(v.Bytes())
 				} else if !v.IsNull() {
 					*sum += int(v.Int64() & 1)
 				}

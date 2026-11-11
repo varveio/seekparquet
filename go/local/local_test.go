@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -79,8 +80,8 @@ func checkDataset(t *testing.T, dir string, s samples.Sample) seekparquet.Metada
 		}
 		for c, v := range row.Values {
 			want := s.Rows[i][c]
-			if !parquet.Equal(v.Value, want) && !(v.IsNull() && want.IsNull()) {
-				t.Fatalf("%s: row %d column %s: %v, want %v", s.Name, i, columns[c], v.Value, want)
+			if !sameValue(v, want) {
+				t.Fatalf("%s: row %d column %s: %v, want %v", s.Name, i, columns[c], v, want)
 			}
 		}
 	}
@@ -503,4 +504,31 @@ func verifyDir(dir string) error {
 	}
 	defer d.Close()
 	return d.Verify(context.Background())
+}
+
+// sameValue reports whether a read value is the value written: both null,
+// or of one physical kind with equal values, floats by their bits.
+func sameValue(v seekparquet.Value, want parquet.Value) bool {
+	if v.Absent() || v.IsNull() || want.IsNull() {
+		return !v.Absent() && v.IsNull() && want.IsNull()
+	}
+	switch want.Kind() {
+	case parquet.Boolean:
+		return v.Kind() == seekparquet.KindBoolean && v.Boolean() == want.Boolean()
+	case parquet.Int32:
+		return v.Kind() == seekparquet.KindInt32 && v.Int32() == want.Int32()
+	case parquet.Int64:
+		return v.Kind() == seekparquet.KindInt64 && v.Int64() == want.Int64()
+	case parquet.Int96:
+		return v.Kind() == seekparquet.KindInt96 && v.Int96() == seekparquet.Int96(want.Int96())
+	case parquet.Float:
+		return v.Kind() == seekparquet.KindFloat && math.Float32bits(v.Float()) == math.Float32bits(want.Float())
+	case parquet.Double:
+		return v.Kind() == seekparquet.KindDouble && math.Float64bits(v.Double()) == math.Float64bits(want.Double())
+	case parquet.ByteArray:
+		return v.Kind() == seekparquet.KindByteArray && bytes.Equal(v.Bytes(), want.ByteArray())
+	case parquet.FixedLenByteArray:
+		return v.Kind() == seekparquet.KindFixedLenByteArray && bytes.Equal(v.Bytes(), want.ByteArray())
+	}
+	return false
 }

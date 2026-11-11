@@ -235,10 +235,11 @@ func checkPlan(t *testing.T, d *Dataset, src *extentSource, rows []oracleRow, ex
 	for i, row := range got {
 		w := want[i]
 		v := row.Values[0]
-		if !bytes.Equal(row.Key, w.key) || row.Offset != w.offset || v.IsNull() != w.value.IsNull() {
-			t.Fatalf("%s: row %d is %q/%d (null %v), want %q/%d (null %v)", name, i, row.Key, row.Offset, v.IsNull(), w.key, w.offset, w.value.IsNull())
+		none := v.IsNull() || v.Absent() // the oracle's value is null when absent
+		if !bytes.Equal(row.Key, w.key) || row.Offset != w.offset || none != w.value.IsNull() {
+			t.Fatalf("%s: row %d is %q/%d (null %v), want %q/%d (null %v)", name, i, row.Key, row.Offset, none, w.key, w.offset, w.value.IsNull())
 		}
-		if !v.IsNull() {
+		if !none {
 			sum += v.Int64()
 		}
 	}
@@ -475,7 +476,7 @@ func TestPlanRequests(t *testing.T) {
 	stop := errors.New("stop")
 	err = plan.Scan(ctx, nil, func(row Row) error {
 		got = append(got, string(row.Key))
-		if v, _ := row.Value("name"); len(got) == 5 && !v.IsNull() && !strings.HasPrefix(string(v.ByteArray()), "name-") {
+		if v, _ := row.Value("name"); len(got) == 5 && !v.IsNull() && !strings.HasPrefix(string(v.Bytes()), "name-") {
 			t.Errorf("value %v", v)
 		}
 		if len(got) == 20 {

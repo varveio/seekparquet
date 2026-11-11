@@ -50,7 +50,7 @@ func checkScanDeliveryRows(t *testing.T, got []Row, want []scanDeliveryRecord) {
 		t.Fatalf("delivered %d rows, want %d", len(got), len(want))
 	}
 	for i, row := range got {
-		if !bytes.Equal(row.Key, want[i].Key) || row.Offset != 0 || len(row.Values) != 1 || row.Values[0].Absent || string(row.Values[0].ByteArray()) != want[i].Value {
+		if !bytes.Equal(row.Key, want[i].Key) || row.Offset != 0 || len(row.Values) != 1 || row.Values[0].Absent() || string(row.Values[0].Bytes()) != want[i].Value {
 			t.Fatalf("delivered row %d: %+v", i, row)
 		}
 	}

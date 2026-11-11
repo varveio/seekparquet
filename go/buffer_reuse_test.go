@@ -60,7 +60,7 @@ func checkTransitionRows(t *testing.T, got []Row, want []transitionRecord) {
 	}
 	for i, row := range got {
 		w := want[i]
-		if !bytes.Equal(row.Key, w.Key) || row.Offset != 0 || string(row.Values[1].ByteArray()) != w.Plain || !row.Values[2].IsNull() || row.Values[3].Int64() != w.Number || !bytes.Equal(row.Values[5].ByteArray(), w.Key) || !row.Values[6].Absent {
+		if !bytes.Equal(row.Key, w.Key) || row.Offset != 0 || string(row.Values[1].Bytes()) != w.Plain || !row.Values[2].IsNull() || row.Values[3].Int64() != w.Number || !bytes.Equal(row.Values[5].Bytes(), w.Key) || !row.Values[6].Absent() {
 			t.Fatalf("row %d: %+v", i, row)
 		}
 		for _, c := range []int{0, 4} {
@@ -69,7 +69,7 @@ func checkTransitionRows(t *testing.T, got []Row, want []transitionRecord) {
 				if !v.IsNull() {
 					t.Fatalf("row %d: expected null", i)
 				}
-			} else if v.IsNull() || string(v.ByteArray()) != *w.Dict {
+			} else if v.IsNull() || string(v.Bytes()) != *w.Dict {
 				t.Fatalf("row %d: dictionary %v, want %q", i, v, *w.Dict)
 			}
 		}
@@ -198,10 +198,10 @@ func TestBufferReusePoisonRetiredPages(t *testing.T) {
 					if !r.Values[0].IsNull() {
 						t.Fatal(i)
 					}
-				} else if string(r.Values[0].ByteArray()) != *want.Dict {
+				} else if string(r.Values[0].Bytes()) != *want.Dict {
 					t.Fatalf("dictionary row %d corrupted", i)
 				}
-			} else if string(r.Values[0].ByteArray()) != want.Plain {
+			} else if string(r.Values[0].Bytes()) != want.Plain {
 				t.Fatalf("plain row %d corrupted", i)
 			}
 		}
