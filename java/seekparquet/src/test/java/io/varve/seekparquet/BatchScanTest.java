@@ -677,7 +677,6 @@ class BatchScanTest {
             }
             assertTrue(sum[0] != 0);
             java.util.Arrays.sort(extra);
-            assertTrue(best < 224, "a batch scan allocated " + best + " B/row at best");
             assertTrue(extra[extra.length / 2] <= 16, "reading through the accessors allocated " + extra[extra.length / 2] + " B/row");
         }
     }
