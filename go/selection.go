@@ -64,8 +64,10 @@ type span struct {
 
 // PlanRanges plans reading the rows of ranges, with the values of columns
 // (as Range.Columns). It reads each range's bounds and Cursor: a range
-// with a Limit, Columns or Stats is ErrInvalidRequest. Rows that several
-// ranges select are one row of the plan.
+// with a Limit, Columns or Stats is ErrInvalidRequest, so build a Range
+// literal such as Range{Prefix: prefix} rather than use PrefixRange or
+// KeyRange, which set a Limit. Rows that several ranges select are one row
+// of the plan.
 //
 // Planning decodes what a Range starting at each end would: the key pages
 // that locate the first row of the range and the first row after it,

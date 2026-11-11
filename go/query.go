@@ -115,14 +115,17 @@ type Range struct {
 }
 
 // PrefixRange returns a prefix read: the range of the keys that begin with
-// prefix, with no other bounds.
+// prefix, with no other bounds. Dataset.PlanRanges refuses a range with a
+// Limit, so to plan a prefix build the literal Range{Prefix: prefix}.
 func PrefixRange(prefix []byte, limit int, columns ...string) Range {
 	return Range{Prefix: bytes.Clone(prefix), Limit: limit, Columns: columns}
 }
 
 // KeyRange returns a lookup of exactly key's group of equal keys: the
 // range [key, key+0x00). Its limit may split the group; continue with the
-// last row's Cursor as with any range.
+// last row's Cursor as with any range. Dataset.PlanRanges refuses a range
+// with a Limit, so to plan one key's group build the literal
+// Range{Start: key, End: append(bytes.Clone(key), 0)}.
 func KeyRange(key []byte, limit int, columns ...string) Range {
 	return Range{Start: bytes.Clone(key), End: append(bytes.Clone(key), 0), Limit: limit, Columns: columns}
 }
