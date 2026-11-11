@@ -282,7 +282,8 @@ read throws anything, is not used: the page is read again when the listing reach
 a cancellation linked to the request's, so cancelling it or closing the dataset ends them, and the listing waits
 for every one before it returns, including when it fails: none outlives the request. A cancellation, interrupt or
 `close()` that comes while it waits fails the listing with `CancellationException`. A page's bytes are released
-as soon as the listing takes or passes it. The prediction stays within
+as soon as it is retired: when the listing takes it, or drops it once passed (a passed page can stay pending,
+and counted in the budget, while a page predicted further ahead is still being read). The prediction stays within
 the row group the listing is in; `range` and the scans do not read ahead. With a list index built, a `/` listing
 reads nothing ahead, including in a row group the index declines; other delimiters read ahead as usual.
 

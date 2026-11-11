@@ -116,11 +116,10 @@ final class MemoryStorage implements DatasetStorage {
                 boolean ahead = onReadAheadThread();
                 reads.incrementAndGet();
                 bytes.addAndGet(length);
-                int n = inFlight.incrementAndGet();
-                maxInFlight.accumulateAndGet(n, Math::max);
+                enter(inFlight, maxInFlight);
                 if (ahead) {
                     readAheadThreads.add(Thread.currentThread());
-                    maxReadAheadInFlight.accumulateAndGet(readAheadInFlight.incrementAndGet(), Math::max);
+                    enter(readAheadInFlight, maxReadAheadInFlight);
                 }
                 try {
                     Hook h = hook;
@@ -136,12 +135,26 @@ final class MemoryStorage implements DatasetStorage {
                     return ByteBuffer.wrap(raw, (int) position, length).asReadOnlyBuffer();
                 } finally {
                     if (ahead) {
-                        readAheadInFlight.decrementAndGet();
+                        leave(readAheadInFlight);
                     }
-                    inFlight.decrementAndGet();
+                    leave(inFlight);
                 }
             }
         };
+    }
+
+    /**
+     * Counts a read in: the maximum is raised before the count, under one lock, so that whoever sees the count
+     * at n sees a maximum of at least n.
+     */
+    private synchronized void enter(AtomicInteger count, AtomicInteger max) {
+        int n = count.get() + 1;
+        max.accumulateAndGet(n, Math::max);
+        count.set(n);
+    }
+
+    private synchronized void leave(AtomicInteger count) {
+        count.decrementAndGet();
     }
 
     private static void pause(Cancellation c, long nanos) throws IOException {

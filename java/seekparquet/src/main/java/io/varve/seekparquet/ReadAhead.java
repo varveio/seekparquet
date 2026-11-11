@@ -86,6 +86,8 @@ final class ReadAhead implements AutoCloseable {
     long queueSteps;
     /** The most pages pending at once. For tests. */
     int mostPending;
+    /** The pages read ahead (started, whether or not their read reached the storage), and those not used. For tests. */
+    long fetched, notUsed;
 
     /** A page's extent in a part. */
     private record Extent(PartFile part, long offset, int size) {}
@@ -168,6 +170,7 @@ final class ReadAhead implements AutoCloseable {
             queue.removeIf(p -> p.gone);
         }
         pending.put(extent, e);
+        fetched++;
         queue.addLast(e);
         mostPending = Math.max(mostPending, pending.size());
         held += size;
@@ -243,6 +246,9 @@ final class ReadAhead implements AutoCloseable {
         pending.remove(e.extent);
         held -= e.extent.size;
         e.gone = true;
+        if (!used) {
+            notUsed++;
+        }
         Outcome o = e.outcome.getNow(null);
         // Release the bytes now: the queue may keep the page until it reaches the front or is compacted.
         e.outcome = null;

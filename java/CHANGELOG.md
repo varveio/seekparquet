@@ -20,7 +20,9 @@ independent of the specification's draft revisions.
   read for nothing. A read ahead that fails or throws, whatever it throws, is not used and the page is read
   again. The reads run under a cancellation linked to the request's, and are ended and waited for before the
   listing returns, including when it fails, is cancelled or the dataset closes; a cancellation, interrupt or
-  close during that wait fails the listing. A page's bytes are released once it is taken or passed. A `/` listing reads nothing
+  close during that wait fails the listing. A page's bytes are released when it is retired (taken, or dropped
+  once passed; a passed page stays pending, within the budget, while a page predicted further ahead is still
+  being read). A `/` listing reads nothing
   ahead while a list index is built; the prediction stays within a row group; `range` and the scans do not
   read ahead. As an illustration (one run, not asserted by any test): with a simulated 10 ms wait per read, a
   cold listing of 60 folders (400 keys each, 100-row key pages) took about 640 ms without read-ahead and about

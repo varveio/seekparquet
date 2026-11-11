@@ -342,6 +342,14 @@ class ReadAheadTest {
     void entriesAndCountsAreThoseWithoutReadAhead() throws IOException {
         long predicted = 0;
         long wasted = 0;
+        // Pages predicted and not used, counted as the read-ahead fetched them, whether or not their reads
+        // started before the listing ended (the stats count only reads that reached the storage).
+        java.util.concurrent.atomic.AtomicLong fetched = new java.util.concurrent.atomic.AtomicLong();
+        java.util.concurrent.atomic.AtomicLong notUsed = new java.util.concurrent.atomic.AtomicLong();
+        ReadAhead.testClosed = a -> {
+            fetched.addAndGet(a.fetched);
+            notUsed.addAndGet(a.notUsed);
+        };
         int[] widths = {1, 3, 16};
         for (Fixture fx : fixtures()) {
             Dataset base = Dataset.open(fx.storage.copy());
@@ -367,9 +375,9 @@ class ReadAheadTest {
                 with.forEach(Dataset::close);
             }
         }
-        System.out.printf("%d pages read ahead, %d of them unused%n", predicted, wasted);
-        assertTrue(predicted > 0, "nothing was read ahead");
-        assertTrue(wasted > 0, "no prediction was wrong: the fixtures do not exercise wrong predictions");
+        System.out.printf("%d pages read ahead (%d reads), %d of them unused (%d reads)%n", fetched.get(), predicted, notUsed.get(), wasted);
+        assertTrue(fetched.get() > 0, "nothing was read ahead");
+        assertTrue(notUsed.get() > 0, "no prediction was wrong: the fixtures do not exercise wrong predictions");
     }
 
     private static List<String> names(List<ListEntry> entries) {
@@ -475,6 +483,8 @@ class ReadAheadTest {
         byte[] original = clean.parts.get(part);
         int failed = 0;
         long ahead = 0;
+        java.util.concurrent.atomic.AtomicLong fetched = new java.util.concurrent.atomic.AtomicLong();
+        ReadAhead.testClosed = a -> fetched.addAndGet(a.fetched);
         for (int off = 0; off < original.length; off += 7) {
             MemoryStorage flipped = clean.copy();
             flipped.parts.get(part)[off] ^= 0x55;
@@ -497,7 +507,7 @@ class ReadAheadTest {
             }
         }
         System.out.printf("%d bytes, every 7th flipped: %d failed alike, %d pages read ahead%n", original.length, failed, ahead);
-        assertTrue(failed > 0 && ahead > 0, failed + " flips failed, " + ahead + " pages read ahead");
+        assertTrue(failed > 0 && fetched.get() > 0, failed + " flips failed, " + fetched.get() + " pages read ahead (" + ahead + " reads)");
     }
 
     /** Key pages out of order, or empty, are refused with the same refusal whether they were read ahead or not. */
@@ -748,7 +758,7 @@ class ReadAheadTest {
      * the read-ahead references no page bytes but those of pages still pending.
      */
     @Test
-    void retiredPagesReleaseTheirBytes() throws IOException {
+    void retiredPagesReleaseTheirBytes() throws Exception {
         List<TestRow> rows = new ArrayList<>();
         for (int i = 0; i < 2000; i++) {
             rows.add(TestRow.of(String.format("k%06d", i), i));
@@ -766,8 +776,10 @@ class ReadAheadTest {
             KeyIndex index = part.keyIndex(physical, ctx);
             int distant = index.pages() - 1;
             CompletableFuture<Void> release = new CompletableFuture<>();
+            CountDownLatch entered = new CountDownLatch(1);
             storage.hook = (path, position, length) -> {
                 if (MemoryStorage.onReadAheadThread() && position == index.offset[distant]) {
+                    entered.countDown();
                     release.join(); // held until the end, whatever the cancellation
                 }
             };
@@ -775,6 +787,8 @@ class ReadAheadTest {
             try {
                 assertTrue(ahead.predictFrom(part, physical, 0, false));
                 assertTrue(ahead.fetch(part, physical, distant, index.offset[distant], index.size[distant]));
+                // The distant read has reached the storage, and stays there until released.
+                assertTrue(entered.await(30, TimeUnit.SECONDS), "the distant read did not start");
                 long taken = 0;
                 for (int pg = 1; pg <= 300; pg++) {
                     ahead.predictFrom(part, physical, pg - 1, false);
