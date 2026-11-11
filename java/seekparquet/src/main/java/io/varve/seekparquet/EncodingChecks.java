@@ -27,7 +27,10 @@ final class EncodingChecks {
 
     /**
      * Walks an RLE/bit-packed hybrid stream as {@link #rleHybrid(byte[], int, int, int, long)} does, and
-     * refuses an empty run unless {@code emptyRuns}: Boolean values, which Go also refuses one in.
+     * refuses an empty run unless {@code emptyRuns}: Boolean values, which Go also refuses one in. An RLE
+     * run's value, its {@code (bitWidth + 7) / 8} little-endian bytes, must be below {@code 2^bitWidth}
+     * (any value at width 32), as in the Go reader: decoders differ on the bits above the width (a
+     * Boolean run value of 2 reads as true in parquet-java and false in parquet-go).
      */
     static byte[] rleHybrid(byte[] b, int from, int to, int bitWidth, long maxValues, boolean emptyRuns) throws DataException {
         if (bitWidth < 0 || bitWidth > 32) {
@@ -51,6 +54,9 @@ final class EncodingChecks {
                 if (bytes > to - pos[0]) {
                     throw new DataException("a truncated RLE run body");
                 }
+                if (!packed) {
+                    checkRunValue(b, pos[0], bitWidth);
+                }
                 pos[0] += (int) bytes;
                 if (kept == null) {
                     kept = new java.io.ByteArrayOutputStream(to - from);
@@ -70,6 +76,9 @@ final class EncodingChecks {
             if (bytes > to - pos[0]) {
                 throw new DataException("a truncated RLE run body");
             }
+            if (!packed) {
+                checkRunValue(b, pos[0], bitWidth);
+            }
             pos[0] += (int) bytes;
             values += packed ? runs * 8 : runs;
         }
@@ -81,6 +90,20 @@ final class EncodingChecks {
         }
         kept.write(b, keptFrom, to - keptFrom);
         return kept.toByteArray();
+    }
+
+    /** Refuses an RLE run value, its {@code (bitWidth + 7) / 8} little-endian bytes at {@code b[at]}, of {@code 2^bitWidth} or more. */
+    private static void checkRunValue(byte[] b, int at, int bitWidth) throws DataException {
+        if (bitWidth >= 32) {
+            return;
+        }
+        long value = 0;
+        for (int i = 0; i < (bitWidth + 7) / 8; i++) {
+            value |= (b[at + i] & 0xFFL) << (8 * i);
+        }
+        if (value >>> bitWidth != 0) {
+            throw new DataException("an RLE run value of " + value + " at bit width " + bitWidth);
+        }
     }
 
     /**
@@ -108,14 +131,22 @@ final class EncodingChecks {
 
     /**
      * Walks a DELTA_BINARY_PACKED stream starting at {@code b[from]} and ending no later than {@code
-     * to}, holding at most {@code maxValues} values, and returns the offset just after it.
+     * to}, holding at most {@code maxValues} values, and returns the offset just after it. An INT32
+     * stream ({@code int32}: an INT32 column's values, and the length and prefix-length streams of the
+     * byte-array delta encodings) must have a first value in INT32 range and miniblock bit widths of at
+     * most 32, as in the Go reader; an INT64 stream allows widths up to 64. Min deltas are not range
+     * checked, as parquet-go does not check them: a writer may compute deltas in 64 bits.
      */
-    static int deltaBinaryPacked(byte[] b, int from, int to, long maxValues, Limits limits, String where) throws DataException {
+    static int deltaBinaryPacked(byte[] b, int from, int to, long maxValues, boolean int32, Limits limits, String where) throws DataException {
         int[] pos = {from};
         long blockSize = uleb(b, pos, to);
         long miniblocks = uleb(b, pos, to);
         long total = uleb(b, pos, to);
-        skipVarint(b, pos, to); // first value, zigzag
+        long first = zigzag(b, pos, to);
+        if (int32 && (first < Integer.MIN_VALUE || first > Integer.MAX_VALUE)) {
+            throw new DataException("a DELTA_BINARY_PACKED first value of " + first + " outside INT32");
+        }
+        int maxWidth = int32 ? 32 : 64;
         if (blockSize <= 0 || blockSize % 128 != 0 || miniblocks <= 0 || blockSize % miniblocks != 0
                 || (blockSize / miniblocks) % 32 != 0) {
             throw new DataException("a DELTA_BINARY_PACKED header with block size " + blockSize + " and " + miniblocks + " miniblocks");
@@ -142,8 +173,8 @@ final class EncodingChecks {
             pos[0] += (int) miniblocks;
             for (int m = 0; m < miniblocks && remaining > 0; m++) {
                 int width = b[widths + m] & 0xFF;
-                if (width > 64) {
-                    throw new DataException("a DELTA_BINARY_PACKED bit width of " + width);
+                if (width > maxWidth) {
+                    throw new DataException("a DELTA_BINARY_PACKED bit width of " + width + (int32 ? " in an INT32 stream" : ""));
                 }
                 long bytes = width * perMiniblock / 8;
                 if (pos[0] + bytes > to) {
@@ -154,6 +185,25 @@ final class EncodingChecks {
             }
         }
         return pos[0];
+    }
+
+    /** Reads a zigzag varint of at most 10 bytes, of any 64-bit value. */
+    static long zigzag(byte[] b, int[] pos, int to) throws DataException {
+        long u = 0;
+        for (int shift = 0; shift < 70; shift += 7) {
+            if (pos[0] >= to) {
+                throw new DataException("a truncated varint");
+            }
+            int x = b[pos[0]++] & 0xFF;
+            if (shift == 63 && (x & 0x7E) != 0) {
+                throw new DataException("a varint above 2^64-1");
+            }
+            u |= (long) (x & 0x7F) << shift;
+            if ((x & 0x80) == 0) {
+                return (u >>> 1) ^ -(u & 1);
+            }
+        }
+        throw new DataException("a varint longer than 10 bytes");
     }
 
     /** Skips a varint of at most 10 bytes, of any 64-bit value. */

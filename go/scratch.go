@@ -5,10 +5,12 @@ package seekparquet
 
 import "github.com/parquet-go/parquet-go"
 
-// pageScratch belongs to one projection slot in one request/Scan, and survives
-// chunk changes. It is never shared by concurrent calls or used for key pages.
-// Dictionaries use independent storage retained by their chunk, including when
-// loaded lazily while an encoded data page is live in raw/plain.
+// pageScratch belongs to one projection slot in one request/Scan, or to the
+// key column of one ScanBatches/RangeBatches call (batcher.keys), and survives
+// chunk changes. It is never shared by concurrent calls. Key pages use it only
+// on that batch path; every other key walker decodes each page into storage
+// of its own. Dictionaries use independent storage retained by their chunk,
+// including when loaded lazily while an encoded data page is live in raw/plain.
 //
 // Byte buffers follow PageBytes, plus header reads up to headerBytes (16 MiB,
 // bounded by MetadataMemory); indexed raw extents include both. Element
@@ -53,6 +55,7 @@ func decodedBuffer[T any](previous, decoded []T) []T {
 }
 
 // local supplies ephemeral buffers for the non-reusing key/dictionary path.
+// Without scratch, every page decoded gets storage of its own.
 func (s *pageScratch) local() *pageScratch {
 	if s == nil {
 		return new(pageScratch)

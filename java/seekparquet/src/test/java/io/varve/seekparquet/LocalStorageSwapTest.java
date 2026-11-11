@@ -64,7 +64,8 @@ import org.junit.jupiter.api.io.TempDir;
  * default one and replaces the entry right after LocalStorage reads its attributes. Every test is
  * bounded: a regression fails on its timeout instead of hanging the build.
  */
-@EnabledOnOs({OS.LINUX, OS.MAC})
+@EnabledOnOs(value = {OS.LINUX, OS.MAC}, disabledReason = "a FIFO in the dataset directory, made with mkfifo, is a POSIX hazard "
+        + "of the secure-directory-stream route; Windows has neither")
 @Timeout(value = 30, unit = TimeUnit.SECONDS, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class LocalStorageSwapTest {
 

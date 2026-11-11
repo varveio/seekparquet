@@ -9,11 +9,18 @@ package io.varve.seekparquet;
  * {@code maxOffsetIndexMemoryBytes} is the exception: it bounds a cache, and nothing fails past it.
  *
  * <p>{@code maxPageBytes} bounds a page's bytes, not the memory of decoding it: a page's values are
- * also held in primitive, offset/length or reference arrays of one slot per value, which
- * {@code maxPageValues} bounds. Keys and dictionary entries can additionally hold one byte-array
- * object per value. Each request retains its projected-column scratch at its high-water capacities
- * until the call ends, separately from dictionary storage and codec state. Concurrent requests add
- * up; lower {@code maxPageValues} and caller concurrency to bound decoding memory. The shared index
+ * also held in primitive, offset/length or reference arrays of one slot per value, and keys and
+ * dictionary entries in one byte-array object per value. {@code maxPageMemory} bounds that memory
+ * per page, data and dictionary pages alike, key pages included: it is estimated from the page's
+ * header before anything is allocated for its values (see {@code PageDecoder.pageMemory}), and a
+ * page over it fails with {@link LimitExceededException} naming {@code maxPageMemory}. Its default
+ * (when given as 0, or by a constructor without it) is the most {@code maxPageValues} and
+ * {@code maxPageBytes} allow, so that the default refuses no page those limits admit: 832 MiB at
+ * their defaults. Set it lower ({@link #withMaxPageMemory}) to bound decoding memory; a page within
+ * the other limits may then be refused. The bound is per page and per request: concurrent requests
+ * and the shards of a split plan scanned at once each decode their own pages, so their memory adds
+ * up; bound concurrency as well. Each request retains its projected-column scratch at its high-water
+ * capacities until the call ends, separately from dictionary storage and codec state. The shared index
  * budget does not account for request scratch or owning results.
  * No limit bounds the part sources and footers a dataset keeps open for the parts it has touched (see
  * {@link Dataset}).
@@ -36,10 +43,11 @@ package io.varve.seekparquet;
  *     reference per physical row group and leaf even for key-only requests or a 1-byte budget, nor
  *     transient Thrift data, duplicate loads by concurrent first uses, or the locations a request holds
  *     for itself past the budget. Default 256 MiB.
+ * @param maxPageMemory the estimated memory decoding one page may hold; 0 for the default
  */
 public record Limits(
         int maxManifestBytes, int maxParts, int maxFooterBytes, int maxIndexBytes, int maxPageBytes, int maxPageValues, int maxResultEntries, long maxIndexMemoryBytes,
-        long maxOffsetIndexMemoryBytes) {
+        long maxOffsetIndexMemoryBytes, long maxPageMemory) {
 
     private static final int MIB = 1 << 20;
 
@@ -85,7 +93,7 @@ public record Limits(
      */
     public Limits withMaxIndexMemoryBytes(long bytes) {
         return new Limits(maxManifestBytes, maxParts, maxFooterBytes, maxIndexBytes, maxPageBytes, maxPageValues, maxResultEntries, bytes,
-                maxOffsetIndexMemoryBytes);
+                maxOffsetIndexMemoryBytes, maxPageMemory);
     }
 
     /** Returns these limits with a different dataset-wide OffsetIndex location budget.
@@ -94,7 +102,34 @@ public record Limits(
      */
     public Limits withMaxOffsetIndexMemoryBytes(long bytes) {
         return new Limits(maxManifestBytes, maxParts, maxFooterBytes, maxIndexBytes, maxPageBytes, maxPageValues, maxResultEntries,
-                maxIndexMemoryBytes, bytes);
+                maxIndexMemoryBytes, bytes, maxPageMemory);
+    }
+
+    /** Returns these limits with a different per-page decoding-memory bound.
+     * @param bytes the bound, in bytes; positive, or 0 for the default from {@code maxPageValues} and
+     *     {@code maxPageBytes}
+     * @return the new limits
+     */
+    public Limits withMaxPageMemory(long bytes) {
+        return new Limits(maxManifestBytes, maxParts, maxFooterBytes, maxIndexBytes, maxPageBytes, maxPageValues, maxResultEntries,
+                maxIndexMemoryBytes, maxOffsetIndexMemoryBytes, bytes);
+    }
+
+    /** Creates limits with the default per-page decoding-memory bound.
+     * @param maxManifestBytes the largest manifest
+     * @param maxParts the most parts
+     * @param maxFooterBytes the largest footer
+     * @param maxIndexBytes the largest page index
+     * @param maxPageBytes the largest page
+     * @param maxPageValues the most values in a page
+     * @param maxResultEntries the largest request limit
+     * @param maxIndexMemoryBytes the retained decoded-index and exact-first-key budget
+     * @param maxOffsetIndexMemoryBytes the kept OffsetIndex page-location budget
+     */
+    public Limits(int maxManifestBytes, int maxParts, int maxFooterBytes, int maxIndexBytes, int maxPageBytes,
+            int maxPageValues, int maxResultEntries, long maxIndexMemoryBytes, long maxOffsetIndexMemoryBytes) {
+        this(maxManifestBytes, maxParts, maxFooterBytes, maxIndexBytes, maxPageBytes, maxPageValues, maxResultEntries, maxIndexMemoryBytes,
+                maxOffsetIndexMemoryBytes, 0);
     }
 
     /** Creates limits with at most one million entries per result.
@@ -121,11 +156,17 @@ public record Limits(
      * @param maxResultEntries the largest request limit
      * @param maxIndexMemoryBytes the retained decoded-index and exact-first-key budget
      * @param maxOffsetIndexMemoryBytes the kept OffsetIndex page-location budget
+     * @param maxPageMemory the estimated memory decoding one page may hold; 0 for the default, the most
+     *     {@code maxPageValues} and {@code maxPageBytes} allow
      */
     public Limits {
         if (maxManifestBytes <= 0 || maxParts <= 0 || maxFooterBytes <= 0 || maxIndexBytes <= 0 || maxPageBytes <= 0
-                || maxPageValues <= 0 || maxResultEntries <= 0 || maxIndexMemoryBytes <= 0 || maxOffsetIndexMemoryBytes <= 0) {
+                || maxPageValues <= 0 || maxResultEntries <= 0 || maxIndexMemoryBytes <= 0 || maxOffsetIndexMemoryBytes <= 0
+                || maxPageMemory < 0) {
             throw new IllegalArgumentException("every limit must be positive");
+        }
+        if (maxPageMemory == 0) {
+            maxPageMemory = PageDecoder.worstPageMemory(maxPageValues, maxPageBytes);
         }
     }
 }

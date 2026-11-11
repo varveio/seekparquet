@@ -26,18 +26,23 @@ import (
 )
 
 // TestSortingColumnIndexes: a sorting_columns entry naming no column made
-// parquet-go index out of range while opening the footer. Such footers are
-// refused before parquet-go sees them, through both open paths.
+// parquet-go index out of range while opening the footer. A non-empty row
+// group's first entry is refused before parquet-go sees it, through both
+// open paths; an entry after the first is ignored (RG-1), so the part is
+// read, parquet-go seeing a footer without it.
 func TestSortingColumnIndexes(t *testing.T) {
 	cases := []struct {
 		name  string
-		code  Code
+		code  Code // "" when the part is read
 		apply func(m *format.FileMetaData)
 	}{
 		{"first entry negative", CodeMissingSortingColumns, func(m *format.FileMetaData) { m.RowGroups[0].SortingColumns[0].ColumnIdx = -1 }},
 		{"first entry beyond the leaves", CodeMissingSortingColumns, func(m *format.FileMetaData) { m.RowGroups[0].SortingColumns[0].ColumnIdx = 3 }},
-		{"extra entry invalid", CodeInvalidFooter, func(m *format.FileMetaData) {
+		{"extra entry invalid", "", func(m *format.FileMetaData) {
 			m.RowGroups[0].SortingColumns = append(m.RowGroups[0].SortingColumns, format.SortingColumn{ColumnIdx: 99})
+		}},
+		{"extra entries negative and beyond", "", func(m *format.FileMetaData) {
+			m.RowGroups[0].SortingColumns = append(m.RowGroups[0].SortingColumns, format.SortingColumn{ColumnIdx: -4}, format.SortingColumn{ColumnIdx: 1}, format.SortingColumn{ColumnIdx: 7})
 		}},
 	}
 	for _, c := range cases {
@@ -45,10 +50,16 @@ func TestSortingColumnIndexes(t *testing.T) {
 			dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
 			rewrite(t, dir, 0, c.apply)
 			if err := openErr(dir, Options{}); CodeOf(err) != c.code {
-				t.Fatalf("OpenDir: %v, want %s", err, c.code)
+				t.Fatalf("OpenDir: %v, want %q", err, c.code)
 			}
 			if _, err := openPartsOf(t, dir, 1, unique, false, Options{}); CodeOf(err) != c.code {
-				t.Fatalf("openParts: %v, want %s", err, c.code)
+				t.Fatalf("openParts: %v, want %q", err, c.code)
+			}
+			if c.code == "" {
+				rows, err := open(t, dir, Options{}).Range(ctx, Range{Limit: 10, Columns: []string{"size"}})
+				if err != nil || len(rows) != 2 {
+					t.Fatalf("Range: %d rows, %v", len(rows), err)
+				}
 			}
 		})
 	}

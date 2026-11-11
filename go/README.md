@@ -92,7 +92,7 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `List`, `PlanRanges`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan`, `ScanBatches`, `Split` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`, `Batch`; `Column`, a part's column as its footer declares it; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `RangeBatches`, `List`, `PlanRanges`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan`, `ScanBatches`, `Split` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`, `Batch`; `Column`, a part's column as its footer declares it; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
 | `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
 | `cmd/seekparquet` | the `seekparquet validate` command |
@@ -235,18 +235,31 @@ mid-call; the reader checks the context between pages.
 `OpenDataset` opens and closes only the manifest. `Dataset.Close` closes every part file the dataset opened,
 after the reads in progress end.
 
-Projected value pages reuse buffers within each `Range`, `List`, `RangePlan.Scan`, or
+Projected value pages reuse buffers within each `Range`, `RangeBatches`, `List`, `RangePlan.Scan`, or
 `RangePlan.ScanBatches` call, including across row groups. `Range`, `List`, and `Scan` results own
-their keys and binary values; `ScanBatches` borrows page storage as described below. Dictionaries have separate storage
-for their chunk; key pages and validation do not reuse page buffers. No scratch is shared between calls.
+their keys and binary values; `RangeBatches` and `ScanBatches` borrow page storage as described below. Dictionaries have separate storage
+for their chunk. `RangeBatches` and `ScanBatches` (and so `Scan`) also decode every key page into one
+buffer set of their own, each page overwriting the one before once the callbacks borrowing it have
+returned; what the call keeps of a key across pages (the first key of a group of equal keys, the decoded
+pages' bounds, a row group's cached first key) is copied first. Every other read (`Range`, `List`, routing
+and planning probes, `Verify`, the list index) decodes each key page into storage of its own, never
+reused, and validation does not reuse page buffers. No scratch is shared between calls.
 The call retains each projection slot's largest byte and element buffers until it returns, including
 codec state and both compact and expanded values for optional columns. `PageBytes` bounds page data;
 header buffers can retain up to `headerBytes` (16 MiB, bounded by `MetadataMemory`), and indexed raw
 extents include both header and payload.
-`PageValues` also matters: the two value slices alone can reach 768 MiB per optional column at the
-default limit on 64-bit platforms. Dictionaries, page headers/logs, indexes and results add to that.
-Bound concurrent calls/shards and lower `Limits` for tighter memory use. `IndexMemory` is separate;
-there is no aggregate transient-memory budget or guarantee of immediate return of memory to the OS.
+`Limits.PageMemory` bounds the memory decoding one page holds, data and dictionary pages alike, key
+pages included. It is estimated from the page's header before anything is allocated for its values:
+24 bytes per value for its `parquet.Value` (64-bit platforms), twice that for an optional column (its
+non-null values, then every row), plus the bytes its decoded values hold (at most `PageBytes`). A
+page over it fails with an error wrapping `ErrLimitExceeded`. Its default is the most `PageValues`
+and `PageBytes` allow, 2 × 24 × `PageValues` + `PageBytes` (832 MiB at their defaults), so the default
+refuses no page those limits admit; set it lower to bound decoding memory, at the cost of refusing
+pages within the other limits. The bound is per page and per call: concurrent calls and scanned
+shards each decode their own pages, so their memory adds up. Dictionaries, page headers/logs, indexes
+and results add to that. Bound concurrent calls/shards and lower `Limits` for tighter memory use.
+`IndexMemory` is separate; there is no aggregate transient-memory budget or guarantee of immediate
+return of memory to the OS.
 
 ## Cost model
 
@@ -366,6 +379,21 @@ Each concurrent or reentrant scan has its own scratch. Both hold a Dataset lease
 **the callback must not close the Dataset or wait for a goroutine that does**, since Close waits for
 the scan. Return an error or cancel the context to stop, and close after the scan returns. Requests
 started by the callback work normally until Close begins, then fail with `ErrClosed`.
+
+**Limited batch reads.** `d.RangeBatches(ctx, rng, fn func(*Batch) error)` hands `fn` the rows `Range`
+would return for the same request, as the same borrowed `Batch`es, with no plan: bounds, `Cursor`, `Columns`,
+a positive `Limit` and `Stats` mean what they mean to `Range`, and a nil `fn` is `ErrInvalidRequest`. It reads
+what `Range` reads: it opens each projected chunk when the scan reaches its row group, reads a dictionary
+only for a page that uses it, and does not position at the upper bound or read the OffsetIndexes of the rest
+of the range, so a small limit on a long range costs what the rows it returns cost. A successful request
+whose callbacks all return nil has the `ReadStats` the same `Range` would have against the same cache state.
+A request that stops early does not: `Range` reads every key before any value, so a corrupt later key page
+fails it before it decodes a value page, while `RangeBatches` has already decoded values and run callbacks;
+a callback error, cancellation, or another request warming the caches meanwhile changes the counts too.
+It stops at the limit without advancing to the next row; the last batch ends at the limit or the upper bound,
+and a range with no rows never calls `fn`. The borrowing, callback-error, cancellation (also checked before
+every callback), Close and concurrency rules are those of `ScanBatches` above. It is not a planned scan:
+there is no `Count`, `ProjectedBytes` or `Split`; use `PlanRanges` for those.
 
 `plan.Split(ctx, n)` divides a plan into at most `n` shards for a whole scan on several cores: each shard is a
 `RangePlan` over consecutive rows of the plan, and the shards' `Scan`s, run on the caller's goroutines with

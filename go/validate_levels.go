@@ -185,6 +185,9 @@ func (v *validator) walk(c *chunk, rows int64, visit func(i int, loc pageLoc, h 
 			if !ok {
 				return c.corrupt(fmt.Errorf("the data page at %d has no data page header", off))
 			}
+			if declared <= 0 {
+				return c.corrupt(fmt.Errorf("the data page at %d declares %d rows", off, declared))
+			}
 			pageRows, err := visit(i, pageLoc{first: first, rows: declared, offset: off, size: size}, h, n, raw)
 			if err != nil {
 				return err
@@ -487,6 +490,9 @@ func (c *chunk) levelled(h *format.PageHeader, payload []byte, maxRep, maxDef in
 			err = c.corrupt(fmt.Errorf("parquet-go failed on a page: %v", r))
 		}
 	}()
+	if err := c.checkPageMemory(h); err != nil { // as decode does
+		return 0, 0, err
+	}
 	var n int
 	var enc format.Encoding
 	var repLevels, defLevels, data []byte
@@ -508,7 +514,7 @@ func (c *chunk) levelled(h *format.PageHeader, payload []byte, maxRep, maxDef in
 				return nil, c.corrupt(errors.New("the levels exceed the page"))
 			}
 			m := 4 + int(binary.LittleEndian.Uint32(data))
-			out := data[4:m]
+			out := data[4:m:m] // capacity ends with the levels: no decoder reads past them
 			data = data[m:]
 			return out, nil
 		}
@@ -522,7 +528,7 @@ func (c *chunk) levelled(h *format.PageHeader, payload []byte, maxRep, maxDef in
 		d := &h.DataPageHeaderV2.V
 		n, enc = int(d.NumValues), d.Encoding
 		rep, def := int(d.RepetitionLevelsByteLength), int(d.DefinitionLevelsByteLength)
-		repLevels, defLevels, data = payload[:rep], payload[rep:rep+def], payload[rep+def:]
+		repLevels, defLevels, data = payload[:rep:rep], payload[rep:rep+def:rep+def], payload[rep+def:]
 		codec := c.codec
 		if d.IsCompressed.Valid && !d.IsCompressed.V {
 			codec = format.Uncompressed
@@ -531,11 +537,11 @@ func (c *chunk) levelled(h *format.PageHeader, payload []byte, maxRep, maxDef in
 			return 0, 0, c.corrupt(err)
 		}
 	}
-	reps, err := levels(repLevels, n, maxRep)
+	reps, err := levelsOf(repLevels, n, maxRep)
 	if err != nil {
 		return 0, 0, c.corrupt(fmt.Errorf("repetition levels: %w", err))
 	}
-	defs, err := levels(defLevels, n, maxDef)
+	defs, err := levelsOf(defLevels, n, maxDef)
 	if err != nil {
 		return 0, 0, c.corrupt(fmt.Errorf("definition levels: %w", err))
 	}
@@ -598,9 +604,9 @@ func countNulls(values []parquet.Value) int64 {
 	return nulls
 }
 
-// levels decodes n levels of at most max from an RLE/bit-packed hybrid
+// levelsOf decodes n levels of at most max from an RLE/bit-packed hybrid
 // stream, after checking that the stream declares no more than n.
-func levels(src []byte, n, max int) ([]byte, error) {
+func levelsOf(src []byte, n, max int) ([]byte, error) {
 	if max == 0 {
 		return nil, nil
 	}

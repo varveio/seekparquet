@@ -7,13 +7,14 @@ import (
 	"bytes"
 	"context"
 	"unicode/utf8"
-
-	"github.com/parquet-go/parquet-go"
 )
 
 // keyPages walks the key column of one row group forward, holding the
-// page it decoded last. Decoded pages are never reused, so a key it
-// returns stays valid after it moves on.
+// page it decoded last. Unless its chunk has scratch, decoded pages are
+// never reused, so a key it returns stays valid after it moves on. Only
+// the batch walker gives it scratch (scan.keyScratch): there a key it
+// returns is valid until the next page is decoded, and reuse, called
+// before each decode, lets the scan save what it keeps of the old page.
 type keyPages struct {
 	// deferFirst leaves cross-group certification and first-key cache warming
 	// to the list-index coordinator, after independent group decoding.
@@ -23,11 +24,14 @@ type keyPages struct {
 	g          groupRef // the row group's position in the dataset
 	index      *groupIndex
 	chunk      *chunk
-	// values are the keys of page at, next the position in them.
-	values   []parquet.Value
+	// page holds the keys of page at, next the position in them.
+	page     pageKeys
 	at, next int
 	// log holds the pages the request decoded, shared by its walkers.
 	log *pageLog
+	// reuse, when set, is called before a page is decoded into the
+	// chunk's scratch, overwriting the page before it.
+	reuse func()
 }
 
 // keyPages opens a walker on row group g, loading the group's key page
@@ -59,8 +63,8 @@ func (r *reader) loadKeyPages(ctx context.Context, g groupRef, log *pageLog, st 
 // group holds none.
 func (k *keyPages) seek(from []byte, inclusive bool) (key []byte, row int64, ok bool, err error) {
 	for {
-		for ; k.next < len(k.values); k.next++ {
-			key := k.values[k.next].ByteArray()
+		for n := k.page.len(); k.next < n; k.next++ {
+			key := k.page.key(k.next)
 			if order := bytes.Compare(key, from); from == nil || order > 0 || order == 0 && inclusive {
 				return key, k.index.pages[k.at].first + int64(k.next), true, nil
 			}
@@ -101,11 +105,11 @@ func (k *keyPages) seekRow(row int64) ([]byte, error) {
 		}
 	}
 	k.next = int(row - k.index.pages[k.at].first)
-	return k.values[k.next].ByteArray(), nil
+	return k.page.key(k.next), nil
 }
 
 // rewind moves back to the row group's start without decoding anything.
-func (k *keyPages) rewind() { k.values, k.at, k.next = nil, -1, 0 }
+func (k *keyPages) rewind() { k.page, k.at, k.next = pageKeys{}, -1, 0 }
 
 // decode reads key page i and checks it (CHECK-2): its header locates
 // exactly one data page of the rows its OffsetIndex entry gives it (RG-3);
@@ -121,17 +125,24 @@ func (k *keyPages) decode(i int) error {
 	}
 	p := k.part
 	meta := k.index.pages[i]
-	values, err := c.indexed(i, meta.pageLoc)
+	if c.scratch != nil && k.reuse != nil {
+		k.reuse()
+	}
+	page, err := c.indexedKeys(i, meta.pageLoc)
 	if err != nil {
+		if c.scratch != nil {
+			k.rewind() // the page held before may be overwritten
+		}
 		return err
 	}
-	k.values, k.at, k.next = values, i, 0
-	c.stats.KeysDecoded += int64(len(values))
+	k.page, k.at, k.next = page, i, 0
+	n := page.len()
+	c.stats.KeysDecoded += int64(n)
 	var previous []byte
-	for j, value := range values {
-		key := value.ByteArray()
+	for j := range n {
+		key := page.key(j)
 		row := meta.first + int64(j)
-		if value.IsNull() || len(key) == 0 || p.utf8Key && !utf8.Valid(key) {
+		if len(key) == 0 || p.utf8Key && !utf8.Valid(key) {
 			e := refusePart(CodeInvalidKey, p.name, c.physical, "an empty key, or a STRING key that is not valid UTF-8")
 			e.Row = row
 			return e
@@ -141,7 +152,7 @@ func (k *keyPages) decode(i int) error {
 		}
 		previous = key
 	}
-	first, last := values[0].ByteArray(), values[len(values)-1].ByteArray()
+	first, last := page.key(0), page.key(n-1)
 	if bytes.Compare(first, meta.lo) < 0 || bytes.Compare(last, meta.hi) > 0 {
 		return refusePart(CodeInvalidPageIndex, p.name, c.physical, "key page %d holds a key outside its ColumnIndex bounds", i)
 	}
