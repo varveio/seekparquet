@@ -388,7 +388,9 @@ project the key.
 **Batches.** `Batch.Len()`, `Key(i)`, and `Offset(i)` identify rows; `Column(c)` returns a `ColumnView` of
 projection slot `c`, in request order, including duplicates: a small value over the decoded page, made
 without allocating, with `Present()`, `Kind()`, `Len()`, `IsNull(i)`, `Value(i)` (a borrowed `Value`) and
-typed accessors (`Int64(i)`, `Bytes(i)`, ...). A view that is not `Present` is a column the part lacks: its
+typed accessors (`Int64(i)`, `Bytes(i)`, ...) for loops over a column of a known `Kind`: they test no kind
+per value, so on a column of another kind their bits are unspecified (never a panic; `Bytes` is nil), where
+`Value(i)`'s accessors return the zero value. A view that is not `Present` is a column the part lacks: its
 `Len()` values are absent. `Batch.Columns()` names the slots. A projected key remains an ordinary projected
 column.
 

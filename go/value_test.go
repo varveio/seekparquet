@@ -211,7 +211,11 @@ func TestColumnViewEveryKind(t *testing.T) {
 					t.Fatalf("row %d column %d: value kind %s", row, c, v.Kind())
 				}
 				w := norm(want(r, c))
-				if got := norm(probeView(col, i)); !reflect.DeepEqual(got, w) {
+				// The view's accessor of the column's kind gives the value;
+				// the others do not panic (their bits are unspecified, but
+				// Bytes is nil and Int96 zero).
+				got := norm(probeView(col, i))
+				if !viewAgrees(kinds[c], got, w) {
 					t.Fatalf("row %d column %d: view %+v, want %+v", row, c, got, w)
 				}
 				if got := norm(probeValue(v)); !reflect.DeepEqual(got, w) {
@@ -247,6 +251,27 @@ func TestColumnViewEveryKind(t *testing.T) {
 	if zero.Present() || zero.Len() != 0 || zero.Kind() != KindNone {
 		t.Fatal("zero ColumnView")
 	}
+}
+
+// viewAgrees reports whether a ColumnView probe of a column of kind k
+// agrees with the probe of the value: on the accessors of k, and on Bytes
+// and Int96 for every kind.
+func viewAgrees(k Kind, got, want kindProbe) bool {
+	switch k {
+	case KindBoolean:
+		return got.Boolean == want.Boolean && got.Bytes == nil && got.Int96 == (Int96{})
+	case KindInt32:
+		return got.Int32 == want.Int32 && got.Uint32 == want.Uint32 && got.Bytes == nil && got.Int96 == (Int96{})
+	case KindInt64:
+		return got.Int64 == want.Int64 && got.Uint64 == want.Uint64 && got.Bytes == nil && got.Int96 == (Int96{})
+	case KindFloat:
+		return got.Float == want.Float && got.Bytes == nil && got.Int96 == (Int96{})
+	case KindDouble:
+		return got.Double == want.Double && got.Bytes == nil && got.Int96 == (Int96{})
+	case KindInt96:
+		return got.Int96 == want.Int96 && got.Bytes == nil
+	}
+	return bytes.Equal(got.Bytes, want.Bytes) && got.Int96 == (Int96{})
 }
 
 // TestLogicalRoundTrip: every logical annotation a footer can carry, with

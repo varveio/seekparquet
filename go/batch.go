@@ -54,7 +54,7 @@ func (b *Batch) Column(c int) ColumnView { return ColumnView{values: b.values[c]
 func (b *Batch) Row(i int) Row {
 	r := Row{Key: bytes.Clone(b.Key(i)), Offset: b.Offset(i), Columns: b.columns, Values: make([]Value, len(b.values))}
 	for c, values := range b.values {
-		r.Values[c] = Value{v: values[i].Clone(), absent: b.kinds[c] == KindNone}
+		r.Values[c] = valueOf(&values[i], b.kinds[c] == KindNone).Clone()
 	}
 	return r
 }

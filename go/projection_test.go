@@ -130,7 +130,7 @@ func TestProjection(t *testing.T) {
 }
 
 func sameValue(a, b Value) bool {
-	return a.Absent() == b.Absent() && a.IsNull() == b.IsNull() && parquet.Equal(a.v, b.v)
+	return a.Absent() == b.Absent() && a.IsNull() == b.IsNull() && equalValue(a, b)
 }
 
 // TestRowsOwnTheirBytes changes everything a read was given and returned:

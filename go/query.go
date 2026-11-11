@@ -294,11 +294,8 @@ func (r *reader) readRange(ctx context.Context, q Query, st *ReadStats) (_ []Row
 		return nil, err
 	}
 	defer done(&err)
-	rows, at, _, err := r.discover(ctx, q.Selection, int(q.Limit), false, st)
-	if err != nil || len(rows) == 0 {
-		return nil, err
-	}
-	return r.projected(ctx, rows, at, q.Columns, st)
+	rows, _, err := r.collect(ctx, q.Selection, int(q.Limit), false, q.Columns, st)
+	return rows, err
 }
 
 // readGet returns the group of key; see Dataset.Get.
@@ -310,36 +307,34 @@ func (r *reader) readGet(ctx context.Context, key []byte, st *ReadStats, columns
 	}
 	defer done(&err)
 	limit := r.limits.GetRows
-	rows, at, more, err := r.discover(ctx, Selection{Span: KeySpan(key)}, limit, true, st)
-	switch {
-	case err != nil:
-		return nil, err
-	case more:
+	rows, more, err := r.collect(ctx, Selection{Span: KeySpan(key)}, limit, true, columns, st)
+	if more {
 		return nil, exceeded(LimitGetRows, -1, int64(limit),
 			"the group of key %.64q has more rows than Limits.GetRows: read it in pages of Rows over KeySpan(key), continuing after each page's last row", key)
-	case len(rows) == 0:
-		return nil, nil
 	}
-	return r.projected(ctx, rows, at, columns, st)
+	return rows, err
 }
 
-// discover returns, with the positions it found them at, the first rows
-// of sel, at most limit of them, their keys owned but no value projected.
-// With probe, once it has limit rows it decodes the next key, and more
-// reports whether the selection has another row; without, it stops on the
-// last row it returns, as Rows does.
-func (r *reader) discover(ctx context.Context, sel Selection, limit int, probe bool, st *ReadStats) (rows []Row, at []position, more bool, err error) {
+// collect returns the first rows of sel, at most limit of them, with the
+// values of columns, or no rows on error. It finds every row's key before
+// it projects any value. With probe, once it has limit rows it decodes the
+// next key and, when the selection has another row, returns none and more
+// set, having read no value page; without, it stops on the last row it
+// returns, as Rows does.
+func (r *reader) collect(ctx context.Context, sel Selection, limit int, probe bool, columns []string, st *ReadStats) (_ []Row, more bool, err error) {
 	from, exclusive, end := sel.bounds()
 	if r.rows == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
-		return nil, nil, false, nil
+		return nil, false, nil
 	}
 	s := r.newScan(ctx, end, st)
 	if err := s.start(from, exclusive, sel.Cursor); err != nil {
-		return nil, nil, false, err
+		return nil, false, err
 	}
+	var rows []Row
+	var at []position
 	for s.key != nil {
 		if len(rows) == limit {
-			return rows, at, true, nil // probe found one more
+			return nil, true, nil // probe found one more
 		}
 		rows = append(rows, Row{Key: bytes.Clone(s.key), Offset: s.offset()})
 		at = append(at, s.at())
@@ -347,23 +342,20 @@ func (r *reader) discover(ctx context.Context, sel Selection, limit int, probe b
 			break
 		}
 		if err := s.next(); err != nil {
-			return nil, nil, false, err
+			return nil, false, err
 		}
 	}
-	return rows, at, false, nil
-}
-
-// projected projects the values of rows, found at positions at, and
-// returns them, or no rows on error.
-func (r *reader) projected(ctx context.Context, rows []Row, at []position, columns []string, st *ReadStats) ([]Row, error) {
+	if len(rows) == 0 {
+		return nil, false, nil
+	}
 	out := make([]*Row, len(rows))
 	for i := range rows {
 		out[i] = &rows[i]
 	}
 	if err := r.project(ctx, out, at, slices.Clone(columns), st); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return rows, nil
+	return rows, false, nil
 }
 
 // readList returns the entries of req; see Dataset.List.
@@ -563,6 +555,6 @@ func projectColumn(rows []*Row, at []position, c int, cp *columnPages) error {
 		return nil
 	}
 	return cp.read(at, func(k int, v parquet.Value) {
-		rows[k].Values[c] = Value{v: v.Clone()}
+		rows[k].Values[c] = valueOf(&v, false).Clone()
 	})
 }
