@@ -51,6 +51,11 @@ package io.varve.seekparquet;
  * @param sourceReads the {@link io.varve.seekparquet.storage.PartSource#read} calls the request made
  *     on part files, footer, page index and page header reads included
  * @param sourceBytes the total length of those reads, the bytes requested
+ * @param readAheadReads the key pages a listing read ahead ({@link ListQuery#readAhead()}), each in
+ *     one read that is also counted in {@code sourceReads} and {@code sourceBytes}
+ * @param readAheadUnused how many of those the listing did not use: wrong predictions, pages past
+ *     where the listing stopped, and reads that failed (the page is then read again)
+ * @param readAheadUnusedBytes the bytes of the pages read ahead and not used
  */
 public record ReadStats(
         long partsOpened,
@@ -68,7 +73,38 @@ public record ReadStats(
         long listIndexDelimiter,
         long listIndexMissingGroup,
         long listIndexDensePage,
-        long listIndexUnsafeRun) {
+        long listIndexUnsafeRun,
+        long readAheadReads,
+        long readAheadUnused,
+        long readAheadUnusedBytes) {
+
+    /**
+     * Constructs counts without read-ahead counts.
+     * @param partsOpened parts opened
+     * @param keyPagesDecoded key pages decoded
+     * @param valuePagesDecoded value pages decoded
+     * @param keysDecoded keys decoded
+     * @param rowGroupsOpened row groups opened
+     * @param indexLoads indexes loaded
+     * @param pageIndexSeeks page index seeks
+     * @param prefixSkips prefix skips
+     * @param groupsSkipped groups skipped
+     * @param sourceReads source reads
+     * @param sourceBytes source bytes
+     * @param listIndexSkips list index skips
+     * @param listIndexDelimiter list index delimiter declines
+     * @param listIndexMissingGroup list index missing-group declines
+     * @param listIndexDensePage list index dense-page declines
+     * @param listIndexUnsafeRun list index unsafe-run declines
+     */
+    public ReadStats(long partsOpened, long keyPagesDecoded, long valuePagesDecoded, long keysDecoded,
+            long rowGroupsOpened, long indexLoads, long pageIndexSeeks, long prefixSkips,
+            long groupsSkipped, long sourceReads, long sourceBytes, long listIndexSkips, long listIndexDelimiter,
+            long listIndexMissingGroup, long listIndexDensePage, long listIndexUnsafeRun) {
+        this(partsOpened, keyPagesDecoded, valuePagesDecoded, keysDecoded, rowGroupsOpened, indexLoads,
+                pageIndexSeeks, prefixSkips, groupsSkipped, sourceReads, sourceBytes, listIndexSkips, listIndexDelimiter,
+                listIndexMissingGroup, listIndexDensePage, listIndexUnsafeRun, 0, 0, 0);
+    }
 
     /**
      * Constructs counts from the original access paths, with zero optional-index counts.
@@ -101,7 +137,9 @@ public record ReadStats(
                 pageIndexSeeks - o.pageIndexSeeks, prefixSkips - o.prefixSkips, groupsSkipped - o.groupsSkipped,
                 sourceReads - o.sourceReads, sourceBytes - o.sourceBytes, listIndexSkips - o.listIndexSkips,
                 listIndexDelimiter - o.listIndexDelimiter, listIndexMissingGroup - o.listIndexMissingGroup,
-                listIndexDensePage - o.listIndexDensePage, listIndexUnsafeRun - o.listIndexUnsafeRun);
+                listIndexDensePage - o.listIndexDensePage, listIndexUnsafeRun - o.listIndexUnsafeRun,
+                readAheadReads - o.readAheadReads, readAheadUnused - o.readAheadUnused,
+                readAheadUnusedBytes - o.readAheadUnusedBytes);
     }
 
     /** The counts of a request in progress. Confined to the request's thread. */
@@ -117,11 +155,13 @@ public record ReadStats(
         long prefixSkips;
         long sourceReads;
         long sourceBytes;
+        long readAheadReads, readAheadUnused, readAheadUnusedBytes;
 
         ReadStats snapshot() {
             return new ReadStats(partsOpened, keyPagesDecoded, valuePagesDecoded, keysDecoded, rowGroupsOpened, indexLoads,
                     pageIndexSeeks, prefixSkips, 0, sourceReads, sourceBytes, listIndexSkips, listIndexDelimiter,
-                    listIndexMissingGroup, listIndexDensePage, listIndexUnsafeRun);
+                    listIndexMissingGroup, listIndexDensePage, listIndexUnsafeRun, readAheadReads, readAheadUnused,
+                    readAheadUnusedBytes);
         }
     }
 }
