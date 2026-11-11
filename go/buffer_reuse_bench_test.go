@@ -50,15 +50,15 @@ func BenchmarkScanBufferReuse(b *testing.B) {
 	for _, column := range footer.RowGroups[0].Columns {
 		b.Logf("first group: %v codec=%s encodings=%v", column.MetaData.PathInSchema, column.MetaData.Codec, column.MetaData.Encoding)
 	}
-	d := open(b, dir, Options{})
+	d := open(b, dir, OpenOptions{})
 	columns := []string{"size", "etag", "class"}
-	plan, err := d.PlanRanges(ctx, []Range{{}}, columns)
+	plan, err := d.Plan(ctx, []Selection{{}}, columns, nil)
 	must(b, err)
 	var st ReadStats
-	must(b, plan.Scan(ctx, &st, func(Row) error { return nil }))
+	must(b, scanRows(ctx, plan, &st, func(Row) error { return nil }))
 	b.Logf("warm scan stats: %+v", st)
 	for _, workers := range []int{1, 2} {
-		shards, err := plan.Split(ctx, workers)
+		shards, err := plan.Split(ctx, workers, nil)
 		must(b, err)
 		for _, mode := range []string{"Scan", "ScanBatches"} {
 			b.Run(fmt.Sprintf("%s/workers=%d", mode, workers), func(b *testing.B) {
@@ -69,9 +69,9 @@ func BenchmarkScanBufferReuse(b *testing.B) {
 					for i, shard := range shards {
 						wg.Go(func() {
 							if mode == "ScanBatches" {
-								errs[i] = shard.ScanBatches(ctx, nil, func(*Batch) error { return nil })
+								errs[i] = shard.Scan(ctx, nil, func(*Batch) error { return nil })
 							} else {
-								errs[i] = shard.Scan(ctx, nil, func(Row) error { return nil })
+								errs[i] = scanRows(ctx, shard, nil, func(Row) error { return nil })
 							}
 						})
 					}
@@ -85,23 +85,23 @@ func BenchmarkScanBufferReuse(b *testing.B) {
 		}
 
 	}
-	keyPlan, err := d.PlanRanges(ctx, []Range{{}}, nil)
+	keyPlan, err := d.Plan(ctx, []Selection{{}}, nil, nil)
 	must(b, err)
 	b.Run("ScanBatchesKeysOnly", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			must(b, keyPlan.ScanBatches(ctx, nil, func(*Batch) error { return nil }))
+			must(b, keyPlan.Scan(ctx, nil, func(*Batch) error { return nil }))
 		}
 		b.ReportMetric(n, "rows/op")
 	})
 	lengths := map[int]int{}
-	must(b, plan.ScanBatches(ctx, nil, func(batch *Batch) error { lengths[batch.Len()]++; return nil }))
+	must(b, plan.Scan(ctx, nil, func(batch *Batch) error { lengths[batch.Len()]++; return nil }))
 	b.Logf("batch length distribution: %v", lengths)
 
 	b.Run("Range", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			rows, err := d.Range(ctx, Range{Limit: n, Columns: columns})
+			rows, err := d.Rows(ctx, Query{Limit: int64(n), Columns: columns}, nil)
 			must(b, err)
 			if len(rows) != n {
 				b.Fatal(len(rows))
@@ -112,7 +112,7 @@ func BenchmarkScanBufferReuse(b *testing.B) {
 	b.Run("List", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			rows, err := d.List(ctx, List{Limit: n, Columns: columns})
+			rows, err := d.List(ctx, ListQuery{Limit: n, Columns: columns}, nil)
 			must(b, err)
 			if len(rows) != n {
 				b.Fatal(len(rows))

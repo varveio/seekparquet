@@ -49,14 +49,14 @@ func TestSortingColumnIndexes(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
 			rewrite(t, dir, 0, c.apply)
-			if err := openErr(dir, Options{}); CodeOf(err) != c.code {
+			if err := openErr(dir, OpenOptions{}); CodeOf(err) != c.code {
 				t.Fatalf("OpenDir: %v, want %q", err, c.code)
 			}
-			if _, err := openPartsOf(t, dir, 1, unique, false, Options{}); CodeOf(err) != c.code {
+			if _, err := openPartsOf(t, dir, 1, unique, false, OpenOptions{}); CodeOf(err) != c.code {
 				t.Fatalf("openParts: %v, want %q", err, c.code)
 			}
 			if c.code == "" {
-				rows, err := open(t, dir, Options{}).Range(ctx, Range{Limit: 10, Columns: []string{"size"}})
+				rows, err := open(t, dir, OpenOptions{}).Rows(ctx, Query{Limit: 10, Columns: []string{"size"}}, nil)
 				if err != nil || len(rows) != 2 {
 					t.Fatalf("Range: %d rows, %v", len(rows), err)
 				}
@@ -93,7 +93,7 @@ func TestHostileFooters(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
 			rewrite(t, dir, 0, c.apply)
-			if err := openErr(dir, Options{}); CodeOf(err) != CodeInvalidFooter {
+			if err := openErr(dir, OpenOptions{}); CodeOf(err) != CodeInvalidFooter {
 				t.Fatalf("got %v, want invalid_footer", err)
 			}
 		})
@@ -122,7 +122,7 @@ func TestFooterAllocation(t *testing.T) {
 	dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
 	// Field 2 (schema), a list of structs with a varint size of 2^31-1.
 	replaceFooter(t, dir, []byte{0x29, 0xfc, 0xff, 0xff, 0xff, 0xff, 0x07, 0x00})
-	if err := openErr(dir, Options{}); CodeOf(err) != CodeInvalidFooter {
+	if err := openErr(dir, OpenOptions{}); CodeOf(err) != CodeInvalidFooter {
 		t.Fatalf("huge list count: %v", err)
 	}
 	// 100,000 empty schema elements: 100 KB of input, megabytes decoded.
@@ -131,10 +131,10 @@ func TestFooterAllocation(t *testing.T) {
 	raw = append(raw, bytes.Repeat([]byte{0}, 100_000)...)
 	raw = append(raw, 0)
 	replaceFooter(t, dir, raw)
-	if err := openErr(dir, Options{Limits: Limits{MetadataMemory: 1 << 20}}); !errors.Is(err, ErrLimitExceeded) || CodeOf(err) != "" {
+	if err := openErr(dir, OpenOptions{Limits: Limits{MetadataMemory: 1 << 20}}); !errors.Is(err, ErrLimitExceeded) || CodeOf(err) != "" {
 		t.Fatalf("decoded size: %v", err)
 	}
-	if err := openErr(dir, Options{Limits: Limits{FooterBytes: 1000}}); !errors.Is(err, ErrLimitExceeded) {
+	if err := openErr(dir, OpenOptions{Limits: Limits{FooterBytes: 1000}}); !errors.Is(err, ErrLimitExceeded) {
 		t.Fatalf("footer length: %v", err)
 	}
 }
@@ -145,12 +145,12 @@ func TestLimits(t *testing.T) {
 	keys := fixtureKeys(400)
 	dir := write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 512}, split(keys, 2)...))
 	read := func(lim Limits) error {
-		d, err := OpenDir(ctx, dir, Options{Limits: lim})
+		d, err := OpenDir(ctx, dir, OpenOptions{Limits: lim})
 		if err != nil {
 			return err
 		}
 		defer d.Close()
-		_, err = d.Range(ctx, Range{Limit: 1000, Columns: []string{"size", "name"}})
+		_, err = d.Rows(ctx, Query{Limit: 1000, Columns: []string{"size", "name"}}, nil)
 		return err
 	}
 	must(t, read(Limits{}))
@@ -200,13 +200,13 @@ func TestFixedLengthConsistency(t *testing.T) {
 		"top-level": {Parts: []testutil.Part{{Rows: []four{{Key: []byte("a")}}}, {Rows: []eight{{Key: []byte("b")}}}}},
 		"nested":    {Parts: []testutil.Part{{Rows: []nested4{{Key: []byte("a")}}}, {Rows: []nested8{{Key: []byte("b")}}}}},
 	} {
-		if err := openErr(write(t, ds), Options{}); CodeOf(err) != CodeInconsistentColumn {
+		if err := openErr(write(t, ds), OpenOptions{}); CodeOf(err) != CodeInconsistentColumn {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
 	same := testutil.Dataset{Parts: []testutil.Part{{Rows: []four{{Key: []byte("a")}}}, {Rows: []four{{Key: []byte("b")}}}}}
-	d := open(t, write(t, same), Options{})
-	if rows, err := d.Range(ctx, Range{Limit: 2, Columns: []string{"fx"}}); err != nil || len(rows) != 2 {
+	d := open(t, write(t, same), OpenOptions{})
+	if rows, err := d.Rows(ctx, Query{Limit: 2, Columns: []string{"fx"}}, nil); err != nil || len(rows) != 2 {
 		t.Fatalf("%d rows, %v", len(rows), err)
 	}
 }
@@ -221,7 +221,7 @@ func TestColumnOrdersCardinality(t *testing.T) {
 	} {
 		dir := write(t, parts(testutil.Part{}, []string{"a"}))
 		rewrite(t, dir, 0, apply)
-		if err := openErr(dir, Options{}); CodeOf(err) != CodeInvalidKeyColumn {
+		if err := openErr(dir, OpenOptions{}); CodeOf(err) != CodeInvalidKeyColumn {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
@@ -259,7 +259,7 @@ func TestOpenReads(t *testing.T) {
 	dir := write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 512}, split(keys, 4)...))
 	reads := func(verify bool) (int64, *Dataset) {
 		src := &readCounter{Source: dirOf(t, dir)}
-		d, err := OpenDataset(ctx, src, Options{})
+		d, err := OpenDataset(ctx, src, OpenOptions{})
 		must(t, err)
 		t.Cleanup(func() { _ = d.Close() })
 		if verify {
@@ -277,8 +277,8 @@ func TestOpenReads(t *testing.T) {
 	if eager < lazy+4*1+20*3 {
 		t.Fatalf("Verify made %d reads, the open %d: it did not read every footer and row group", eager, lazy)
 	}
-	r1, err1 := d1.Range(ctx, Range{Start: []byte(keys[1234]), Limit: 50})
-	r2, err2 := d2.Range(ctx, Range{Start: []byte(keys[1234]), Limit: 50})
+	r1, err1 := d1.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte(keys[1234])}}, Limit: 50}, nil)
+	r2, err2 := d2.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte(keys[1234])}}, Limit: 50}, nil)
 	if err1 != nil || err2 != nil || len(r1) == 0 || keysOf(r1)[0] != keys[1234] || len(r1) != len(r2) {
 		t.Fatalf("%v %v", err1, err2)
 	}
@@ -479,11 +479,11 @@ func TestPageDeclarationsAreChecked(t *testing.T) {
 					off = chunk.DictionaryPageOffset
 				}
 				editPageHeader(t, partFile(dir, 0), off, func(h *format.PageHeader) { h.UncompressedPageSize += c.delta })
-				d := open(t, dir, Options{})
-				if _, err := d.Range(ctx, Range{Limit: 100, Columns: []string{c.column}}); CodeOf(err) != CodeInvalidParquet {
+				d := open(t, dir, OpenOptions{})
+				if _, err := d.Rows(ctx, Query{Limit: 100, Columns: []string{c.column}}, nil); CodeOf(err) != CodeInvalidParquet {
 					t.Fatalf("got %v, want invalid_parquet", err)
 				}
-				if rows, err := d.Range(ctx, Range{Limit: 100}); err != nil || len(rows) != 40 {
+				if rows, err := d.Rows(ctx, Query{Limit: 100}, nil); err != nil || len(rows) != 40 {
 					t.Fatalf("keys only: %d rows, %v", len(rows), err)
 				}
 			})
@@ -527,8 +527,8 @@ func TestCorruptValueOffsetIndex(t *testing.T) {
 			}
 			copy(at, encoded)
 			must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
-			d := open(t, dir, Options{})
-			if _, err := d.Range(ctx, Range{Limit: 200, Columns: []string{"size"}}); CodeOf(err) != CodeInvalidParquet {
+			d := open(t, dir, OpenOptions{})
+			if _, err := d.Rows(ctx, Query{Limit: 200, Columns: []string{"size"}}, nil); CodeOf(err) != CodeInvalidParquet {
 				t.Fatalf("got %v, want invalid_parquet", err)
 			}
 		})

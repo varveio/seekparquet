@@ -177,7 +177,7 @@ type partInput struct {
 //
 // openParts takes ownership of every file that implements io.Closer: when
 // it fails it closes them all, and on success reader.close closes them.
-func openParts(ctx context.Context, inputs []partInput, key Key, opt Options) (_ *reader, err error) {
+func openParts(ctx context.Context, inputs []partInput, key Key, opt OpenOptions) (_ *reader, err error) {
 	r := &reader{key: key, limits: opt.Limits.withDefaults(), bounded: true, columns: map[string]column{}}
 	r.closing, r.closeNow = context.WithCancelCause(context.Background())
 	defer func() {

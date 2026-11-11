@@ -151,7 +151,7 @@ func inspect(r io.ReaderAt, size int64) (*reader, Footer, error) {
 	if err != nil {
 		return nil, Footer{}, err
 	}
-	rd, err := openParts(ctx, []partInput{{file: readerOnly{r}, size: size, footer: footer}}, ft.Key, Options{Limits: lim})
+	rd, err := openParts(ctx, []partInput{{file: readerOnly{r}, size: size, footer: footer}}, ft.Key, OpenOptions{Limits: lim})
 	if err != nil {
 		return nil, Footer{}, err
 	}

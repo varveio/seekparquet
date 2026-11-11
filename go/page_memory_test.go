@@ -135,8 +135,8 @@ func TestPageMemoryOnEveryPage(t *testing.T) {
 		t.Fatalf("the fixture's pages do not isolate each kind: %v", memory)
 	}
 	read := func(limit int64, columns ...string) error {
-		d := open(t, dir, Options{Limits: Limits{PageMemory: limit}})
-		got, err := d.Range(ctx, Range{Limit: 5000, Columns: columns})
+		d := open(t, dir, OpenOptions{Limits: Limits{PageMemory: limit}})
+		got, err := d.Rows(ctx, Query{Limit: 5000, Columns: columns}, nil)
 		if err == nil && (len(got) != len(rows) || len(columns) > 0 && got[2999].Values[0].IsNull()) {
 			return fmt.Errorf("%d rows", len(got))
 		}
@@ -182,7 +182,7 @@ func TestPageMemoryOnEveryPage(t *testing.T) {
 // dictionary pages, key pages, and required and optional value pages.
 func pageMemoryByKind(t *testing.T, dir string) map[string]int64 {
 	t.Helper()
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	p, err := d.r.part(ctx, 0, new(ReadStats))
 	must(t, err)
 	out := map[string]int64{}

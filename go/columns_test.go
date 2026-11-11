@@ -53,7 +53,7 @@ func TestColumnsAnnotated(t *testing.T) {
 		}
 	}
 	dir := "../conformance/datasets/annotated"
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	got, err := d.Columns(ctx, 0)
 	must(t, err)
 	if !reflect.DeepEqual(got, want) {
@@ -105,7 +105,7 @@ func TestColumnsInconsistent(t *testing.T) {
 	}})
 	types := []Kind{KindInt32, KindInt64}
 	for first := range 2 {
-		d := open(t, dir, Options{})
+		d := open(t, dir, OpenOptions{})
 		cols, err := d.Columns(ctx, first)
 		must(t, err)
 		if len(cols) != 2 || cols[1].Name != "size" || cols[1].Type != types[first] {
@@ -125,7 +125,7 @@ func TestColumnsInconsistent(t *testing.T) {
 
 // TestColumnsConcurrent races Columns with reads on unchecked parts.
 func TestColumnsConcurrent(t *testing.T) {
-	d := open(t, write(t, lazyParts()), Options{})
+	d := open(t, write(t, lazyParts()), OpenOptions{})
 	var wg sync.WaitGroup
 	for i := range 16 {
 		part := i % len(d.r.parts)
@@ -136,7 +136,7 @@ func TestColumnsConcurrent(t *testing.T) {
 			}
 		})
 		wg.Go(func() {
-			if rows, err := d.Range(ctx, PrefixRange([]byte{"abcd"[part]}, 100)); err != nil || len(rows) != 25 {
+			if rows, err := d.Rows(ctx, Query{Selection: Selection{Span: PrefixSpan([]byte{"abcd"[part]})}, Limit: 100}, nil); err != nil || len(rows) != 25 {
 				t.Errorf("part %d: %d rows, %v", part, len(rows), err)
 			}
 		})

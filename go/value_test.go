@@ -146,7 +146,7 @@ func TestColumnViewEveryKind(t *testing.T) {
 	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{
 		{Rows: records},
 		{Rows: []keyOnlyRecord{{[]byte("b0")}, {[]byte("b1")}}},
-	}}), Options{})
+	}}), OpenOptions{})
 	columns := []string{"bool", "i32", "i64", "i96", "f32", "f64", "bytes", "fixed", "opt_i64", "opt_text"}
 	kinds := []Kind{KindBoolean, KindInt32, KindInt64, KindInt96, KindFloat, KindDouble, KindByteArray, KindFixedLenByteArray, KindInt64, KindByteArray}
 	want := func(r everyKindRecord, c int) kindProbe {
@@ -186,7 +186,7 @@ func TestColumnViewEveryKind(t *testing.T) {
 		return p
 	}
 	n := 0
-	err := d.RangeBatches(ctx, Range{Limit: 100, Columns: columns}, func(b *Batch) error {
+	err := d.Scan(ctx, Query{Limit: 100, Columns: columns}, nil, func(b *Batch) error {
 		for c := range columns {
 			col := b.Column(c)
 			if col.Len() != b.Len() {
@@ -230,7 +230,7 @@ func TestColumnViewEveryKind(t *testing.T) {
 		t.Fatalf("%d rows", n)
 	}
 	// Index panics, as a slice's.
-	must(t, d.RangeBatches(ctx, Range{Limit: 1, Columns: []string{"i64"}}, func(b *Batch) error {
+	must(t, d.Scan(ctx, Query{Limit: 1, Columns: []string{"i64"}}, nil, func(b *Batch) error {
 		for _, i := range []int{-1, b.Len()} {
 			func() {
 				defer func() {

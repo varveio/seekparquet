@@ -44,7 +44,7 @@ func TestDatasetRowTotalLimit(t *testing.T) {
 			declarePartRows(t, dir, 0, tc.first)
 			declarePartRows(t, dir, 1, tc.second)
 			src := &countingSource{Source: dirOf(t, dir)}
-			d, err := OpenDataset(ctx, src, Options{})
+			d, err := OpenDataset(ctx, src, OpenOptions{})
 			if d != nil {
 				defer d.Close()
 			}
@@ -76,9 +76,9 @@ func TestResumeAtMaximumDatasetRowTotal(t *testing.T) {
 	doc.RepeatedKeys = true
 	dir := write(t, doc)
 	declarePartRows(t, dir, 0, math.MaxInt64-3)
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	for _, offset := range []int64{0, 1, math.MaxInt64} {
-		rows, err := d.Range(ctx, Range{Cursor: &Cursor{Key: []byte("b"), Offset: offset}, Limit: 3})
+		rows, err := d.Rows(ctx, Query{Selection: Selection{Cursor: &Cursor{Key: []byte("b"), Offset: offset}}, Limit: 3}, nil)
 		must(t, err)
 		if offset == 0 {
 			if len(rows) != 2 || string(rows[0].Key) != "b" || rows[0].Offset != 1 || string(rows[1].Key) != "c" {
@@ -104,7 +104,7 @@ func TestOverflowCannotSkipRepeatedKeyTail(t *testing.T) {
 	dir := write(t, doc)
 	declarePartRows(t, dir, 0, 1<<62)
 	declarePartRows(t, dir, 1, 1<<62)
-	if err := openErr(dir, Options{}); !errors.Is(err, ErrLimitExceeded) || CodeOf(err) != "" {
+	if err := openErr(dir, OpenOptions{}); !errors.Is(err, ErrLimitExceeded) || CodeOf(err) != "" {
 		t.Fatalf("overflowing repeated-key dataset: %v, want non-refusal ErrLimitExceeded", err)
 	}
 }

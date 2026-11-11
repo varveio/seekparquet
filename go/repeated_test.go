@@ -41,11 +41,11 @@ func positions(parts [][]string) []positioned {
 // rangeExpect answers a range over the rows by the definition, walking
 // every row with no routing or page access; entries are spelled
 // "key/offset=size".
-func rangeExpect(rows []positioned, rng Range) []string {
+func rangeExpect(rows []positioned, rng Query) []string {
 	var out []string
 	from, exclusive, end := rng.bounds()
 	for _, r := range rows {
-		if len(out) == rng.Limit {
+		if int64(len(out)) == rng.Limit {
 			break
 		}
 		if from != nil && (bytes.Compare(r.key, from) < 0 || exclusive && bytes.Equal(r.key, from)) ||
@@ -61,7 +61,7 @@ func rangeExpect(rows []positioned, rng Range) []string {
 // spelled "r:key/offset=size" and prefixes "p:prefix", with
 // "=key/offset=size" when the prefix's first candidate is its exact row
 // (LIST-8).
-func listExpect(rows []positioned, req List) []string {
+func listExpect(rows []positioned, req ListQuery) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, r := range rows {
@@ -95,7 +95,7 @@ func rowsString(rows []Row) []string {
 	return out
 }
 
-func listString(entries []Entry) []string {
+func listString(entries []ListEntry) []string {
 	out := make([]string, len(entries))
 	for i, e := range entries {
 		if e.IsPrefix() {
@@ -139,7 +139,7 @@ func TestRepeatedQueriesMatchSequentialOracle(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				doc := parts(geometry, keyParts...)
 				doc.RepeatedKeys = true
-				d := open(t, write(t, doc), Options{})
+				d := open(t, write(t, doc), OpenOptions{})
 				if verify {
 					must(t, d.Verify(ctx))
 				}
@@ -147,8 +147,8 @@ func TestRepeatedQueriesMatchSequentialOracle(t *testing.T) {
 					for _, exclusive := range []bool{false, true} {
 						for _, end := range [][]byte{nil, []byte("b"), []byte("d")} {
 							for _, limit := range []int{1, 5, 1000} {
-								rng := Range{Start: []byte(start), StartExclusive: exclusive, End: end, Limit: limit, Columns: []string{"size"}}
-								got, err := d.Range(ctx, rng)
+								rng := Query{Selection: Selection{Span: Span{Start: []byte(start), StartExclusive: exclusive, End: end}}, Limit: int64(limit), Columns: []string{"size"}}
+								got, err := d.Rows(ctx, rng, nil)
 								if err != nil {
 									t.Fatalf("%s: %v", describe(rng), err)
 								}
@@ -160,8 +160,8 @@ func TestRepeatedQueriesMatchSequentialOracle(t *testing.T) {
 					}
 					for _, delimiter := range []byte{'/', 0xff, 0} {
 						for _, cur := range []*Cursor{nil, {Key: []byte(start)}, {Key: []byte(start), Offset: 3}, {Prefix: []byte(start)}} {
-							req := List{Cursor: cur, Delimiter: delimiter, Limit: 1000, Columns: []string{"size"}}
-							got, err := d.List(ctx, req)
+							req := ListQuery{Cursor: cur, Delimiter: delimiter, Limit: 1000, Columns: []string{"size"}}
+							got, err := d.List(ctx, req, nil)
 							if err != nil {
 								t.Fatalf("%s: %v", describe(req), err)
 							}
@@ -173,10 +173,10 @@ func TestRepeatedQueriesMatchSequentialOracle(t *testing.T) {
 				}
 				for _, prefix := range []string{"", "a", "a/", "c", "\xff"} {
 					for _, limit := range []int{1, 2, 7, 50} {
-						rng := PrefixRange([]byte(prefix), limit, "size")
+						rng := Query{Selection: Selection{Span: PrefixSpan([]byte(prefix))}, Limit: int64(limit), Columns: []string{"size"}}
 						var joined []string
 						for range len(rows) + 1 {
-							page, err := d.Range(ctx, rng)
+							page, err := d.Rows(ctx, rng, nil)
 							if err != nil {
 								t.Fatalf("%s: %v", describe(rng), err)
 							}
@@ -186,13 +186,13 @@ func TestRepeatedQueriesMatchSequentialOracle(t *testing.T) {
 							}
 							rng.Cursor = page[len(page)-1].Cursor()
 						}
-						if want := rangeExpect(rows, PrefixRange([]byte(prefix), math.MaxInt)); !slices.Equal(joined, want) {
+						if want := rangeExpect(rows, Query{Selection: Selection{Span: PrefixSpan([]byte(prefix))}, Limit: int64(math.MaxInt)}); !slices.Equal(joined, want) {
 							t.Fatalf("paged %s: %d rows, want %d", describe(rng), len(joined), len(want))
 						}
-						req := List{Prefix: []byte(prefix), Delimiter: '/', Limit: limit, Columns: []string{"size"}}
+						req := ListQuery{Prefix: []byte(prefix), Delimiter: '/', Limit: limit, Columns: []string{"size"}}
 						var entries []string
 						for range len(rows) + 1 {
-							page, err := d.List(ctx, req)
+							page, err := d.List(ctx, req, nil)
 							if err != nil {
 								t.Fatalf("%s: %v", describe(req), err)
 							}
@@ -221,11 +221,11 @@ func TestCursorAtEveryRow(t *testing.T) {
 	rows := positions(keyParts)
 	doc := parts(testutil.Part{GroupRows: 11, PageBytes: 24}, keyParts...)
 	doc.RepeatedKeys = true
-	d := open(t, write(t, doc), Options{})
+	d := open(t, write(t, doc), OpenOptions{})
 	for _, r := range rows {
 		for _, offset := range []int64{r.offset, r.offset + 100, math.MaxInt64} {
-			rng := Range{Cursor: &Cursor{Key: r.key, Offset: offset}, Limit: 4, Columns: []string{"size"}}
-			got, err := d.Range(ctx, rng)
+			rng := Query{Selection: Selection{Cursor: &Cursor{Key: r.key, Offset: offset}}, Limit: 4, Columns: []string{"size"}}
+			got, err := d.Rows(ctx, rng, nil)
 			if err != nil {
 				t.Fatalf("%s: %v", describe(rng), err)
 			}
@@ -249,8 +249,8 @@ func TestLargeGroupResumeIsPageBounded(t *testing.T) {
 	keys = append(keys, "z")
 	doc := parts(testutil.Part{GroupRows: 1000, PageBytes: 64}, keys)
 	doc.RepeatedKeys = true
-	d := open(t, write(t, doc), Options{})
-	rng := KeyRange([]byte("k"), 10)
+	d := open(t, write(t, doc), OpenOptions{})
+	rng := Query{Selection: Selection{Span: KeySpan([]byte("k"))}, Limit: 10}
 	var maxPages, total int64
 	seen := 0
 	for range 600 {
@@ -266,7 +266,7 @@ func TestLargeGroupResumeIsPageBounded(t *testing.T) {
 		}
 		seen += len(page)
 		maxPages, total = max(maxPages, st.KeyPagesDecoded+st.ValuePagesDecoded), total+st.KeyPagesDecoded+st.ValuePagesDecoded
-		if len(page) < rng.Limit {
+		if int64(len(page)) < rng.Limit {
 			break
 		}
 		rng.Cursor = page[len(page)-1].Cursor()
@@ -292,12 +292,12 @@ func TestNamedRepeatedKeyAndLookup(t *testing.T) {
 		Value int64  `parquet:"value"`
 	}
 	d := verified(t, write(t, testutil.Dataset{KeyColumn: "object.id", RepeatedKeys: true,
-		Parts: []testutil.Part{{Rows: []namedRow{{[]byte("a"), 9}, {[]byte("a"), 8}, {[]byte("a\x00"), 7}}, GroupRows: 1}}}), Options{})
+		Parts: []testutil.Part{{Rows: []namedRow{{[]byte("a"), 9}, {[]byte("a"), 8}, {[]byte("a\x00"), 7}}, GroupRows: 1}}}), OpenOptions{})
 	if got := d.Metadata().Key; got != (Key{Column: "object.id", Unique: false}) {
 		t.Fatal(got)
 	}
-	rng := KeyRange([]byte("a"), 10, "object.id", "value", "key")
-	rows, err := d.Range(ctx, rng)
+	rng := Query{Selection: Selection{Span: KeySpan([]byte("a"))}, Limit: 10, Columns: []string{"object.id", "value", "key"}}
+	rows, err := d.Rows(ctx, rng, nil)
 	if err != nil {
 		t.Fatalf("%s: %v", describe(rng), err)
 	}
@@ -314,8 +314,8 @@ func TestNamedKeyAlongsideOrdinaryKeyColumn(t *testing.T) {
 		ID      []byte `parquet:"object.id"`
 	}
 	d := verified(t, write(t, testutil.Dataset{KeyColumn: "object.id", RepeatedKeys: true,
-		Parts: []testutil.Part{{Rows: []record{{"z", []byte("a")}, {"y", []byte("a")}, {"x", []byte("b")}}, GroupRows: 1}}}), Options{})
-	rows, err := d.Range(ctx, KeyRange([]byte("a"), 10, "key", "object.id"))
+		Parts: []testutil.Part{{Rows: []record{{"z", []byte("a")}, {"y", []byte("a")}, {"x", []byte("b")}}, GroupRows: 1}}}), OpenOptions{})
+	rows, err := d.Rows(ctx, Query{Selection: Selection{Span: KeySpan([]byte("a"))}, Limit: 10, Columns: []string{"key", "object.id"}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,18 +335,18 @@ func TestOpenPartsKey(t *testing.T) {
 	dir := write(t, testutil.Dataset{KeyColumn: "id", RepeatedKeys: true, Parts: []testutil.Part{
 		{Rows: []record{{[]byte("a"), 0}, {[]byte("b"), 1}, {[]byte("b"), 2}}, GroupRows: 2},
 	}})
-	r, err := openPartsOf(t, dir, 1, Key{Column: "id"}, false, Options{})
+	r, err := openPartsOf(t, dir, 1, Key{Column: "id"}, false, OpenOptions{})
 	must(t, err)
-	rows, err := r.readRange(ctx, Range{Cursor: &Cursor{Key: []byte("b")}, Limit: 10, Columns: []string{"size"}}, nil)
+	rows, err := r.readRange(ctx, Query{Selection: Selection{Cursor: &Cursor{Key: []byte("b")}}, Limit: 10, Columns: []string{"size"}}, nil)
 	if err != nil || len(rows) != 1 || rows[0].Offset != 1 || rows[0].Values[0].Int64() != 2 {
 		t.Fatalf("%+v, %v", rows, err)
 	}
-	r, err = openPartsOf(t, dir, 1, Key{Column: "id", Unique: true}, false, Options{})
+	r, err = openPartsOf(t, dir, 1, Key{Column: "id", Unique: true}, false, OpenOptions{})
 	must(t, err)
-	if _, err := r.readRange(ctx, Range{Limit: 10}, nil); CodeOf(err) != CodeKeyOrder {
+	if _, err := r.readRange(ctx, Query{Limit: 10}, nil); CodeOf(err) != CodeKeyOrder {
 		t.Fatalf("equal keys declared unique: %v", err)
 	}
-	if _, err := openPartsOf(t, dir, 1, Key{Column: "key", Unique: true}, false, Options{}); CodeOf(err) != CodeInvalidKeyColumn {
+	if _, err := openPartsOf(t, dir, 1, Key{Column: "key", Unique: true}, false, OpenOptions{}); CodeOf(err) != CodeInvalidKeyColumn {
 		t.Fatalf("a key column the parts lack: %v", err)
 	}
 }
@@ -361,21 +361,21 @@ func TestRepeatedRefusals(t *testing.T) {
 		return write(t, doc)
 	}
 	t.Run("decrease inside a page", func(t *testing.T) {
-		d := open(t, repeated(testutil.Part{}, []string{"a", "b", "b", "a", "c"}), Options{})
-		if _, err := d.Range(ctx, Range{Limit: 10}); CodeOf(err) != CodeKeyOrder {
+		d := open(t, repeated(testutil.Part{}, []string{"a", "b", "b", "a", "c"}), OpenOptions{})
+		if _, err := d.Rows(ctx, Query{Limit: 10}, nil); CodeOf(err) != CodeKeyOrder {
 			t.Fatalf("got %v, want key_order", err)
 		}
 	})
 	t.Run("decrease between row groups", func(t *testing.T) {
-		d := open(t, repeated(testutil.Part{GroupRows: 2}, []string{"a", "b", "b", "a", "c", "c"}), Options{})
-		if _, err := d.Range(ctx, Range{Limit: 10}); CodeOf(err) != CodeKeyOrder {
+		d := open(t, repeated(testutil.Part{GroupRows: 2}, []string{"a", "b", "b", "a", "c", "c"}), OpenOptions{})
+		if _, err := d.Rows(ctx, Query{Limit: 10}, nil); CodeOf(err) != CodeKeyOrder {
 			t.Fatalf("got %v, want key_order", err)
 		}
 	})
 	// The group b spans both parts.
 	split := repeated(testutil.Part{}, []string{"a", "b"}, []string{"b", "c"})
 	t.Run("group across parts, manifest bounds", func(t *testing.T) {
-		if err := openErr(split, Options{}); CodeOf(err) != CodeInvalidManifest {
+		if err := openErr(split, OpenOptions{}); CodeOf(err) != CodeInvalidManifest {
 			t.Fatalf("got %v, want invalid_manifest", err)
 		}
 	})
@@ -387,17 +387,17 @@ func TestRepeatedRefusals(t *testing.T) {
 			inputs = append(inputs, partInput{name: testutil.PartPath(i), file: bytes.NewReader(raw), size: int64(len(raw)),
 				minKey: []byte(b[0]), maxKey: []byte(b[1])})
 		}
-		if _, err := openParts(ctx, inputs, Key{Column: "key"}, Options{}); CodeOf(err) != CodeBoundsMismatch {
+		if _, err := openParts(ctx, inputs, Key{Column: "key"}, OpenOptions{}); CodeOf(err) != CodeBoundsMismatch {
 			t.Fatalf("got %v, want bounds_mismatch", err)
 		}
 	})
 	t.Run("group across parts, no bounds", func(t *testing.T) {
-		r, err := openPartsOf(t, split, 2, Key{Column: "key"}, false, Options{})
+		r, err := openPartsOf(t, split, 2, Key{Column: "key"}, false, OpenOptions{})
 		must(t, err)
-		if _, err := r.readRange(ctx, Range{Limit: 10}, nil); CodeOf(err) != CodeKeyOrder {
+		if _, err := r.readRange(ctx, Query{Limit: 10}, nil); CodeOf(err) != CodeKeyOrder {
 			t.Fatalf("range: got %v, want key_order", err)
 		}
-		r, err = openPartsOf(t, split, 2, Key{Column: "key"}, false, Options{})
+		r, err = openPartsOf(t, split, 2, Key{Column: "key"}, false, OpenOptions{})
 		must(t, err)
 		if err := r.verify(ctx); CodeOf(err) != CodeKeyOrder {
 			t.Fatalf("verify: got %v, want key_order", err)
@@ -419,11 +419,11 @@ func FuzzRepeatedPagination(f *testing.F) {
 		}
 		doc := parts(testutil.Part{GroupRows: geometry, PageBytes: 16}, keys)
 		doc.RepeatedKeys = true
-		d := open(t, write(t, doc), Options{})
-		rng := Range{Limit: size, Columns: []string{"size"}}
+		d := open(t, write(t, doc), OpenOptions{})
+		rng := Query{Limit: int64(size), Columns: []string{"size"}}
 		var got []string
 		for range n + 1 {
-			page, err := d.Range(ctx, rng)
+			page, err := d.Rows(ctx, rng, nil)
 			if err != nil {
 				t.Fatalf("%s: %v", describe(rng), err)
 			}
@@ -433,7 +433,7 @@ func FuzzRepeatedPagination(f *testing.F) {
 			}
 			rng.Cursor = page[len(page)-1].Cursor()
 		}
-		if want := rangeExpect(positions([][]string{keys}), Range{Limit: n}); !slices.Equal(got, want) {
+		if want := rangeExpect(positions([][]string{keys}), Query{Limit: int64(n)}); !slices.Equal(got, want) {
 			t.Fatalf("paged %q,\nwant %q", strings.Join(got, " "), strings.Join(want, " "))
 		}
 	})

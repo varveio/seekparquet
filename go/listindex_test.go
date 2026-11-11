@@ -21,8 +21,8 @@ import (
 // listIndexCase keeps immutable requests and the unindexed oracle's owned
 // results so independent index configurations can reuse the same scenarios.
 type listIndexCase struct {
-	query List
-	want  []Entry
+	query ListQuery
+	want  []ListEntry
 	err   error
 }
 
@@ -45,7 +45,7 @@ func TestListIndexDifferential(t *testing.T) {
 	fixture := parts(testutil.Part{GroupRows: 1000, PageBytes: 900, IndexSizeLimit: 16}, keys)
 	fixture.RepeatedKeys = true
 	dir := write(t, fixture)
-	plain := open(t, dir, Options{})
+	plain := open(t, dir, OpenOptions{})
 	prefixes := map[string]bool{"": true, "wid": true, "wide/d00": true, "a/b": true}
 	for _, k := range keys {
 		for i := range k {
@@ -59,8 +59,8 @@ func TestListIndexDifferential(t *testing.T) {
 	var cases []listIndexCase
 	for prefix := range prefixes {
 		for _, delim := range []byte{'/', 'f'} {
-			q := List{Prefix: []byte(prefix), Delimiter: delim, Limit: 1000, Columns: []string{"size", "name"}}
-			all, err := plain.List(ctx, q)
+			q := ListQuery{Prefix: []byte(prefix), Delimiter: delim, Limit: 1000, Columns: []string{"size", "name"}}
+			all, err := plain.List(ctx, q, nil)
 			must(t, err)
 			cursors := []*Cursor{nil}
 			for i, e := range all {
@@ -87,7 +87,7 @@ func TestListIndexDifferential(t *testing.T) {
 						q.Cursor = cursor
 						q.End = end
 						q.Limit = limit
-						want, err := plain.List(ctx, q)
+						want, err := plain.List(ctx, q, nil)
 						must(t, err)
 						cases = append(cases, listIndexCase{query: q, want: want})
 					}
@@ -105,14 +105,14 @@ func TestListIndexDifferential(t *testing.T) {
 				cap := caps[i]
 				for _, budget := range []int64{1, 2048, 1 << 24} {
 					t.Run(fmt.Sprintf("cap-%d/budget-%d", cap, budget), func(t *testing.T) {
-						indexed := open(t, dir, Options{})
+						indexed := open(t, dir, OpenOptions{})
 						stats, err := indexed.BuildListIndex(ctx, ListIndexOptions{MaxBytes: budget, MaxChangesPerPage: cap, Workers: 2})
 						must(t, err)
 						if stats.Bytes > budget {
 							t.Fatalf("budget: %+v", stats)
 						}
 						for _, tc := range cases {
-							got, err := indexed.List(ctx, tc.query)
+							got, err := indexed.List(ctx, tc.query, nil)
 							if err != nil || !reflect.DeepEqual(tc.want, got) {
 								t.Fatalf("cap=%d budget=%d prefix=%q cursor=%+v end=%q limit=%d error=%v\nwant=%v\ngot=%v", cap, budget, tc.query.Prefix, tc.query.Cursor, tc.query.End, tc.query.Limit, err, entriesOf(tc.want), entriesOf(got))
 							}
@@ -133,9 +133,9 @@ func TestListIndexPageCountsAndConcurrency(t *testing.T) {
 			}
 		}
 		dir := write(t, parts(testutil.Part{GroupRows: 20000, PageBytes: 1000, IndexSizeLimit: 16}, keys))
-		d := open(t, dir, Options{})
-		q := List{Prefix: []byte(head), Delimiter: '/', Limit: 1000}
-		want, err := d.List(ctx, q)
+		d := open(t, dir, OpenOptions{})
+		q := ListQuery{Prefix: []byte(head), Delimiter: '/', Limit: 1000}
+		want, err := d.List(ctx, q, nil)
 		must(t, err)
 		var wg sync.WaitGroup
 		for range 4 {
@@ -143,7 +143,7 @@ func TestListIndexPageCountsAndConcurrency(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				for range 10 {
-					got, e := d.List(ctx, q)
+					got, e := d.List(ctx, q, nil)
 					if e != nil || !reflect.DeepEqual(want, got) {
 						t.Error("concurrent listing", e)
 					}
@@ -154,14 +154,13 @@ func TestListIndexPageCountsAndConcurrency(t *testing.T) {
 		must(t, err)
 		wg.Wait()
 		var reads ReadStats
-		q.Stats = &reads
-		got, err := d.List(ctx, q)
+		got, err := d.List(ctx, q, &reads)
 		must(t, err)
 		if !reflect.DeepEqual(want, got) || reads.KeyPagesDecoded > 2 || reads.ListIndexSkips < 99 {
 			t.Fatalf("build=%+v reads=%+v", st, reads)
 		}
 		q.Cursor = want[49].Cursor()
-		got, err = d.List(ctx, q)
+		got, err = d.List(ctx, q, nil)
 		must(t, err)
 		if !reflect.DeepEqual(want[50:], got) || reads.KeyPagesDecoded > 2 {
 			t.Fatalf("cursor pages: %+v", reads)
@@ -172,8 +171,7 @@ func TestListIndexPageCountsAndConcurrency(t *testing.T) {
 				defer wg.Done()
 				for range 10 {
 					query := q
-					query.Stats = nil
-					result, e := d.List(ctx, query)
+					result, e := d.List(ctx, query, nil)
 					if e != nil || !reflect.DeepEqual(want[50:], result) {
 						t.Error("indexed concurrency", e)
 					}
@@ -187,13 +185,13 @@ func TestListIndexPageCountsAndConcurrency(t *testing.T) {
 func TestListIndexFailureAndCancellation(t *testing.T) {
 	keys := dirKeys(map[string]int{"a": 100, "b": 100}, "a", "b")
 	keys[50], keys[51] = keys[51], keys[50]
-	d := open(t, write(t, parts(testutil.Part{GroupRows: 200, PageBytes: 200}, keys)), Options{})
+	d := open(t, write(t, parts(testutil.Part{GroupRows: 200, PageBytes: 200}, keys)), OpenOptions{})
 	st, err := d.BuildListIndex(ctx, ListIndexOptions{})
 	must(t, err)
 	if st.GroupsFailed != 1 || st.GroupsIndexed != 0 {
 		t.Fatalf("%+v", st)
 	}
-	_, err = d.List(ctx, List{Prefix: []byte("a/f"), Delimiter: '/', Limit: 1000})
+	_, err = d.List(ctx, ListQuery{Prefix: []byte("a/f"), Delimiter: '/', Limit: 1000}, nil)
 	if CodeOf(err) != CodeKeyOrder {
 		t.Fatalf("%v", err)
 	}
@@ -219,7 +217,7 @@ func (c *cancelWalk) Err() error {
 	return nil
 }
 func TestListIndexWalkCancellation(t *testing.T) {
-	d := open(t, write(t, parts(testutil.Part{GroupRows: 2000, PageBytes: 200}, dirKeys(map[string]int{"a": 1000}, "a"))), Options{})
+	d := open(t, write(t, parts(testutil.Part{GroupRows: 2000, PageBytes: 200}, dirKeys(map[string]int{"a": 1000}, "a"))), OpenOptions{})
 	_, err := d.BuildListIndex(ctx, ListIndexOptions{})
 	must(t, err)
 	s := d.r.newScan(ctx, nil, new(ReadStats))
@@ -261,7 +259,7 @@ func TestListIndexUnreadableAndBuildCancelledDuringRead(t *testing.T) {
 	keys := dirKeys(map[string]int{"a": 100, "b": 100}, "a", "b")
 	dir := write(t, parts(testutil.Part{GroupRows: 200, PageBytes: 200}, keys))
 	for _, cancelBuild := range []bool{false, true} {
-		d := open(t, dir, Options{})
+		d := open(t, dir, OpenOptions{})
 		must(t, d.r.checkParts(ctx, new(ReadStats)))
 		p := d.r.parts[0]
 		idx, err := p.keyIndex(ctx, 0, new(ReadStats))
@@ -288,7 +286,7 @@ func TestListIndexUnreadableAndBuildCancelledDuringRead(t *testing.T) {
 			if !errors.Is(err, io.ErrUnexpectedEOF) || st.GroupsFailed != 0 || d.r.listIndex.Load() != nil {
 				t.Fatalf("%+v %v", st, err)
 			}
-			_, err = d.List(ctx, List{Prefix: []byte("a/f"), Delimiter: '/', Limit: 1000})
+			_, err = d.List(ctx, ListQuery{Prefix: []byte("a/f"), Delimiter: '/', Limit: 1000}, nil)
 			if !errors.Is(err, io.ErrUnexpectedEOF) {
 				t.Fatal(err)
 			}
@@ -310,7 +308,7 @@ func TestListIndexFlatAndSingleDirectoryStorage(t *testing.T) {
 		for i := 0; i < 1000; i++ {
 			keys = append(keys, fmt.Sprintf("%s%01000d", prefix, i))
 		}
-		d := open(t, write(t, parts(testutil.Part{GroupRows: 1000, PageBytes: 1200}, keys)), Options{})
+		d := open(t, write(t, parts(testutil.Part{GroupRows: 1000, PageBytes: 1200}, keys)), OpenOptions{})
 		st, err := d.BuildListIndex(ctx, ListIndexOptions{})
 		must(t, err)
 		if prefix == "" {
@@ -326,13 +324,13 @@ func TestListIndexFlatAndSingleDirectoryStorage(t *testing.T) {
 func TestListIndexDisorderedGroupBoundary(t *testing.T) {
 	keys := dirKeys(map[string]int{"a": 100, "b": 100}, "a", "b")
 	keys[99], keys[100] = keys[100], keys[99]
-	d := open(t, write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 200}, keys)), Options{})
+	d := open(t, write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 200}, keys)), OpenOptions{})
 	st, err := d.BuildListIndex(ctx, ListIndexOptions{Workers: 2})
 	must(t, err)
 	if st.GroupsFailed != 2 || st.GroupsIndexed != 0 {
 		t.Fatalf("%+v", st)
 	}
-	_, err = d.Range(ctx, Range{Limit: 1000})
+	_, err = d.Rows(ctx, Query{Limit: 1000}, nil)
 	if CodeOf(err) != CodeKeyOrder {
 		t.Fatal(err)
 	}

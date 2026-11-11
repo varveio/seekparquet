@@ -195,7 +195,7 @@ func (a *adapter) dataset(ctx context.Context, path string) (*seekparquet.Datase
 	if d := a.open[path]; d != nil {
 		return d, nil
 	}
-	d, err := seekparquet.OpenDir(ctx, path, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(ctx, path, seekparquet.OpenOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +208,7 @@ func (a *adapter) rangeOp(ctx context.Context, req map[string]json.RawMessage) r
 	if err != nil {
 		return invalid(err)
 	}
-	var rng seekparquet.Range
+	var rng seekparquet.Query
 	if rng.Prefix, err = bytesField(req, "prefix_base64"); err != nil {
 		return invalid(err)
 	}
@@ -234,7 +234,7 @@ func (a *adapter) rangeOp(ctx context.Context, req map[string]json.RawMessage) r
 	if err != nil {
 		return failure(err)
 	}
-	rows, err := d.Range(ctx, rng)
+	rows, err := d.Rows(ctx, rng, nil)
 	if err != nil {
 		return failure(err)
 	}
@@ -260,7 +260,7 @@ func (a *adapter) planOp(ctx context.Context, req map[string]json.RawMessage) re
 	if err := field(req, "ranges", &raw); err != nil {
 		return invalid(err)
 	}
-	ranges := make([]seekparquet.Range, len(raw))
+	ranges := make([]seekparquet.Selection, len(raw))
 	for i, r := range raw {
 		if r == nil {
 			return invalid(fmt.Errorf("range %d is not an object", i))
@@ -297,15 +297,21 @@ func (a *adapter) planOp(ctx context.Context, req map[string]json.RawMessage) re
 	if err != nil {
 		return failure(err)
 	}
-	plan, err := d.PlanRanges(ctx, ranges, columns)
+	plan, err := d.Plan(ctx, ranges, columns, nil)
 	if err != nil {
 		return failure(err)
 	}
 	entries := []any{}
-	err = plan.Scan(ctx, nil, func(row seekparquet.Row) error {
-		e, err := rowEntry(&row)
-		entries = append(entries, e)
-		return err
+	err = plan.Scan(ctx, nil, func(b *seekparquet.Batch) error {
+		for i := range b.Len() {
+			row := b.Row(i)
+			e, err := rowEntry(&row)
+			if err != nil {
+				return err
+			}
+			entries = append(entries, e)
+		}
+		return nil
 	})
 	if err != nil {
 		return failure(err)
@@ -321,7 +327,7 @@ func (a *adapter) listOp(ctx context.Context, req map[string]json.RawMessage) re
 	if err != nil {
 		return invalid(err)
 	}
-	var list seekparquet.List
+	var list seekparquet.ListQuery
 	if list.Prefix, err = bytesField(req, "prefix_base64"); err != nil {
 		return invalid(err)
 	}
@@ -339,9 +345,11 @@ func (a *adapter) listOp(ctx context.Context, req map[string]json.RawMessage) re
 	if list.Cursor, err = cursorField(req); err != nil {
 		return invalid(err)
 	}
-	if list.Limit, err = limitField(req); err != nil {
+	limit, err := limitField(req)
+	if err != nil {
 		return invalid(err)
 	}
+	list.Limit = clampInt(limit)
 	if err := optionalField(req, "columns", &list.Columns); err != nil {
 		return invalid(err)
 	}
@@ -354,7 +362,7 @@ func (a *adapter) listOp(ctx context.Context, req map[string]json.RawMessage) re
 			return failure(err)
 		}
 	}
-	got, err := d.List(ctx, list)
+	got, err := d.List(ctx, list, nil)
 	if err != nil {
 		return failure(err)
 	}
@@ -527,7 +535,7 @@ func bytesField(req map[string]json.RawMessage, name string) ([]byte, error) {
 
 // limitField decodes the limit, which must be a JSON integer; whether it
 // is positive is the library's check (QUERY-1).
-func limitField(req map[string]json.RawMessage) (int, error) {
+func limitField(req map[string]json.RawMessage) (int64, error) {
 	raw, ok := req["limit"]
 	if !ok {
 		return 0, errors.New("limit is missing")
@@ -543,11 +551,11 @@ func limitField(req map[string]json.RawMessage) (int, error) {
 	if err != nil {
 		return 0, errors.New("limit is not an integer")
 	}
-	if n > math.MaxInt {
-		n = math.MaxInt
-	}
-	if n < math.MinInt {
-		n = math.MinInt
-	}
-	return int(n), nil
+	return n, nil
+}
+
+// clampInt returns n as an int, saturating on a 32-bit platform: only its
+// sign matters to a listing beyond the dataset's rows.
+func clampInt(n int64) int {
+	return int(max(min(n, math.MaxInt), math.MinInt))
 }

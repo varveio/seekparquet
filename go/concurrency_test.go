@@ -38,7 +38,7 @@ func TestConcurrentColdIndexes(t *testing.T) {
 			doc := parts(testutil.Part{GroupRows: 500, PageBytes: 1024}, keys[:1500], keys[1500:])
 			doc.RepeatedKeys = repeated
 			dir := write(t, doc)
-			cold, warm := open(t, dir, Options{}), open(t, dir, Options{})
+			cold, warm := open(t, dir, OpenOptions{}), open(t, dir, OpenOptions{})
 			var calls []func(d *Dataset) string
 			for i, start := range []string{"", "b/", "d03/", "d07/s02/", "long/", "root"} {
 				columns := []string{"size"}
@@ -47,21 +47,21 @@ func TestConcurrentColdIndexes(t *testing.T) {
 				}
 				calls = append(calls,
 					func(d *Dataset) string {
-						rows, err := d.Range(ctx, Range{Start: []byte(start), Limit: 40, Columns: columns})
+						rows, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte(start)}}, Limit: 40, Columns: columns}, nil)
 						if err != nil {
 							return err.Error()
 						}
 						return fmt.Sprint(rows)
 					},
 					func(d *Dataset) string {
-						rows, err := d.Range(ctx, Range{Cursor: &Cursor{Key: []byte(start), Offset: 1}, Limit: 40, Columns: columns})
+						rows, err := d.Rows(ctx, Query{Selection: Selection{Cursor: &Cursor{Key: []byte(start), Offset: 1}}, Limit: 40, Columns: columns}, nil)
 						if err != nil {
 							return err.Error()
 						}
 						return fmt.Sprint(rows)
 					},
 					func(d *Dataset) string {
-						entries, err := d.List(ctx, List{Prefix: []byte(start), Delimiter: '/', Limit: 30, Columns: columns})
+						entries, err := d.List(ctx, ListQuery{Prefix: []byte(start), Delimiter: '/', Limit: 30, Columns: columns}, nil)
 						if err != nil {
 							return err.Error()
 						}
@@ -101,7 +101,7 @@ func TestConcurrentColdIndexes(t *testing.T) {
 func TestCloseWhileReading(t *testing.T) {
 	keys := fixtureKeys(600)
 	src := &countingSource{Source: dirOf(t, write(t, parts(testutil.Part{GroupRows: 50, PageBytes: 256}, split(keys, 3)...)))}
-	d, err := OpenDataset(ctx, src, Options{})
+	d, err := OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	var wg sync.WaitGroup
 	var reads atomic.Int64
@@ -112,9 +112,9 @@ func TestCloseWhileReading(t *testing.T) {
 			for i := 0; ; i++ {
 				var err error
 				if g%2 == 0 {
-					_, err = d.Range(ctx, Range{Start: []byte(keys[(g*7+i)%len(keys)]), Limit: 7, Columns: []string{"size"}})
+					_, err = d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte(keys[(g*7+i)%len(keys)])}}, Limit: 7, Columns: []string{"size"}}, nil)
 				} else {
-					_, err = d.List(ctx, List{Delimiter: '/', Limit: 7})
+					_, err = d.List(ctx, ListQuery{Delimiter: '/', Limit: 7}, nil)
 				}
 				if errors.Is(err, ErrClosed) {
 					return
@@ -129,7 +129,7 @@ func TestCloseWhileReading(t *testing.T) {
 	}
 	close(start)
 	for reads.Load() < 20 {
-		_, _ = d.Range(ctx, Range{Limit: 1})
+		_, _ = d.Rows(ctx, Query{Limit: 1}, nil)
 	}
 	must(t, d.Close())
 	wg.Wait()
@@ -140,16 +140,16 @@ func TestCloseWhileReading(t *testing.T) {
 
 // TestCancelledRead returns the context's error.
 func TestCancelledRead(t *testing.T) {
-	d := open(t, write(t, parts(testutil.Part{}, []string{"a", "b"})), Options{})
+	d := open(t, write(t, parts(testutil.Part{}, []string{"a", "b"})), OpenOptions{})
 	c, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := d.Range(c, Range{Limit: 1}); !errors.Is(err, context.Canceled) {
+	if _, err := d.Rows(c, Query{Limit: 1}, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("range: %v", err)
 	}
-	if _, err := d.List(c, List{Delimiter: '/', Limit: 1}); !errors.Is(err, context.Canceled) {
+	if _, err := d.List(c, ListQuery{Delimiter: '/', Limit: 1}, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("list: %v", err)
 	}
-	if _, err := OpenDir(c, write(t, parts(testutil.Part{}, []string{"a"})), Options{}); !errors.Is(err, context.Canceled) {
+	if _, err := OpenDir(c, write(t, parts(testutil.Part{}, []string{"a"})), OpenOptions{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("open: %v", err)
 	}
 }
@@ -210,9 +210,9 @@ func (s *boundSource) Open(_ context.Context, path string) (SourceFile, error) {
 func TestContextBinding(t *testing.T) {
 	src := &boundSource{dir: write(t, parts(testutil.Part{GroupRows: 3}, []string{"a", "b", "c", "d"}, []string{"e", "f"}))}
 	c := context.WithValue(ctx, ctxKey{}, true)
-	d, err := OpenDataset(c, src, Options{})
+	d, err := OpenDataset(c, src, OpenOptions{})
 	must(t, err)
-	if _, err := d.Range(c, Range{Limit: 10, Columns: []string{"size"}}); err != nil {
+	if _, err := d.Rows(c, Query{Limit: 10, Columns: []string{"size"}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	must(t, d.Close())
@@ -237,12 +237,12 @@ func TestOpenPartsOwnership(t *testing.T) {
 		return out
 	}
 	var closed atomic.Int64
-	r, err := openParts(ctx, inputs(&closed), unique, Options{})
+	r, err := openParts(ctx, inputs(&closed), unique, OpenOptions{})
 	must(t, err)
 	if len(r.flat) != 3 || r.rows != 5 || r.bounded {
 		t.Fatalf("%d groups, %d rows, bounded %v", len(r.flat), r.rows, r.bounded)
 	}
-	rows, err := r.readRange(ctx, Range{Start: []byte("b"), Limit: 10}, nil)
+	rows, err := r.readRange(ctx, Query{Selection: Selection{Span: Span{Start: []byte("b")}}, Limit: 10}, nil)
 	if err != nil || fmt.Sprint(keysOf(rows)) != "[b c x y]" {
 		t.Fatalf("%q, %v", keysOf(rows), err)
 	}
@@ -253,7 +253,7 @@ func TestOpenPartsOwnership(t *testing.T) {
 	closed.Store(0)
 	failing := inputs(&closed)
 	failing[0].minKey, failing[0].maxKey = []byte("a"), []byte("d")
-	r, err = openParts(ctx, failing, unique, Options{})
+	r, err = openParts(ctx, failing, unique, OpenOptions{})
 	must(t, err)
 	if err := r.verify(ctx); CodeOf(err) != CodeBoundsMismatch {
 		t.Fatalf("bounds: %v", err)
@@ -285,9 +285,9 @@ func testRequestInsideScanWhileClosing(t *testing.T, batches bool) {
 	keys := fixtureKeys(60)
 	// Opened without open's cleanup Close: should the nested request wait,
 	// the test fails at its timeout rather than waiting in a cleanup.
-	d, err := OpenDataset(ctx, dirOf(t, write(t, parts(testutil.Part{GroupRows: 20}, split(keys, 2)...))), Options{})
+	d, err := OpenDataset(ctx, dirOf(t, write(t, parts(testutil.Part{GroupRows: 20}, split(keys, 2)...))), OpenOptions{})
 	must(t, err)
-	plan, err := d.PlanRanges(ctx, []Range{{}}, []string{"size"})
+	plan, err := d.Plan(ctx, []Selection{{}}, []string{"size"}, nil)
 	must(t, err)
 	closed := make(chan error, 1)
 	nested := make(chan error, 1)
@@ -300,14 +300,14 @@ func testRequestInsideScanWhileClosing(t *testing.T, batches bool) {
 			for d.r.closing.Err() == nil {
 				runtime.Gosched()
 			}
-			_, err := d.Range(ctx, Range{Limit: 1})
+			_, err := d.Rows(ctx, Query{Limit: 1}, nil)
 			nested <- err
 			return stop
 		}
 		if batches {
-			done <- plan.ScanBatches(ctx, nil, func(*Batch) error { return callback() })
+			done <- plan.Scan(ctx, nil, func(*Batch) error { return callback() })
 		} else {
-			done <- plan.Scan(ctx, nil, func(Row) error { return callback() })
+			done <- scanRows(ctx, plan, nil, func(Row) error { return callback() })
 		}
 	}()
 	timeout := time.After(10 * time.Second)

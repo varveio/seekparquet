@@ -44,11 +44,11 @@ func (r *indexBarrierReader) Close() error {
 
 func TestConcurrentIndexAdmission(t *testing.T) {
 	dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
-	warm := open(t, dir, Options{})
+	warm := open(t, dir, OpenOptions{})
 	must(t, warm.r.checkParts(ctx, new(ReadStats)))
 	idx, err := warm.r.parts[0].keyIndex(ctx, 0, new(ReadStats))
 	must(t, err)
-	d := open(t, dir, Options{Limits: Limits{IndexMemory: idx.size}})
+	d := open(t, dir, OpenOptions{Limits: Limits{IndexMemory: idx.size}})
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	p := d.r.parts[0]
 	offset := p.footer.Metadata().RowGroups[0].Columns[p.key.index].OffsetIndexOffset
@@ -84,10 +84,10 @@ func TestFirstKeysShareIndexBudget(t *testing.T) {
 		keys[i] = fmt.Sprintf("%04d", i) + strings.Repeat("x", keyBytes-4)
 	}
 	dir := write(t, parts(testutil.Part{GroupRows: 1, PageBytes: 256 * 1024, IndexSizeLimit: 2}, keys))
-	if err := verifyErr(dir, Options{Limits: Limits{IndexMemory: 4096}}); !errors.Is(err, ErrLimitExceeded) {
+	if err := verifyErr(dir, OpenOptions{Limits: Limits{IndexMemory: 4096}}); !errors.Is(err, ErrLimitExceeded) {
 		t.Fatalf("Verify: %v, want ErrLimitExceeded", err)
 	}
-	warm := verified(t, dir, Options{})
+	warm := verified(t, dir, OpenOptions{})
 	var want int64
 	for _, p := range warm.r.parts {
 		for i := range p.index {
@@ -98,11 +98,11 @@ func TestFirstKeysShareIndexBudget(t *testing.T) {
 	if got := warm.r.indexMemory.Load(); got != want {
 		t.Fatalf("charged %d, want %d", got, want)
 	}
-	exact := verified(t, dir, Options{Limits: Limits{IndexMemory: want}})
+	exact := verified(t, dir, OpenOptions{Limits: Limits{IndexMemory: want}})
 	if got := exact.r.indexMemory.Load(); got != want {
 		t.Fatalf("exact budget charged %d, want %d", got, want)
 	}
-	if err := verifyErr(dir, Options{Limits: Limits{IndexMemory: want - 1}}); !errors.Is(err, ErrLimitExceeded) {
+	if err := verifyErr(dir, OpenOptions{Limits: Limits{IndexMemory: want - 1}}); !errors.Is(err, ErrLimitExceeded) {
 		t.Fatalf("one byte short: %v, want ErrLimitExceeded", err)
 	}
 }

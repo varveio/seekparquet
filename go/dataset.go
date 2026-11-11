@@ -82,8 +82,8 @@ type Source interface {
 	Open(ctx context.Context, path string) (SourceFile, error)
 }
 
-// Options configures OpenDataset.
-type Options struct {
+// OpenOptions configures OpenDataset.
+type OpenOptions struct {
 	// Limits bounds the resources the dataset can make the reader use.
 	Limits Limits
 }
@@ -159,19 +159,19 @@ type Dataset struct {
 // the manifest (STAMP-2), the manifest's row count, a valid key column
 // (KEY-1, KEY-5), the key column ascending as the first sorting column of
 // every non-empty row group (RG-1), and columns consistent with every part
-// checked before it (COL-5). A part that fails is refused by the Range or
-// List that touched it, and by every later read that touches it. Verify
+// checked before it (COL-5). A part that fails is refused by the read that
+// touched it, and by every later read that touches it. Verify
 // checks every part at once. Rows a read does not decode are not certified
 // (CHECK-4).
 //
 // A dataset whose manifest breaks the specification is refused with a
-// *RefusalError (see CodeOf). Other errors report I/O, a limit or the
+// *RefusalError (see RefusalCodeOf). Other errors report I/O, a limit or the
 // context. The reader uses signed 64-bit dataset ordinals: a total row
 // count above 2^63-1 fails with ErrLimitExceeded, even when each part's
 // count fits.
 //
 // Dataset.Close closes every part file the dataset opened.
-func OpenDataset(ctx context.Context, src Source, opt Options) (*Dataset, error) {
+func OpenDataset(ctx context.Context, src Source, opt OpenOptions) (*Dataset, error) {
 	opt.Limits = opt.Limits.withDefaults()
 	raw, err := readManifest(ctx, src, opt.Limits.ManifestBytes)
 	if err != nil {
@@ -347,58 +347,68 @@ func (d *Dataset) Columns(ctx context.Context, i int) ([]Column, error) {
 	return columnsOf(p.footer.Metadata().Schema, d.r.key.Column), nil
 }
 
-// Range returns the rows of rng. It decodes key pages only from the page
-// that can hold its start, or the cursor's row, and value pages only for
-// the rows it returns. A limit that is not positive, or a malformed or
+// Rows returns the rows of q, owning their keys and values. q.Limit must be
+// positive and fit a slice's length. It decodes key pages only from the
+// page that can hold its start, or the cursor's row, and finds every
+// selected row's key before it reads any value page, then value pages only
+// for the rows it returns. A limit that is not positive, or a malformed or
 // prefix cursor, is ErrInvalidRequest; projecting a nested or repeated
-// column is an *UnsupportedError; a page that breaks the specification
-// ends the read with a *RefusalError.
-func (d *Dataset) Range(ctx context.Context, rng Range) ([]Row, error) {
-	return d.r.readRange(ctx, rng, rng.Stats)
+// column is an *UnsupportedError; a page that breaks the specification ends
+// the read with a *RefusalError. On an error it returns no rows. st, when
+// not nil, is reset on entry and receives the read statistics, including on
+// error; do not share it between concurrent calls.
+func (d *Dataset) Rows(ctx context.Context, q Query, st *ReadStats) ([]Row, error) {
+	return d.r.readRange(ctx, q, st)
 }
 
-// RangeBatches visits rng's rows in order, in serial callbacks: the rows
-// Range returns, as borrowed batches. Bounds, Cursor, Columns and a positive
-// Limit mean exactly what they mean to Range, and its errors are Range's; a
-// nil fn is ErrInvalidRequest too. It opens the projected chunks of each row
-// group as it reaches it, with no plan: it does not position at the upper
-// bound or read the OffsetIndexes of the rest of the range first, and, as
-// Range, reads a dictionary only for a page that uses it. It stops at Limit
-// without advancing to the next row. Decoding and checking still cover the
-// whole pages holding the rows it returns.
+// Scan visits q's rows in order, in serial callbacks, as borrowed batches:
+// the rows Rows returns. Bounds, Cursor and Columns mean exactly what they
+// mean to Rows, and its errors are Rows'; a nil fn is ErrInvalidRequest
+// too. A positive Limit stops it after that many rows without advancing to
+// the next row; a zero Limit reads to the end of the span, a streaming
+// extension of this library (the specification's range has a positive
+// limit, QUERY-1); a negative Limit is ErrInvalidRequest. It opens the
+// projected chunks of each row group as it reaches it, with no plan: it
+// does not position at the upper bound or read the OffsetIndexes of the
+// rest of the span first, and, as Rows, reads a dictionary only for a page
+// that uses it. Decoding and checking still cover the whole pages holding
+// the rows it returns.
 //
 // Batch documents the boundaries (never crossing a row group, a key page or
 // a projected page); the last batch ends at the limit or the upper bound.
-// The batch, its keys, slices and bytes are read-only and borrowed until fn
-// returns; Batch.Row and Batch.Cursor make owning copies, the rows and
-// cursors Range would return. A range with no rows calls no fn. rng.Stats is
-// reset on entry and records the reads made, including on error; do not
-// share it between concurrent calls.
+// The batch, its keys, column views and bytes are read-only and borrowed
+// until fn returns; Batch.Row and Batch.Cursor make owning copies, the rows
+// and cursors Rows would return. A span with no rows calls no fn. st, when
+// not nil, is reset on entry and records the reads made, including on
+// error; do not share it between concurrent calls.
 //
 // An error fn returns stops the scan and is returned unchanged, unless Close
-// ended the scan, when ErrClosed wraps it as it wraps every request's error.
-// Read errors and refusals end the scan; batches already handed over stand.
-// Cancellation is checked as Range checks it, before each part, key page and
-// value page read, and also before every callback; a scan that reaches its
-// limit or its end returns nil. Close cancels the scan and waits for fn to
-// return: fn must not call Close, nor wait for a goroutine that does.
-// Concurrent and reentrant calls have independent scratch.
-func (d *Dataset) RangeBatches(ctx context.Context, rng Range, fn func(*Batch) error) error {
-	return d.r.rangeBatches(ctx, rng, keyReuse{}, fn)
+// ended the scan, when ErrClosed wraps it as it wraps every request's error;
+// Stop stops it with a nil error. Read errors and refusals end the scan;
+// batches already handed over stand. Cancellation is checked as Rows checks
+// it, before each part, key page and value page read, and also before every
+// callback; a scan that reaches its limit or its end returns nil. Close
+// cancels the scan and waits for fn to return: fn must not call Close, nor
+// wait for a goroutine that does. Concurrent and reentrant calls have
+// independent scratch.
+func (d *Dataset) Scan(ctx context.Context, q Query, st *ReadStats, fn func(*Batch) error) error {
+	return d.r.rangeBatches(ctx, q, st, keyReuse{}, fn)
 }
 
-// List returns the entries of req. After a common prefix it continues at
+// List returns the entries of q. After a common prefix it continues at
 // the prefix's successor through the routing index and the page index
 // instead of decoding the keys under it, and a row group whose first key
 // and the next group's first key share a common prefix is skipped without
 // decoding its keys; when that first key is the prefix's exact row
-// (Entry.Exact), only the row's projected value pages are read. Keys under
-// a prefix that share a page with the keys around them are decoded. Value
-// pages are read only for row entries and exact rows. BuildListIndex optionally
-// replaces slash-prefix resumes with exact directory-run anchors, usually
-// reducing a wide listing to one key-page decode. Errors are those of Range.
-func (d *Dataset) List(ctx context.Context, req List) ([]Entry, error) {
-	return d.r.readList(ctx, req, req.Stats)
+// (ListEntry.Exact), only the row's projected value pages are read. Keys
+// under a prefix that share a page with the keys around them are decoded.
+// Value pages are read only for row entries and exact rows. BuildListIndex
+// optionally replaces slash-prefix resumes with exact directory-run
+// anchors, usually reducing a wide listing to one key-page decode. Errors
+// are those of Rows. st, when not nil, is reset on entry and receives the
+// read statistics, including on error.
+func (d *Dataset) List(ctx context.Context, q ListQuery, st *ReadStats) ([]ListEntry, error) {
+	return d.r.readList(ctx, q, st)
 }
 
 // Close ends the reads in progress as soon as they reach a cancellation

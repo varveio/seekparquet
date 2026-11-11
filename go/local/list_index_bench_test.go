@@ -65,11 +65,11 @@ func BenchmarkListBoundary(b *testing.B) {
 					mode = "indexed"
 				}
 				b.Run(mode, func(b *testing.B) {
-					d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.Options{})
+					d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.OpenOptions{})
 					must(b, err)
 					defer d.Close()
 					must(b, d.Verify(context.Background()))
-					req := seekparquet.List{Prefix: []byte(listBenchPrefix), Delimiter: '/', Limit: 1000}
+					req := seekparquet.ListQuery{Prefix: []byte(listBenchPrefix), Delimiter: '/', Limit: 1000}
 					if flat {
 						req.Prefix = nil
 					}
@@ -81,8 +81,7 @@ func BenchmarkListBoundary(b *testing.B) {
 					b.ResetTimer()
 					var st seekparquet.ReadStats
 					for b.Loop() {
-						req.Stats = &st
-						_, err = d.List(context.Background(), req)
+						_, err = d.List(context.Background(), req, &st)
 						must(b, err)
 					}
 					b.ReportMetric(float64(st.KeyPagesDecoded), "key-pages/op")

@@ -20,16 +20,16 @@ func BenchmarkValueIndexRanges(b *testing.B) {
 	const n, groupRows, pageRows = 131072, 65536, 1000
 	records := reuseRecords(n)
 	dir := write(b, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: groupRows, PageBytes: 4096, IndexSizeLimit: 64}}})
-	d := open(b, dir, Options{})
+	d := open(b, dir, OpenOptions{})
 	columns := []string{"size", "etag", "class"}
 	for i := 0; i < n; i += groupRows {
-		_, err := d.Range(ctx, Range{Start: records[i].Key, Limit: pageRows, Columns: columns})
+		_, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: records[i].Key}}, Limit: int64(pageRows), Columns: columns}, nil)
 		must(b, err)
 	}
 	i := 0
 	b.ReportAllocs()
 	for b.Loop() {
-		rows, err := d.Range(ctx, Range{Start: records[i].Key, Limit: pageRows, Columns: columns})
+		rows, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: records[i].Key}}, Limit: int64(pageRows), Columns: columns}, nil)
 		must(b, err)
 		if len(rows) != pageRows {
 			b.Fatal(len(rows))

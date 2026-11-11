@@ -278,7 +278,7 @@ func (a *readAhead) close(st *ReadStats) {
 // or a row when it has none. Bounds may be shortened or overlap (RG-5,
 // RG-6), so the prediction may be wrong; it stops at the row group's end
 // and at a page beginning at or after the scan's upper bound.
-func (s *scan) readAhead(req *List, remaining int) {
+func (s *scan) readAhead(req *ListQuery, remaining int) {
 	a := s.ahead
 	if a == nil || s.kp == nil || s.synthetic || s.key == nil || s.kp.at < 0 || remaining <= 0 {
 		return

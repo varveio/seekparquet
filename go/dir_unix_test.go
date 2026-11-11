@@ -19,7 +19,7 @@ func TestDirFIFO(t *testing.T) {
 	must(t, os.Remove(partFile(dir, 1)))
 	must(t, syscall.Mkfifo(partFile(dir, 1), 0o644))
 	done := make(chan error, 1)
-	go func() { done <- openErr(dir, Options{}) }()
+	go func() { done <- openErr(dir, OpenOptions{}) }()
 	select {
 	case err := <-done:
 		if CodeOf(err) != CodeMissingPart {

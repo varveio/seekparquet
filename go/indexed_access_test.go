@@ -58,12 +58,12 @@ func TestIndexedAccessColdWarmLongPrefix(t *testing.T) {
 	// Open is deliberately excluded: CHECK-1 opens every part.
 	target := chunks[14][240]
 	for _, n := range []int{1, 5} {
-		d, err := OpenDataset(ctx, src, Options{})
+		d, err := OpenDataset(ctx, src, OpenOptions{})
 		must(t, err)
 		defer d.Close()
 		for _, warm := range []bool{false, true} {
 			src.reset()
-			got, err := d.Range(ctx, Range{Start: []byte(target), Limit: n, Columns: []string{"size"}})
+			got, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte(target)}}, Limit: int64(n), Columns: []string{"size"}}, nil)
 			must(t, err)
 			if len(got) != n {
 				t.Fatalf("got %d rows, want %d", len(got), n)
@@ -85,12 +85,12 @@ func TestIndexedAccessColdWarmLongPrefix(t *testing.T) {
 		}
 		must(t, d.Close())
 	}
-	d, err := OpenDataset(ctx, src, Options{})
+	d, err := OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	defer d.Close()
 	for _, warm := range []bool{false, true} {
 		src.reset()
-		got, err := d.List(ctx, List{Prefix: []byte(fmt.Sprintf("%sp13/", stem)), Delimiter: '/', Limit: 100})
+		got, err := d.List(ctx, ListQuery{Prefix: []byte(fmt.Sprintf("%sp13/", stem)), Delimiter: '/', Limit: 100}, nil)
 		must(t, err)
 		if len(got) != 16 {
 			t.Fatalf("got %d directories", len(got))
@@ -119,8 +119,8 @@ func TestIndexedAccessRepeatedListingResume(t *testing.T) {
 	keys = append(keys, "z")
 	doc := parts(testutil.Part{GroupRows: 1000, PageBytes: 64}, keys)
 	doc.RepeatedKeys = true
-	d := open(t, write(t, doc), Options{})
-	req := List{Prefix: []byte("k"), Delimiter: '/', Limit: 10, Columns: []string{"size"}}
+	d := open(t, write(t, doc), OpenOptions{})
+	req := ListQuery{Prefix: []byte("k"), Delimiter: '/', Limit: 10, Columns: []string{"size"}}
 	seen := 0
 	var total, maxPages int64
 	for {
@@ -164,7 +164,7 @@ func TestIndexedAccessNonMonotoneScaling(t *testing.T) {
 			dir := write(t, parts(testutil.Part{GroupRows: 16, PageBytes: 64}, keys))
 			broadNonMonotoneIndexes(t, dir)
 			src := &accessSource{Source: dirOf(t, dir)}
-			d, err := OpenDataset(ctx, src, Options{})
+			d, err := OpenDataset(ctx, src, OpenOptions{})
 			must(t, err)
 			defer d.Close()
 			must(t, d.r.checkParts(ctx, new(ReadStats))) // the footer read is not routing
@@ -172,7 +172,7 @@ func TestIndexedAccessNonMonotoneScaling(t *testing.T) {
 			for _, warm := range []bool{false, true} {
 				src.reset()
 				var st ReadStats
-				got, err := d.r.readRange(ctx, Range{Start: []byte(keys[target]), Limit: 5}, &st)
+				got, err := d.r.readRange(ctx, Query{Selection: Selection{Span: Span{Start: []byte(keys[target])}}, Limit: 5}, &st)
 				must(t, err)
 				if len(got) != 5 {
 					t.Fatalf("got %d rows", len(got))

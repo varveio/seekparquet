@@ -21,14 +21,14 @@ func TestDirConfinement(t *testing.T) {
 	dir := write(t, twoParts())
 	must(t, os.Remove(partFile(dir, 1)))
 	must(t, os.Symlink(partFile(outside, 1), partFile(dir, 1)))
-	if err := openErr(dir, Options{}); err == nil {
+	if err := openErr(dir, OpenOptions{}); err == nil {
 		t.Fatal("opened a part outside the directory")
 	}
 	// A link inside the directory is followed.
 	inside := write(t, twoParts())
 	must(t, os.Rename(partFile(inside, 1), filepath.Join(inside, "data", "real.parquet")))
 	must(t, os.Symlink("real.parquet", partFile(inside, 1)))
-	open(t, inside, Options{})
+	open(t, inside, OpenOptions{})
 
 	src := dirOf(t, dir)
 	if _, err := src.Open(ctx, "data"); !errors.Is(err, fs.ErrNotExist) {

@@ -69,15 +69,15 @@ func TestScanBatchesBoundariesAndValues(t *testing.T) {
 					})
 				}
 			}
-			d := open(t, dir, Options{})
+			d := open(t, dir, OpenOptions{})
 			// Include disjoint selections within pages and across groups/parts.
-			ranges := []Range{{Start: records[3].Key, End: records[7].Key}, {Start: records[9].Key, End: records[1400].Key}, {Start: records[1451].Key}}
-			plan, err := d.PlanRanges(ctx, ranges, transitionColumns)
+			ranges := []Selection{{Span: Span{Start: records[3].Key, End: records[7].Key}}, {Span: Span{Start: records[9].Key, End: records[1400].Key}}, {Span: Span{Start: records[1451].Key}}}
+			plan, err := d.Plan(ctx, ranges, transitionColumns, nil)
 			must(t, err)
 			var want []transitionRecord
 			var ordinals []int
 			for i, row := range records {
-				if slices.ContainsFunc(ranges, func(r Range) bool { return selects(r, row.Key) }) {
+				if slices.ContainsFunc(ranges, func(r Selection) bool { return selects(r.Span, row.Key) }) {
 					want = append(want, row)
 					ordinals = append(ordinals, i)
 				}
@@ -87,7 +87,7 @@ func TestScanBatchesBoundariesAndValues(t *testing.T) {
 			lengths := map[int]int{}
 			var st ReadStats
 			var object *Batch
-			must(t, plan.ScanBatches(ctx, &st, func(b *Batch) error {
+			must(t, plan.Scan(ctx, &st, func(b *Batch) error {
 				if b.Len() == 0 {
 					t.Fatal("empty batch")
 				}
@@ -133,9 +133,9 @@ func TestScanBatchesBoundariesAndValues(t *testing.T) {
 			t.Logf("batch length distribution: %v; %d rows; stats %+v", lengths, len(got), st)
 			var owned []Row
 			var owningStats ReadStats
-			must(t, plan.Scan(ctx, &owningStats, func(row Row) error { owned = append(owned, row); return nil }))
+			must(t, scanRows(ctx, plan, &owningStats, func(row Row) error { owned = append(owned, row); return nil }))
 			checkTransitionRows(t, owned, want)
-			must(t, plan.ScanBatches(ctx, &st, func(*Batch) error { return nil }))
+			must(t, plan.Scan(ctx, &st, func(*Batch) error { return nil }))
 			if st != owningStats {
 				t.Fatalf("Scan stats %+v, batch stats %+v", owningStats, st)
 			}
@@ -149,28 +149,28 @@ func TestScanBatchesRepeatedOffsetsAndShards(t *testing.T) {
 	for i := range 1380 {
 		rows = append(rows, testutil.Row{Key: fmt.Appendf(nil, "k%04d", i/23), Size: ptr(int64(i))})
 	}
-	d := open(t, write(t, testutil.Dataset{RepeatedKeys: true, Parts: []testutil.Part{{Rows: rows[:690], GroupRows: 137, PageBytes: 128}, {Rows: rows[690:], GroupRows: 138, PageBytes: 128}}}), Options{})
-	ranges := []Range{{Cursor: &Cursor{Key: rows[0].Key, Offset: 5}, End: rows[230].Key}, {Start: rows[253].Key}}
-	plan, err := d.PlanRanges(ctx, ranges, []string{"size", "key", "size"})
+	d := open(t, write(t, testutil.Dataset{RepeatedKeys: true, Parts: []testutil.Part{{Rows: rows[:690], GroupRows: 137, PageBytes: 128}, {Rows: rows[690:], GroupRows: 138, PageBytes: 128}}}), OpenOptions{})
+	ranges := []Selection{{Span: Span{End: rows[230].Key}, Cursor: &Cursor{Key: rows[0].Key, Offset: 5}}, {Span: Span{Start: rows[253].Key}}}
+	plan, err := d.Plan(ctx, ranges, []string{"size", "key", "size"}, nil)
 	must(t, err)
-	shards, err := plan.Split(ctx, 4)
+	shards, err := plan.Split(ctx, 4, nil)
 	must(t, err)
 	if len(shards) < 2 {
 		t.Fatal("fixture needs shards")
 	}
 	var want []int64
 	for i, row := range rows {
-		if slices.ContainsFunc(ranges, func(r Range) bool { return selects(r, row.Key) && afterCursor(r.Cursor, row.Key, int64(i%23)) }) {
+		if slices.ContainsFunc(ranges, func(r Selection) bool { return selects(r.Span, row.Key) && afterCursor(r.Cursor, row.Key, int64(i%23)) }) {
 			want = append(want, int64(i))
 		}
 	}
-	plans := append([]*RangePlan{plan, plan}, shards...)
+	plans := append([]*Plan{plan, plan}, shards...)
 	got := make([][]int64, len(plans))
 	errs := make([]error, len(plans))
 	var wg sync.WaitGroup
 	for k, p := range plans {
 		wg.Go(func() {
-			errs[k] = p.ScanBatches(ctx, nil, func(b *Batch) error {
+			errs[k] = p.Scan(ctx, nil, func(b *Batch) error {
 				values, _ := rawColumn(b, 0)
 				keys, _ := rawColumn(b, 1)
 				duplicate, _ := rawColumn(b, 2)
@@ -200,12 +200,12 @@ func TestScanBatchesAbsentAndEmptyProjection(t *testing.T) {
 	type keyOnly struct {
 		Key []byte `parquet:"key"`
 	}
-	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: testutil.Rows("a", "b")}, {Rows: []keyOnly{{[]byte("c")}, {[]byte("d")}}}, {Rows: testutil.Rows("e", "f")}}}), Options{})
+	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: testutil.Rows("a", "b")}, {Rows: []keyOnly{{[]byte("c")}, {[]byte("d")}}}, {Rows: testutil.Rows("e", "f")}}}), OpenOptions{})
 	for _, columns := range [][]string{nil, {"size", "missing", "size"}} {
-		plan, err := d.PlanRanges(ctx, []Range{{}}, columns)
+		plan, err := d.Plan(ctx, []Selection{{}}, columns, nil)
 		must(t, err)
 		n := 0
-		must(t, plan.ScanBatches(ctx, nil, func(b *Batch) error {
+		must(t, plan.Scan(ctx, nil, func(b *Batch) error {
 			for i := 0; i < b.Len(); i++ {
 				if string(b.Key(i)) != string(rune('a'+n)) {
 					t.Fatal("key", n)
@@ -236,31 +236,31 @@ func TestScanBatchesAbsentAndEmptyProjection(t *testing.T) {
 
 func TestScanBatchesStopAndReenter(t *testing.T) {
 	records := transitionRecords(2048, true)
-	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 512, PageBytes: 128}}}), Options{})
-	plan, err := d.PlanRanges(ctx, []Range{{}}, transitionColumns)
+	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 512, PageBytes: 128}}}), OpenOptions{})
+	plan, err := d.Plan(ctx, []Selection{{}}, transitionColumns, nil)
 	must(t, err)
 	sentinel := errors.New("callback stop")
 	var st ReadStats
 	calls := 0
-	err = plan.ScanBatches(ctx, &st, func(b *Batch) error { calls++; return sentinel })
+	err = plan.Scan(ctx, &st, func(b *Batch) error { calls++; return sentinel })
 	if err != sentinel || calls != 1 || st.KeyPagesDecoded == 0 || st.ValuePagesDecoded == 0 {
 		t.Fatalf("callback error %v, calls=%d, stats=%+v", err, calls, st)
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	calls = 0
-	err = plan.ScanBatches(cancelled, &st, func(b *Batch) error { calls++; cancel(); return nil })
+	err = plan.Scan(cancelled, &st, func(b *Batch) error { calls++; cancel(); return nil })
 	if !errors.Is(err, context.Canceled) || calls != 1 {
 		t.Fatalf("cancel %v, calls=%d", err, calls)
 	}
 	calls = 0
-	err = plan.ScanBatches(cancelled, &st, func(*Batch) error { calls++; return nil })
+	err = plan.Scan(cancelled, &st, func(*Batch) error { calls++; return nil })
 	if !errors.Is(err, context.Canceled) || calls != 0 || st != (ReadStats{}) {
 		t.Fatalf("entry cancel %v, calls=%d stats=%+v", err, calls, st)
 	}
 	// A reentrant request must neither overwrite nor invalidate the outer page.
-	err = plan.ScanBatches(ctx, nil, func(b *Batch) error {
+	err = plan.Scan(ctx, nil, func(b *Batch) error {
 		saved := b.Row(0)
-		err := plan.ScanBatches(ctx, nil, func(*Batch) error { return sentinel })
+		err := plan.Scan(ctx, nil, func(*Batch) error { return sentinel })
 		if err != sentinel || !reflect.DeepEqual(saved, b.Row(0)) {
 			t.Fatal("reentrant scan changed batch")
 		}
@@ -270,7 +270,7 @@ func TestScanBatchesStopAndReenter(t *testing.T) {
 		t.Fatal(err)
 	}
 	must(t, d.Close())
-	if err := plan.ScanBatches(ctx, nil, func(*Batch) error { t.Fatal("closed callback"); return nil }); !errors.Is(err, ErrClosed) {
+	if err := plan.Scan(ctx, nil, func(*Batch) error { t.Fatal("closed callback"); return nil }); !errors.Is(err, ErrClosed) {
 		t.Fatal(err)
 	}
 }
@@ -290,13 +290,13 @@ func TestScanBatchesAbsentAfterPresentGroups(t *testing.T) {
 		{Rows: records[:128], GroupRows: 32, PageBytes: 128},
 		{Rows: missing, GroupRows: 32, PageBytes: 128},
 		{Rows: records[256:], GroupRows: 32, PageBytes: 128},
-	}}), Options{})
+	}}), OpenOptions{})
 	columns := []string{"plain", "plain", "key"}
-	plan, err := d.PlanRanges(ctx, []Range{{}}, columns)
+	plan, err := d.Plan(ctx, []Selection{{}}, columns, nil)
 	must(t, err)
 	var got []Row
 	missingBatches := 0
-	must(t, plan.ScanBatches(ctx, nil, func(b *Batch) error {
+	must(t, plan.Scan(ctx, nil, func(b *Batch) error {
 		first := len(got)
 		absent := first >= 128 && first < 256
 		if absent {

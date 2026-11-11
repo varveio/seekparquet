@@ -90,13 +90,13 @@ func batchOracleFixture(t *testing.T, seed int64, indexed bool) (string, []batch
 
 func batchOracleKey(k int) []byte { return fmt.Appendf(nil, "k%05d", k) }
 
-func batchOracleRanges(r *rand.Rand, nkeys int, rows []batchOracleRow) []Range {
-	var out []Range
+func batchOracleRanges(r *rand.Rand, nkeys int, rows []batchOracleRow) []Selection {
+	var out []Selection
 	lo := 0
 	for i := 0; i < 1+r.Intn(4) && lo < nkeys-2; i++ {
 		a := lo + r.Intn(max(1, (nkeys-lo)/3))
 		b := a + 1 + r.Intn(max(1, (nkeys-a)/2))
-		rg := Range{Start: batchOracleKey(a), End: batchOracleKey(b), StartExclusive: r.Intn(4) == 0}
+		rg := Selection{Span: Span{Start: batchOracleKey(a), End: batchOracleKey(b), StartExclusive: r.Intn(4) == 0}}
 		if r.Intn(5) == 0 {
 			rg.Start = nil
 			if len(out) > 0 {
@@ -132,7 +132,7 @@ func batchOracleRanges(r *rand.Rand, nkeys int, rows []batchOracleRow) []Range {
 	return out
 }
 
-func batchOracleSelects(rg Range, key []byte) bool {
+func batchOracleSelects(rg Selection, key []byte) bool {
 	if rg.Start != nil {
 		c := bytes.Compare(key, rg.Start)
 		if c < 0 || c == 0 && rg.StartExclusive {
@@ -142,7 +142,7 @@ func batchOracleSelects(rg Range, key []byte) bool {
 	return rg.End == nil || bytes.Compare(key, rg.End) < 0
 }
 
-func batchOracleExpected(ranges []Range, rows []batchOracleRow) []batchOracleRow {
+func batchOracleExpected(ranges []Selection, rows []batchOracleRow) []batchOracleRow {
 	var want []batchOracleRow
 	for _, row := range rows {
 		for _, rg := range ranges {
@@ -208,24 +208,24 @@ func TestScanBatchesRandomizedOracle(t *testing.T) {
 		for _, indexed := range []bool{true, false} {
 			t.Run(fmt.Sprintf("seed=%d/indexed=%t", seed, indexed), func(t *testing.T) {
 				dir, rows, nkeys, cuts := batchOracleFixture(t, seed, indexed)
-				d := open(t, dir, Options{})
+				d := open(t, dir, OpenOptions{})
 				r := rand.New(rand.NewSource(seed * 7))
 				for trial := 0; trial < 8; trial++ {
 					ranges := batchOracleRanges(r, nkeys, rows)
 					if trial == 0 {
-						ranges = []Range{{}}
+						ranges = []Selection{{}}
 					}
 					want := batchOracleExpected(ranges, rows)
-					plan, err := d.PlanRanges(ctx, ranges, batchOracleColumns)
+					plan, err := d.Plan(ctx, ranges, batchOracleColumns, nil)
 					must(t, err)
 					var got []Row
-					must(t, plan.Scan(ctx, nil, func(row Row) error { got = append(got, row); return nil }))
+					must(t, scanRows(ctx, plan, nil, func(row Row) error { got = append(got, row); return nil }))
 					checkBatchOracleRows(t, fmt.Sprintf("Scan trial %d %+v", trial, ranges), got, want)
-					shards, err := plan.Split(ctx, 1+r.Intn(6))
+					shards, err := plan.Split(ctx, 1+r.Intn(6), nil)
 					must(t, err)
 					got = got[:0]
 					for _, sh := range shards {
-						must(t, sh.Scan(ctx, nil, func(row Row) error { got = append(got, row); return nil }))
+						must(t, scanRows(ctx, sh, nil, func(row Row) error { got = append(got, row); return nil }))
 					}
 					checkBatchOracleRows(t, fmt.Sprintf("Split trial %d", trial), got, want)
 					checkBatchOracleBatches(t, plan, shards, want, cuts)
@@ -235,12 +235,12 @@ func TestScanBatchesRandomizedOracle(t *testing.T) {
 	}
 }
 
-func checkBatchOracleBatches(t *testing.T, plan *RangePlan, shards []*RangePlan, want []batchOracleRow, cuts []int) {
+func checkBatchOracleBatches(t *testing.T, plan *Plan, shards []*Plan, want []batchOracleRow, cuts []int) {
 	t.Helper()
-	for _, ps := range [][]*RangePlan{{plan}, shards} {
+	for _, ps := range [][]*Plan{{plan}, shards} {
 		var got []Row
 		for _, p := range ps {
-			must(t, p.ScanBatches(ctx, nil, func(b *Batch) error {
+			must(t, p.Scan(ctx, nil, func(b *Batch) error {
 				start := len(got)
 				if b.Len() == 0 || start+b.Len() > len(want) {
 					t.Fatalf("unexpected batch length %d after %d rows (want %d total)", b.Len(), start, len(want))

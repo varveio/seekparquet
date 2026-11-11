@@ -21,18 +21,18 @@ func TestListIndexSharedMemoryIsolation(t *testing.T) {
 		keys = append(keys, fmt.Sprintf("d%04d/f", i))
 	}
 	dir := write(t, parts(testutil.Part{GroupRows: 200, PageBytes: 200, IndexSizeLimit: 16}, keys))
-	probe := open(t, dir, Options{})
+	probe := open(t, dir, OpenOptions{})
 	must(t, probe.Verify(ctx))
 	lim := Limits{IndexMemory: probe.r.indexMemory.Load() / 2}
-	q := List{Prefix: []byte("d3999/"), Delimiter: '/', Limit: 10}
-	plain := open(t, dir, Options{Limits: lim})
-	want, err := plain.List(ctx, q)
+	q := ListQuery{Prefix: []byte("d3999/"), Delimiter: '/', Limit: 10}
+	plain := open(t, dir, OpenOptions{Limits: lim})
+	want, err := plain.List(ctx, q, nil)
 	must(t, err)
 	for _, budget := range []int64{1, 0} {
 		for _, warm := range []bool{false, true} {
-			d := open(t, dir, Options{Limits: lim})
+			d := open(t, dir, OpenOptions{Limits: lim})
 			if warm {
-				_, err = d.List(ctx, List{Prefix: []byte("d0000/"), Delimiter: '/', Limit: 1})
+				_, err = d.List(ctx, ListQuery{Prefix: []byte("d0000/"), Delimiter: '/', Limit: 1}, nil)
 				must(t, err)
 			}
 			before := d.r.indexMemory.Load()
@@ -41,7 +41,7 @@ func TestListIndexSharedMemoryIsolation(t *testing.T) {
 			if d.r.indexMemory.Load() != before || st.GroupsFailed != 0 {
 				t.Fatalf("build consumed shared memory: %d -> %d, %+v", before, d.r.indexMemory.Load(), st)
 			}
-			got, err := d.List(ctx, q)
+			got, err := d.List(ctx, q, nil)
 			must(t, err)
 			if !reflect.DeepEqual(want, got) {
 				t.Fatalf("%v != %v", want, got)
@@ -57,16 +57,16 @@ func TestListIndexLogarithmicPagination(t *testing.T) {
 	}
 	keys = append(keys, "b/f")
 	for _, rows := range []int{30000, 20} {
-		d := open(t, write(t, parts(testutil.Part{GroupRows: rows, PageBytes: 30}, keys)), Options{})
+		d := open(t, write(t, parts(testutil.Part{GroupRows: rows, PageBytes: 30}, keys)), OpenOptions{})
 		_, err := d.BuildListIndex(ctx, ListIndexOptions{})
 		must(t, err)
-		first, err := d.List(ctx, List{Delimiter: '/', Limit: 1})
+		first, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 1}, nil)
 		must(t, err)
 		if len(first) != 1 || string(first[0].CommonPrefix) != "a/" {
 			t.Fatal(first)
 		}
 		for i := 0; i < 3; i++ {
-			next, err := d.List(ctx, List{Delimiter: '/', Limit: 1, Cursor: first[0].Cursor()})
+			next, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 1, Cursor: first[0].Cursor()}, nil)
 			must(t, err)
 			if len(next) != 1 || string(next[0].CommonPrefix) != "b/" {
 				t.Fatal(next)
@@ -102,7 +102,7 @@ func TestListIndexLogarithmicPagination(t *testing.T) {
 
 func TestListIndexEmptyCacheAndEffectiveOptions(t *testing.T) {
 	for _, keys := range [][]string{{"a", "b"}, {"a/x", "b/y"}} {
-		d := open(t, write(t, parts(testutil.Part{}, keys)), Options{})
+		d := open(t, write(t, parts(testutil.Part{}, keys)), OpenOptions{})
 		opt := ListIndexOptions{MaxBytes: 1}
 		st, err := d.BuildListIndex(ctx, opt)
 		must(t, err)
@@ -146,7 +146,7 @@ func TestListIndexParity(t *testing.T) {
 		must(t, err)
 		for _, budget := range []int64{1, 599, 600, 1024, 4096, 1 << 20} {
 			for _, cap := range []int{1, 2, 8, 1000} {
-				d := open(t, root, Options{})
+				d := open(t, root, OpenOptions{})
 				st, err := d.BuildListIndex(ctx, ListIndexOptions{MaxBytes: budget, Workers: 2, MaxChangesPerPage: cap})
 				must(t, err)
 				fmt.Fprintf(&lines, "%s\t%d\t%d\t%d\t%d\t%d\t%t\n", root, budget, cap, st.GroupsIndexed, st.Entries, st.Bytes, st.BudgetExhausted)

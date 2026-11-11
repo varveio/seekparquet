@@ -57,12 +57,12 @@ func typedDataset() testutil.Dataset {
 }
 
 // TestProjection projects every baseline type, nulls, absent columns and a
-// column whose name holds a dot (COL-6), through Range and List, from
+// column whose name holds a dot (COL-6), through Query and ListQuery, from
 // every start, so that runs begin inside pages and row groups.
 func TestProjection(t *testing.T) {
-	d := open(t, write(t, typedDataset()), Options{})
+	d := open(t, write(t, typedDataset()), OpenOptions{})
 	columns := []string{"flag", "i32", "i64", "f32", "f64", "blob", "fixed", "a.b", "nope"}
-	rows, err := d.Range(ctx, Range{Limit: 100, Columns: columns})
+	rows, err := d.Rows(ctx, Query{Limit: 100, Columns: columns}, nil)
 	must(t, err)
 	if len(rows) != 8 {
 		t.Fatalf("%d rows", len(rows))
@@ -97,7 +97,7 @@ func TestProjection(t *testing.T) {
 	if _, ok := t1.Value("size"); ok {
 		t.Fatal("Value of an unprojected column")
 	}
-	entries, err := d.List(ctx, List{Delimiter: '/', Limit: 100, Columns: columns})
+	entries, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 100, Columns: columns}, nil)
 	must(t, err)
 	for i, e := range entries {
 		if !slices.EqualFunc(e.Row.Values, rows[i].Values, sameValue) {
@@ -106,8 +106,8 @@ func TestProjection(t *testing.T) {
 	}
 	for i := range rows {
 		for _, limit := range []int{1, 2, 3} {
-			rng := Range{Start: rows[i].Key, Limit: limit, Columns: columns}
-			got, err := d.Range(ctx, rng)
+			rng := Query{Selection: Selection{Span: Span{Start: rows[i].Key}}, Limit: int64(limit), Columns: columns}
+			got, err := d.Rows(ctx, rng, nil)
 			must(t, err)
 			for j := range got {
 				if !slices.EqualFunc(got[j].Values, rows[i+j].Values, sameValue) {
@@ -118,12 +118,12 @@ func TestProjection(t *testing.T) {
 	}
 	// Projecting a nested or repeated column is rejected (COL-3).
 	for _, c := range []string{"tags", "meta"} {
-		_, err := d.Range(ctx, Range{Limit: 1, Columns: []string{c}})
+		_, err := d.Rows(ctx, Query{Limit: 1, Columns: []string{c}}, nil)
 		var u *UnsupportedError
 		if !errors.As(err, &u) || u.Code != UnsupportedProjection {
 			t.Fatalf("%s: %v", c, err)
 		}
-		if _, err := d.List(ctx, List{Delimiter: '/', Limit: 1, Columns: []string{c}}); !errors.As(err, &u) {
+		if _, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 1, Columns: []string{c}}, nil); !errors.As(err, &u) {
 			t.Fatalf("list %s: %v", c, err)
 		}
 	}
@@ -136,9 +136,9 @@ func sameValue(a, b Value) bool {
 // TestRowsOwnTheirBytes changes everything a read was given and returned:
 // nothing else changes.
 func TestRowsOwnTheirBytes(t *testing.T) {
-	d := open(t, write(t, parts(testutil.Part{}, []string{"a", "b", "c"})), Options{})
+	d := open(t, write(t, parts(testutil.Part{}, []string{"a", "b", "c"})), OpenOptions{})
 	columns := []string{"size", "name"}
-	rows, err := d.Range(ctx, Range{Limit: 3, Columns: columns})
+	rows, err := d.Rows(ctx, Query{Limit: 3, Columns: columns}, nil)
 	must(t, err)
 	columns[0] = "changed"
 	if rows[0].Columns[0] != "size" {
@@ -146,7 +146,7 @@ func TestRowsOwnTheirBytes(t *testing.T) {
 	}
 	rows[0].Key[0] = 'z'
 	copy(rows[0].Values[1].Bytes(), "XXXX")
-	again, _ := d.Range(ctx, Range{Limit: 3, Columns: []string{"size", "name"}})
+	again, _ := d.Rows(ctx, Query{Limit: 3, Columns: []string{"size", "name"}}, nil)
 	if string(again[0].Key) != "a" || string(again[0].Values[1].Bytes()) != "name-0" || string(rows[1].Key) != "b" {
 		t.Fatalf("a result's bytes are shared: %q %q", again[0].Key, again[0].Values[1].Bytes())
 	}
@@ -159,10 +159,10 @@ func TestStatsCountDecoding(t *testing.T) {
 	for i := range 50 {
 		keys = append(keys, fmt.Sprintf("k%03d", i))
 	}
-	d := open(t, write(t, parts(testutil.Part{PageBytes: 1 << 20}, keys)), Options{})
+	d := open(t, write(t, parts(testutil.Part{PageBytes: 1 << 20}, keys)), OpenOptions{})
 	pages := func(columns ...string) int64 {
 		var st ReadStats
-		rows, err := d.r.readRange(ctx, Range{Limit: 5, Columns: columns}, &st)
+		rows, err := d.r.readRange(ctx, Query{Limit: 5, Columns: columns}, &st)
 		if err != nil || len(rows) != 5 {
 			t.Fatalf("read: %d rows, %v", len(rows), err)
 		}
@@ -179,7 +179,7 @@ func TestMetadata(t *testing.T) {
 	ds := parts(testutil.Part{}, []string{"a", "b"}, []string{"c"})
 	ds.SchemaID = "test/v2"
 	ds.Extensions = map[string]any{"producer": map[string]any{"complete": true}}
-	d := open(t, write(t, ds), Options{})
+	d := open(t, write(t, ds), OpenOptions{})
 	m := d.Metadata()
 	if m.Version != (Version{FormatVersion: 0, DraftRevision: 1}) || m.SchemaID != "test/v2" || len(m.Parts) != 2 ||
 		string(m.Parts[0].MinKey) != "a" || string(m.Parts[1].MaxKey) != "c" || m.Parts[0].Rows != 2 || m.Parts[0].Path != testutil.PartPath(0) {
@@ -198,7 +198,7 @@ func TestMetadata(t *testing.T) {
 	if again := d.Metadata(); string(again.Parts[0].MinKey) != "a" || again.Extensions[0] != '{' {
 		t.Fatal("Metadata is not a copy")
 	}
-	plain := open(t, write(t, parts(testutil.Part{}, []string{"a"})), Options{}).Metadata()
+	plain := open(t, write(t, parts(testutil.Part{}, []string{"a"})), OpenOptions{}).Metadata()
 	if plain.Extensions != nil {
 		t.Fatalf("extensions %s on a manifest without them", plain.Extensions)
 	}
@@ -220,9 +220,9 @@ func TestPageVersionsAndCodecs(t *testing.T) {
 		for _, version := range []int{1, 2} {
 			t.Run(fmt.Sprintf("%s, data page v%d", name, version), func(t *testing.T) {
 				geometry := testutil.Part{DataPageVersion: version, PageBytes: 256, GroupRows: 100, Compression: codec}
-				d := open(t, write(t, parts(geometry, split(keys, 2)...)), Options{})
-				rng := Range{Start: []byte(keys[123]), Limit: 300, Columns: []string{"size", "name"}}
-				rows, err := d.Range(ctx, rng)
+				d := open(t, write(t, parts(geometry, split(keys, 2)...)), OpenOptions{})
+				rng := Query{Selection: Selection{Span: Span{Start: []byte(keys[123])}}, Limit: 300, Columns: []string{"size", "name"}}
+				rows, err := d.Rows(ctx, rng, nil)
 				must(t, err)
 				if !slices.Equal(keysOf(rows), keys[123:423]) || rows[0].Values[0].Int64() != 123 || string(rows[1].Values[1].Bytes()) != "name-124" {
 					t.Fatalf("%s: %d rows", describe(rng), len(rows))

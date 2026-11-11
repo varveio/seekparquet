@@ -6,6 +6,8 @@ package seekparquet
 import (
 	"bytes"
 	"context"
+	"errors"
+	"math"
 	"slices"
 
 	"github.com/parquet-go/parquet-go"
@@ -15,8 +17,8 @@ import (
 // It never crosses a row group, a key page, a page of any projected column,
 // or a selected-span gap. Batches may be smaller; maximal size is not promised.
 //
-// The batch object, keys, column slices and their value bytes are borrowed,
-// read-only, and valid only until the ScanBatches or RangeBatches callback
+// The batch object, keys, column views and their value bytes are borrowed,
+// read-only, and valid only until the Dataset.Scan or Plan.Scan callback
 // returns. Do not retain them or use them from a goroutine that outlives the
 // callback.
 // Row and Cursor make owning copies that may be retained.
@@ -57,34 +59,45 @@ func (b *Batch) Row(i int) Row {
 	return r
 }
 
+// Columns returns the projected column names, in request order, as a copy
+// the caller owns.
+func (b *Batch) Columns() []string { return slices.Clone(b.columns) }
+
 // Cursor returns an owning cursor after row i. It panics if i is outside
 // [0, Len()).
 func (b *Batch) Cursor(i int) *Cursor {
 	return &Cursor{Key: bytes.Clone(b.Key(i)), Offset: b.Offset(i)}
 }
 
-// ScanBatches hands fn borrowed batches of the plan's rows and projected
-// values, in dataset order. Projection slots follow PlanRanges' columns.
-// It stops at the first error fn returns, returning it. It positions as Range
-// does and checks every key page it decodes (CHECK-2). st, when not nil,
-// receives read statistics, including on failure, as Range.Stats.
-// Cancellation is checked before each callback. Batch documents the boundaries
-// and lifetime; use Batch.Row or Batch.Cursor to keep an owning result.
+// Stop, returned by a batch callback, ends Dataset.Scan or Plan.Scan
+// early with a nil error: a successful early stop. Any other error a
+// callback returns ends the scan and is returned unchanged.
+var Stop = errors.New("seekparquet: stop the scan")
+
+// Scan hands fn borrowed batches of the plan's rows and projected values,
+// in dataset order. Projection slots follow Plan's columns. It positions at
+// each selection as Dataset.Rows does and decodes each key page and
+// projected page holding the plan's rows once, checking every key page it
+// decodes (CHECK-2). st, when not nil, is reset and receives the scan's read
+// statistics, including on failure. A nil fn is ErrInvalidRequest.
+// Cancellation is checked before each callback. Batch documents the
+// boundaries and lifetime; use Batch.Row or Batch.Cursor to keep an owning
+// result.
 //
-// The scan holds the Dataset open while fn runs: Close waits for it to return.
-// fn must not call Close, nor wait for a goroutine that does: that would
-// deadlock. To stop early, return an error or cancel ctx, then close the Dataset
-// after ScanBatches returns. Requests started by fn run normally; once Close
-// has begun they fail with ErrClosed. Concurrent or reentrant scans have
-// independent borrowed storage.
-func (plan *RangePlan) ScanBatches(ctx context.Context, st *ReadStats, fn func(*Batch) error) error {
+// It stops at the first error fn returns and returns it, or nil for Stop.
+// The scan holds the Dataset open while fn runs: Close waits for it to
+// return. fn must not call Close, nor wait for a goroutine that does: that
+// would deadlock. To stop early, return Stop or an error, or cancel ctx,
+// then close the Dataset after Scan returns. Requests started by fn run
+// normally; once Close has begun they fail with ErrClosed. Concurrent or
+// reentrant scans have independent borrowed storage.
+func (plan *Plan) Scan(ctx context.Context, st *ReadStats, fn func(*Batch) error) error {
 	return plan.scanBatches(ctx, st, keyReuse{}, fn)
 }
 
 // keyReuse configures the batch walker's key pages for tests. The zero
-// value is ScanBatches' and RangeBatches': every key page decoded into the
-// walker's one key scratch. It costs a check per call and a nil check per
-// key page.
+// value is the scans': every key page decoded into the walker's one key
+// scratch. It costs a check per call and a nil check per key page.
 type keyReuse struct {
 	// off decodes every key page into storage of its own, never reused,
 	// as every other read does.
@@ -94,8 +107,11 @@ type keyReuse struct {
 	retire func(*scan)
 }
 
-func (plan *RangePlan) scanBatches(ctx context.Context, st *ReadStats, kr keyReuse, fn func(*Batch) error) (err error) {
+func (plan *Plan) scanBatches(ctx context.Context, st *ReadStats, kr keyReuse, fn func(*Batch) error) (err error) {
 	st = resetStats(st)
+	if fn == nil {
+		return invalidRequest("a nil batch callback")
+	}
 	r := plan.r
 	rctx, end, err := r.begin(ctx)
 	if err != nil {
@@ -117,41 +133,56 @@ func (plan *RangePlan) scanBatches(ctx context.Context, st *ReadStats, kr keyReu
 			return err
 		}
 		if err := w.walk(s, sp.end-sp.start, fn); err != nil {
+			if err == Stop {
+				return nil
+			}
 			return err
 		}
 	}
 	return nil
 }
 
-// rangeBatches hands fn the rows of rng as batches; see Dataset.RangeBatches.
-func (r *reader) rangeBatches(ctx context.Context, rng Range, kr keyReuse, fn func(*Batch) error) (err error) {
-	st := resetStats(rng.Stats)
+// unlimited is the remaining count of a Scan without a limit: a 64-bit
+// count no dataset reaches, since dataset ordinals are below 2^63 - 1
+// (OpenDataset), so the walk ends only at the span's end.
+const unlimited = math.MaxInt64
+
+// rangeBatches hands fn the rows of q as batches; see Dataset.Scan.
+func (r *reader) rangeBatches(ctx context.Context, q Query, st *ReadStats, kr keyReuse, fn func(*Batch) error) (err error) {
+	st = resetStats(st)
 	if fn == nil {
 		return invalidRequest("a nil batch callback")
 	}
-	ctx, done, err := r.request(ctx, rng.Cursor, false, rng.Limit, rng.Columns)
+	ctx, done, err := r.request(ctx, q.Cursor, false, q.Limit, true, q.Columns)
 	if err != nil {
 		return err
 	}
 	defer done(&err)
-	from, exclusive, end := rng.bounds()
+	from, exclusive, end := q.bounds()
 	if r.rows == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
 		return nil
 	}
-	w := newBatcher(ctx, rng.Columns, st, false)
+	w := newBatcher(ctx, q.Columns, st, false)
 	s := w.newScan(r, end, kr)
-	if err := s.start(from, exclusive, rng.Cursor); err != nil {
+	if err := s.start(from, exclusive, q.Cursor); err != nil {
 		return err
 	}
-	return w.walk(s, int64(rng.Limit), fn)
+	n := q.Limit
+	if n == 0 {
+		n = unlimited
+	}
+	if err := w.walk(s, n, fn); err != Stop {
+		return err
+	}
+	return nil
 }
 
 // batcher cuts a scan's rows into batches, the one batch execution path
-// behind ScanBatches and RangeBatches. It opens the projected chunks of each
+// behind Plan.Scan and Dataset.Scan. It opens the projected chunks of each
 // row group as the scan reaches it, and loads only the pages holding the
 // rows it hands over. planned reads each chunk's dictionary before its first
 // page, as a plan's ProjectedBytes counts it; otherwise a dictionary is read
-// only for a page that uses it, as Range reads it.
+// only for a page that uses it, as Rows reads it.
 //
 // Its scan decodes every key page into one scratch, keys, each page
 // overwriting the one before: a batch's keys are borrowed until fn returns,

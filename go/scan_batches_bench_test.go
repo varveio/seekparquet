@@ -90,14 +90,14 @@ func crawlDataset(b *testing.B) string {
 }
 
 // BenchmarkScanBatchesLongKeys scans the whole crawl listing through
-// RangePlan.ScanBatches (Workers shards from Split) and Dataset.RangeBatches,
+// Plan.ScanBatches (Workers shards from Split) and Dataset.RangeBatches,
 // with the overview projection or keys alone, touching every key and value.
 // The plan, its shards and one warm scan are outside the measured region;
 // allocations count every worker. Reports ns, B and allocations per row.
 // Indicative only; generated data, not a real dataset.
 func BenchmarkScanBatchesLongKeys(b *testing.B) {
 	ctx := context.Background()
-	d, err := seekparquet.OpenDir(ctx, crawlDataset(b), seekparquet.Options{})
+	d, err := seekparquet.OpenDir(ctx, crawlDataset(b), seekparquet.OpenOptions{})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -148,12 +148,12 @@ func BenchmarkScanBatchesLongKeys(b *testing.B) {
 		if columns == nil {
 			projection = "keys"
 		}
-		plan, err := d.PlanRanges(ctx, []seekparquet.Range{{}}, columns)
+		plan, err := d.Plan(ctx, []seekparquet.Selection{{}}, columns, nil)
 		if err != nil {
 			b.Fatal(err)
 		}
 		for _, workers := range []int{1, 4} {
-			shards, err := plan.Split(ctx, workers)
+			shards, err := plan.Split(ctx, workers, nil)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -163,7 +163,7 @@ func BenchmarkScanBatchesLongKeys(b *testing.B) {
 					rows, sums, errs := make([]int, len(shards)), make([]int, len(shards)), make([]error, len(shards))
 					for i, shard := range shards {
 						wg.Go(func() {
-							errs[i] = shard.ScanBatches(ctx, nil, func(batch *seekparquet.Batch) error {
+							errs[i] = shard.Scan(ctx, nil, func(batch *seekparquet.Batch) error {
 								rows[i] += batch.Len()
 								touch(&sums[i], batch, len(columns))
 								return nil
@@ -185,7 +185,7 @@ func BenchmarkScanBatchesLongKeys(b *testing.B) {
 		b.Run(fmt.Sprintf("RangeBatches/%s", projection), func(b *testing.B) {
 			measure(b, func() (int, error) {
 				n, sum := 0, 0
-				err := d.RangeBatches(ctx, seekparquet.Range{Limit: crawlRowCount, Columns: columns}, func(batch *seekparquet.Batch) error {
+				err := d.Scan(ctx, seekparquet.Query{Limit: int64(crawlRowCount), Columns: columns}, nil, func(batch *seekparquet.Batch) error {
 					n += batch.Len()
 					touch(&sum, batch, len(columns))
 					return nil

@@ -230,7 +230,7 @@ func TestBatchKeyReuseEquivalence(t *testing.T) {
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("%s/seed=%d/unique=%t/indexed=%t", c.enc, c.seed, c.unique, c.indexed), func(t *testing.T) {
 			dir, rows, nkeys, cuts := keyReuseFixture(t, c.seed, c.enc, c.unique, c.indexed)
-			d := open(t, dir, Options{})
+			d := open(t, dir, OpenOptions{})
 			if c.enc == "dict" {
 				// The dictionary fills: chunks hold dictionary-encoded key pages,
 				// then PLAIN ones, so reuse crosses that switch.
@@ -257,17 +257,17 @@ func TestBatchKeyReuseEquivalence(t *testing.T) {
 			for trial := range 6 {
 				ranges := batchOracleRanges(r, nkeys, rows)
 				if trial == 0 {
-					ranges = []Range{{}}
+					ranges = []Selection{{}}
 				}
 				want := batchOracleExpected(ranges, rows)
-				plan, err := d.PlanRanges(ctx, ranges, batchOracleColumns)
+				plan, err := d.Plan(ctx, ranges, batchOracleColumns, nil)
 				must(t, err)
 				compare(fmt.Sprintf("plan %d %v", trial, ranges), want, func(kr keyReuse, fn func(*Batch) error) (ReadStats, error) {
 					var st ReadStats
 					err := plan.scanBatches(ctx, &st, kr, fn)
 					return st, err
 				})
-				shards, err := plan.Split(ctx, 1+r.Intn(5))
+				shards, err := plan.Split(ctx, 1+r.Intn(5), nil)
 				must(t, err)
 				for i, sh := range shards {
 					compare(fmt.Sprintf("plan %d shard %d", trial, i), nil, func(kr keyReuse, fn func(*Batch) error) (ReadStats, error) {
@@ -277,25 +277,21 @@ func TestBatchKeyReuseEquivalence(t *testing.T) {
 					})
 				}
 				checkBatchOracleBatches(t, plan, shards, want, cuts)
-				rng := ranges[0]
-				rng.Columns, rng.Limit = batchOracleColumns, 1+r.Intn(len(rows))
+				rng := Query{Selection: ranges[0]}
+				rng.Columns, rng.Limit = batchOracleColumns, int64(1+r.Intn(len(rows)))
 				if trial == 0 {
-					rng.Limit = len(rows)
+					rng.Limit = int64(len(rows))
 				}
 				compare(fmt.Sprintf("range %d %+v", trial, rng), nil, func(kr keyReuse, fn func(*Batch) error) (ReadStats, error) {
 					var st ReadStats
-					rng := rng
-					rng.Stats = &st
-					err := d.r.rangeBatches(ctx, rng, kr, fn)
+					err := d.r.rangeBatches(ctx, rng, &st, kr, fn)
 					return st, err
 				})
 				// Keys alone: batches are cut by key pages, groups and parts only.
 				rng.Columns = nil
 				compare(fmt.Sprintf("range keys %d", trial), nil, func(kr keyReuse, fn func(*Batch) error) (ReadStats, error) {
 					var st ReadStats
-					rng := rng
-					rng.Stats = &st
-					err := d.r.rangeBatches(ctx, rng, kr, fn)
+					err := d.r.rangeBatches(ctx, rng, &st, kr, fn)
 					return st, err
 				})
 			}
@@ -322,7 +318,7 @@ func TestBatchKeyReusePoisonRetired(t *testing.T) {
 	for _, enc := range []string{"plain", "dict", "delta", "length"} {
 		t.Run(enc, func(t *testing.T) {
 			dir, rows, nkeys, _ := keyReuseFixture(t, 21, enc, false, true)
-			d := open(t, dir, Options{})
+			d := open(t, dir, OpenOptions{})
 			retired := 0
 			retire := func(s *scan) {
 				ks := s.keyScratch
@@ -366,14 +362,14 @@ func TestBatchKeyReusePoisonRetired(t *testing.T) {
 				}
 				ranges := batchOracleRanges(r, nkeys, rows)
 				if trial == 0 {
-					ranges = []Range{{}}
+					ranges = []Selection{{}}
 				}
 				want := batchOracleExpected(ranges, rows)
-				plan, err := d.PlanRanges(ctx, ranges, batchOracleColumns)
+				plan, err := d.Plan(ctx, ranges, batchOracleColumns, nil)
 				must(t, err)
 				var kept []Row
 				var cursors []*Cursor
-				shards, err := plan.Split(ctx, 1+r.Intn(4))
+				shards, err := plan.Split(ctx, 1+r.Intn(4), nil)
 				must(t, err)
 				for _, sh := range shards {
 					must(t, sh.scanBatches(ctx, nil, keyReuse{retire: retire}, func(b *Batch) error {
@@ -384,10 +380,9 @@ func TestBatchKeyReusePoisonRetired(t *testing.T) {
 						return nil
 					}))
 				}
-				rng := ranges[0]
-				rng.Columns, rng.Limit = batchOracleColumns, len(rows)
+				rng := Query{Selection: ranges[0], Columns: batchOracleColumns, Limit: int64(len(rows))}
 				var ranged []Row
-				must(t, d.r.rangeBatches(ctx, rng, keyReuse{retire: retire}, func(b *Batch) error {
+				must(t, d.r.rangeBatches(ctx, rng, nil, keyReuse{retire: retire}, func(b *Batch) error {
 					for i := range b.Len() {
 						ranged = append(ranged, b.Row(i))
 					}
@@ -402,9 +397,9 @@ func TestBatchKeyReusePoisonRetired(t *testing.T) {
 				}
 				// The first-key cache and part checks the scans left serve
 				// ordinary reads.
-				got, err := d.Range(ctx, Range{Start: ranges[0].Start, End: ranges[0].End, StartExclusive: ranges[0].StartExclusive, Cursor: ranges[0].Cursor, Limit: len(rows), Columns: batchOracleColumns})
+				got, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: ranges[0].Start, End: ranges[0].End, StartExclusive: ranges[0].StartExclusive}, Cursor: ranges[0].Cursor}, Limit: int64(len(rows)), Columns: batchOracleColumns}, nil)
 				must(t, err)
-				checkBatchOracleRows(t, fmt.Sprintf("Range after %d", trial), got, batchOracleExpected(ranges[:1], rows))
+				checkBatchOracleRows(t, fmt.Sprintf("Query after %d", trial), got, batchOracleExpected(ranges[:1], rows))
 			}
 			if retired < 50 {
 				t.Fatalf("only %d key pages retired", retired)
@@ -428,8 +423,8 @@ func TestScanBatchesKeyPageAllocations(t *testing.T) {
 	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{
 		{Rows: records[:n/2], GroupRows: 10_000, PageBytes: 16 << 10, Compression: parquet.Compression(&zstd.Codec{})},
 		{Rows: records[n/2:], GroupRows: 10_000, PageBytes: 16 << 10, Compression: parquet.Compression(&zstd.Codec{})},
-	}}), Options{})
-	plan, err := d.PlanRanges(ctx, []Range{{}}, nil)
+	}}), OpenOptions{})
+	plan, err := d.Plan(ctx, []Selection{{}}, nil, nil)
 	must(t, err)
 	count := 0
 	emit := func(b *Batch) error {
@@ -440,7 +435,7 @@ func TestScanBatchesKeyPageAllocations(t *testing.T) {
 		return nil
 	}
 	var st ReadStats
-	must(t, plan.ScanBatches(ctx, &st, emit))
+	must(t, plan.Scan(ctx, &st, emit))
 	if st.KeyPagesDecoded < 200 {
 		t.Fatalf("fixture geometry: %+v", st)
 	}
@@ -487,8 +482,8 @@ func TestBatchKeyReuseRefusalKey(t *testing.T) {
 		})},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: testutil.Rows(c.keys...), PageBytes: 256}}}), Options{})
-			plan, err := d.PlanRanges(ctx, []Range{{}}, nil)
+			d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: testutil.Rows(c.keys...), PageBytes: 256}}}), OpenOptions{})
+			plan, err := d.Plan(ctx, []Selection{{}}, nil, nil)
 			must(t, err)
 			var ks *pageScratch
 			err = plan.scanBatches(ctx, nil, keyReuse{retire: func(s *scan) { ks = s.keyScratch }}, func(*Batch) error { return nil })

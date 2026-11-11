@@ -56,7 +56,7 @@ func (v *validator) close() {
 // page header at every OffsetIndex entry, which must begin one data page
 // of exactly the entry's size and rows (RG-3). Page data is not read.
 func (v *validator) structural(lr *LevelReport) error {
-	d, err := OpenDataset(v.ctx, v.src, Options{Limits: v.limits})
+	d, err := OpenDataset(v.ctx, v.src, OpenOptions{Limits: v.limits})
 	if err != nil {
 		return err
 	}

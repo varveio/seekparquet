@@ -23,8 +23,8 @@ type rangeBatchesBenchRecord struct {
 var rangeBatchesBenchColumns = []string{"size", "mtime", "etag", "class", "version", "owner"}
 
 // BenchmarkRangeBatches compares a limited 13,013-row read of six projected
-// columns, crossing a row group, through the owning Range and through
-// RangeBatches touching every value. Warm: one Range before timing loads the
+// columns, crossing a row group, through the owning Query and through
+// RangeBatches touching every value. Warm: one Query before timing loads the
 // footers, key page indexes and OffsetIndexes both then reuse.
 // Indicative only; generated data, not a real dataset.
 func BenchmarkRangeBatches(b *testing.B) {
@@ -46,15 +46,15 @@ func BenchmarkRangeBatches(b *testing.B) {
 		{Rows: records[:rows/2], GroupRows: 40_000, PageBytes: 64 << 10},
 		{Rows: records[rows/2:], GroupRows: 40_000, PageBytes: 64 << 10},
 	}})
-	d := open(b, dir, Options{})
-	rng := Range{Start: records[33_333].Key, Limit: limit, Columns: rangeBatchesBenchColumns}
-	if _, err := d.Range(ctx, rng); err != nil {
+	d := open(b, dir, OpenOptions{})
+	rng := Query{Selection: Selection{Span: Span{Start: records[33_333].Key}}, Limit: int64(limit), Columns: rangeBatchesBenchColumns}
+	if _, err := d.Rows(ctx, rng, nil); err != nil {
 		b.Fatal(err)
 	}
 	b.Run("Range", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			got, err := d.Range(ctx, rng)
+			got, err := d.Rows(ctx, rng, nil)
 			must(b, err)
 			if len(got) != limit {
 				b.Fatal(len(got))
@@ -65,7 +65,7 @@ func BenchmarkRangeBatches(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
 			n, sum := 0, 0
-			must(b, d.RangeBatches(ctx, rng, func(batch *Batch) error {
+			must(b, d.Scan(ctx, rng, nil, func(batch *Batch) error {
 				n += batch.Len()
 				for c := range rangeBatchesBenchColumns {
 					col := batch.Column(c)

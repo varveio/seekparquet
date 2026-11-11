@@ -167,7 +167,7 @@ func TestValidateOmittedPage(t *testing.T) {
 	}
 
 	// The profile walk alone, without the structural pass before it.
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	v := &validator{ctx: ctx, limits: Limits{}.withDefaults(), d: d}
 	lr := LevelReport{Level: LevelProfile}
@@ -200,8 +200,8 @@ func TestValidateValuePageChecksum(t *testing.T) {
 	raw[last.Offset+int64(last.CompressedPageSize)-1] ^= 1
 	must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
 
-	d := verified(t, dir, Options{})
-	if rows, err := d.Range(ctx, Range{Limit: 1000}); err != nil || len(rows) != 600 {
+	d := verified(t, dir, OpenOptions{})
+	if rows, err := d.Rows(ctx, Query{Limit: 1000}, nil); err != nil || len(rows) != 600 {
 		t.Fatalf("keys only: %d rows, %v", len(rows), err)
 	}
 	report := validate(t, dir, ValidateOptions{})
@@ -456,8 +456,8 @@ func TestValidateWhatReadsSkip(t *testing.T) {
 		keys := validKeys(600)
 		keys[100], keys[101] = keys[101], keys[100]
 		dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: testutil.Rows(keys...), PageBytes: 256, GroupRows: 300}}})
-		d := verified(t, dir, Options{})
-		if rows, err := d.Range(ctx, Range{Start: []byte(keys[550]), Limit: 10, Columns: []string{"size"}}); err != nil || len(rows) != 10 {
+		d := verified(t, dir, OpenOptions{})
+		if rows, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte(keys[550])}}, Limit: 10, Columns: []string{"size"}}, nil); err != nil || len(rows) != 10 {
 			t.Fatalf("a read past the fault: %d rows, %v", len(rows), err)
 		}
 		report := validate(t, dir, ValidateOptions{Level: LevelProfile})
@@ -472,8 +472,8 @@ func TestValidateWhatReadsSkip(t *testing.T) {
 		rewriteIndexes(t, dir, 0, 0, func(ci *format.ColumnIndex, _ *format.OffsetIndex) {
 			ci.MaxValues[1] = append([]byte(nil), ci.MinValues[1]...)
 		})
-		d := verified(t, dir, Options{})
-		if rows, err := d.Range(ctx, Range{Start: []byte("k00250"), Limit: 10}); err != nil || len(rows) != 10 {
+		d := verified(t, dir, OpenOptions{})
+		if rows, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte("k00250")}}, Limit: 10}, nil); err != nil || len(rows) != 10 {
 			t.Fatalf("a read past the fault: %d rows, %v", len(rows), err)
 		}
 		report := validate(t, dir, ValidateOptions{Level: LevelProfile})
@@ -611,7 +611,7 @@ func TestValidateDictionaryPage(t *testing.T) {
 		t.Fatalf("full failed at %s: %v", f.At, f.Failure)
 	}
 	// A walk that decodes no data page still checks the dictionary.
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	v := &validator{ctx: ctx, limits: Limits{}.withDefaults(), d: d}
 	p := d.r.parts[0]

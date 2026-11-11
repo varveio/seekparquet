@@ -47,7 +47,7 @@ func TestBufferReusePhysicalTransitions(t *testing.T) {
 		for _, version := range []int{1, 2} {
 			t.Run(fmt.Sprintf("%s/v%d", codec, version), func(t *testing.T) {
 				options := reuseWriterOptions{parquet.Compression(codec), parquet.DefaultEncodingFor(parquet.Boolean, &rle.Encoding{BitWidth: 1})}
-				d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 512, PageBytes: 32, DataPageVersion: version, Compression: options}}}), Options{})
+				d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 512, PageBytes: 32, DataPageVersion: version, Compression: options}}}), OpenOptions{})
 				must(t, d.r.checkParts(ctx, new(ReadStats)))
 				for i, name := range columns {
 					cp, err := d.r.parts[0].openColumn(ctx, 0, name, new(ReadStats), nil)
@@ -87,18 +87,18 @@ func TestBufferReusePhysicalTransitions(t *testing.T) {
 						}
 					}
 				}
-				rows, err := d.Range(ctx, Range{Limit: len(records), Columns: columns})
+				rows, err := d.Rows(ctx, Query{Limit: int64(len(records)), Columns: columns}, nil)
 				must(t, err)
-				entries, err := d.List(ctx, List{Limit: len(records), Columns: columns})
+				entries, err := d.List(ctx, ListQuery{Limit: len(records), Columns: columns}, nil)
 				must(t, err)
 				listed := make([]Row, len(entries))
 				for i, e := range entries {
 					listed[i] = *e.Row
 				}
-				plan, err := d.PlanRanges(ctx, []Range{{}}, columns)
+				plan, err := d.Plan(ctx, []Selection{{}}, columns, nil)
 				must(t, err)
 				var scanned []Row
-				must(t, plan.Scan(ctx, nil, func(row Row) error { scanned = append(scanned, row); return nil }))
+				must(t, scanRows(ctx, plan, nil, func(row Row) error { scanned = append(scanned, row); return nil }))
 				check(rows)
 				check(listed)
 				check(scanned)
@@ -180,15 +180,15 @@ func TestBufferReuseMidScanAndRangeCancellation(t *testing.T) {
 	records := transitionRecords(2048, true)
 	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 512, PageBytes: 128, DictionaryMaxBytes: 1024, Compression: parquet.Compression(&zstd.Codec{})}}})
 	src := &observeReads{Source: dirOf(t, dir)}
-	d, err := OpenDataset(ctx, src, Options{})
+	d, err := OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	defer d.Close()
-	plan, err := d.PlanRanges(ctx, []Range{{}}, transitionColumns)
+	plan, err := d.Plan(ctx, []Selection{{}}, transitionColumns, nil)
 	must(t, err)
 	cancelled, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var kept []Row
-	err = plan.Scan(cancelled, nil, func(row Row) error {
+	err = scanRows(cancelled, plan, nil, func(row Row) error {
 		kept = append(kept, row)
 		if len(kept) == 700 {
 			cancel()
@@ -200,7 +200,7 @@ func TestBufferReuseMidScanAndRangeCancellation(t *testing.T) {
 	}
 	checkTransitionRows(t, kept, records[:len(kept)])
 	var fresh []Row
-	must(t, plan.Scan(ctx, nil, func(row Row) error { fresh = append(fresh, row); return nil }))
+	must(t, scanRows(ctx, plan, nil, func(row Row) error { fresh = append(fresh, row); return nil }))
 	checkTransitionRows(t, fresh, records)
 	// Cancel during value projection in the second group, after scratch from
 	// the first group has already been consumed and reused by this Range.
@@ -220,12 +220,12 @@ func TestBufferReuseMidScanAndRangeCancellation(t *testing.T) {
 			cancelRange()
 		}
 	}
-	_, err = d.Range(cancelled, Range{Limit: len(records), Columns: transitionColumns})
+	_, err = d.Rows(cancelled, Query{Limit: int64(len(records)), Columns: transitionColumns}, nil)
 	src.after = nil
 	if !errors.Is(err, context.Canceled) || !triggered || !seenFirst {
 		t.Fatalf("mid-range cancellation: first=%t trigger=%t error=%v", seenFirst, triggered, err)
 	}
-	fresh, err = d.Range(ctx, Range{Limit: len(records), Columns: transitionColumns})
+	fresh, err = d.Rows(ctx, Query{Limit: int64(len(records)), Columns: transitionColumns}, nil)
 	must(t, err)
 	checkTransitionRows(t, fresh, records)
 	checkTransitionRows(t, kept, records[:len(kept)])
@@ -243,7 +243,7 @@ func TestBufferReuseRangeHighWaterCapacity(t *testing.T) {
 	records[0].Value = bytes.Repeat([]byte{0x7f}, 128<<10)
 	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 64, PageBytes: 128}}})
 	src := &observeReads{Source: dirOf(t, dir)}
-	d, err := OpenDataset(ctx, src, Options{})
+	d, err := OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	defer d.Close()
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
@@ -281,7 +281,7 @@ func TestBufferReuseRangeHighWaterCapacity(t *testing.T) {
 		}
 		small++
 	}
-	rows, err := d.Range(ctx, Range{Limit: len(records), Columns: []string{"value"}})
+	rows, err := d.Rows(ctx, Query{Limit: int64(len(records)), Columns: []string{"value"}}, nil)
 	must(t, err)
 	src.after = nil
 	if small < 100 || len(rows) != len(records) {
@@ -292,7 +292,7 @@ func TestBufferReuseRangeHighWaterCapacity(t *testing.T) {
 			t.Fatal("corrupted value", i)
 		}
 	}
-	t.Logf("Range reused a %d-byte raw allocation for %d smaller pages across %d groups", high, small, len(d.r.parts[0].groups))
+	t.Logf("Query reused a %d-byte raw allocation for %d smaller pages across %d groups", high, small, len(d.r.parts[0].groups))
 }
 
 // Whole Scan, including keys, headers, row ownership and all projected pages.
@@ -300,13 +300,13 @@ func TestBufferReuseRangeHighWaterCapacity(t *testing.T) {
 // MemStats avoids changing GOMAXPROCS or the shared Zstd decoder's initialization.
 func TestBufferReuseScanAllocationsPerPage(t *testing.T) {
 	const n = 32768
-	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: reuseRecords(n), GroupRows: 4096, PageBytes: 4096, Compression: parquet.Compression(&zstd.Codec{})}}}), Options{})
-	plan, err := d.PlanRanges(ctx, []Range{{}}, []string{"size", "etag", "class"})
+	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: reuseRecords(n), GroupRows: 4096, PageBytes: 4096, Compression: parquet.Compression(&zstd.Codec{})}}}), OpenOptions{})
+	plan, err := d.Plan(ctx, []Selection{{}}, []string{"size", "etag", "class"}, nil)
 	must(t, err)
 	var st ReadStats
 	count := 0
 	emit := func(Row) error { count++; return nil }
-	must(t, plan.Scan(ctx, &st, emit))
+	must(t, scanRows(ctx, plan, &st, emit))
 	if st.KeyPagesDecoded != 384 || st.ValuePagesDecoded != 440 || count != n {
 		t.Fatalf("fixture geometry: %+v, %d rows", st, count)
 	}
@@ -315,7 +315,7 @@ func TestBufferReuseScanAllocationsPerPage(t *testing.T) {
 	runtime.ReadMemStats(&before)
 	for range runs {
 		count = 0
-		must(t, plan.Scan(ctx, &st, emit))
+		must(t, scanRows(ctx, plan, &st, emit))
 		if count != n {
 			t.Fatal(count)
 		}
@@ -349,7 +349,7 @@ func TestBufferReuseProjectionSlotAllocations(t *testing.T) {
 			rows[i].Optional = &value
 		}
 	}
-	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: rows, PageBytes: 256}}}), Options{})
+	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: rows, PageBytes: 256}}}), OpenOptions{})
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	for _, name := range []string{"required", "optional"} {
 		var scratch pageScratch
@@ -385,13 +385,13 @@ func TestBufferReuseProjectionSlotAllocations(t *testing.T) {
 // -race; 0.24 and 113 before key pages were reused.
 func TestScanBatchesAllocationsPerRow(t *testing.T) {
 	const n = 32768
-	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: reuseRecords(n), GroupRows: 4096, PageBytes: 4096, Compression: parquet.Compression(&zstd.Codec{})}}}), Options{})
-	plan, err := d.PlanRanges(ctx, []Range{{}}, []string{"size", "etag", "class"})
+	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: reuseRecords(n), GroupRows: 4096, PageBytes: 4096, Compression: parquet.Compression(&zstd.Codec{})}}}), OpenOptions{})
+	plan, err := d.Plan(ctx, []Selection{{}}, []string{"size", "etag", "class"}, nil)
 	must(t, err)
 	var st ReadStats
 	count := 0
 	emit := func(b *Batch) error { count += b.Len(); return nil }
-	must(t, plan.ScanBatches(ctx, &st, emit))
+	must(t, plan.Scan(ctx, &st, emit))
 	if count != n || st.KeyPagesDecoded != 384 || st.ValuePagesDecoded != 440 {
 		t.Fatalf("fixture geometry: %d rows, %+v", count, st)
 	}
@@ -400,7 +400,7 @@ func TestScanBatchesAllocationsPerRow(t *testing.T) {
 	runtime.ReadMemStats(&before)
 	for range runs {
 		count = 0
-		must(t, plan.ScanBatches(ctx, &st, emit))
+		must(t, plan.Scan(ctx, &st, emit))
 		if count != n {
 			t.Fatal(count)
 		}

@@ -44,7 +44,7 @@ func must(t testing.TB, err error) {
 // it checks the parts' names, digests and that no temporary file is left.
 func checkDataset(t *testing.T, dir string, s samples.Sample) seekparquet.Metadata {
 	t.Helper()
-	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.OpenOptions{})
 	if err != nil {
 		t.Fatalf("%s: open: %v", s.Name, err)
 	}
@@ -59,9 +59,9 @@ func checkDataset(t *testing.T, dir string, s samples.Sample) seekparquet.Metada
 	}
 	keys := s.Keys()
 	var got []seekparquet.Row
-	req := seekparquet.Range{Limit: 997, Columns: columns}
+	req := seekparquet.Query{Limit: 997, Columns: columns}
 	for {
-		rows, err := d.Range(context.Background(), req)
+		rows, err := d.Rows(context.Background(), req, nil)
 		if err != nil {
 			t.Fatalf("%s: range: %v", s.Name, err)
 		}
@@ -498,7 +498,7 @@ func TestWriteDirCrashPoints(t *testing.T) {
 // verifyDir opens the dataset at dir, verifies every part and its first
 // and last key pages (Dataset.Verify), and closes it.
 func verifyDir(dir string) error {
-	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.OpenOptions{})
 	if err != nil {
 		return err
 	}

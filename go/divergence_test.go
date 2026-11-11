@@ -113,7 +113,7 @@ func lengthenLastValue(t *testing.T, path string, off int64, values int) {
 // TestShortDictionaryValue: a dictionary page whose last value overruns
 // it. A planned scan, and full validation, read the dictionary outside the
 // recover() that page decoding has, and parquet-go's PLAIN decoder
-// panicked there: the process died. Range, plan and validation are refused
+// panicked there: the process died. Query, plan and validation are refused
 // with invalid_parquet.
 func TestShortDictionaryValue(t *testing.T) {
 	rows := valueRows(30)
@@ -125,13 +125,13 @@ func TestShortDictionaryValue(t *testing.T) {
 		t.Fatal("the name column has no dictionary")
 	}
 	lengthenLastValue(t, partFile(dir, 0), chunk.DictionaryPageOffset, 3)
-	d := open(t, dir, Options{})
-	if _, err := d.Range(ctx, Range{Limit: 100, Columns: []string{"name"}}); CodeOf(err) != CodeInvalidParquet {
+	d := open(t, dir, OpenOptions{})
+	if _, err := d.Rows(ctx, Query{Limit: 100, Columns: []string{"name"}}, nil); CodeOf(err) != CodeInvalidParquet {
 		t.Errorf("Range: %v", err)
 	}
-	plan, err := open(t, dir, Options{}).PlanRanges(ctx, []Range{{}}, []string{"name"})
+	plan, err := open(t, dir, OpenOptions{}).Plan(ctx, []Selection{{}}, []string{"name"}, nil)
 	if err == nil {
-		err = plan.Scan(ctx, nil, func(Row) error { return nil })
+		err = scanRows(ctx, plan, nil, func(Row) error { return nil })
 	}
 	if CodeOf(err) != CodeInvalidParquet {
 		t.Errorf("plan: %v", err)
@@ -167,7 +167,7 @@ func TestShortValueWithoutOffsetIndex(t *testing.T) {
 		t.Fatalf("the blob column has one page of %d values", values)
 	}
 	lengthenLastValue(t, partFile(dir, 0), off, values)
-	rows, err := open(t, dir, Options{}).Range(ctx, Range{Limit: 100, Columns: []string{"blob"}})
+	rows, err := open(t, dir, OpenOptions{}).Rows(ctx, Query{Limit: 100, Columns: []string{"blob"}}, nil)
 	if CodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("got %d rows (row %d: %q), %v; want invalid_parquet", len(rows), values-1, valueAt(rows, values-1), err)
 	}
@@ -382,7 +382,7 @@ func TestWalkedPagesAddUp(t *testing.T) {
 		dir, first := build(t)
 		// Pages 2, 2, 2, 1 rows: the third (rows 4 and 5) straddles the end.
 		insertAtChunkStart(t, partFile(dir, 0), 1, first)
-		if got, err := open(t, dir, Options{}).Range(ctx, Range{Limit: 10, Columns: []string{"n"}}); CodeOf(err) != CodeInvalidParquet {
+		if got, err := open(t, dir, OpenOptions{}).Rows(ctx, Query{Limit: 10, Columns: []string{"n"}}, nil); CodeOf(err) != CodeInvalidParquet {
 			t.Fatalf("%d rows, %v", len(got), err)
 		}
 	})
@@ -392,7 +392,7 @@ func TestWalkedPagesAddUp(t *testing.T) {
 		zero, err := thrift.Marshal(new(thrift.CompactProtocol), h)
 		must(t, err)
 		insertAtChunkStart(t, partFile(dir, 0), 1, zero)
-		if got, err := open(t, dir, Options{}).Range(ctx, Range{Limit: 10, Columns: []string{"n"}}); CodeOf(err) != CodeInvalidParquet {
+		if got, err := open(t, dir, OpenOptions{}).Rows(ctx, Query{Limit: 10, Columns: []string{"n"}}, nil); CodeOf(err) != CodeInvalidParquet {
 			t.Fatalf("%d rows, %v", len(got), err)
 		}
 		report, err := ValidateDir(ctx, dir, ValidateOptions{})
@@ -487,7 +487,7 @@ func TestChunkMetadataMatchesSchema(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
 			rewrite(t, dir, 0, change)
-			if err := openErr(dir, Options{}); CodeOf(err) != CodeInvalidFooter {
+			if err := openErr(dir, OpenOptions{}); CodeOf(err) != CodeInvalidFooter {
 				t.Fatalf("got %v, want invalid_footer", err)
 			}
 		})
@@ -517,14 +517,14 @@ func TestRowGroupOrdinals(t *testing.T) {
 					m.RowGroups[g].Ordinal = ordinals[g]
 				}
 			})
-			if err := openErr(dir, Options{}); err != nil {
+			if err := openErr(dir, OpenOptions{}); err != nil {
 				t.Fatalf("open: %v", err)
 			}
-			rows, err := open(t, dir, Options{}).Range(ctx, Range{Limit: 10, Columns: []string{"size", "name"}})
+			rows, err := open(t, dir, OpenOptions{}).Rows(ctx, Query{Limit: 10, Columns: []string{"size", "name"}}, nil)
 			if err != nil || len(rows) != 4 {
 				t.Fatalf("Range: %d rows, %v", len(rows), err)
 			}
-			if _, err := openPartsOf(t, dir, 1, unique, false, Options{}); err != nil {
+			if _, err := openPartsOf(t, dir, 1, unique, false, OpenOptions{}); err != nil {
 				t.Fatalf("openParts: %v", err)
 			}
 		})

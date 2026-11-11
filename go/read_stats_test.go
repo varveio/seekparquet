@@ -24,7 +24,7 @@ import (
 func statsFixture(t *testing.T, keys []string, pageRows int) (*Dataset, *accessSource) {
 	t.Helper()
 	src := &accessSource{Source: dirOf(t, write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 200}, keys)))}
-	d, err := OpenDataset(ctx, src, Options{})
+	d, err := OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	probe := new(ReadStats)
@@ -40,7 +40,7 @@ func statsFixture(t *testing.T, keys []string, pageRows int) (*Dataset, *accessS
 		}
 	}
 	// Forget what the geometry check loaded.
-	d, err = OpenDataset(ctx, src, Options{})
+	d, err = OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	must(t, d.r.checkParts(ctx, probe))
@@ -96,7 +96,7 @@ func TestReadStatsLookupAndRange(t *testing.T) {
 	// key pages + 1 OffsetIndex + 1 value page.
 	d, src := statsFixture(t, keys, 18)
 	var st ReadStats
-	rows, err := d.Range(ctx, withStats(KeyRange([]byte("d3/f010"), 5, "size"), &st))
+	rows, err := d.Rows(ctx, Query{Selection: Selection{Span: KeySpan([]byte("d3/f010"))}, Limit: 5, Columns: []string{"size"}}, &st)
 	must(t, err)
 	if len(rows) != 1 || string(rows[0].Key) != "d3/f010" || rows[0].Values[0].Int64() != 160 {
 		t.Fatalf("lookup: %+v", rows)
@@ -108,7 +108,7 @@ func TestReadStatsLookupAndRange(t *testing.T) {
 	// column's OffsetIndex are kept, so the routing probes decode nothing;
 	// only the seek's page 3, and the value.
 	st = ReadStats{}
-	_, err = d.Range(ctx, withStats(KeyRange([]byte("d3/f010"), 5, "size"), &st))
+	_, err = d.Rows(ctx, Query{Selection: Selection{Span: KeySpan([]byte("d3/f010"))}, Limit: 5, Columns: []string{"size"}}, &st)
 	must(t, err)
 	checkStats(t, "warm point lookup", st, ReadStats{KeyPagesDecoded: 1, ValuePagesDecoded: 1, KeysDecoded: 18,
 		RowGroupsOpened: 1, SourceReads: 2}, src)
@@ -118,18 +118,12 @@ func TestReadStatsLookupAndRange(t *testing.T) {
 	// where the next key, d3/f030, is at the end and stops the scan.
 	d, src = statsFixture(t, keys, 18)
 	st = ReadStats{}
-	rows, err = d.Range(ctx, Range{Start: []byte("d3/f015"), End: []byte("d3/f030"), Limit: 100, Stats: &st})
+	rows, err = d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte("d3/f015"), End: []byte("d3/f030")}}, Limit: 100}, &st)
 	must(t, err)
 	if len(rows) != 15 {
 		t.Fatalf("range: %d rows", len(rows))
 	}
 	checkStats(t, "short range", st, ReadStats{KeyPagesDecoded: 4, KeysDecoded: 72, RowGroupsOpened: 3, IndexLoads: 2, SourceReads: 8}, src)
-}
-
-// withStats returns rng with its Stats set.
-func withStats(rng Range, st *ReadStats) Range {
-	rng.Stats = st
-	return rng
 }
 
 // Directories a (350 keys "a/f000"...), b (50), c (100) and d (100): 600
@@ -143,10 +137,10 @@ func listFixture(t *testing.T) (*Dataset, *accessSource) {
 
 func TestReadStatsDelimitedListing(t *testing.T) {
 	d, src := listFixture(t)
-	list := func(st *ReadStats, limit int, cursor *Cursor) []Entry {
+	list := func(st *ReadStats, limit int, cursor *Cursor) []ListEntry {
 		t.Helper()
 		*st = ReadStats{}
-		entries, err := d.List(ctx, List{Delimiter: '/', Limit: limit, Cursor: cursor, Stats: st})
+		entries, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: limit, Cursor: cursor}, st)
 		must(t, err)
 		return entries
 	}
@@ -228,7 +222,7 @@ func TestReadStatsFailingRequest(t *testing.T) {
 	// then pages 0, 1, 2 and 3 are decoded in turn, and page 3 breaks the key
 	// order. The page counts when decoded, before it is checked.
 	var st ReadStats
-	_, err := d.Range(ctx, Range{Limit: 1000, Stats: &st})
+	_, err := d.Rows(ctx, Query{Limit: 1000}, &st)
 	if CodeOf(err) != CodeKeyOrder {
 		t.Fatalf("got %v, want key_order", err)
 	}
@@ -237,7 +231,7 @@ func TestReadStatsFailingRequest(t *testing.T) {
 	// A request refused before it reads anything leaves Stats zero, whatever
 	// it held.
 	st = ReadStats{KeyPagesDecoded: 9, SourceBytes: 9}
-	_, err = d.Range(ctx, Range{Limit: 0, Stats: &st})
+	_, err = d.Rows(ctx, Query{Limit: 0}, &st)
 	if err == nil || st != (ReadStats{}) {
 		t.Fatalf("invalid request: %v, %+v", err, st)
 	}
@@ -248,25 +242,23 @@ func TestReadStatsFailingRequest(t *testing.T) {
 func TestReadStatsConcurrentAndNil(t *testing.T) {
 	d, _ := listFixture(t)
 	type request struct {
-		rng  *Range
-		list *List
+		rng  *Query
+		list *ListQuery
 	}
 	requests := []request{
-		{rng: &Range{Start: []byte("a/f150"), Limit: 40, Columns: []string{"size", "name"}}},
-		{rng: &Range{Prefix: []byte("c/"), Limit: 500}},
-		{rng: &Range{Cursor: &Cursor{Key: []byte("b/f010")}, Limit: 7, Columns: []string{"size"}}},
-		{list: &List{Delimiter: '/', Limit: 100}},
-		{list: &List{Prefix: []byte("a/f2"), Delimiter: '/', Limit: 100}},
+		{rng: &Query{Selection: Selection{Span: Span{Start: []byte("a/f150")}}, Limit: 40, Columns: []string{"size", "name"}}},
+		{rng: &Query{Selection: Selection{Span: Span{Prefix: []byte("c/")}}, Limit: 500}},
+		{rng: &Query{Selection: Selection{Cursor: &Cursor{Key: []byte("b/f010")}}, Limit: 7, Columns: []string{"size"}}},
+		{list: &ListQuery{Delimiter: '/', Limit: 100}},
+		{list: &ListQuery{Prefix: []byte("a/f2"), Delimiter: '/', Limit: 100}},
 	}
 	run := func(r request, st *ReadStats) (any, error) {
 		if r.rng != nil {
 			rng := *r.rng
-			rng.Stats = st
-			return d.Range(ctx, rng)
+			return d.Rows(ctx, rng, st)
 		}
 		list := *r.list
-		list.Stats = st
-		return d.List(ctx, list)
+		return d.List(ctx, list, st)
 	}
 	// Warm every request until its counts settle, then record them.
 	want := make([]ReadStats, len(requests))
@@ -328,10 +320,10 @@ func TestReadStatsFailedDecodeNotCounted(t *testing.T) {
 // RowGroupsOpened-IndexLoads, the reuses, is never negative.
 func TestReadStatsIndexRefused(t *testing.T) {
 	dir := write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 200}, dirKeys(map[string]int{"k": 100}, "k")))
-	d := open(t, dir, Options{Limits: Limits{IndexMemory: 1}})
+	d := open(t, dir, OpenOptions{Limits: Limits{IndexMemory: 1}})
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	var st ReadStats
-	_, err := d.Range(ctx, Range{Limit: 5, Stats: &st})
+	_, err := d.Rows(ctx, Query{Limit: 5}, &st)
 	if !errors.Is(err, ErrLimitExceeded) {
 		t.Fatalf("got %v", err)
 	}

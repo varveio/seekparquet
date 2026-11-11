@@ -31,20 +31,16 @@ func exampleDataset() (string, func()) {
 }
 
 // Read a key range: start inclusive, end exclusive.
-func ExampleDataset_Range() {
+func ExampleDataset_Rows() {
 	dir, cleanup := exampleDataset()
 	defer cleanup()
 	ctx := context.Background()
-	d, err := seekparquet.OpenDir(ctx, dir, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(ctx, dir, seekparquet.OpenOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer d.Close()
-	rows, err := d.Range(ctx, seekparquet.Range{
-		Start: []byte("logs/2026/01/b.gz"),
-		End:   []byte("photos/dog.jpg"),
-		Limit: 10,
-	})
+	rows, err := d.Rows(ctx, seekparquet.Query{Selection: seekparquet.Selection{Span: seekparquet.Span{Start: []byte("logs/2026/01/b.gz"), End: []byte("photos/dog.jpg")}}, Limit: 10}, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -60,25 +56,25 @@ func ExampleDataset_Range() {
 
 // Read every key that begins with a prefix, a page of two rows at a time:
 // each request continues after the last row of the page before.
-func ExamplePrefixRange() {
+func ExamplePrefixSpan() {
 	dir, cleanup := exampleDataset()
 	defer cleanup()
 	ctx := context.Background()
-	d, err := seekparquet.OpenDir(ctx, dir, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(ctx, dir, seekparquet.OpenOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer d.Close()
-	rng := seekparquet.PrefixRange([]byte("logs/2026/"), 2)
+	rng := seekparquet.Query{Selection: seekparquet.Selection{Span: seekparquet.PrefixSpan([]byte("logs/2026/"))}, Limit: 2}
 	for page := 1; ; page++ {
-		rows, err := d.Range(ctx, rng)
+		rows, err := d.Rows(ctx, rng, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
 		for _, row := range rows {
 			fmt.Printf("page %d: %s\n", page, row.Key)
 		}
-		if len(rows) < rng.Limit {
+		if int64(len(rows)) < rng.Limit {
 			break
 		}
 		rng.Cursor = rows[len(rows)-1].Cursor()
@@ -89,19 +85,19 @@ func ExamplePrefixRange() {
 	// page 2: logs/2026/02/a.gz
 }
 
-// List a prefix like a directory, a page of one entry at a time.
+// ListQuery a prefix like a directory, a page of one entry at a time.
 func ExampleDataset_List() {
 	dir, cleanup := exampleDataset()
 	defer cleanup()
 	ctx := context.Background()
-	d, err := seekparquet.OpenDir(ctx, dir, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(ctx, dir, seekparquet.OpenOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer d.Close()
-	req := seekparquet.List{Prefix: []byte("logs/"), Delimiter: '/', Limit: 1}
+	req := seekparquet.ListQuery{Prefix: []byte("logs/"), Delimiter: '/', Limit: 1}
 	for page := 1; ; page++ {
-		entries, err := d.List(ctx, req)
+		entries, err := d.List(ctx, req, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -123,16 +119,16 @@ func ExampleDataset_List() {
 }
 
 // Project columns: values, nulls, and columns a part does not have.
-func ExampleRange_projection() {
+func ExampleQuery_projection() {
 	dir, cleanup := exampleDataset()
 	defer cleanup()
 	ctx := context.Background()
-	d, err := seekparquet.OpenDir(ctx, dir, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(ctx, dir, seekparquet.OpenOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer d.Close()
-	rows, err := d.Range(ctx, seekparquet.Range{Prefix: []byte("logs/"), Limit: 3, Columns: []string{"size", "name", "owner"}})
+	rows, err := d.Rows(ctx, seekparquet.Query{Selection: seekparquet.Selection{Span: seekparquet.Span{Prefix: []byte("logs/")}}, Limit: 3, Columns: []string{"size", "name", "owner"}}, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

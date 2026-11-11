@@ -52,11 +52,11 @@ func TestScanBatchesPoisonRetiredStorage(t *testing.T) {
 				{Rows: records[1024:], GroupRows: 512, PageBytes: 512, DictionaryMaxBytes: 1024, Compression: parquet.Compression(&zstd.Codec{})},
 			}})
 			src := &retiringSource{Source: dirOf(t, dir)}
-			d, err := OpenDataset(ctx, src, Options{})
+			d, err := OpenDataset(ctx, src, OpenOptions{})
 			must(t, err)
 			defer d.Close()
 			columns := []string{"dict", "plain", "null", "number", "key", "missing"}
-			plan, err := d.PlanRanges(ctx, []Range{{}}, columns)
+			plan, err := d.Plan(ctx, []Selection{{}}, columns, nil)
 			must(t, err)
 			type address struct {
 				path string
@@ -122,7 +122,7 @@ func TestScanBatchesPoisonRetiredStorage(t *testing.T) {
 				}
 				start := len(kept)
 				if !owning {
-					must(t, plan.ScanBatches(ctx, nil, func(b *Batch) error {
+					must(t, plan.Scan(ctx, nil, func(b *Batch) error {
 						for c := range 4 {
 							v, _ := rawColumn(b, c)
 							borrowed[c] = append(borrowed[c], v)
@@ -144,7 +144,7 @@ func TestScanBatchesPoisonRetiredStorage(t *testing.T) {
 					// The Scan adapter also retains every owning row across natural
 					// page, dictionary, group and part reuse in its independent scan.
 					src.before = nil
-					must(t, plan.Scan(ctx, nil, func(row Row) error { kept = append(kept, row); cursors = append(cursors, row.Cursor()); return nil }))
+					must(t, scanRows(ctx, plan, nil, func(row Row) error { kept = append(kept, row); cursors = append(cursors, row.Cursor()); return nil }))
 				}
 				src.before = nil
 				for c := range 4 {

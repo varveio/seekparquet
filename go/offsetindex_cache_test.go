@@ -25,7 +25,7 @@ import (
 func locsFixture(t *testing.T, dir string, lim Limits) (*Dataset, *accessSource) {
 	t.Helper()
 	src := &accessSource{Source: dirOf(t, dir)}
-	d, err := OpenDataset(ctx, src, Options{Limits: lim})
+	d, err := OpenDataset(ctx, src, OpenOptions{Limits: lim})
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
@@ -69,7 +69,7 @@ func TestOffsetIndexCacheReadStats(t *testing.T) {
 		indexBytes += int64(c.OffsetIndexLength)
 	}
 	req := func(d *Dataset, st *ReadStats) []Row {
-		rows, err := d.Range(ctx, Range{Start: []byte("k010"), Limit: 50, Columns: columns, Stats: st})
+		rows, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte("k010")}}, Limit: 50, Columns: columns}, st)
 		must(t, err)
 		return rows
 	}
@@ -147,9 +147,9 @@ func TestOffsetIndexCacheMalformed(t *testing.T) {
 			}
 			copy(at, encoded)
 			must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
-			d := open(t, dir, Options{})
+			d := open(t, dir, OpenOptions{})
 			for i := range 3 {
-				if _, err := d.Range(ctx, Range{Limit: 200, Columns: []string{"size"}}); CodeOf(err) != CodeInvalidParquet {
+				if _, err := d.Rows(ctx, Query{Limit: 200, Columns: []string{"size"}}, nil); CodeOf(err) != CodeInvalidParquet {
 					t.Fatalf("request %d: got %v, want invalid_parquet", i, err)
 				}
 			}
@@ -158,7 +158,7 @@ func TestOffsetIndexCacheMalformed(t *testing.T) {
 			}
 			// The intact column is kept and served as before.
 			for range 2 {
-				rows, err := d.Range(ctx, Range{Limit: 200, Columns: []string{"name"}})
+				rows, err := d.Rows(ctx, Query{Limit: 200, Columns: []string{"name"}}, nil)
 				must(t, err)
 				if len(rows) != 200 {
 					t.Fatalf("%d rows", len(rows))
@@ -182,24 +182,24 @@ func TestOffsetIndexCacheConcurrent(t *testing.T) {
 	keys := locsKeys()
 	dir := write(t, parts(testutil.Part{GroupRows: 50, PageBytes: 64}, keys))
 	columns := []string{"size", "name"}
-	ref := open(t, dir, Options{Limits: Limits{OffsetIndexMemory: 1}})
+	ref := open(t, dir, OpenOptions{Limits: Limits{OffsetIndexMemory: 1}})
 	var starts []int
 	want := map[int][]Row{}
 	for s := 0; s < len(keys); s += 7 {
-		rows, err := ref.Range(ctx, Range{Start: []byte(keys[s]), Limit: 30, Columns: columns})
+		rows, err := ref.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte(keys[s])}}, Limit: 30, Columns: columns}, nil)
 		must(t, err)
 		starts, want[s] = append(starts, s), rows
 	}
 	for _, budget := range []int64{1, 300, 1000, 0} {
 		t.Run(fmt.Sprint(budget), func(t *testing.T) {
-			d := open(t, dir, Options{Limits: Limits{OffsetIndexMemory: budget}})
+			d := open(t, dir, OpenOptions{Limits: Limits{OffsetIndexMemory: budget}})
 			var wg sync.WaitGroup
 			errs := make(chan error, 16)
 			for w := range 16 {
 				wg.Go(func() {
 					for i := range starts {
 						s := starts[(i+w)%len(starts)]
-						rows, err := d.Range(ctx, Range{Start: []byte(keys[s]), Limit: 30, Columns: columns})
+						rows, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte(keys[s])}}, Limit: 30, Columns: columns}, nil)
 						if err == nil && !reflect.DeepEqual(rows, want[s]) {
 							err = fmt.Errorf("start %d: rows differ", s)
 						}
@@ -258,12 +258,12 @@ func TestOffsetIndexCacheTransientFailure(t *testing.T) {
 	meta, err := testutil.ReadFooter(partFile(dir, 0))
 	must(t, err)
 	src := &failAtSource{Source: dirOf(t, dir), off: meta.RowGroups[0].Columns[1].OffsetIndexOffset}
-	d, err := OpenDataset(ctx, src, Options{})
+	d, err := OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
-	req := Range{Limit: 200, Columns: []string{"size"}}
+	req := Query{Limit: 200, Columns: []string{"size"}}
 	src.fail.Store(true)
-	if _, err := d.Range(ctx, req); err == nil {
+	if _, err := d.Rows(ctx, req, nil); err == nil {
 		t.Fatal("a failed OffsetIndex read went unreported")
 	}
 	if d.r.parts[0].locs[0][1].Load() != nil || d.r.locsMemory.Load() != 0 {
@@ -271,7 +271,7 @@ func TestOffsetIndexCacheTransientFailure(t *testing.T) {
 	}
 	src.fail.Store(false)
 	for range 2 {
-		rows, err := d.Range(ctx, req)
+		rows, err := d.Rows(ctx, req, nil)
 		must(t, err)
 		if len(rows) != 200 {
 			t.Fatalf("%d rows", len(rows))

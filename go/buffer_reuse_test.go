@@ -92,7 +92,7 @@ func TestBufferReuseTransitions(t *testing.T) {
 						}
 						dir := write(t, spec)
 						// Check actual page encodings, not merely the writer configuration.
-						d := open(t, dir, Options{})
+						d := open(t, dir, OpenOptions{})
 						must(t, d.r.checkParts(ctx, new(ReadStats)))
 						cp, err := d.r.parts[0].openColumn(ctx, 0, "dict", new(ReadStats), nil)
 						must(t, err)
@@ -126,19 +126,19 @@ func TestBufferReuseTransitions(t *testing.T) {
 								})
 							}
 						}
-						d = open(t, dir, Options{})
-						rows, err := d.Range(ctx, Range{Limit: len(records), Columns: transitionColumns})
+						d = open(t, dir, OpenOptions{})
+						rows, err := d.Rows(ctx, Query{Limit: int64(len(records)), Columns: transitionColumns}, nil)
 						must(t, err)
-						entries, err := d.List(ctx, List{Limit: len(records), Columns: transitionColumns})
+						entries, err := d.List(ctx, ListQuery{Limit: len(records), Columns: transitionColumns}, nil)
 						must(t, err)
 						listed := make([]Row, len(entries))
 						for i, e := range entries {
 							listed[i] = *e.Row
 						}
-						plan, err := d.PlanRanges(ctx, []Range{{}}, transitionColumns)
+						plan, err := d.Plan(ctx, []Selection{{}}, transitionColumns, nil)
 						must(t, err)
 						var scanned []Row
-						must(t, plan.Scan(ctx, nil, func(r Row) error { scanned = append(scanned, r); return nil }))
+						must(t, scanRows(ctx, plan, nil, func(r Row) error { scanned = append(scanned, r); return nil }))
 						checkTransitionRows(t, rows, records)
 						checkTransitionRows(t, listed, records)
 						checkTransitionRows(t, scanned, records)
@@ -151,12 +151,12 @@ func TestBufferReuseTransitions(t *testing.T) {
 
 // Poison only when a complete page has been consumed, and a dictionary only
 // when its chunk retires. The production owning boundary is projectColumn,
-// shared by Range and List. Scan uses Batch.Row, tested separately.
+// shared by Query and List. Scan uses Batch.Row, tested separately.
 // No global test hook changes concurrent scans.
 func TestBufferReusePoisonRetiredPages(t *testing.T) {
 	records := transitionRecords(1024, true)
 	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 512, PageBytes: 128, DictionaryMaxBytes: 1024, Compression: parquet.Compression(&zstd.Codec{})}}})
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	for _, name := range []string{"dict", "plain"} {
 		var scratch pageScratch
@@ -277,18 +277,18 @@ func TestBufferReuseCodecBounds(t *testing.T) {
 func TestBufferReuseConcurrentScans(t *testing.T) {
 	records := transitionRecords(2048, true)
 	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 512, PageBytes: 128, DictionaryMaxBytes: 1024, Compression: parquet.Compression(&zstd.Codec{})}}})
-	d := open(t, dir, Options{})
-	plan, err := d.PlanRanges(ctx, []Range{{}}, transitionColumns)
+	d := open(t, dir, OpenOptions{})
+	plan, err := d.Plan(ctx, []Selection{{}}, transitionColumns, nil)
 	must(t, err)
-	shards, err := plan.Split(ctx, 2)
+	shards, err := plan.Split(ctx, 2, nil)
 	must(t, err)
-	plans := append([]*RangePlan{plan, plan}, shards...)
+	plans := append([]*Plan{plan, plan}, shards...)
 	results := make([][]Row, len(plans))
 	errs := make([]error, len(plans))
 	var wg sync.WaitGroup
 	for i, p := range plans {
 		wg.Go(func() {
-			errs[i] = p.Scan(ctx, nil, func(r Row) error { results[i] = append(results[i], r); return nil })
+			errs[i] = scanRows(ctx, p, nil, func(r Row) error { results[i] = append(results[i], r); return nil })
 		})
 	}
 	wg.Wait()
@@ -299,17 +299,17 @@ func TestBufferReuseConcurrentScans(t *testing.T) {
 	checkTransitionRows(t, results[1], records)
 	checkTransitionRows(t, slices.Concat(results[2:]...), records)
 	stop := errors.New("stop")
-	if err := plan.Scan(ctx, nil, func(Row) error { return stop }); !errors.Is(err, stop) {
+	if err := scanRows(ctx, plan, nil, func(Row) error { return stop }); !errors.Is(err, stop) {
 		t.Fatal(err)
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	count := 0
-	err = plan.Scan(cancelled, nil, func(Row) error { count++; cancel(); return nil })
+	err = scanRows(cancelled, plan, nil, func(Row) error { count++; cancel(); return nil })
 	if !errors.Is(err, context.Canceled) || count == 0 {
 		t.Fatalf("cancelled: %d %v", count, err)
 	}
 	var again []Row
-	must(t, plan.Scan(ctx, nil, func(r Row) error { again = append(again, r); return nil }))
+	must(t, scanRows(ctx, plan, nil, func(r Row) error { again = append(again, r); return nil }))
 	checkTransitionRows(t, again, records)
 }
 
@@ -433,7 +433,7 @@ func TestDeltaByteArrayOutputAllocations(t *testing.T) {
 }
 
 func TestBufferReuseKeyPolicy(t *testing.T) {
-	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: transitionRecords(512, false), PageBytes: 128}}}), Options{})
+	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: transitionRecords(512, false), PageBytes: 128}}}), OpenOptions{})
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	var scratch pageScratch
 	cp, err := d.r.parts[0].openColumn(ctx, 0, "key", new(ReadStats), &scratch)
@@ -460,7 +460,7 @@ func TestBufferReuseSurplusDictionary(t *testing.T) {
 		t.Fatal("missing dictionary")
 	}
 	editPageHeader(t, partFile(dir, 0), off, func(h *format.PageHeader) { h.DictionaryPageHeader.V.NumValues-- })
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	var scratch pageScratch
 	cp, err := d.r.parts[0].openColumn(ctx, 0, "dict", new(ReadStats), &scratch)
