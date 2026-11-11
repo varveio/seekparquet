@@ -212,7 +212,7 @@ func openParts(ctx context.Context, inputs []partInput, key Key, opt OpenOptions
 			// Row-group positions and cursor arithmetic use signed dataset
 			// ordinals. Per-part counts do not bound this cross-part sum.
 			if p.rows > math.MaxInt64-r.rows {
-				return nil, exceeded("dataset row count exceeds %d at part %s", int64(math.MaxInt64), p.name)
+				return nil, exceeded(LimitDatasetRows, -1, math.MaxInt64, "the dataset row count overflows at part %s", p.name)
 			}
 			p.start = r.rows
 			r.rows += p.rows
@@ -336,7 +336,7 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 	switch {
 	case rows == 0: // a part given without its row count, checked when the reader opens
 		if footer.NumRows() > math.MaxInt64-p.start {
-			return exceeded("dataset row count exceeds %d at part %s", int64(math.MaxInt64), p.name)
+			return exceeded(LimitDatasetRows, -1, math.MaxInt64, "the dataset row count overflows at part %s", p.name)
 		}
 		rows = footer.NumRows()
 	case footer.NumRows() != rows:
@@ -542,7 +542,7 @@ func (r *reader) adjacent(g groupRef, step int) (groupRef, bool) {
 func (r *reader) reserveIndex(size int64) error {
 	used := r.indexMemory.Load()
 	if size > r.limits.IndexMemory-used {
-		return exceeded("key page indexes and first keys need more than %d bytes (Limits.IndexMemory)", r.limits.IndexMemory)
+		return exceeded(LimitIndexMemory, used+size, r.limits.IndexMemory, "key page indexes and first keys")
 	}
 	r.indexMemory.Store(used + size)
 	return nil

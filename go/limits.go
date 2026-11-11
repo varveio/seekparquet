@@ -3,14 +3,19 @@
 
 package seekparquet
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 // Limits bounds the resources a dataset can make the reader use (§11).
 // Every limit is checked against what the files declare before anything
 // is allocated for it, and exceeding one fails the operation with an error
 // wrapping ErrLimitExceeded: a policy of the caller, not a refusal of the
-// data. OffsetIndexMemory is the exception: it bounds a cache, and
-// exceeding it never fails an operation. A zero field takes its default. Within a page, the counts and
+// data, reported as a *LimitError. OffsetIndexMemory is the exception: it
+// bounds a cache, and exceeding it never fails an operation. A zero field
+// takes its default; a negative field is an invalid request when the
+// dataset is opened. Within a page, the counts and
 // lengths its encodings declare are checked against the page header before
 // decoding, and a page that decompresses to more or fewer bytes than its
 // header declares is refused, so a small page cannot allocate beyond them.
@@ -83,6 +88,31 @@ type Limits struct {
 	// budget and even if no request projects a value column. Default
 	// 256 MiB.
 	OffsetIndexMemory int64
+	// GetRows bounds the rows Dataset.Get returns: a group of more rows
+	// fails with a *LimitError naming GetRows, and is read by paging
+	// KeySpan(key) with Rows instead. It bounds a convenience call's row
+	// count, not its memory: a few rows can hold large keys and values.
+	// Default 1,000.
+	GetRows int
+}
+
+// check rejects a negative limit, which would otherwise take its default
+// unnoticed.
+func (l *Limits) check() error {
+	for _, f := range []struct {
+		name  LimitName
+		value int64
+	}{
+		{LimitManifestBytes, l.ManifestBytes}, {LimitParts, int64(l.Parts)}, {LimitFooterBytes, l.FooterBytes},
+		{LimitPageIndexBytes, l.PageIndexBytes}, {LimitMetadataMemory, l.MetadataMemory}, {LimitPageBytes, l.PageBytes},
+		{LimitPageValues, l.PageValues}, {LimitPageMemory, l.PageMemory}, {LimitIndexMemory, l.IndexMemory},
+		{LimitOffsetIndexMemory, l.OffsetIndexMemory}, {LimitGetRows, int64(l.GetRows)},
+	} {
+		if f.value < 0 {
+			return invalidRequest("Limits.%s is negative (%d)", f.name, f.value)
+		}
+	}
+	return nil
 }
 
 // withDefaults returns l with its zero fields set to their defaults.
@@ -104,12 +134,67 @@ func (l Limits) withDefaults() Limits {
 	if l.Parts <= 0 {
 		l.Parts = 1_000_000
 	}
+	if l.GetRows <= 0 {
+		l.GetRows = 1000
+	}
 	return l
 }
 
-// exceeded returns an error wrapping ErrLimitExceeded.
-func exceeded(format string, args ...any) error {
-	return fmt.Errorf("%w: "+format, append([]any{ErrLimitExceeded}, args...)...)
+// LimitName names the limit a *LimitError reports: a field of Limits, or
+// LimitDatasetRows.
+type LimitName string
+
+// The limits.
+const (
+	LimitManifestBytes     LimitName = "ManifestBytes"
+	LimitParts             LimitName = "Parts"
+	LimitFooterBytes       LimitName = "FooterBytes"
+	LimitPageIndexBytes    LimitName = "PageIndexBytes"
+	LimitMetadataMemory    LimitName = "MetadataMemory"
+	LimitPageBytes         LimitName = "PageBytes"
+	LimitPageValues        LimitName = "PageValues"
+	LimitPageMemory        LimitName = "PageMemory"
+	LimitIndexMemory       LimitName = "IndexMemory"
+	LimitOffsetIndexMemory LimitName = "OffsetIndexMemory"
+	LimitGetRows           LimitName = "GetRows"
+	// LimitDatasetRows is the reader's capacity of signed 64-bit dataset
+	// ordinals: a total row count above 2^63-1.
+	LimitDatasetRows LimitName = "DatasetRows"
+)
+
+// LimitError reports input or a result beyond one of the Limits (§11), or
+// beyond the reader's dataset row capacity. It wraps ErrLimitExceeded: a
+// policy of the caller or a capacity of this reader, not a refusal of the
+// data.
+type LimitError struct {
+	Limit LimitName
+	// Value is the amount the input declares or the read found, -1 when it
+	// is known only to exceed Max.
+	Value int64
+	// Max is the limit in force.
+	Max int64
+	// Detail says where, for people.
+	Detail string
+}
+
+func (e *LimitError) Error() string {
+	s := "seekparquet: limit exceeded: " + string(e.Limit)
+	if e.Value >= 0 {
+		s += " " + strconv.FormatInt(e.Value, 10) + " >"
+	}
+	s += " " + strconv.FormatInt(e.Max, 10)
+	if e.Detail != "" {
+		s += ": " + e.Detail
+	}
+	return s
+}
+
+// Unwrap returns ErrLimitExceeded.
+func (e *LimitError) Unwrap() error { return ErrLimitExceeded }
+
+// exceeded returns a *LimitError.
+func exceeded(limit LimitName, value, max int64, format string, args ...any) error {
+	return &LimitError{Limit: limit, Value: value, Max: max, Detail: fmt.Sprintf(format, args...)}
 }
 
 // headerBytes is the most bytes a page header is read in: 16 MiB, far

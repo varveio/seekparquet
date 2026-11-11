@@ -647,7 +647,7 @@ func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.
 	if c.col.typ.Kind() == parquet.Boolean && enc == format.RLE {
 		size := (n + 7) / 8
 		if int64(size) > c.p.r.limits.PageBytes {
-			return none, exceeded("Boolean page decoding to %d bytes", size)
+			return none, exceeded(LimitPageBytes, int64(size), c.p.r.limits.PageBytes, "part %s: a Boolean page decoding", c.p.name)
 		}
 		s.data = resize(s.data, size)
 		bits, err := decodeBooleanRLEInto(s.data, data, n)
@@ -662,7 +662,7 @@ func (c *chunk) decodeValues(enc format.Encoding, data []byte, n int) (encoding.
 		return none, c.corrupt(errors.New("the encoded value lengths are invalid"))
 	}
 	if limit := c.p.r.limits.PageBytes; int64(size) > limit {
-		return none, exceeded("part %s: a page decoding to %d bytes (Limits.PageBytes %d)", c.p.name, size, limit)
+		return none, exceeded(LimitPageBytes, int64(size), limit, "part %s: a page decoding", c.p.name)
 	}
 	var offsets []uint32
 	if typ.Kind() == parquet.ByteArray {
@@ -870,7 +870,7 @@ func (c *chunk) pageMemory(h *format.PageHeader, optional bool) int64 {
 func (c *chunk) checkPageMemory(h *format.PageHeader) error {
 	optional := c.col.optional && h.Type != format.DictionaryPage
 	if need, limit := c.pageMemory(h, optional), c.p.r.limits.PageMemory; need > limit {
-		return exceeded("part %s: a page whose decoding holds about %d bytes (Limits.PageMemory %d)", c.p.name, need, limit)
+		return exceeded(LimitPageMemory, need, limit, "part %s: a page whose decoding holds about that many bytes", c.p.name)
 	}
 	return nil
 }
@@ -1208,7 +1208,7 @@ func (p *part) decodeHeader(raw []byte, avail int64, final bool, rows int64, bad
 		return nil, 0, bad("the page sizes are invalid")
 	}
 	if size := int64(max(header.CompressedPageSize, header.UncompressedPageSize)); size > lim.PageBytes {
-		return nil, 0, exceeded("part %s: a page of %d bytes (Limits.PageBytes %d)", p.name, size, lim.PageBytes)
+		return nil, 0, exceeded(LimitPageBytes, size, lim.PageBytes, "part %s: a page", p.name)
 	}
 	var values int64
 	switch header.Type {
@@ -1235,7 +1235,7 @@ func (p *part) decodeHeader(raw []byte, avail int64, final bool, rows int64, bad
 		if declared, ok := dataRows(&header); ok && rows >= 0 && declared != rows {
 			return &header, int64(length), nil
 		}
-		return nil, 0, exceeded("part %s: a page of %d values (Limits.PageValues %d)", p.name, values, lim.PageValues)
+		return nil, 0, exceeded(LimitPageValues, values, lim.PageValues, "part %s: a page", p.name)
 	}
 	return &header, int64(length), nil
 }
@@ -1266,7 +1266,7 @@ func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, leng
 		return nil, refusePart(CodeInvalidPageIndex, p.name, physical, "a page index lies outside the file")
 	}
 	if int64(length) > p.r.limits.PageIndexBytes {
-		return nil, exceeded("part %s: a page index of %d bytes (Limits.PageIndexBytes %d)", p.name, length, p.r.limits.PageIndexBytes)
+		return nil, exceeded(LimitPageIndexBytes, int64(length), p.r.limits.PageIndexBytes, "part %s: a page index", p.name)
 	}
 	raw := make([]byte, length)
 	if err := readFull(p.at(ctx, st), raw, off); err != nil {

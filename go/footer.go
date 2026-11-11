@@ -118,7 +118,7 @@ func ownCopy(b []byte) []byte {
 func decodeBounded(raw []byte, v any, budget int64) (int, error) {
 	n, _, err := thriftcheck.Check(raw, reflect.TypeOf(v), budget)
 	if errors.Is(err, thriftcheck.ErrBudget) {
-		return 0, exceeded("decoding would use more than %d bytes (Limits.MetadataMemory)", budget)
+		return 0, exceeded(LimitMetadataMemory, -1, budget, "decoding metadata")
 	}
 	if err != nil {
 		return 0, err
@@ -189,7 +189,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 		return nil, bad("the footer length %d does not fit in the file", n)
 	}
 	if n > lim.FooterBytes {
-		return nil, exceeded("part %s: the footer is %d bytes (Limits.FooterBytes %d)", name, n, lim.FooterBytes)
+		return nil, exceeded(LimitFooterBytes, n, lim.FooterBytes, "part %s: the footer", name)
 	}
 	var raw []byte
 	if n+8 <= window {

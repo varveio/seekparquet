@@ -170,8 +170,13 @@ type Dataset struct {
 // count above 2^63-1 fails with ErrLimitExceeded, even when each part's
 // count fits.
 //
+// A negative field of opt.Limits is ErrInvalidRequest.
+//
 // Dataset.Close closes every part file the dataset opened.
 func OpenDataset(ctx context.Context, src Source, opt OpenOptions) (*Dataset, error) {
+	if err := opt.Limits.check(); err != nil {
+		return nil, err
+	}
 	opt.Limits = opt.Limits.withDefaults()
 	raw, err := readManifest(ctx, src, opt.Limits.ManifestBytes)
 	if err != nil {
@@ -209,7 +214,7 @@ func readManifest(ctx context.Context, src Source, limit int64) ([]byte, error) 
 	defer func() { _ = f.Close() }()
 	size := f.Size()
 	if size > limit {
-		return nil, exceeded("%s is %d bytes (Limits.ManifestBytes %d)", ManifestName, size, limit)
+		return nil, exceeded(LimitManifestBytes, size, limit, "%s", ManifestName)
 	}
 	raw := make([]byte, size)
 	if err := readFull(bind(ctx, f), raw, 0); err != nil {
@@ -359,6 +364,18 @@ func (d *Dataset) Columns(ctx context.Context, i int) ([]Column, error) {
 // error; do not share it between concurrent calls.
 func (d *Dataset) Rows(ctx context.Context, q Query, st *ReadStats) ([]Row, error) {
 	return d.r.readRange(ctx, q, st)
+}
+
+// Get returns every row of key's group of equal keys, owning their keys and
+// the values of columns: none when no row has key, at most one when keys
+// are unique. It finds the group's keys before it reads any value page,
+// and a group of more than Limits.GetRows rows fails, with no rows and
+// before any value page is read, with a *LimitError naming GetRows: read
+// such a group with Rows over KeySpan(key), page by page, continuing after
+// each page's last row. The limit bounds rows, not bytes. Errors are
+// otherwise those of Rows; st is as Rows' st.
+func (d *Dataset) Get(ctx context.Context, key []byte, st *ReadStats, columns ...string) ([]Row, error) {
+	return d.r.readGet(ctx, key, st, columns)
 }
 
 // Scan visits q's rows in order, in serial callbacks, as borrowed batches:

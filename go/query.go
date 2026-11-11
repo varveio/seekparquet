@@ -294,31 +294,73 @@ func (r *reader) readRange(ctx context.Context, q Query, st *ReadStats) (_ []Row
 		return nil, err
 	}
 	defer done(&err)
-	from, exclusive, end := q.bounds()
-	if r.rows == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
-		return nil, nil
-	}
-	s := r.newScan(ctx, end, st)
-	if err := s.start(from, exclusive, q.Cursor); err != nil {
+	rows, at, _, err := r.discover(ctx, q.Selection, int(q.Limit), false, st)
+	if err != nil || len(rows) == 0 {
 		return nil, err
 	}
-	var rows []Row
-	var at []position
+	return r.projected(ctx, rows, at, q.Columns, st)
+}
+
+// readGet returns the group of key; see Dataset.Get.
+func (r *reader) readGet(ctx context.Context, key []byte, st *ReadStats, columns []string) (_ []Row, err error) {
+	st = resetStats(st)
+	ctx, done, err := r.request(ctx, nil, false, 1, false, columns)
+	if err != nil {
+		return nil, err
+	}
+	defer done(&err)
+	limit := r.limits.GetRows
+	rows, at, more, err := r.discover(ctx, Selection{Span: KeySpan(key)}, limit, true, st)
+	switch {
+	case err != nil:
+		return nil, err
+	case more:
+		return nil, exceeded(LimitGetRows, -1, int64(limit),
+			"the group of key %.64q has more rows than Limits.GetRows: read it in pages of Rows over KeySpan(key), continuing after each page's last row", key)
+	case len(rows) == 0:
+		return nil, nil
+	}
+	return r.projected(ctx, rows, at, columns, st)
+}
+
+// discover returns, with the positions it found them at, the first rows
+// of sel, at most limit of them, their keys owned but no value projected.
+// With probe, once it has limit rows it decodes the next key, and more
+// reports whether the selection has another row; without, it stops on the
+// last row it returns, as Rows does.
+func (r *reader) discover(ctx context.Context, sel Selection, limit int, probe bool, st *ReadStats) (rows []Row, at []position, more bool, err error) {
+	from, exclusive, end := sel.bounds()
+	if r.rows == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
+		return nil, nil, false, nil
+	}
+	s := r.newScan(ctx, end, st)
+	if err := s.start(from, exclusive, sel.Cursor); err != nil {
+		return nil, nil, false, err
+	}
 	for s.key != nil {
+		if len(rows) == limit {
+			return rows, at, true, nil // probe found one more
+		}
 		rows = append(rows, Row{Key: bytes.Clone(s.key), Offset: s.offset()})
 		at = append(at, s.at())
-		if int64(len(rows)) == q.Limit {
+		if len(rows) == limit && !probe {
 			break
 		}
 		if err := s.next(); err != nil {
-			return nil, err
+			return nil, nil, false, err
 		}
 	}
+	return rows, at, false, nil
+}
+
+// projected projects the values of rows, found at positions at, and
+// returns them, or no rows on error.
+func (r *reader) projected(ctx context.Context, rows []Row, at []position, columns []string, st *ReadStats) ([]Row, error) {
 	out := make([]*Row, len(rows))
 	for i := range rows {
 		out[i] = &rows[i]
 	}
-	if err := r.project(ctx, out, at, slices.Clone(q.Columns), st); err != nil {
+	if err := r.project(ctx, out, at, slices.Clone(columns), st); err != nil {
 		return nil, err
 	}
 	return rows, nil
