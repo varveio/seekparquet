@@ -205,17 +205,17 @@ public final class Dataset implements AutoCloseable {
             ctx.enterGroup(part.ordinal, physical);
             KeyIndex index = part.keyIndex(physical, ctx);
             byte[][] keys = part.keyPage(physical, index, 0, ctx);
-            ctx.checkKeyPage(part, physical, 0, keys);
+            ctx.checkKeyPage(part, physical, 0, index.firstRow[0], keys);
             if (s == 0 && !Arrays.equals(keys[0], part.entry.minKey().unsafeArray())) {
-                throw new RefusalException(RefusalCode.BOUNDS_MISMATCH, part.name, "the first key differs from the manifest's min_key");
+                throw new RefusalException(RefusalCode.BOUNDS_MISMATCH, part.name, "the first key differs from the manifest's min_key", physical, -1, null);
             }
             if (s == part.groups.length - 1) {
                 if (index.pages() > 1) {
                     keys = part.keyPage(physical, index, index.pages() - 1, ctx);
-                    ctx.checkKeyPage(part, physical, index.pages() - 1, keys);
+                    ctx.checkKeyPage(part, physical, index.pages() - 1, index.firstRow[index.pages() - 1], keys);
                 }
                 if (!Arrays.equals(keys[keys.length - 1], part.entry.maxKey().unsafeArray())) {
-                    throw new RefusalException(RefusalCode.BOUNDS_MISMATCH, part.name, "the last key differs from the manifest's max_key");
+                    throw new RefusalException(RefusalCode.BOUNDS_MISMATCH, part.name, "the last key differs from the manifest's max_key", physical, -1, null);
                 }
             }
         }

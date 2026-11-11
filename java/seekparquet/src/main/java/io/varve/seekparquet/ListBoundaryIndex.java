@@ -147,7 +147,7 @@ final class ListBoundaryIndex {
             for (int pg = 0; pg < index.pages(); pg++) {
                 ctx.checkCancelled();
                 byte[][] keys = part.keyPage(physical, index, pg, ctx);
-                ctx.checkKeyPage(part, physical, pg, keys);
+                ctx.checkKeyPage(part, physical, pg, index.firstRow[pg], keys);
                 ctx.retainLastKeyPage();
                 pages++;
                 if (pg == 0) { base = keys[0].clone(); }

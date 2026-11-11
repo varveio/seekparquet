@@ -80,20 +80,32 @@ final class ReadContext {
         }
     }
 
-    private record PageBounds(byte[] first, byte[] last) {}
+    private record PageBounds(byte[] first, byte[] last, long firstRow, String part) {}
 
-    void checkKeyPage(PartFile part, int group, int page, byte[][] keys) {
+    /**
+     * Checks a decoded key page against the decoded pages next to it in dataset order. As in the Go
+     * reader, the refusal is located at the later of the two pages out of order: its part, row group,
+     * first row and first key.
+     *
+     * @param firstRow the page's first row within its row group
+     */
+    void checkKeyPage(PartFile part, int group, int page, long firstRow, byte[][] keys) {
         PagePosition position = new PagePosition(part.ordinal, group, page);
         var before = keyPages.lowerEntry(position);
         var after = keyPages.higherEntry(position);
         byte[] first = keys[0];
         byte[] last = keys[keys.length - 1];
-        if ((before != null && outOfOrder(before.getValue().last(), first, part.unique))
-                || (after != null && outOfOrder(last, after.getValue().first(), part.unique))) {
-            throw new RefusalException(RefusalCode.KEY_ORDER, part.name,
-                    "row group " + group + " key page " + page + " is out of order with another decoded page");
+        String message = "row group " + group + " key page " + page + " is out of order with another decoded page";
+        if (before != null && outOfOrder(before.getValue().last(), first, part.unique)) {
+            throw new RefusalException(RefusalCode.KEY_ORDER, part.name, message, group, firstRow, first);
         }
-        keyPages.put(position, new PageBounds(first, last));
+        if (after != null && outOfOrder(last, after.getValue().first(), part.unique)) {
+            // The message names this page's part as it always has; the location is the later page's.
+            PageBounds later = after.getValue();
+            throw new RefusalException(RefusalCode.KEY_ORDER, later.part(), part.name, message, after.getKey().group(),
+                    later.firstRow(), later.first());
+        }
+        keyPages.put(position, new PageBounds(first, last, firstRow, part.name));
     }
 
     // A sequential builder needs only its preceding page, not a log of the group.

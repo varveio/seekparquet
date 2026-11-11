@@ -359,7 +359,7 @@ subclasses are a closed set:
 
 | Exception | Meaning |
 |---|---|
-| `RefusalException` | The data breaks the specification. `code()` is a stable `RefusalCode` (`key_order`, `invalid_manifest`, ...) and `part()` names the part at fault. |
+| `RefusalException` | The data breaks the specification. `code()` is a stable `RefusalCode` (`key_order`, `invalid_manifest`, ...) and `part()` names the part at fault. `rowGroup()` (`OptionalInt`, physical, in the part's footer), `row()` (`OptionalLong`, within the row group) and `key()` (`Optional<Bytes>`) locate it further where the reader has the value in hand, as the Go reader's `RefusalError` does; each is empty otherwise (a manifest or part-level fault has no row group, only `invalid_key` and `key_order` in a page have a row, only `key_order` a key). Only `code()` is a contract; the message is for people. |
 | `UnsupportedFeatureException` | The data is valid but uses something this reader does not implement: `unsupported_encoding`, `unsupported_projection` (nested, repeated or `INT96` columns), `unsupported_encryption`. |
 | `LimitExceededException` | A declared size exceeds a configured limit. |
 | `StorageException` | Reading storage failed. Says nothing about the data. |
