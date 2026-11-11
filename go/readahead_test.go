@@ -165,7 +165,7 @@ func folderDataset(t testing.TB, folders, perFolder, pageRows, repeat int) strin
 	return dir
 }
 
-// listing is one measured ListQuery on a fresh Dataset over a slow source.
+// listing is one measured List on a fresh Dataset over a slow source.
 type listing struct {
 	entries                   []seekparquet.ListEntry
 	stats                     seekparquet.ReadStats

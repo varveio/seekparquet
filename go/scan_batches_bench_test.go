@@ -90,7 +90,7 @@ func crawlDataset(b *testing.B) string {
 }
 
 // BenchmarkScanBatchesLongKeys scans the whole crawl listing through
-// Plan.ScanBatches (Workers shards from Split) and Dataset.RangeBatches,
+// Plan.Scan (Workers shards from Split) and Dataset.Scan,
 // with the overview projection or keys alone, touching every key and value.
 // The plan, its shards and one warm scan are outside the measured region;
 // allocations count every worker. Reports ns, B and allocations per row.

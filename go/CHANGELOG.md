@@ -5,6 +5,36 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- **Breaking: the read API is redesigned** before any stability promise (no deprecated aliases):
+  - Requests: `Range`, `KeyRange` and `PrefixRange` are replaced by `Span` (`KeySpan`, exactly
+    `[key, key+0x00)`, and `PrefixSpan`), `Selection` (a span and a row cursor) and `Query` (a selection,
+    an `int64` `Limit` and `Columns`). `List` is renamed `ListQuery`, `Entry` `ListEntry`, `Options`
+    `OpenOptions`. `RowCursor` and `PrefixCursor` build cursors.
+  - Reads: `Dataset.Range` becomes `Rows` (owning rows, positive limit, no rows on error; it still finds
+    every key before reading a value page); `Dataset.RangeBatches` becomes `Scan`, where a zero `Limit`
+    scans to the end of the span (a library streaming extension; the specification's range and the
+    conformance cases are unchanged); `PlanRanges` becomes `Plan` over `[]Selection`, and `RangePlan`
+    becomes `Plan`, whose `Scan` takes the batch callback (`ScanBatches` and the row-callback `Scan` are
+    removed). New `Dataset.Get` returns one key's whole group, bounded by the new `Limits.GetRows`
+    (default 1,000): a larger group fails, before any value page is read, with no rows.
+  - Statistics: every read takes one nullable `*ReadStats` argument, reset at entry and filled on every
+    exit, including failed planning and splitting; request `Stats` fields and `RangePlan.Stats` are
+    removed. `Split` reports its reads through its argument rather than per shard. `ReadStats.Add` sums.
+  - Values: `Value` is an opaque type with typed accessors, `Kind`, `IsNull`, `Absent`, `Clone` and
+    constructors; absent and null are now disjoint (`IsNull` is false for an absent value).
+    `Batch.Column` returns a zero-copy `ColumnView`. `Column` describes types with `Kind`, `Repetition`
+    and `Logical` (parameters and converted-type normalization kept). No parquet-go type remains in the
+    read API; package `write` still takes a parquet-go schema.
+  - Errors: `Code` and `CodeOf` are renamed `RefusalCode` and `RefusalCodeOf`; `UnsupportedError.Code`
+    is an `UnsupportedCode`. Limit failures are `*LimitError` (limit name, value, maximum) wrapping
+    `ErrLimitExceeded`. A negative field of `Limits` is `ErrInvalidRequest` at open instead of taking
+    the default. A part's cached refusal is returned to each read as a copy of its own.
+  - Fixed: a nil callback to a planned scan, and `Split` with `n` below 1, are `ErrInvalidRequest`. A
+    callback returning `Stop` ends either scan with a nil error. `Batch.Columns` and `Plan.Columns`
+    return copies of the projection.
+  - `Cursor.Encode` and `ParseCursor` carry a cursor as a version 1 cursor token
+    ([spec/cursor-token-1.md](../spec/cursor-token-1.md)), with shared golden vectors.
+
 - `List.ReadAhead` (default 0, off; at most 64): a listing predicts from the checked key page index of the
   row group it is in the key pages it will decode next (after each common prefix, the first page whose
   maximum reaches the prefix's successor) and reads up to that many of them concurrently, holding at most

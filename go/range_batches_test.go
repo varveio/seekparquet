@@ -22,7 +22,7 @@ import (
 	"github.com/varveio/seekparquet/go/internal/testutil"
 )
 
-// rangeBatchesResult is what one RangeBatches call handed over, copied with
+// rangeBatchesResult is what one Dataset.Scan call handed over, copied with
 // Batch.Row and Batch.Cursor.
 type rangeBatchesResult struct {
 	rows    []Row
@@ -31,7 +31,7 @@ type rangeBatchesResult struct {
 	stats   ReadStats
 }
 
-// collectRangeBatches runs RangeBatches on rng, checking every batch's shape:
+// collectRangeBatches runs Dataset.Scan on rng, checking every batch's shape:
 // positive, within the limit, columns of Len() values with no spare capacity,
 // borrowed keys and offsets equal to the owning copies, and, when ordinal is
 // set, no batch crossing a page, row group or part boundary in cuts.
@@ -78,9 +78,9 @@ func collectRangeBatches(t *testing.T, d *Dataset, rng Query, ordinal func(key [
 	return res
 }
 
-// checkRangeBatches checks RangeBatches against Query on rng: the same rows,
+// checkRangeBatches checks Scan against Rows on rng: the same rows,
 // keys, values and cursors, and the same read statistics on a warm dataset
-// (Query runs first, so neither call finds the other's index reads).
+// (Rows runs first, so neither call finds the other's index reads).
 func checkRangeBatches(t *testing.T, label string, d *Dataset, rng Query, ordinal func([]byte, int64) int, cuts []int) []Row {
 	t.Helper()
 	want, err := d.Rows(ctx, rng, nil)
@@ -185,7 +185,7 @@ func TestRangeBatchesMatchesRange(t *testing.T) {
 	}
 }
 
-// A small limit on a long range reads what Query reads, cold: no OffsetIndex
+// A small limit on a long range reads what Rows reads, cold: no OffsetIndex
 // or dictionary of a row group the rows do not reach, unlike a plan.
 func TestRangeBatchesDoesNotPlan(t *testing.T) {
 	records := transitionRecords(4096, true)
@@ -282,7 +282,7 @@ func TestRangeBatchesStopCancelAndClose(t *testing.T) {
 	}
 
 	// Owning copies outlive the callback and a reentrant call; the borrowed
-	// batch is unchanged by a reentrant RangeBatches.
+	// batch is unchanged by a reentrant Scan.
 	var kept []Row
 	var cursor *Cursor
 	err = d.Scan(ctx, rng, nil, func(b *Batch) error {
@@ -389,7 +389,7 @@ func TestRangeBatchesConcurrent(t *testing.T) {
 	}
 }
 
-// checkRangeBatchesCold compares RangeBatches with Query on fresh Datasets,
+// checkRangeBatchesCold compares Scan with Rows on fresh Datasets,
 // so that every footer, index and page either reads counts: an extra
 // advance past the last row (another key page, row group or part) fails it
 // even when the rows are the same.
@@ -508,7 +508,7 @@ func TestRangeBatchesBoundaries(t *testing.T) {
 }
 
 // Completion wins over a cancellation or Close that arrives in the callback
-// that reaches the limit, as for Query, which checks nothing after its last
+// that reaches the limit, as for Rows, which checks nothing after its last
 // read; an empty request returns nil even with a cancelled context.
 func TestRangeBatchesCompletion(t *testing.T) {
 	dir, records, cuts, _ := boundaryFixture(t)
@@ -578,7 +578,7 @@ func TestRangeBatchesCompletion(t *testing.T) {
 	must(t, <-closed)
 }
 
-// A corrupt projected page or a corrupt dictionary is refused as Query
+// A corrupt projected page or a corrupt dictionary is refused as Rows
 // refuses it, after the batches before it; a dictionary is read only when
 // a page needs it, so a limit that ends before the corrupt group succeeds.
 func TestRangeBatchesRefusals(t *testing.T) {

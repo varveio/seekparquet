@@ -551,7 +551,7 @@ type fallbackRow struct {
 }
 
 // TestRangeReadsDictionaryOnlyForItsPages: a chunk whose dictionary
-// outgrew its limit continues in PLAIN pages; a Query projecting only a
+// outgrew its limit continues in PLAIN pages; a Rows projecting only a
 // PLAIN page reads no byte of the dictionary, and succeeds under a
 // Limits.PageBytes the dictionary page exceeds, while a plan's Scan, which
 // counts the dictionary, reads it and so meets the limit.
@@ -620,7 +620,7 @@ func TestRangeReadsDictionaryOnlyForItsPages(t *testing.T) {
 // TestPlanCursorInEqualKeys plans a range continuing after a cursor deep
 // inside a group of equal keys that spans several pages, with ranges
 // overlapping it and each other, and checks the rows and offsets Scan
-// yields, and the count, against the rows a full Query returns.
+// yields, and the count, against the rows a full Rows returns.
 func TestPlanCursorInEqualKeys(t *testing.T) {
 	stem := strings.Repeat("x", 40)
 	var keys []string

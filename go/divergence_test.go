@@ -113,7 +113,7 @@ func lengthenLastValue(t *testing.T, path string, off int64, values int) {
 // TestShortDictionaryValue: a dictionary page whose last value overruns
 // it. A planned scan, and full validation, read the dictionary outside the
 // recover() that page decoding has, and parquet-go's PLAIN decoder
-// panicked there: the process died. Query, plan and validation are refused
+// panicked there: the process died. Rows, plan and validation are refused
 // with invalid_parquet.
 func TestShortDictionaryValue(t *testing.T) {
 	rows := valueRows(30)

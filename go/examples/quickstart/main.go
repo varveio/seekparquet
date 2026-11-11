@@ -42,7 +42,7 @@ func run(ctx context.Context, dir string, out io.Writer) error {
 		}
 	}
 
-	// ListQuery the months, one common prefix per page. Keep the same query and
+	// List the months, one common prefix per page. Keep the same query and
 	// dataset when resuming; ListEntry.Cursor handles both rows and prefixes.
 	req := seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 1}
 	for page := 1; ; page++ {

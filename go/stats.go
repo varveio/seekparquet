@@ -71,7 +71,7 @@ type ReadStats struct {
 	// made on behalf of the request.
 	SourceReads, SourceBytes int64
 	// ReadAheadReads is the number of key pages a listing read ahead
-	// (List.ReadAhead), each in one read counted in SourceReads and
+	// (ListQuery.ReadAhead), each in one read counted in SourceReads and
 	// SourceBytes; ReadAheadUnused and ReadAheadUnusedBytes are the pages
 	// of them, and their bytes, that it did not use: wrong predictions,
 	// pages past where the listing stopped, and reads that failed (the

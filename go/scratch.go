@@ -6,7 +6,7 @@ package seekparquet
 import "github.com/parquet-go/parquet-go"
 
 // pageScratch belongs to one projection slot in one request/Scan, or to the
-// key column of one ScanBatches/RangeBatches call (batcher.keys), and survives
+// key column of one Dataset.Scan or Plan.Scan call (batcher.keys), and survives
 // chunk changes. It is never shared by concurrent calls. Key pages use it only
 // on that batch path; every other key walker decodes each page into storage
 // of its own. Dictionaries use independent storage retained by their chunk,

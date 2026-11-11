@@ -57,7 +57,7 @@ func typedDataset() testutil.Dataset {
 }
 
 // TestProjection projects every baseline type, nulls, absent columns and a
-// column whose name holds a dot (COL-6), through Query and ListQuery, from
+// column whose name holds a dot (COL-6), through Rows and List, from
 // every start, so that runs begin inside pages and row groups.
 func TestProjection(t *testing.T) {
 	d := open(t, write(t, typedDataset()), OpenOptions{})

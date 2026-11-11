@@ -151,7 +151,7 @@ func TestBufferReuseTransitions(t *testing.T) {
 
 // Poison only when a complete page has been consumed, and a dictionary only
 // when its chunk retires. The production owning boundary is projectColumn,
-// shared by Query and List. Scan uses Batch.Row, tested separately.
+// shared by Rows and List. Plan.Scan uses Batch.Row, tested separately.
 // No global test hook changes concurrent scans.
 func TestBufferReusePoisonRetiredPages(t *testing.T) {
 	records := transitionRecords(1024, true)

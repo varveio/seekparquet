@@ -203,7 +203,7 @@ func TestBufferReuseMidScanAndRangeCancellation(t *testing.T) {
 	must(t, scanRows(ctx, plan, nil, func(row Row) error { fresh = append(fresh, row); return nil }))
 	checkTransitionRows(t, fresh, records)
 	// Cancel during value projection in the second group, after scratch from
-	// the first group has already been consumed and reused by this Range.
+	// the first group has already been consumed and reused by this read.
 	first, err := d.r.parts[0].openColumn(ctx, 0, "dict", new(ReadStats), nil)
 	must(t, err)
 	second, err := d.r.parts[0].openColumn(ctx, 1, "dict", new(ReadStats), nil)

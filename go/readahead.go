@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 )
 
-// maxReadAhead bounds List.ReadAhead: larger values are read as it.
+// maxReadAhead bounds ListQuery.ReadAhead: larger values are read as it.
 const maxReadAhead = 64
 
 // readAheadPageBytes is the byte budget of each read-ahead slot: a listing
@@ -25,7 +25,7 @@ const readAheadPageBytes = 1 << 20
 // zero otherwise.
 var testListReadAhead int
 
-// readAhead is one List request's read-ahead of key pages (List.ReadAhead).
+// readAhead is one List request's read-ahead of key pages (ListQuery.ReadAhead).
 // The request's scan predicts, from the checked key page index of the row
 // group it is in, the key pages it will decode next, and readAhead reads
 // their raw bytes (header and payload, the extent their OffsetIndex entry

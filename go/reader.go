@@ -65,7 +65,7 @@ type reader struct {
 	// progress, and idle is signalled when it drops to zero; closed is set
 	// as close begins, so that no request starts after it, and close then
 	// waits for active. A request never waits on mu for another's lease,
-	// so a request started inside another (a Range in a Scan callback)
+	// so a request started inside another (a Rows in a Scan callback)
 	// while close waits fails with ErrClosed instead of waiting for ever.
 	mu        sync.Mutex
 	idle      sync.Cond

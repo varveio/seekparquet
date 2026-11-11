@@ -23,8 +23,8 @@ type rangeBatchesBenchRecord struct {
 var rangeBatchesBenchColumns = []string{"size", "mtime", "etag", "class", "version", "owner"}
 
 // BenchmarkRangeBatches compares a limited 13,013-row read of six projected
-// columns, crossing a row group, through the owning Query and through
-// RangeBatches touching every value. Warm: one Query before timing loads the
+// columns, crossing a row group, through the owning Rows and through
+// Scan touching every value. Warm: one Rows before timing loads the
 // footers, key page indexes and OffsetIndexes both then reuse.
 // Indicative only; generated data, not a real dataset.
 func BenchmarkRangeBatches(b *testing.B) {
