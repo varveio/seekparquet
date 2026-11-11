@@ -46,7 +46,7 @@ runs:
 
     - name: Restore the Go module cache
       if: github.event_name != 'push' || github.ref != 'refs/heads/main'
-      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
       with:
         path: ${{ steps.paths.outputs.gomodcache }}
         key: seekparquet-go-v1-mod-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.deps }}
@@ -78,7 +78,7 @@ runs:
 
     - name: Restore the Go build cache
       if: github.event_name != 'push' || github.ref != 'refs/heads/main'
-      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
       with:
         path: ${{ steps.paths.outputs.gocache }}
         key: seekparquet-go-v1-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.toolchain }}-${{ inputs.key }}-${{ steps.paths.outputs.deps }}-${{ github.sha }}
