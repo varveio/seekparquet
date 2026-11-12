@@ -162,6 +162,10 @@ jobs:
           python conformance/harness/check_datasets.py --adapter "python conformance/validator/validator_adapter.py" "$RUNNER_TEMP/samples"
           python conformance/harness/check_datasets.py --adapter "$RUNNER_TEMP/seekparquet-conformance" "$RUNNER_TEMP/samples"
           python conformance/harness/check_datasets.py --target reader --adapter "$RUNNER_TEMP/seekparquet-conformance" "$RUNNER_TEMP/samples"
+      - name: pyarrow recipe of docs/guides/producing.md validates in full
+        run: |
+          python docs/examples/pyarrow_writer.py "$RUNNER_TEMP/pyarrow-recipe"
+          (cd go && go run ./cmd/seekparquet validate --level full "$RUNNER_TEMP/pyarrow-recipe")
 
   java:
     needs: changes
@@ -228,9 +232,26 @@ jobs:
         shell: bash
         run: ./gradlew build
 
+  # Always runs: generated reference pages and snippets follow the code, and links follow every page.
+  docs:
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: ./.github/actions/setup-go
+        with:
+          key: docs
+      - name: generated reference pages, regions and snippets (docs/dev/docs.md)
+        run: go -C go run ./internal/tools/docgen
+      - name: links, requirement anchors and terminology
+        run: |
+          python3 -m unittest discover -s scripts/docs -p 'test_*.py'
+          python3 scripts/docs/check_docs.py
+
   ci-ok:
     if: always()
-    needs: [changes, go-lint, go-race, go-windows, go-macos, java, java-windows, conformance]
+    needs: [changes, go-lint, go-race, go-windows, go-macos, java, java-windows, conformance, docs]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

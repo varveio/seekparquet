@@ -1,0 +1,43 @@
+{
+  "description": "Hand-kept facts about reader limits that the code cannot state: the Java name (null means Go only), whether exceeding the setting fails the operation (limit) or never does (cache), its unit, and what to do when it is exceeded. Defaults and meanings come from the code (go/limits.go and, once Java is checked, Limits.java). go/internal/tools/docgen fails when a field or LimitName exists in Go but not here, or here but not in Go.",
+  "structs": [
+    {
+      "go": "Limits",
+      "java": "Limits.Builder",
+      "fields": [
+        {"go": "ManifestBytes", "java": "manifestBytes", "kind": "limit", "unit": "bytes",
+         "action": "Raise it only for a manifest you trust: it is read whole into memory. A manifest this large usually lists more parts than a dataset should have; consider fewer, larger parts."},
+        {"go": "Parts", "java": "parts", "kind": "limit", "unit": "count",
+         "action": "Raise it for a trusted dataset with many parts. Each part costs one first touch and one open file, so also check your file-handle limit."},
+        {"go": "FooterBytes", "java": "footerBytes", "kind": "limit", "unit": "bytes",
+         "action": "Footers grow with row groups times columns. Raise it for a trusted part, or have the producer write fewer row groups or columns per part."},
+        {"go": "PageIndexBytes", "java": "pageIndexBytes", "kind": "limit", "unit": "bytes",
+         "action": "The key column's page index grows with key pages and key length. Raise it for a trusted part, or have the producer write fewer, larger key pages per row group."},
+        {"go": "MetadataMemory", "java": "metadataMemory", "kind": "limit", "unit": "bytes",
+         "action": "Raise it for a trusted part whose footer or page index decodes large. It bounds one structure, not the whole Dataset."},
+        {"go": "PageBytes", "java": "pageBytes", "kind": "limit", "unit": "bytes",
+         "action": "A page this large usually holds very large values. Raise it if you trust the data and have the memory; it also raises the default PageMemory."},
+        {"go": "PageValues", "java": "pageValues", "kind": "limit", "unit": "count",
+         "action": "Raise it if you trust the data; it also raises the default PageMemory. Producers should keep pages near 1,024 rows (GEO-1)."},
+        {"go": "PageMemory", "java": "pageMemory", "kind": "limit", "unit": "bytes", "derived": true,
+         "action": "The page’s decoding estimate exceeds PageMemory. Raise the limit for trusted data if sufficient memory is available, or rewrite the data with smaller pages. Lowering concurrency reduces aggregate memory use but does not make this page pass the limit."},
+        {"go": "IndexMemory", "java": "indexMemory", "kind": "limit", "unit": "bytes",
+         "action": "The Dataset keeps every key page index it loads. Raise it, open fewer parts per Dataset, or reopen the Dataset to drop what it retains."},
+        {"go": "OffsetIndexMemory", "java": "offsetIndexMemory", "kind": "cache", "unit": "bytes",
+         "action": "Never fails an operation. Past it, each read loads the page locations it needs and drops them; raise it if repeated reads of projected columns show extra reads."},
+        {"go": "PageIndexCacheMemory", "java": null, "kind": "cache", "unit": "bytes",
+         "action": "Go only. Never fails an operation. Past it, the least recently used part gives up its retained raw page-index bytes, or a part's bytes are not kept; later loads read from the Source. Raise it to retain more raw page-index bytes. Footers and decoded indexes are outside this budget; it is not an overall metadata bound."},
+        {"go": "GetRows", "java": "getRows", "kind": "limit", "unit": "count",
+         "action": "The key has more rows than Get returns at once. Page the group with Rows over KeySpan(key) (Java: rows over Span.key(key)), or raise it."}
+      ]
+    }
+  ],
+  "fixed": [
+    {"go": "LimitManifestNesting", "name": "ManifestNesting", "java": "MANIFEST_NESTING",
+     "value": "512 nested JSON objects and arrays, the manifest object counting 1",
+     "action": "Fixed; it cannot be raised. Flatten the manifest's extensions objects."},
+    {"go": "LimitDatasetRows", "name": "DatasetRows", "java": "DATASET_ROWS",
+     "value": "a dataset row total of 2^63-1",
+     "action": "Fixed; it cannot be raised. Split the dataset."}
+  ]
+}

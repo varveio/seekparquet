@@ -1,0 +1,124 @@
+{
+  "description": "Go symbol to Java symbol for the same concept, rendered into docs/reference/parity.md. Go names are checked against the Go packages (go/, go/write, go/local) by go/internal/tools/docgen. Java names are checked against java/seekparquet/src/main/java; set java_pending to a PR or branch to skip that check while Java lags. A name starting with std: is a standard-library type and is not checked. null means the language has no counterpart.",
+  "sections": [
+    {
+      "title": "Opening and closing",
+      "rows": [
+        {"concept": "Open a local directory", "go": "OpenDir", "java": "Dataset.open"},
+        {"concept": "Open through custom storage", "go": "OpenDataset", "java": "Dataset.open", "note": "Java takes a storage.DatasetStorage."},
+        {"concept": "Open options", "go": "OpenOptions", "java": "OpenOptions"},
+        {"concept": "Read scheduling policy", "go": "ReadPolicy", "java": null, "note": "Go sets OpenOptions.Read; Concurrency bounds logical ranges, not physical requests. Java has no counterpart for the policy struct yet."},
+        {"concept": "Verify concurrency", "go": "ReadPolicy.Concurrency", "java": "OpenOptions.verifyConcurrency", "note": "Java defaults to 1 and bounds concurrent part checks during verify. Go also bounds logical ranges for other operations."},
+        {"concept": "Open statistics", "go": "OpenOptions.OpenStats", "java": null, "note": "Go only; a *ReadStats reset on entry and filled on every exit, including manifest I/O. The Dataset does not retain it."},
+        {"concept": "Resource limits", "go": "Limits", "java": "Limits", "note": "Java builds them with Limits.builder(). See the limits reference."},
+        {"concept": "Retained raw page-index cache budget", "go": "Limits.PageIndexCacheMemory", "java": null, "note": "Go only; excludes footers and decoded indexes and does not bound overall metadata."},
+        {"concept": "Check every part now", "go": "Dataset.Verify", "java": "Dataset.verify", "note": "Go: Verify(ctx, stats), with a *ReadStats or nil. Java: verify(ReadOptions)."},
+        {"concept": "Manifest metadata", "go": "Dataset.Metadata", "java": "Dataset.manifest"},
+        {"concept": "Dataset row total", "go": null, "java": "Dataset.rowCount", "note": "In Go, sum PartInfo.Rows over Metadata().Parts."},
+        {"concept": "A part's columns", "go": "Dataset.Columns", "java": "Dataset.columns"},
+        {"concept": "Close", "go": "Dataset.Close", "java": "Dataset.close"},
+        {"concept": "Supported version pairs", "go": "SupportedVersions", "java": "FormatVersion"}
+      ]
+    },
+    {
+      "title": "Reading",
+      "rows": [
+        {"concept": "Keys to read", "go": "Span", "java": "Span"},
+        {"concept": "Exactly one key's group", "go": "KeySpan", "java": "Span.key"},
+        {"concept": "Keys under a prefix", "go": "PrefixSpan", "java": "Span.prefix"},
+        {"concept": "A span with an optional row cursor", "go": "Selection", "java": "Selection"},
+        {"concept": "A read request", "go": "Query", "java": "Query"},
+        {"concept": "Read owning rows", "go": "Dataset.Rows", "java": "Dataset.rows"},
+        {"concept": "Read one key's rows", "go": "Dataset.Get", "java": "Dataset.get"},
+        {"concept": "Stream borrowed batches", "go": "Dataset.Scan", "java": "Dataset.scan"},
+        {"concept": "Stop a scan early", "go": "Stop", "java": "BatchVisitor.visit", "note": "Java's visitor returns false to stop."},
+        {"concept": "A batch of rows", "go": "Batch", "java": "Batch"},
+        {"concept": "Rows in a batch", "go": "Batch.Len", "java": "Batch.size"},
+        {"concept": "One column of a batch", "go": "ColumnView", "java": "BatchColumn"},
+        {"concept": "A row", "go": "Row", "java": "Row"},
+        {"concept": "A value", "go": "Value", "java": "Value", "note": "Java's Value is a sealed interface: Absent, Null and one record per physical type."},
+        {"concept": "Column absent from a part", "go": "Value.Absent", "java": "Value.Absent"},
+        {"concept": "Delimited listing request", "go": "ListQuery", "java": "ListQuery"},
+        {"concept": "List", "go": "Dataset.List", "java": "Dataset.list"},
+        {"concept": "A listing entry", "go": "ListEntry", "java": "ListEntry", "note": "Java's ListEntry is sealed: RowEntry or CommonPrefix."},
+        {"concept": "Listing read-ahead", "go": "ListQuery.ReadAhead", "java": "ListQuery.readAhead"}
+      ]
+    },
+    {
+      "title": "Cursors",
+      "rows": [
+        {"concept": "A cursor", "go": "Cursor", "java": "Cursor", "note": "Java's Cursor is sealed: RowPosition or CommonPrefix."},
+        {"concept": "Cursor after a row", "go": "Row.Cursor", "java": "Row.cursor"},
+        {"concept": "Cursor after a listing entry", "go": "ListEntry.Cursor", "java": "ListEntry.cursor"},
+        {"concept": "Next page of a range", "go": null, "java": "Query.next", "note": "In Go, set Query.Cursor to the last row's Cursor()."},
+        {"concept": "Next page of a listing", "go": null, "java": "ListQuery.next", "note": "In Go, set ListQuery.Cursor to the last entry's Cursor()."},
+        {"concept": "Cursor to token", "go": "Cursor.Encode", "java": "Cursor.encode"},
+        {"concept": "Token to cursor", "go": "ParseCursor", "java": "Cursor.parse"}
+      ]
+    },
+    {
+      "title": "Planning",
+      "rows": [
+        {"concept": "Plan a read of selections", "go": "Dataset.Plan", "java": "Dataset.plan"},
+        {"concept": "A plan", "go": "Plan", "java": "Plan"},
+        {"concept": "Rows a plan selects", "go": "Plan.Count", "java": "Plan.count", "note": "Java returns an Estimate(value, exact); Go returns the two values."},
+        {"concept": "Accounted compressed bytes of projected columns", "go": "Plan.ProjectedBytes", "java": "Plan.projectedBytes", "note": "Excludes footers, page indexes and key pages. Chunks without OffsetIndexes are omitted and make the estimate inexact; it is not total scan I/O or an upper bound."},
+        {"concept": "Split a plan into shards", "go": "Plan.Split", "java": "Plan.split"},
+        {"concept": "Scan a plan", "go": "Plan.Scan", "java": "Plan.scan"}
+      ]
+    },
+    {
+      "title": "List index",
+      "rows": [
+        {"concept": "Build the optional list index", "go": "Dataset.BuildListIndex", "java": "Dataset.buildListIndex"},
+        {"concept": "List index options", "go": "ListIndexOptions", "java": "ListIndexOptions"},
+        {"concept": "List index build statistics", "go": "ListIndexStats", "java": "ListIndexStats"}
+      ]
+    },
+    {
+      "title": "Statistics, cancellation and storage",
+      "rows": [
+        {"concept": "Per-operation counters", "go": "ReadStats", "java": "ReadStats", "note": "Go fills a *ReadStats argument; Java passes a ReadStats to the consumer in ReadOptions. See the read statistics reference."},
+        {"concept": "Batch, physical I/O and byte-reuse counters", "go": "ReadStats.SourceBatches", "java": null, "note": "The new source-batch, scalar-fallback, physical, planned, cache-hit, memo-hit, unreported-call and peak counters are Go only. See the read statistics reference for each field and its reporting requirements."},
+        {"concept": "Per-operation options", "go": null, "java": "ReadOptions", "note": "Go takes a context.Context and a *ReadStats argument."},
+        {"concept": "Cancellation", "go": "std:context.Context", "java": "Cancellation"},
+        {"concept": "Storage of a dataset root", "go": "Source", "java": "storage.DatasetStorage"},
+        {"concept": "An opened file", "go": "SourceFile", "java": "storage.PartSource"},
+        {"concept": "Bind reads to a context", "go": "ContextBinder", "java": null, "note": "Java passes a Cancellation to every storage call."},
+        {"concept": "Local storage", "go": "OpenDir", "java": "storage.LocalStorage"},
+        {"concept": "A part changed under the reader", "go": "ErrObjectChanged", "java": "storage.PartChangedException"}
+      ]
+    },
+    {
+      "title": "Errors",
+      "rows": [
+        {"concept": "The data breaks the specification", "go": "RefusalError", "java": "RefusalException"},
+        {"concept": "Refusal code", "go": "RefusalCode", "java": "RefusalCode"},
+        {"concept": "Code of an error", "go": "RefusalCodeOf", "java": "RefusalException.code"},
+        {"concept": "Valid but not supported", "go": "UnsupportedError", "java": "UnsupportedFeatureException"},
+        {"concept": "Unsupported code", "go": "UnsupportedCode", "java": "UnsupportedCode"},
+        {"concept": "A limit was exceeded", "go": "LimitError", "java": "LimitExceededException", "note": "Go: errors.Is(err, ErrLimitExceeded) also matches."},
+        {"concept": "Which limit", "go": "LimitName", "java": "LimitName"},
+        {"concept": "Malformed request", "go": "ErrInvalidRequest", "java": "std:IllegalArgumentException"},
+        {"concept": "Use after Close", "go": "ErrClosed", "java": "std:IllegalStateException"},
+        {"concept": "Storage failed", "go": null, "java": "StorageException", "note": "Go returns the Source's error, wrapped."},
+        {"concept": "Base of the library's errors", "go": null, "java": "SeekParquetException"}
+      ]
+    },
+    {
+      "title": "Writing and validating (Go only)",
+      "rows": [
+        {"concept": "Write a dataset from sorted rows", "go": "local.WriteDir", "java": null},
+        {"concept": "Write one part", "go": "write.NewPart", "java": null},
+        {"concept": "Publish a part durably", "go": "local.PublishPart", "java": null},
+        {"concept": "Commit a manifest", "go": "local.Commit", "java": null},
+        {"concept": "Encode a manifest", "go": "MarshalManifest", "java": null},
+        {"concept": "Parse a manifest", "go": "ParseManifest", "java": null},
+        {"concept": "Validate a local directory", "go": "ValidateDir", "java": null},
+        {"concept": "Validate through a Source", "go": "Validate", "java": null},
+        {"concept": "Inspect a part's footer", "go": "InspectFooter", "java": null},
+        {"concept": "Inspect a part's key pages", "go": "InspectKeyPages", "java": null}
+      ]
+    }
+  ]
+}
