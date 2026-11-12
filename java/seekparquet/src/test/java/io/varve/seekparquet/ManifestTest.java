@@ -64,6 +64,27 @@ class ManifestTest {
         assertEquals(RefusalCode.INVALID_MANIFEST, refusal(manifest(PART.replace("}", ",\"extensions\":{},\"checksum\":\"x\"}"), "")));
     }
 
+    /**
+     * Nesting deeper than 512 objects and arrays, the manifest object counting 1, is a limit of the reader
+     * ({@code manifestNesting}), not invalid_manifest, wherever it is; depth 512 is read. The Go reader has
+     * the same boundary.
+     */
+    @Test
+    void nestingDeeperThan512IsALimitAtEveryLocation() {
+        java.util.function.IntFunction<String> nest = n -> "[".repeat(n) + "]".repeat(n);
+        // The top-level extensions' value is at depth 2, a part's at 4.
+        java.util.function.IntFunction<String> top = d -> manifest(PART, ",\"extensions\":{\"t\":" + nest.apply(d - 2) + "}");
+        java.util.function.IntFunction<String> part = d -> manifest(PART.replace("}", ",\"extensions\":{\"t\":" + nest.apply(d - 4) + "}}"), "");
+        for (var at : List.of(top, part)) {
+            parse(at.apply(512));
+            LimitExceededException e = assertThrows(LimitExceededException.class, () -> parse(at.apply(513)));
+            assertEquals(true, e.getMessage().contains("manifestNesting"), e.getMessage());
+        }
+        String core = manifest(PART, "").replace("\"s/v1\"", nest.apply(511));
+        assertEquals(RefusalCode.INVALID_MANIFEST, refusal(core));
+        assertThrows(LimitExceededException.class, () -> parse(manifest(PART, "").replace("\"s/v1\"", nest.apply(512))));
+    }
+
     @Test
     void anEmptyPartListIsAnEmptyDataset() {
         assertEquals(List.of(), parse(manifest("", "")).parts());
