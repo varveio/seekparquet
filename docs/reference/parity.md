@@ -2,8 +2,6 @@
 
 # Go and Java names
 
-> Pending: Java names follow PR #63 (branch claude/java-api-alignment): the Java names are the aligned API. main still has the earlier names.
-
 The same concept under its Go and its Java name. Go names are in package `github.com/varveio/seekparquet/go` unless prefixed `write.` or `local.`; Java names are in package `io.varve.seekparquet` unless prefixed `storage.`.
 A dash means the language has no counterpart. Names are checked against the code by `go/internal/tools/docgen`.
 

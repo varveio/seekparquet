@@ -2,8 +2,6 @@
 
 # Limits and caches
 
-> Pending: Java names follow PR #63 (branch claude/java-api-alignment): the Java names are the aligned API. main still has the earlier names.
-
 Every resource a dataset can make the reader use is bounded by a setting you choose when you open the dataset.
 A **limit** fails the operation that exceeds it with a limit error: Go `*LimitError`, which wraps `ErrLimitExceeded`, or Java `LimitExceededException`.
 A **cache budget** never fails an operation; past it, the reader stops keeping what it loads.

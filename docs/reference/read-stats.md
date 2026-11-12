@@ -2,8 +2,6 @@
 
 # Read statistics
 
-> Pending: Java names follow PR #63 (branch claude/java-api-alignment): the Java names are the aligned API. main still has the earlier names.
-
 Every read operation can report what it did. In Go, pass a `*ReadStats` as the operation's statistics argument: it is reset when the operation starts and filled as it runs, whether the operation succeeds or fails.
 In Java, pass a statistics consumer in `ReadOptions`; it receives a `ReadStats` record.
 

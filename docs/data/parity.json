@@ -1,6 +1,5 @@
 {
-  "description": "Go symbol to Java symbol for the same concept, rendered into docs/reference/parity.md. Go names are checked against the Go packages (go/, go/write, go/local) by go/internal/tools/docgen. Java names are checked against java/seekparquet/src/main/java unless java_pending is set. A name starting with std: is a standard-library type and is not checked. null means the language has no counterpart.",
-  "java_pending": "PR #63 (branch claude/java-api-alignment): the Java names are the aligned API. main still has the earlier names.",
+  "description": "Go symbol to Java symbol for the same concept, rendered into docs/reference/parity.md. Go names are checked against the Go packages (go/, go/write, go/local) by go/internal/tools/docgen. Java names are checked against java/seekparquet/src/main/java; set java_pending to a PR or branch to skip that check while Java lags. A name starting with std: is a standard-library type and is not checked. null means the language has no counterpart.",
   "sections": [
     {
       "title": "Opening and closing",

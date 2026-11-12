@@ -1,13 +1,9 @@
 // Copyright 2026 Varve Systems Ltd
 // SPDX-License-Identifier: Apache-2.0
 
-// Pending: PR #63 (branch claude/java-api-alignment). This class is written
-// against the aligned Java API, which main does not have yet, so it lives
-// outside the Gradle build. When #63 merges, move it to
-// java/seekparquet/src/test/java/io/varve/seekparquet/docs/DocSnippetsTest.java,
-// where ./gradlew test compiles and runs it. The regions between
-// tag::NAME[] and end::NAME[] are embedded in the documentation by
-// go/internal/tools/docgen.
+// The regions between tag::NAME[] and end::NAME[] are embedded in the
+// documentation by go/internal/tools/docgen: after changing one, run
+// go -C go run ./internal/tools/docgen -w.
 
 package io.varve.seekparquet.docs;
 
