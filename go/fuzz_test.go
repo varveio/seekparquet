@@ -60,7 +60,7 @@ func exercise(raw []byte) {
 		return
 	}
 	defer r.close()
-	if r.verify(ctx) != nil {
+	if r.verify(ctx, new(ReadStats)) != nil {
 		return
 	}
 	var columns []string

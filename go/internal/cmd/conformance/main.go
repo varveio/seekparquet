@@ -124,7 +124,7 @@ func (a *adapter) dispatch(ctx context.Context, req map[string]json.RawMessage) 
 		}
 		d, err := a.dataset(ctx, path)
 		if err == nil {
-			err = d.Verify(ctx)
+			err = d.Verify(ctx, nil)
 		}
 		if err != nil {
 			return failure(err)

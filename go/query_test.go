@@ -268,7 +268,7 @@ func TestListExact(t *testing.T) {
 	for _, verify := range []bool{false, true} {
 		d := open(t, dir, OpenOptions{})
 		if verify {
-			must(t, d.Verify(ctx))
+			must(t, d.Verify(ctx, nil))
 		}
 		for _, c := range []struct {
 			cur  *Cursor
@@ -436,7 +436,7 @@ func TestEmptyGroupsAndOneRowParts(t *testing.T) {
 		t.Fatalf("physical row groups: %v", err)
 	}
 	d := open(t, dir, OpenOptions{})
-	must(t, d.Verify(ctx))
+	must(t, d.Verify(ctx, nil))
 	if groups := len(d.r.parts[0].groups) + len(d.r.parts[1].groups); groups != 3 || d.r.rows != 3 || len(d.r.parts) != 2 {
 		t.Fatalf("%d groups, %d rows", groups, d.r.rows)
 	}

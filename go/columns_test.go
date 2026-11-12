@@ -63,7 +63,7 @@ func TestColumnsAnnotated(t *testing.T) {
 		t.Fatal("Columns answered without checking the part")
 	}
 	got[0].Name, got[1].Logical.Kind = "changed", LogicalString
-	must(t, d.Verify(ctx))
+	must(t, d.Verify(ctx, nil))
 	if got, err = d.Columns(ctx, 0); err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("after Verify: %v\n got %+v\nwant %+v", err, got, want)
 	}
@@ -114,7 +114,7 @@ func TestColumnsInconsistent(t *testing.T) {
 		if _, err := d.Columns(ctx, 1-first); RefusalCodeOf(err) != CodeInconsistentColumn {
 			t.Fatalf("part %d after %d: %v, want inconsistent_column", 1-first, first, err)
 		}
-		if err := d.Verify(ctx); RefusalCodeOf(err) != CodeInconsistentColumn {
+		if err := d.Verify(ctx, nil); RefusalCodeOf(err) != CodeInconsistentColumn {
 			t.Fatalf("Verify: %v, want inconsistent_column", err)
 		}
 		if again, err := d.Columns(ctx, first); err != nil || !reflect.DeepEqual(again, cols) {

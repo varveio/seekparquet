@@ -25,7 +25,8 @@ import (
 func locsFixture(t *testing.T, dir string, lim Limits) (*Dataset, *accessSource) {
 	t.Helper()
 	src := &accessSource{Source: dirOf(t, dir)}
-	d, err := OpenDataset(ctx, src, OpenOptions{Limits: lim})
+	// The OffsetIndexes are read from the Source, not retained metadata.
+	d, err := OpenDataset(ctx, src, OpenOptions{Limits: lim, Read: ReadPolicy{DisableSpeculation: true}})
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
@@ -109,6 +110,7 @@ func TestOffsetIndexCacheReadStats(t *testing.T) {
 	// The repeat skips one read per projected column chunk: its OffsetIndex.
 	w := u2
 	w.SourceReads -= int64(len(columns))
+	w.UnreportedIOCalls -= int64(len(columns))
 	checkStats(t, "cached repeat", c2, w, csrc)
 	if u2.SourceBytes-c2.SourceBytes != indexBytes {
 		t.Fatalf("the repeat read %d fewer bytes, want the OffsetIndexes' %d", u2.SourceBytes-c2.SourceBytes, indexBytes)
@@ -258,7 +260,7 @@ func TestOffsetIndexCacheTransientFailure(t *testing.T) {
 	meta, err := testutil.ReadFooter(partFile(dir, 0))
 	must(t, err)
 	src := &failAtSource{Source: dirOf(t, dir), off: meta.RowGroups[0].Columns[1].OffsetIndexOffset}
-	d, err := OpenDataset(ctx, src, OpenOptions{})
+	d, err := OpenDataset(ctx, src, OpenOptions{Read: ReadPolicy{DisableSpeculation: true}}) // the OffsetIndex is read from the Source
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	req := Query{Limit: 200, Columns: []string{"size"}}

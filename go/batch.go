@@ -101,7 +101,8 @@ var Stop = errors.New("seekparquet: stop the scan")
 // would deadlock. To stop early, return Stop or an error, or cancel ctx,
 // then close the Dataset after Scan returns. Requests started by fn run
 // normally; once Close has begun they fail with ErrClosed. Concurrent or
-// reentrant scans have independent borrowed storage.
+// reentrant scans have independent borrowed storage. It asks a Source's
+// byte cache to be bypassed (CacheBypass), unless ctx sets a cache mode.
 func (plan *Plan) Scan(ctx context.Context, st *ReadStats, fn func(*Batch) error) error {
 	return plan.scanBatches(ctx, st, keyReuse{}, fn)
 }
@@ -119,19 +120,17 @@ type keyReuse struct {
 }
 
 func (plan *Plan) scanBatches(ctx context.Context, st *ReadStats, kr keyReuse, fn func(*Batch) error) (err error) {
-	st = resetStats(st)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
 	if fn == nil {
 		return invalidRequest("a nil batch callback")
 	}
 	r := plan.r
-	rctx, end, err := r.begin(ctx)
+	rctx, err := r.begin(bypassCache(ctx))
 	if err != nil {
 		return err
 	}
-	defer func() {
-		err = finish(ctx, rctx, err)
-		end()
-	}()
+	defer rctx.done(ctx, &err, st)
 	w := newBatcher(rctx, plan.columns, st, true)
 	s := w.newScan(r, nil, kr)
 	for _, sp := range plan.spans {
@@ -160,15 +159,17 @@ const unlimited = math.MaxInt64
 
 // rangeBatches hands fn the rows of q as batches; see Dataset.Scan.
 func (r *reader) rangeBatches(ctx context.Context, q Query, st *ReadStats, kr keyReuse, fn func(*Batch) error) (err error) {
-	st = resetStats(st)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
 	if fn == nil {
 		return invalidRequest("a nil batch callback")
 	}
-	ctx, done, err := r.request(ctx, q.Cursor, false, q.Limit, true, q.Columns)
+	op, err := r.request(bypassCache(ctx), q.Cursor, false, q.Limit, true, q.Columns)
 	if err != nil {
 		return err
 	}
-	defer done(&err)
+	defer op.done(ctx, &err, st)
+	ctx = op
 	from, exclusive, end := q.bounds()
 	if r.rows == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
 		return nil

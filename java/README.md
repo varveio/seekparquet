@@ -399,8 +399,9 @@ row as it walks.
 
 **Remaining gaps** (not in this reader): validation (§8) and its reports; footer and key-page inspection;
 manifest serialisation; a writer and publication; BROTLI (the baseline codecs are implemented); batched storage
-reads in the storage SPI and convergence of the reader's internals and read scheduling with Go's; the listing's
-row-group shortcut (`ReadStats.groupsSkipped` stays 0). Shared with the Go reader: no aggregate cap or eviction
+reads in the storage SPI and convergence of the reader's internals and read scheduling with Go's, including
+retaining the page-index bytes of a part's end that its check read (Go's `Limits.PageIndexCacheMemory`, which
+has no counterpart here yet); the listing's row-group shortcut (`ReadStats.groupsSkipped` stays 0). Shared with the Go reader: no aggregate cap or eviction
 for the part handles and footers a long-lived dataset retains (size the touched-part working set); no explicit
 offset-index cache disable (0 means the default); no dataset-wide schema operation with per-part coverage and
 annotation provenance (use `columns(part)` for each part).
@@ -613,7 +614,8 @@ that fails when the process runs out, and opening a fresh dataset for it does no
 limitation, documented rather than solved: there is no cap that refuses such a pass early, and no eviction.
 
 **Verify (CHECK-3).** `Dataset.verify()` checks every part not yet checked, `verifyConcurrency` at a
-time (1 by default, as the Go reader), then decodes every row group's first key page and each part's last, and compares
+time (1 by default; the Go reader fetches up to `ReadPolicy.Concurrency` parts ahead and checks them in
+manifest order), then decodes every row group's first key page and each part's last, and compares
 each part's first and last key with the manifest (`bounds_mismatch`). It throws the first failure in
 manifest order. It reads one footer per unchecked part plus a page index and one or two key pages per
 row group, never every row. Use it for eager, fail-fast checks of a long-lived local reader.

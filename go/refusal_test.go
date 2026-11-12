@@ -394,7 +394,7 @@ func TestFailedOpenClosesParts(t *testing.T) {
 			src := &countingSource{Source: dirOf(t, dir)}
 			d, err := OpenDataset(ctx, src, OpenOptions{})
 			must(t, err)
-			if err := d.Verify(ctx); err == nil {
+			if err := d.Verify(ctx, nil); err == nil {
 				t.Fatal("verified")
 			}
 			// Part 0 stays open; part 1 is closed when its check refuses it,
@@ -418,7 +418,7 @@ func TestFailedOpenClosesParts(t *testing.T) {
 	if src.opened.Load() != 1 || src.closed.Load() != 1 {
 		t.Fatalf("after open: opened %d, closed %d (the manifest only)", src.opened.Load(), src.closed.Load())
 	}
-	must(t, d.Verify(ctx))
+	must(t, d.Verify(ctx, nil))
 	if src.opened.Load() != 3 || src.closed.Load() != 1 {
 		t.Fatalf("after Verify: opened %d, closed %d", src.opened.Load(), src.closed.Load())
 	}

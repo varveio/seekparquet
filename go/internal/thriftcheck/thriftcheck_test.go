@@ -103,6 +103,59 @@ func TestContainerDepth(t *testing.T) {
 	}
 }
 
+// TestUUID: a UUID (compact type 13, 16 raw bytes) in a field or as the
+// elements of a container is walked, and charged, as parquet-go's decoder
+// skips it; a truncated one, too deep a nesting, or one beyond the budget
+// is refused.
+func TestUUID(t *testing.T) {
+	meta := format.FileMetaData{Version: 1, NumRows: 3, Schema: []format.SchemaElement{{Name: "root"}}}
+	raw, err := thrift.Marshal(new(thrift.CompactProtocol), &meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := raw[:len(raw)-1] // before the stop
+	uuid := make([]byte, 16)
+	for i := range uuid {
+		uuid[i] = byte(0xA0 + i)
+	}
+	// Field 100, long-form header: type 13, then the zigzag i16 id.
+	field := append([]byte{0x0d, 0xc8, 0x01}, uuid...)
+	// Field 101, a list of three UUIDs.
+	list := append([]byte{0x09, 0xca, 0x01, 0x3d}, append(append(append([]byte{}, uuid...), uuid...), uuid...)...)
+	// Field 102, a list of one list of two UUIDs.
+	nested := append([]byte{0x09, 0xcc, 0x01, 0x19, 0x2d}, append(append([]byte{}, uuid...), uuid...)...)
+	typ := reflect.TypeOf(&meta)
+	for name, extra := range map[string][]byte{"field": field, "list": list, "nested list": nested} {
+		in := append(append(append([]byte{}, body...), extra...), 0x00)
+		n, cost, err := Check(in, typ, 1<<20)
+		if err != nil || n != len(in) {
+			t.Fatalf("%s: n %d of %d, %v", name, n, len(in), err)
+		}
+		var got format.FileMetaData
+		if err := thrift.Unmarshal(new(thrift.CompactProtocol), in, &got); err != nil || got.NumRows != 3 {
+			t.Fatalf("%s: parquet-go: %v, %d rows", name, err, got.NumRows)
+		}
+		if _, _, err := Check(in, typ, cost-1); !errors.Is(err, ErrBudget) {
+			t.Fatalf("%s: under budget: %v", name, err)
+		}
+		for i := len(body); i < len(in); i++ {
+			if _, _, err := Check(in[:i], typ, 1<<20); !errors.Is(err, ErrMalformed) {
+				t.Fatalf("%s: truncated at %d: %v", name, i, err)
+			}
+		}
+	}
+	// UUID lists nested beyond the bound.
+	deep := []byte{0x19}
+	for range 200 {
+		deep = append(deep, 0x19)
+	}
+	deep = append(deep, 0x1d)
+	deep = append(deep, uuid...)
+	if _, _, err := Check(append(deep, 0x00), nil, 1<<40); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("deep UUID lists: %v", err)
+	}
+}
+
 func FuzzCheck(f *testing.F) {
 	f.Add([]byte{0x15, 0x02, 0x29, 0x1c, 0x18, 0x01, 'a', 0x00, 0x00})
 	f.Fuzz(func(t *testing.T, raw []byte) {

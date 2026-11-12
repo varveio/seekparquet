@@ -248,6 +248,20 @@ mid-call; the reader checks the context between pages.
 `OpenDataset` opens and closes only the manifest. `Dataset.Close` closes every part file the dataset opened,
 after the reads in progress end.
 
+A remote `Source` can offer optional capabilities; a source with none of them is read through `Open` and
+`ReadAt` as before. `ManifestReader.ReadManifest` reads the manifest whole within `Limits.ManifestBytes`, in one
+request (`ErrObjectTooLarge` becomes a `*LimitError` naming `ManifestBytes`). `SizedSource.OpenSized` opens a
+part with its manifest size, so that no metadata request precedes its first read, which must prove the size:
+a `*SizeMismatchError` from it, or from `OpenSized`, is refused `part_mismatch`, a missing object
+`missing_part`, and `ErrObjectChanged` (a broken pin) stays an environment error, never a refusal. A part file
+that is a `RangeReader` reads several ranges in one `ReadRanges` call, with a `*BatchError` giving each range's
+outcome; without it, ranges the reader issues together go to concurrent `ReadAt` calls, at most
+`ReadPolicy.Concurrency` (default 64) per operation. A source that implements `IOReporter` reports its
+physical requests to the `IOObserver` on each operation's context (`IOObserverFromContext`): the reader counts
+them in `ReadStats` (`PhysicalRequests`, `PhysicalBytes`, `PeakPhysicalRequests`, ...; `OpenOptions.OpenStats`
+for the open) and passes them on to an observer the caller set with `WithIOObserver`. `WithCacheMode` asks a
+source's byte cache to be bypassed (`CacheBypass`).
+
 Projected value pages reuse buffers within each `Rows`, `Get`, `Scan`, `List`, or `Plan.Scan` call,
 including across row groups. `Rows`, `Get` and `List` results own their keys and binary values;
 `Dataset.Scan` and `Plan.Scan` borrow page storage as described below. Dictionaries have separate storage
@@ -278,10 +292,23 @@ return of memory to the OS.
 
 Opening reads the manifest: one read, whatever the number of parts. A read is routed to a part by its
 manifest bounds; the first read to touch a part opens it and reads its footer (counted in
-`ReadStats.PartsOpened` and `SourceReads`: the last 64 KiB of the part in one read, the whole part when it is
-smaller, plus a 4-byte read of its head when it is larger, and one more read when the footer is larger than
-that window), so a cold query costs the manifest plus one footer per part it
-touches, independent of the part count. Within the part, a read is routed by a binary search over its row groups' first
+`ReadStats.PartsOpened` and `SourceReads`: the last `ReadPolicy.MetadataPrefetchBytes` of the part in one read
+(2 MiB, or 64 KiB through `OpenDir`), the whole part when it is smaller, together with a 4-byte read of its
+head when it is larger, and one more read of exactly the missing bytes when the footer is larger than that
+window), so a cold query costs the manifest plus one footer per part it
+touches, independent of the part count. The page-index bytes that read holds (a part's ColumnIndexes and
+OffsetIndexes sit between its data and its footer) are kept, within `Limits.PageIndexCacheMemory` (128 MiB,
+least recently used parts evicted first; footers and decoded indexes are outside it), and serve the part's later
+index loads without a read (`ReadStats.MetadataHitBytes`); an index is still decoded and checked only when a
+request needs it. `ReadPolicy.DisableSpeculation` reads a 64 KiB window, keeps only the footer and reads no page
+ahead. A key column chunk's ColumnIndex and OffsetIndex not kept that way are read together. Within a request,
+complete key-page extents admitted to the bounded request memo are reused (`ReadStats.RequestMemoHitBytes`);
+extents not admitted may be read again. `Verify` checks up to `ReadPolicy.Concurrency` parts at once, each in
+two rounds of reads (its end; then its row groups' first key pages and its last key page, its head merged into
+the first when that page begins within 64 KiB), and reports the first failure in the part and check order of a
+serial check; a second `Verify` of the same `Dataset` reads nothing. `OpenDir` with a zero `ReadPolicy` reads as
+suits a local file: a 64 KiB window, each part's ranges one at a time, no retained index bytes and no memo
+(`Verify` still checks several parts at once, and a listing reads ahead when asked). Within the part, a read is routed by a binary search over its row groups' first
 keys; the first time a row group is needed, its key page index is loaded and its first key page decoded, and
 both are kept (`Limits.IndexMemory` accounts for key-page entries, their bound bytes,
 and decoded row-group first-key bytes). This budget does not include allocator overhead,

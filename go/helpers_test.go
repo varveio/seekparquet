@@ -81,14 +81,14 @@ func verifyErr(dir string, opt OpenOptions) error {
 		return err
 	}
 	defer d.Close()
-	return d.Verify(ctx)
+	return d.Verify(ctx, nil)
 }
 
 // verified opens the dataset at dir and verifies it.
 func verified(t testing.TB, dir string, opt OpenOptions) *Dataset {
 	t.Helper()
 	d := open(t, dir, opt)
-	must(t, d.Verify(ctx))
+	must(t, d.Verify(ctx, nil))
 	return d
 }
 

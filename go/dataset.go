@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"strconv"
 
 	"github.com/parquet-go/parquet-go"
@@ -48,6 +49,9 @@ func SupportedVersions() []Version {
 // context, and must not change shared state such as a "current" context
 // of the file.
 //
+// The view's reads must carry ctx's values, the operation's cache mode
+// (WithCacheMode) and observer (WithIOObserver) among them, to the source.
+//
 // A file that does not implement ContextBinder is read as a plain
 // io.ReaderAt: the reader checks its context between pages, but cannot
 // interrupt a ReadAt call that is already blocked.
@@ -56,6 +60,11 @@ type ContextBinder interface {
 }
 
 // SourceFile is one opened file of a dataset root: its manifest or a part.
+//
+// SourceFile.Size is stable for the handle's lifetime. Reads must never
+// successfully return bytes from different versions. Dataset cancels and
+// joins its reads before calling Close. Close need not interrupt
+// concurrent reads.
 type SourceFile interface {
 	io.ReaderAt
 	// Size returns the file's length in bytes.
@@ -78,6 +87,12 @@ type SourceFile interface {
 // generation) across all its range requests and retries. It may implement
 // ContextBinder, so that every read of it is bounded by the operation's
 // context.
+//
+// Source implementations must be safe for concurrent calls (Verify opens
+// parts concurrently). Open establishes the actual size and an immutable
+// file view. Its context governs opening, not the returned handle's
+// lifetime. The caller owns Source; Dataset closes opened files but never
+// Source.
 type Source interface {
 	Open(ctx context.Context, path string) (SourceFile, error)
 }
@@ -86,6 +101,12 @@ type Source interface {
 type OpenOptions struct {
 	// Limits bounds the resources the dataset can make the reader use.
 	Limits Limits
+	// Read controls how the reader schedules its reads.
+	Read ReadPolicy
+	// OpenStats, when non-nil, is reset on entry to OpenDataset or
+	// OpenDir and filled on every exit. It includes manifest I/O.
+	// The Dataset does not retain it.
+	OpenStats *ReadStats
 }
 
 // Key declares the exact key column and whether keys must be unique.
@@ -106,6 +127,10 @@ type Metadata struct {
 	Extensions json.RawMessage
 	// Manifest is the manifest exactly as read.
 	Manifest []byte
+	// ManifestIdentity is the opaque identity a ManifestReader gave the
+	// manifest's bytes, "" when the Source has none. It is diagnostic: it
+	// grants no authority over the parts.
+	ManifestIdentity string
 }
 
 // PartInfo is one part's manifest entry.
@@ -177,11 +202,47 @@ type Dataset struct {
 //
 // Dataset.Close closes every part file the dataset opened.
 func OpenDataset(ctx context.Context, src Source, opt OpenOptions) (*Dataset, error) {
-	if err := opt.Limits.check(); err != nil {
+	st, spare := takeStats(opt.OpenStats)
+	defer dropStats(spare)
+	if err := prepareOpen(ctx, &opt); err != nil {
 		return nil, err
 	}
-	opt.Limits = opt.Limits.withDefaults()
-	raw, err := readManifest(ctx, src, opt.Limits.ManifestBytes)
+	return openDataset(ctx, src, opt, st, false)
+}
+
+// prepareOpen checks opt and the context's cache mode, before any I/O,
+// and sets opt's defaults.
+func prepareOpen(ctx context.Context, opt *OpenOptions) error {
+	if err := opt.Limits.check(); err != nil {
+		return err
+	}
+	if err := opt.Read.check(); err != nil {
+		return err
+	}
+	if err := checkCacheMode(ctx); err != nil {
+		return err
+	}
+	opt.Limits, opt.Read = opt.Limits.withDefaults(), opt.Read.withDefaults()
+	return nil
+}
+
+// openDataset opens the dataset at src with checked options; local reads
+// as OpenDir's zero policy says (reader.local).
+func openDataset(ctx context.Context, src Source, opt OpenOptions, st *ReadStats, local bool) (*Dataset, error) {
+	// The manifest is read under an operation that observes the physical
+	// requests of whichever of the Source and the manifest's file report
+	// them; a local directory's files report none.
+	mctx := ctx
+	if _, ok := src.(dirSource); !ok {
+		op := newOperation(ctx, opt.Read.Concurrency)
+		mctx = op
+		defer func() {
+			if c := op.c.Load(); c != nil {
+				c.addTo(st)
+			}
+		}()
+	}
+	raw, identity, err := readManifest(mctx, src, opt.Limits.ManifestBytes, reportsIO(src), st)
 	if err != nil {
 		return nil, err
 	}
@@ -190,8 +251,11 @@ func OpenDataset(ctx context.Context, src Source, opt OpenOptions) (*Dataset, er
 		return nil, err
 	}
 	meta := Metadata{Key: Key{Column: m.KeyColumn, Unique: m.KeyUnique}, Version: Version(m.Version), SchemaID: m.SchemaID,
-		Extensions: m.Extensions, Manifest: raw}
+		Extensions: m.Extensions, Manifest: raw, ManifestIdentity: identity}
 	inputs := make([]partInput, 0, len(m.Parts))
+	if len(m.Parts) > 0 {
+		meta.Parts = make([]PartInfo, 0, len(m.Parts))
+	}
 	for _, entry := range m.Parts {
 		meta.Parts = append(meta.Parts, PartInfo(entry))
 		inputs = append(inputs, partInput{name: entry.Path, minKey: entry.MinKey, maxKey: entry.MaxKey, rows: entry.Rows})
@@ -200,62 +264,130 @@ func OpenDataset(ctx context.Context, src Source, opt OpenOptions) (*Dataset, er
 	if err != nil {
 		return nil, err
 	}
-	r.fetch = func(ctx context.Context, i int, st *ReadStats) (partInput, error) {
-		return openDatasetPart(ctx, src, m, m.Parts[i], &r.limits, st)
+	r.local = local
+	r.fetch = func(ctx context.Context, i int, st *ReadStats, deferHead bool) (fetchedInput, error) {
+		return openDatasetPart(ctx, src, m, m.Parts[i], r, st, deferHead)
 	}
 	return &Dataset{meta: meta, r: r}, nil
 }
 
-func readManifest(ctx context.Context, src Source, limit int64) ([]byte, error) {
+// readManifest reads the manifest whole within limit: through
+// ManifestReader when the Source has it, otherwise by opening it and
+// reading it through ReadAt.
+func readManifest(ctx context.Context, src Source, limit int64, reports bool, st *ReadStats) ([]byte, string, error) {
+	if !reports {
+		st.UnreportedIOCalls++
+	}
+	if mr, ok := src.(ManifestReader); ok {
+		raw, identity, err := mr.ReadManifest(ctx, limit)
+		switch {
+		case errors.Is(err, ErrObjectChanged): // a broken pin, whatever else it wraps
+			return nil, "", fmt.Errorf("read %s: %w", ManifestName, err)
+		case errors.Is(err, ErrObjectTooLarge):
+			return nil, "", exceeded(LimitManifestBytes, -1, limit, "%s", ManifestName)
+		case err != nil && errors.Is(err, fs.ErrNotExist):
+			return nil, "", refuse(CodeNoManifest, "the dataset root has no %s", ManifestName)
+		case err != nil:
+			return nil, "", fmt.Errorf("read %s: %w", ManifestName, err)
+		case int64(len(raw)) > limit:
+			return nil, "", exceeded(LimitManifestBytes, int64(len(raw)), limit, "%s", ManifestName)
+		}
+		return raw, identity, nil
+	}
 	f, err := src.Open(ctx, ManifestName)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, refuse(CodeNoManifest, "the dataset root has no %s", ManifestName)
+		if errors.Is(err, fs.ErrNotExist) && !errors.Is(err, ErrObjectChanged) {
+			return nil, "", refuse(CodeNoManifest, "the dataset root has no %s", ManifestName)
 		}
-		return nil, err
+		return nil, "", err
 	}
 	defer func() { _ = f.Close() }()
 	size := f.Size()
 	if size > limit {
-		return nil, exceeded(LimitManifestBytes, size, limit, "%s", ManifestName)
+		return nil, "", exceeded(LimitManifestBytes, size, limit, "%s", ManifestName)
+	}
+	if size < 0 {
+		return nil, "", fmt.Errorf("read %s: the source gives a negative size %d", ManifestName, size)
+	}
+	if uint64(size) > uint64(math.MaxInt) {
+		return nil, "", exceeded(LimitManifestBytes, size, int64(math.MaxInt), "%s: beyond a slice's length", ManifestName)
 	}
 	raw := make([]byte, size)
-	if err := readFull(bind(ctx, f), raw, 0); err != nil {
-		return nil, fmt.Errorf("read %s: %w", ManifestName, err)
+	// Manifest reads are not part reads: they count in no Source counter.
+	if unreported(ctx, reportsIO(f)) {
+		st.UnreportedIOCalls++
 	}
-	return raw, nil
+	at := storageReader{r: bind(ctx, f), op: operationOf(ctx), name: ManifestName}
+	if err := at.readFull(raw, 0); err != nil {
+		return nil, "", fmt.Errorf("read %s: %w", ManifestName, err)
+	}
+	return raw, "", nil
+}
+
+// openPartFile opens a part's file: with its manifest size through
+// SizedSource when the Source has it, the size then proven by the first
+// read (sourceError), and otherwise through Open, its size compared with
+// the manifest's.
+func openPartFile(ctx context.Context, src Source, entry manifest.Part, reports bool, st *ReadStats) (SourceFile, error) {
+	if !reports {
+		st.UnreportedIOCalls++
+	}
+	var f SourceFile
+	var err error
+	// A part of fewer than 12 bytes is refused before any read could prove
+	// its size: it is opened by Open, which establishes it, so that a
+	// missing or resized object is refused as such.
+	if sized, ok := src.(SizedSource); ok && entry.Bytes >= 12 {
+		f, err = sized.OpenSized(ctx, entry.Path, entry.Bytes)
+	} else {
+		f, err = src.Open(ctx, entry.Path)
+	}
+	if err != nil {
+		var mismatch *SizeMismatchError
+		switch {
+		case errors.Is(err, ErrObjectChanged):
+		case errors.As(err, &mismatch), errors.Is(err, fs.ErrNotExist):
+			return nil, sourceError(entry.Path, err)
+		}
+		return nil, err
+	}
+	return f, nil
 }
 
 // openDatasetPart opens one part, checks its size, footer, stamps and row
 // count against its manifest entry, and returns it with its footer. It
-// closes the file when it fails.
-func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, lim *Limits, st *ReadStats) (_ partInput, err error) {
-	f, err := src.Open(ctx, entry.Path)
+// closes the file when it fails. With deferHead the part's head is not
+// read with its end when the window does not reach it (readFooter): the
+// caller establishes it (fetchedInput.tail.headDeferred), and a verdict
+// reached before is judged again with the real head (magicFirst).
+func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, r *reader, st *ReadStats, deferHead bool) (_ fetchedInput, err error) {
+	f, err := openPartFile(ctx, src, entry, reportsIO(src), st)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return partInput{}, refusePart(CodeMissingPart, entry.Path, -1, "%v", err)
-		}
-		return partInput{}, err
+		return fetchedInput{}, err
 	}
 	st.PartsOpened++
+	in := fetchedInput{partInput: partInput{name: entry.Path, file: f, size: f.Size(), minKey: entry.MinKey, maxKey: entry.MaxKey, rows: entry.Rows}}
 	defer func() {
 		if err != nil {
+			if in.tail.headDeferred {
+				err = magicFirst(ctx, entry.Path, f, in.size, in.tail, st, err)
+			}
 			_ = f.Close()
 		}
 	}()
-	in := partInput{name: entry.Path, file: f, size: f.Size(), minKey: entry.MinKey, maxKey: entry.MaxKey, rows: entry.Rows}
 	if in.size != entry.Bytes {
-		return partInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the file is %d bytes, its manifest entry %d", in.size, entry.Bytes)
+		return fetchedInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the file is %d bytes, its manifest entry %d", in.size, entry.Bytes)
 	}
-	footer, err := readFooter(ctx, entry.Path, f, in.size, lim, st, footerWindow)
+	footer, tail, err := readFooter(ctx, entry.Path, f, in.size, &r.limits, st, r.policy.tailWindow(), r.width(), deferHead)
+	in.tail = tail
 	if err != nil {
-		return partInput{}, err
+		return fetchedInput{}, err
 	}
 	if err := checkStamps(entry.Path, footer, m); err != nil {
-		return partInput{}, err
+		return fetchedInput{}, err
 	}
 	if footer.NumRows() != entry.Rows {
-		return partInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the part holds %d rows, its manifest entry %d", footer.NumRows(), entry.Rows)
+		return fetchedInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the part holds %d rows, its manifest entry %d", footer.NumRows(), entry.Rows)
 	}
 	in.footer = footer
 	return in, nil
@@ -320,13 +452,27 @@ func (d *Dataset) Metadata() Metadata { return d.meta.clone() }
 // a long-lived reader of local files, or a caller that wants every part's
 // fault before its first query. A part it refuses stays refused for later
 // reads. It does not read every row (CHECK-4) or check digests (PART-5).
-func (d *Dataset) Verify(ctx context.Context) (err error) {
-	rctx, end, err := d.r.begin(ctx)
+//
+// Parts are checked, and the pages Verify decodes fetched, by up to
+// ReadPolicy.Concurrency parts at once: a part's end first, then its row
+// groups' first key pages and its last key page together, the part's head
+// read with its first page when that page begins near it. The checks and
+// decodes themselves run in manifest and row-group order, so the fault
+// Verify reports is the first in that order, whichever read ends first. A
+// row group's first key and a part's last key page, once checked, are not
+// checked again by a later Verify of the same Dataset.
+//
+// When st is not nil, Verify resets it on entry and fills it on every
+// exit, including failure; Verify does not retain it.
+func (d *Dataset) Verify(ctx context.Context, st *ReadStats) (err error) {
+	st, spare := takeStats(st)
+	defer dropStats(spare)
+	rctx, err := d.r.begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer end()
-	return finish(ctx, rctx, d.r.verify(rctx))
+	defer rctx.end(st)
+	return finish(ctx, rctx, d.r.verify(rctx, st))
 }
 
 // Columns returns the top-level columns of part i, an index into
@@ -343,11 +489,11 @@ func (d *Dataset) Columns(ctx context.Context, i int) ([]Column, error) {
 	if i < 0 || i >= len(d.r.parts) {
 		return nil, invalidRequest("part %d of %d", i, len(d.r.parts))
 	}
-	rctx, end, err := d.r.begin(ctx)
+	rctx, err := d.r.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer end()
+	defer rctx.end(nil)
 	p, err := d.r.part(rctx, i, new(ReadStats))
 	if err != nil {
 		return nil, finish(ctx, rctx, err)
@@ -410,7 +556,8 @@ func (d *Dataset) Get(ctx context.Context, key []byte, st *ReadStats, columns ..
 // callback; a scan that reaches its limit or its end returns nil. Close
 // cancels the scan and waits for fn to return: fn must not call Close, nor
 // wait for a goroutine that does. Concurrent and reentrant calls have
-// independent scratch.
+// independent scratch. It asks a Source's byte cache to be bypassed
+// (CacheBypass), unless ctx sets a cache mode.
 func (d *Dataset) Scan(ctx context.Context, q Query, st *ReadStats, fn func(*Batch) error) error {
 	return d.r.rangeBatches(ctx, q, st, keyReuse{}, fn)
 }

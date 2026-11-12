@@ -137,11 +137,15 @@ type chunk struct {
 	first    int64
 	dict     parquet.Dictionary
 	dictRead bool
-	stats    *ReadStats
-	pages    *int64 // the counter of the data pages decoded: key or value pages
+	// walk is set on a scan's walker: its pages are the memo's recent one.
+	walk  bool
+	stats *ReadStats
+	pages *int64 // the counter of the data pages decoded: key or value pages
 	// ahead, when set, holds key pages a listing read ahead: located takes
 	// a page's bytes from it instead of reading them (readAhead).
 	ahead *readAhead
+	// memo, when set, holds the key pages the request read (pageMemo).
+	memo *pageMemo
 }
 
 // openChunk checks a column chunk before any of its pages is read: a codec
@@ -188,7 +192,23 @@ func (c *chunk) located(off, size, rows int64) (*format.PageHeader, int64, []byt
 	if c.ahead != nil {
 		pre, _ = c.ahead.take(c.p, off, size)
 	}
-	return c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, rows, c.end, c.stats, c.scratch, pre)
+	if pre == nil {
+		if kept := c.memo.get(c.p, off, size); kept != nil {
+			c.stats.RequestMemoHitBytes += size
+			pre = kept
+			// A scan decodes into its scratch, which its next page
+			// overwrites: it decodes a copy, as if it had read the page.
+			if c.scratch != nil {
+				pre = c.scratch.readBuffer(int(size))
+				copy(pre, kept)
+			}
+		}
+	}
+	h, n, raw, err := c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, rows, c.end, c.stats, c.scratch, pre)
+	if err == nil && pre == nil && c.memo != nil && c.scratch == nil {
+		c.memo.put(c.p, off, raw, c.walk)
+	}
+	return h, n, raw, err
 }
 
 // payload returns the page data after a header of length n at off, from
@@ -206,7 +226,7 @@ func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte,
 		data = raw[n : n+size : n+size]
 	} else {
 		data = c.scratch.readBuffer(int(size))
-		if err := readFull(c.p.at(c.ctx, c.stats), data, off+n); err != nil {
+		if err := c.p.at(c.ctx, c.stats).readFull(data, off+n); err != nil {
 			return nil, c.corrupt(err)
 		}
 	}
@@ -231,7 +251,7 @@ type crcField struct {
 func (c *chunk) hasCRC(off, n int64, raw []byte) bool {
 	if int64(len(raw)) < n {
 		raw = make([]byte, n)
-		if err := readFull(c.p.at(c.ctx, c.stats), raw, off); err != nil {
+		if err := c.p.at(c.ctx, c.stats).readFull(raw, off); err != nil {
 			return false // the header was read before; a failing reread is not the page's
 		}
 	}
@@ -1175,8 +1195,9 @@ func (p *part) badPage(physical, column int, off int64) func(string, ...any) err
 // readPage reads n bytes of a column chunk at off.
 func (p *part) readPage(ctx context.Context, off, n int64, st *ReadStats, bad func(string, ...any) error, scratch *pageScratch) ([]byte, error) {
 	raw := scratch.readBuffer(int(n))
-	if err := readFull(p.at(ctx, st), raw, off); err != nil {
-		if isEnvironment(ctx, err) {
+	if err := p.at(ctx, st).readFull(raw, off); err != nil {
+		var refusal *RefusalError
+		if isEnvironment(ctx, err) || errors.As(err, &refusal) { // the source's own, or a part it found missing or resized
 			return nil, err
 		}
 		return nil, bad("%v", err)
@@ -1252,6 +1273,11 @@ func (p *part) loadOffsetIndex(ctx context.Context, physical, column int, st *Re
 	if err != nil {
 		return nil, err
 	}
+	return p.decodeOffsetIndex(raw)
+}
+
+// decodeOffsetIndex decodes an OffsetIndex, bounded like a footer.
+func (p *part) decodeOffsetIndex(raw []byte) (*format.OffsetIndex, error) {
 	var index format.OffsetIndex
 	if _, err := decodeBounded(raw, &index, p.r.limits.MetadataMemory); err != nil {
 		return nil, err
@@ -1259,17 +1285,45 @@ func (p *part) loadOffsetIndex(ctx context.Context, physical, column int, st *Re
 	return &index, nil
 }
 
+// checkIndexExtent checks that a page index of length bytes at off lies in
+// the file and within Limits.PageIndexBytes.
+func (p *part) checkIndexExtent(physical int, off int64, length int32) error {
+	if off < 0 || length <= 0 || off > p.size-int64(length) {
+		return refusePart(CodeInvalidPageIndex, p.name, physical, "a page index lies outside the file")
+	}
+	if int64(length) > p.r.limits.PageIndexBytes {
+		return exceeded(LimitPageIndexBytes, int64(length), p.r.limits.PageIndexBytes, "part %s: a page index", p.name)
+	}
+	return nil
+}
+
 // readIndexBytes reads a page index of length bytes at off, after checking
 // that it lies in the file and within Limits.PageIndexBytes.
 func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, length int32, st *ReadStats) ([]byte, error) {
-	if off < 0 || length <= 0 || off > p.size-int64(length) {
-		return nil, refusePart(CodeInvalidPageIndex, p.name, physical, "a page index lies outside the file")
+	if err := p.checkIndexExtent(physical, off, length); err != nil {
+		return nil, err
 	}
-	if int64(length) > p.r.limits.PageIndexBytes {
-		return nil, exceeded(LimitPageIndexBytes, int64(length), p.r.limits.PageIndexBytes, "part %s: a page index", p.name)
+	if raw := p.retainedBytes(off, int64(length)); raw != nil {
+		if st != nil {
+			st.MetadataHitBytes += int64(length)
+		}
+		return raw, nil
 	}
 	raw := make([]byte, length)
-	if err := readFull(p.at(ctx, st), raw, off); err != nil {
+	// An index that begins before the retained bytes and ends in them:
+	// only its missing beginning is read.
+	if n, kept := p.retainedSuffix(off, int64(length)); n > 0 {
+		missing := int64(length) - n
+		if err := p.at(ctx, st).readFull(raw[:missing], off); err != nil {
+			return nil, err
+		}
+		copy(raw[missing:], kept)
+		if st != nil {
+			st.MetadataHitBytes += n
+		}
+		return raw, nil
+	}
+	if err := p.at(ctx, st).readFull(raw, off); err != nil {
 		return nil, err
 	}
 	return raw, nil

@@ -661,7 +661,7 @@ func valueIndexError(ctx context.Context, p *part, physical, column int, which s
 // the parts as Parquet. A manifest that cannot be read or parsed fails the
 // level with its refusal, as opening would.
 func (v *validator) digest(lr *LevelReport) error {
-	raw, err := readManifest(v.ctx, v.src, v.limits.ManifestBytes)
+	raw, _, err := readManifest(v.ctx, v.src, v.limits.ManifestBytes, true, new(ReadStats))
 	if err != nil {
 		return err
 	}
@@ -702,13 +702,13 @@ func (v *validator) hashPart(path string, buf []byte) (string, error) {
 	}
 	defer func() { _ = f.Close() }()
 	h := sha256.New()
-	at := storageReader{r: bind(v.ctx, f)}
+	at := storageReader{r: bind(v.ctx, f), name: path}
 	for off, size := int64(0), f.Size(); off < size; {
 		if err := v.ctx.Err(); err != nil {
 			return "", err
 		}
 		n := int(min(int64(len(buf)), size-off))
-		if err := readFull(at, buf[:n], off); err != nil {
+		if err := at.readFull(buf[:n], off); err != nil {
 			if !errors.Is(err, io.ErrUnexpectedEOF) {
 				return "", err
 			}

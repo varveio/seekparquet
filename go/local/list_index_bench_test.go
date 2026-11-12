@@ -68,7 +68,7 @@ func BenchmarkListBoundary(b *testing.B) {
 					d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.OpenOptions{})
 					must(b, err)
 					defer d.Close()
-					must(b, d.Verify(context.Background()))
+					must(b, d.Verify(context.Background(), nil))
 					req := seekparquet.ListQuery{Prefix: []byte(listBenchPrefix), Delimiter: '/', Limit: 1000}
 					if flat {
 						req.Prefix = nil

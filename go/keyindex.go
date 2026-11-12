@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"sync"
 	"unicode/utf8"
 	"unsafe"
 
@@ -74,7 +75,7 @@ func (p *part) loadKeyIndex(ctx context.Context, physical int, st *ReadStats, re
 	if !ok || end > p.size {
 		return nil, refusePart(CodeInvalidFooter, p.name, physical, "column chunk %d lies outside the file", p.key.index)
 	}
-	raw, err := p.readIndexBytes(ctx, physical, meta.ColumnIndexOffset, meta.ColumnIndexLength, st)
+	raw, rawOffsets, offsetsErr, err := p.readIndexPair(ctx, physical, meta, st)
 	if err != nil {
 		return nil, p.indexError(ctx, physical, "ColumnIndex", err)
 	}
@@ -82,9 +83,12 @@ func (p *part) loadKeyIndex(ctx context.Context, physical int, st *ReadStats, re
 	if _, err := decodeBounded(raw, &columns, p.r.limits.MetadataMemory); err != nil {
 		return nil, p.indexError(ctx, physical, "ColumnIndex", err)
 	}
-	offsets, err := p.loadOffsetIndex(ctx, physical, p.key.index, st)
-	if err != nil {
-		return nil, p.indexError(ctx, physical, "OffsetIndex", err)
+	var offsets *format.OffsetIndex
+	if offsetsErr == nil {
+		offsets, offsetsErr = p.decodeOffsetIndex(rawOffsets)
+	}
+	if offsetsErr != nil {
+		return nil, p.indexError(ctx, physical, "OffsetIndex", offsetsErr)
 	}
 	index, err := checkKeyIndex(&columns, offsets, p.footer.Metadata().RowGroups[physical].NumRows, start, end, p.utf8Key)
 	if err != nil {
@@ -170,6 +174,100 @@ type pageSpan struct {
 type pageLog struct {
 	unique bool
 	spans  []pageSpan
+	// memo holds the raw key pages the request read, so that it reads
+	// none twice.
+	memo pageMemo
+}
+
+// requestMemoBytes bounds the raw key pages one request keeps (pageMemo).
+const requestMemoBytes = 4 << 20
+
+// pageMemo holds the raw extents of key pages one request read, by part
+// and extent: a page read again by the same request is taken from it, then
+// decoded and checked as any page read. It keeps every page a routing probe
+// or Verify read, up to requestMemoBytes (a probe's first page that the
+// walk reaches, a page Verify fetched ahead), and the last page a scan's
+// walker read (recent), which a listing reads again when it resumes in the
+// group after a common prefix. It is safe for concurrent use.
+type pageMemo struct {
+	mu   sync.Mutex
+	used int64
+	// The first page kept is held inline and the rest in pages, made for
+	// a second: most requests probe one or two pages.
+	first memoPage
+	pages map[memoKey][]byte
+	// recent is the page a walker read last, replaced by the next.
+	recent memoPage
+}
+
+type memoKey struct {
+	p         *part
+	off, size int64
+}
+
+// memoPage is a page held inline: raw is the len(raw) bytes at off of p.
+type memoPage struct {
+	p   *part
+	off int64
+	raw []byte
+}
+
+func (e *memoPage) is(key memoKey) bool {
+	return e.raw != nil && e.p == key.p && e.off == key.off && int64(len(e.raw)) == key.size
+}
+
+// pageMemo returns the log's page memo.
+func (l *pageLog) pageMemo() *pageMemo { return &l.memo }
+
+// get returns the size bytes at off of p the request read, or nil.
+func (m *pageMemo) get(p *part, off, size int64) []byte {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := memoKey{p, off, size}
+	switch {
+	case m.first.is(key):
+		return m.first.raw
+	case m.recent.is(key):
+		return m.recent.raw
+	}
+	return m.pages[key]
+}
+
+// put keeps raw, the size bytes at off of p, when there is room, or as the
+// recent page when walk is set. raw must not change afterwards.
+func (m *pageMemo) put(p *part, off int64, raw []byte, walk bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if walk {
+		m.recent = memoPage{p, off, raw}
+		return
+	}
+	key := memoKey{p, off, int64(len(raw))}
+	if m.first.is(key) || m.pages[key] != nil || m.used+int64(len(raw)) > requestMemoBytes {
+		return
+	}
+	switch {
+	case m.first.raw == nil:
+		m.first = memoPage{p, off, raw}
+	case m.pages == nil:
+		m.pages = map[memoKey][]byte{key: raw}
+	default:
+		m.pages[key] = raw
+	}
+	m.used += int64(len(raw))
+}
+
+// adopt puts into m, within its room, the pages that from holds.
+func (m *pageMemo) adopt(from *pageMemo) {
+	if from.first.raw != nil {
+		m.put(from.first.p, from.first.off, from.first.raw, false)
+	}
+	for k, raw := range from.pages {
+		m.put(k.p, k.off, raw, false)
+	}
 }
 
 // ordered reports whether page before may precede page after: after begins
@@ -203,4 +301,42 @@ func (l *pageLog) add(s pageSpan) error {
 	copy(l.spans[i+1:], l.spans[i:])
 	l.spans[i] = s
 	return nil
+}
+
+// readIndexPair reads a key column chunk's ColumnIndex and OffsetIndex,
+// both together (readRanges) when neither is retained and both lie in the
+// file within Limits.PageIndexBytes, and otherwise one after the other.
+// Errors keep the order of reading them in turn: the ColumnIndex's (err)
+// first; the OffsetIndex's (offsetsErr) is the caller's to report after
+// decoding the ColumnIndex.
+func (p *part) readIndexPair(ctx context.Context, physical int, meta *format.ColumnChunk, st *ReadStats) (columns, offsets []byte, offsetsErr, err error) {
+	ci, oi := [2]int64{meta.ColumnIndexOffset, int64(meta.ColumnIndexLength)}, [2]int64{meta.OffsetIndexOffset, int64(meta.OffsetIndexLength)}
+	together := !p.r.local && p.checkIndexExtent(physical, ci[0], int32(ci[1])) == nil && p.checkIndexExtent(physical, oi[0], int32(oi[1])) == nil &&
+		!p.retained(ci[0], ci[1]) && !p.retained(oi[0], oi[1])
+	if !together {
+		if columns, err = p.readIndexBytes(ctx, physical, meta.ColumnIndexOffset, meta.ColumnIndexLength, st); err != nil {
+			return nil, nil, nil, err
+		}
+		offsets, offsetsErr = p.readIndexBytes(ctx, physical, meta.OffsetIndexOffset, meta.OffsetIndexLength, st)
+		return columns, offsets, offsetsErr, nil
+	}
+	ranges := []ReadRange{{Off: ci[0], Buf: make([]byte, ci[1])}, {Off: oi[0], Buf: make([]byte, oi[1])}}
+	errs := readRanges(ctx, rangeFile{file: p.file, name: p.name, reports: p.reports, concurrency: p.r.policy.Concurrency}, ranges, st)
+	if errs != nil && errs[0] != nil {
+		return nil, nil, nil, errs[0]
+	}
+	if errs != nil && errs[1] != nil {
+		return ranges[0].Buf, nil, errs[1], nil
+	}
+	return ranges[0].Buf, ranges[1].Buf, nil, nil
+}
+
+// retained reports whether some of the length bytes at off are in the
+// part's retained metadata.
+func (p *part) retained(off, length int64) bool {
+	if p.retainedBytes(off, length) != nil {
+		return true
+	}
+	n, _ := p.retainedSuffix(off, length)
+	return n > 0
 }

@@ -22,7 +22,7 @@ func TestListIndexSharedMemoryIsolation(t *testing.T) {
 	}
 	dir := write(t, parts(testutil.Part{GroupRows: 200, PageBytes: 200, IndexSizeLimit: 16}, keys))
 	probe := open(t, dir, OpenOptions{})
-	must(t, probe.Verify(ctx))
+	must(t, probe.Verify(ctx, nil))
 	lim := Limits{IndexMemory: probe.r.indexMemory.Load() / 2}
 	q := ListQuery{Prefix: []byte("d3999/"), Delimiter: '/', Limit: 10}
 	plain := open(t, dir, OpenOptions{Limits: lim})

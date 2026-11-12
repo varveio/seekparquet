@@ -194,7 +194,11 @@ type ListQuery struct {
 	// not on a local file. Zero, the default, reads no page ahead; a
 	// negative value is an invalid request. A listing with delimiter '/'
 	// reads no page ahead when a list index (Dataset.BuildListIndex) is
-	// built, whether or not the index serves a given row group.
+	// built, whether or not the index serves a given row group. Read-ahead
+	// is speculation: ReadPolicy.DisableSpeculation turns it off, and it
+	// reads at most ReadPolicy.Concurrency-1 pages ahead at once, each only
+	// on a slot of the operation's Concurrency free with another left, so
+	// that its reads and the listing's own stay within Concurrency.
 	ReadAhead int
 }
 
@@ -233,27 +237,20 @@ func (e ListEntry) Cursor() *Cursor {
 	return &Cursor{Prefix: bytes.Clone(e.CommonPrefix)}
 }
 
-// request checks what every request shares and takes a read lease. done
-// releases it and maps an error of a request ended by Close to ErrClosed.
-// A limit of zero is accepted only when unlimited is set (Dataset.Scan).
-func (r *reader) request(ctx context.Context, cur *Cursor, prefixes bool, limit int64, unlimited bool, columns []string) (context.Context, func(*error), error) {
+// request checks what every request shares and begins its operation
+// (begin), which the caller ends with done. A limit of zero is accepted
+// only when unlimited is set (Dataset.Scan).
+func (r *reader) request(ctx context.Context, cur *Cursor, prefixes bool, limit int64, unlimited bool, columns []string) (*operation, error) {
 	if err := cur.check(prefixes); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if limit < 0 || limit == 0 && !unlimited {
-		return nil, nil, invalidRequest("limit %d is not positive", limit)
+		return nil, invalidRequest("limit %d is not positive", limit)
 	}
 	if err := r.checkProjection(columns); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	rctx, end, err := r.begin(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	return rctx, func(err *error) {
-		*err = finish(ctx, rctx, *err)
-		end()
-	}, nil
+	return r.begin(ctx)
 }
 
 // checkProjection rejects a request for a column that a checked part
@@ -285,27 +282,31 @@ func (p *part) checkProjection(columns []string) error {
 // readRange returns the rows of q; see Dataset.Rows. It discovers every
 // selected key before projecting any value, and returns no rows on error.
 func (r *reader) readRange(ctx context.Context, q Query, st *ReadStats) (_ []Row, err error) {
-	st = resetStats(st)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
 	if q.Limit > int64(math.MaxInt) {
 		return nil, invalidRequest("limit %d is beyond a slice's length", q.Limit)
 	}
-	ctx, done, err := r.request(ctx, q.Cursor, false, q.Limit, false, q.Columns)
+	op, err := r.request(ctx, q.Cursor, false, q.Limit, false, q.Columns)
 	if err != nil {
 		return nil, err
 	}
-	defer done(&err)
+	defer op.done(ctx, &err, st)
+	ctx = op
 	rows, _, err := r.collect(ctx, q.Selection, int(q.Limit), false, q.Columns, st)
 	return rows, err
 }
 
 // readGet returns the group of key; see Dataset.Get.
 func (r *reader) readGet(ctx context.Context, key []byte, st *ReadStats, columns []string) (_ []Row, err error) {
-	st = resetStats(st)
-	ctx, done, err := r.request(ctx, nil, false, 1, false, columns)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
+	op, err := r.request(ctx, nil, false, 1, false, columns)
 	if err != nil {
 		return nil, err
 	}
-	defer done(&err)
+	defer op.done(ctx, &err, st)
+	ctx = op
 	limit := r.limits.GetRows
 	rows, more, err := r.collect(ctx, Selection{Span: KeySpan(key)}, limit, true, columns, st)
 	if more {
@@ -360,15 +361,17 @@ func (r *reader) collect(ctx context.Context, sel Selection, limit int, probe bo
 
 // readList returns the entries of req; see Dataset.List.
 func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ []ListEntry, err error) {
-	st = resetStats(st)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
 	if req.ReadAhead < 0 {
 		return nil, invalidRequest("read-ahead %d is negative", req.ReadAhead)
 	}
-	ctx, done, err := r.request(ctx, req.Cursor, true, int64(req.Limit), false, req.Columns)
+	op, err := r.request(ctx, req.Cursor, true, int64(req.Limit), false, req.Columns)
 	if err != nil {
 		return nil, err
 	}
-	defer done(&err)
+	defer op.done(ctx, &err, st)
+	ctx = op
 	// The read is confined to the keys that begin with Prefix, below End,
 	// and after a prefix cursor's keys.
 	from, end := req.Prefix, req.End
