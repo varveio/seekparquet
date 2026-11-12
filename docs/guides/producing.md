@@ -265,11 +265,19 @@ decodes and how many dependent requests it waits for. Defaults of the Go writer 
 
 - Keys that share a long prefix need bounds long enough to tell pages apart. For example, if keys share
   `logs/customer-0001/2026/` and differ only after it, bounds cut to eight bytes cannot distinguish pages.
-- A single large key group can exceed the part target: groups never cross parts.
+  Smaller pages do not repair indistinguishable bounds. Inspect actual ColumnIndex bounds, including long shared prefixes and arbitrary byte keys.
+  Shorten a maximum only when it still bounds the page; otherwise retain it in full
+  ([RG-5](../../spec/format-1.md#rg-5), [RG-6](../../spec/format-1.md#rg-6)).
+  Conservative overlapping or nonmonotone bounds remain valid; a selective read can decode a whole row group.
+- A single large key group can exceed the part target: key groups never cross parts
+  ([PART-4](../../spec/format-1.md#part-4)).
+- Measure page index placement and storage coalescing together; combining nearby logical reads can fetch extra bytes.
+- More parts add verification and touched-handle work; they do not make `OpenDataset` open parts
+  ([`OpenDataset`](https://pkg.go.dev/github.com/varveio/seekparquet/go#OpenDataset)).
 - Test the combination on your own keys and storage, including sparse delimited listings with projected
   columns and deep pages of repeated keys, not just key-only ranges.
 
-[Read costs](../read-costs.md) describes the phases of a read to measure.
+[Remote I/O](remote-io.md) describes the phases of a read to measure.
 
 ## Write a dataset with pyarrow
 

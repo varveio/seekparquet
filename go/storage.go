@@ -200,7 +200,8 @@ var (
 // logical reads. A zero field takes its default; a negative one is an
 // invalid request when the dataset is opened. Windows hold up to 64 MiB
 // of fetched, undecoded bytes per operation. Concurrent operations each
-// hold their own windows; this is not a per-Dataset bound.
+// hold their own windows; this is not a per-Dataset bound. Decoded pages,
+// retained metadata, and results add memory outside this bound.
 type ReadPolicy struct {
 	// MetadataPrefetchBytes is the speculative read of a part's end when
 	// the part is first checked: the footer and, when they fit, its page

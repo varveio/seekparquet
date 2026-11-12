@@ -10,6 +10,12 @@ Start with [concepts](concepts.md) for the terms every other page uses.
 
 ## Guides
 
+- [Reading](guides/reading.md): open, query, project, scan, plan, and classify errors.
+- [Pagination](guides/pagination.md): row and prefix cursors, tokens, and service envelopes.
+- [Operating](guides/operating.md): limits, memory, file handles, verification, concurrency, and list indexes.
+- [Storage Sources](guides/storage-sources.md): contracts, capabilities, identity, cancellation, and storage observation.
+- [Remote I/O](guides/remote-io.md): logical reads, fake-store counts, speculation, and measurement.
+
 - [Counting and aggregating by prefix](guides/counting.md): count listed row spans without I/O, select rows, and sum a column.
 - [Producing datasets](guides/producing.md): the recipe, the Go writer, geometry, pyarrow.
 - [Validating datasets](guides/validating.md): levels, the `seekparquet` command, the API.
@@ -29,15 +35,12 @@ Start with [concepts](concepts.md) for the terms every other page uses.
 - [Specification](../spec/format-1.md), the only normative text, and the [implementer's guide](../spec/IMPLEMENTING.md).
 - [Conformance suite](../conformance/README.md): run it against an implementation.
 
-## Pages not yet rewritten
+## Background
 
-These pages predate the current structure. Later waves of the documentation rewrite move their content into
-the guides above.
-
-- [Read costs](read-costs.md)
-- [Workload fit and measurement](workloads.md)
-- [Indexed access evidence](indexed-access.md)
+- [Workload fit](background/workload-fit.md): candidate workloads and alternatives to evaluate.
 
 ## Contributors
 
 - [How the documentation works](dev/docs.md): generated pages, snippets, checks and style.
+- [Benchmark recipes](dev/benchmarks.md) and the [local receipt](dev/receipts/2026-11-11-local-workloads.md).
+- [Indexed-access evidence](dev/indexed-access.md): regression scope and qualification gaps.

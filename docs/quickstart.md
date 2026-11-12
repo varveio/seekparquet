@@ -49,7 +49,7 @@ representative performance benchmark**. No files are written by this example.
 
 ## Next steps and current limits
 
-- Read [read costs and writer guidance](read-costs.md) before choosing part, row-group and page
+- Read [remote I/O](guides/remote-io.md) and [writer geometry](guides/producing.md#choose-geometry) before choosing part, row-group and page
   sizes. This tiny example demonstrates semantics, not cold remote performance.
 - Read the [Go API and examples](../go/README.md) for ranges, projected values,
   repeated keys, limits, and refusal errors. Run the quickstart's regression test

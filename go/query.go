@@ -180,9 +180,7 @@ type ListQuery struct {
 	// non-local Source; zero-policy OpenDir reads on demand. Positive values
 	// cap the same predictor and opt into read-ahead even with OpenDir;
 	// negative values are invalid. Adjacent pages are fetched together in
-	// bounded windows and checked on use. Windows hold up to 64 MiB of
-	// fetched, undecoded bytes per operation; concurrent
-	// operations each hold their own, independently of the Dataset.
+	// bounded windows and checked on use. See ReadPolicy for window bounds.
 	// ReadPolicy.DisableSpeculation disables this optional fetching.
 	ReadAhead int
 }

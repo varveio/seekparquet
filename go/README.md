@@ -203,7 +203,7 @@ manifest bytes for the caller to store.
 `Extensions` and each `PartInfo.Extensions` as written (a producer sets a part's before `Commit`); `InspectFooter` and
 `InspectKeyPages` read a part's footer and key page index without reading its pages.
 
-The recipe, the guarantees and what `WriteDir` does not do are in [docs/producing.md](../docs/producing.md).
+The recipe, the guarantees and what `WriteDir` does not do are in [producing datasets](../docs/guides/producing.md).
 
 ## Keys and pagination
 
