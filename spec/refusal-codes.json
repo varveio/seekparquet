@@ -58,7 +58,7 @@
     },
     {
       "code": "invalid_footer",
-      "meaning": "A part is shorter than 12 bytes, has invalid magic under CHECK-1 after applying its encryption classification, its Parquet footer cannot be read, its row groups' row counts do not sum to the footer's row count, or a column chunk refers to another file (file_path set).",
+      "meaning": "A part is shorter than 12 bytes, has invalid magic under CHECK-1 after applying its encryption classification, its Parquet footer cannot be read, its row groups' row counts do not sum to the footer's row count, or a column chunk refers to another file (file_path set). Also a recognized leaf annotation that violates Parquet physical-type or parameter restrictions, including missing parameters or empty required unions, on any leaf (even unprojected).",
       "requirements": [
         "CHECK-1",
         "FILE-1"
@@ -67,7 +67,7 @@
     },
     {
       "code": "stamp_mismatch",
-      "meaning": "A part's seekparquet.* footer metadata is missing, duplicated, forbidden (a draft_revision stamp on a non-draft file), not canonical, or different from the manifest.",
+      "meaning": "A part's seekparquet.* footer metadata is missing, duplicated, forbidden (a draft_revision stamp on a non-draft file), without a value, not canonical, or different from the manifest.",
       "requirements": [
         "STAMP-1",
         "STAMP-2"
@@ -90,7 +90,7 @@
         "COL-5"
       ],
       "detect": "touch",
-      "notes": "Must be detected no later than the first request that projects the column; should be detected on open for all columns; structural validation checks all columns."
+      "notes": "Must be checked for all columns at first part touch against parts already checked (CHECK-1, COL-5), independent of projection; structural validation checks every part."
     },
     {
       "code": "missing_sorting_columns",
@@ -111,13 +111,14 @@
     },
     {
       "code": "invalid_page_index",
-      "meaning": "A key column's page index is inconsistent with itself or with the physical pages: list lengths differ, a null page, an empty list, row positions or locations out of range, an entry that does not locate exactly one data page, a page whose row count differs from its indexed interval, a bound that is not valid UTF-8 where KEY-6 applies, or decoded keys outside the page's bounds.",
+      "meaning": "A key column's page index is inconsistent with itself or with the physical pages: list lengths differ, a null page, an empty list, row positions or locations out of range, an entry that does not locate exactly one data page, a page whose row count differs from its indexed interval, a bound that is not valid UTF-8 where KEY-6 applies, or decoded keys outside the page's bounds. For an indexed key page this includes failure to decode a complete header, a non-data page, or a valid header whose extent or declared row count disagrees with its index; intrinsic header corruption takes precedence under CHECK-5.",
       "requirements": [
         "RG-3",
         "RG-4",
         "RG-5",
         "RG-7",
-        "KEY-6"
+        "KEY-6",
+        "CHECK-5"
       ],
       "detect": "read"
     },
@@ -140,7 +141,7 @@
     },
     {
       "code": "invalid_parquet",
-      "meaning": "Corruption in the Parquet data itself: a page that does not decompress or decode, a malformed dictionary, or a value count that does not match the rows.",
+      "meaning": "Corruption in the Parquet data itself: a page that does not decompress or decode, a malformed dictionary, or a value count that does not match the rows. Decoded page headers with negative counts or sizes or invalid V2 level lengths retain this code even on an indexed key page (CHECK-5 precedence).",
       "requirements": [
         "CHECK-5"
       ],
@@ -176,7 +177,7 @@
     },
     {
       "status": "unsupported",
-      "meaning": "The dataset is valid but uses a feature the reader does not support.",
+      "meaning": "A needed feature is unsupported; unrecognized numeric encoding/codec values follow ENC-1 without certifying validity.",
       "requirements": [
         "ENC-1",
         "COL-3",
@@ -186,7 +187,7 @@
       "codes": [
         {
           "code": "unsupported_encoding",
-          "meaning": "a codec or encoding outside what the reader implements (never one of the ENC-1 baseline; for example BROTLI)"
+          "meaning": "a codec or encoding outside what the reader implements (never one of the ENC-1 baseline; for example BROTLI); includes unrecognized numeric Encoding/CompressionCodec values only when the request needs that data (ENC-1)"
         },
         {
           "code": "unsupported_projection",

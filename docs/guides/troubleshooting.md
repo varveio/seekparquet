@@ -130,14 +130,14 @@ A part's size in bytes, or its footer's row count, differs from its manifest ent
 
 ### `invalid_footer`
 
-A part is shorter than 12 bytes, has invalid magic under CHECK-1 after applying its encryption classification, its Parquet footer cannot be read, its row groups' row counts do not sum to the footer's row count, or a column chunk refers to another file (file_path set). Detected at the latest on first touch of the part ([CHECK-1](../../spec/format-1.md#check-1), [FILE-1](../../spec/format-1.md#file-1)).
+A part is shorter than 12 bytes, has invalid magic under CHECK-1 after applying its encryption classification, its Parquet footer cannot be read, its row groups' row counts do not sum to the footer's row count, or a column chunk refers to another file (file_path set). Also a recognized leaf annotation that violates Parquet physical-type or parameter restrictions, including missing parameters or empty required unions, on any leaf (even unprojected). Detected at the latest on first touch of the part ([CHECK-1](../../spec/format-1.md#check-1), [FILE-1](../../spec/format-1.md#file-1)).
 
 - **Usual cause:** A truncated or partially copied part, a file that is not Parquet, or a writer that puts column chunks in other files (file_path).
 - **What to do:** Compare the part's size and checksum with the source. Copy parts whole and only after they are complete.
 
 ### `stamp_mismatch`
 
-A part's seekparquet.* footer metadata is missing, duplicated, forbidden (a draft_revision stamp on a non-draft file), not canonical, or different from the manifest. Detected at the latest on first touch of the part ([STAMP-1](../../spec/format-1.md#stamp-1), [STAMP-2](../../spec/format-1.md#stamp-2)).
+A part's seekparquet.* footer metadata is missing, duplicated, forbidden (a draft_revision stamp on a non-draft file), without a value, not canonical, or different from the manifest. Detected at the latest on first touch of the part ([STAMP-1](../../spec/format-1.md#stamp-1), [STAMP-2](../../spec/format-1.md#stamp-2)).
 
 - **Usual cause:** The part lacks the five seekparquet.* footer stamps or disagrees with the manifest. pyarrow drops them when called with store_schema=False.
 - **What to do:** Write the stamps into the part's footer key-value metadata (STAMP-1), exactly as the manifest states the version, schema id and key. See the producing guide.
@@ -172,7 +172,7 @@ A non-empty row group's key column lacks a ColumnIndex or an OffsetIndex. Detect
 
 ### `invalid_page_index`
 
-A key column's page index is inconsistent with itself or with the physical pages: list lengths differ, a null page, an empty list, row positions or locations out of range, an entry that does not locate exactly one data page, a page whose row count differs from its indexed interval, a bound that is not valid UTF-8 where KEY-6 applies, or decoded keys outside the page's bounds. Detected at the latest on read ([RG-3](../../spec/format-1.md#rg-3), [RG-4](../../spec/format-1.md#rg-4), [RG-5](../../spec/format-1.md#rg-5), [RG-7](../../spec/format-1.md#rg-7), [KEY-6](../../spec/format-1.md#key-6)).
+A key column's page index is inconsistent with itself or with the physical pages: list lengths differ, a null page, an empty list, row positions or locations out of range, an entry that does not locate exactly one data page, a page whose row count differs from its indexed interval, a bound that is not valid UTF-8 where KEY-6 applies, or decoded keys outside the page's bounds. For an indexed key page this includes failure to decode a complete header, a non-data page, or a valid header whose extent or declared row count disagrees with its index; intrinsic header corruption takes precedence under CHECK-5. Detected at the latest on read ([RG-3](../../spec/format-1.md#rg-3), [RG-4](../../spec/format-1.md#rg-4), [RG-5](../../spec/format-1.md#rg-5), [RG-7](../../spec/format-1.md#rg-7), [KEY-6](../../spec/format-1.md#key-6), [CHECK-5](../../spec/format-1.md#check-5)).
 
 - **Usual cause:** A writer that shortens page bounds incorrectly (for example keys beginning with 0xFF bytes), or a page index edited or damaged after writing.
 - **What to do:** Rewrite the part with a writer whose bounds hold every key of the page (RG-5). Validate at the profile level to detect invalid key-page bounds; validation stops when it encounters a fault.
@@ -193,7 +193,7 @@ Keys decrease within a page or across pages, row groups or parts, or equal keys 
 
 ### `invalid_parquet`
 
-Corruption in the Parquet data itself: a page that does not decompress or decode, a malformed dictionary, or a value count that does not match the rows. Detected at the latest on validation, full level ([CHECK-5](../../spec/format-1.md#check-5)).
+Corruption in the Parquet data itself: a page that does not decompress or decode, a malformed dictionary, or a value count that does not match the rows. Decoded page headers with negative counts or sizes or invalid V2 level lengths retain this code even on an indexed key page (CHECK-5 precedence). Detected at the latest on validation, full level ([CHECK-5](../../spec/format-1.md#check-5)).
 
 - **Usual cause:** A damaged page: bit rot, a bad copy, or a writer bug in compression or encoding.
 - **What to do:** Rewrite or restore the part. Validate at the full level to check all stored columns. A failed run reports the fault encountered, not every damaged page.
@@ -221,7 +221,7 @@ The feature alone does not block a request that does not need it.
 <!-- generated: troubleshooting-unsupported -->
 ### `unsupported_encoding`
 
-A codec or encoding outside what the reader implements (never one of the ENC-1 baseline; for example BROTLI).
+A codec or encoding outside what the reader implements (never one of the ENC-1 baseline; for example BROTLI); includes unrecognized numeric Encoding/CompressionCodec values only when the request needs that data (ENC-1).
 
 - **Usual cause:** A codec or encoding outside what this reader decodes, such as BROTLI in the Java reader.
 - **What to do:** Inspect the error detail to identify the unsupported codec or encoding, then rewrite the affected column using a supported codec and encoding, preferably the ENC-1 baseline. An unprojected value column’s unsupported encoding or codec does not itself block the request.

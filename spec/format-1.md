@@ -239,9 +239,12 @@ and are ignored.
   minima and maxima need not be monotone. A reader MUST NOT treat overlapping or non-monotone bounds as an
   error, MUST NOT rely on `boundary_order`, and MUST NOT infer from a bound's length whether it is exact or
   how far it was shortened. A writer SHOULD set `boundary_order` to `ASCENDING` when both bound sequences
-  are non-decreasing, and otherwise to `UNORDERED`.
+  are non-decreasing, and otherwise to `UNORDERED`. Readers MUST ignore the numeric value of
+  `boundary_order`, including unrecognized values; its required presence and Thrift wire type still apply.
 - <a id="rg-7"></a>[RG-7] A reader MUST refuse a row group whose key column lacks either index (`missing_page_index`), and
   one whose indexes break RG-3 or RG-4, or whose decoded keys contradict RG-5 (`invalid_page_index`).
+  CHECK-5 determines the precedence between an undecodable indexed header, intrinsic header corruption
+  and disagreement with the index.
 
 - <a id="route-1"></a>[ROUTE-1] A seek for `k` MUST begin no later than the earliest row group that can hold `k`.
   In repeated-key mode, with decoded row-group first keys, find the first first key greater than or equal to `k` and start
@@ -288,7 +291,9 @@ and are ignored.
 - <a id="stamp-2"></a>[STAMP-2] Each of these keys appears exactly once, and `seekparquet.draft_revision` does not appear when
   `format_version` is not 0. Version values are written in canonical decimal (no sign, no leading zeros)
   and compared as exact strings. `key_unique` is canonical lowercase `true` or `false`. A reader MUST refuse a part whose stamps are missing, duplicated, forbidden
-  or different from its manifest (`stamp_mismatch`). Other key-value entries MAY be present and are ignored.
+  or different from its manifest (`stamp_mismatch`). A listed stamp key without a value is
+  `stamp_mismatch`; its occurrence still counts for duplicate and forbidden-stamp checks. Other entries
+  are ignored whether or not they have a value.
 
 ### 5.5 Geometry and encoding
 
@@ -308,6 +313,13 @@ The following affect speed and size, not validity.
   request that does not need the pages that use it: a value column the request does not project has no bearing
   on its result (RANGE-2), so its codec does not either. A validation level that needs a codec or encoding the
   validator does not support is incomplete (VAL-1).
+  For reader classification, an unrecognized numeric `Encoding` or `CompressionCodec` value MUST be
+  treated as an unsupported feature (`unsupported_encoding`) when the request needs the encoded data,
+  not as malformed metadata or data. Its presence MUST NOT prevent a request that does not need that data.
+  This classification does not establish that the unrecognized value denotes valid Parquet.
+  For a column with no repetition levels, readers MUST ignore the numeric value of
+  `repetition_level_encoding`, including unrecognized values. Ignoring an enum value does not waive the
+  field's required presence or Thrift wire type.
 
 ## 6. Queries
 
@@ -424,6 +436,12 @@ A reader checks what it reads. It does not certify data it skips.
   for as long as the dataset is open, so every later request that touches the part ends with the same outcome
   (`refused` or `unsupported`) and code. A reader MAY check every part on open instead.
 
+  For every leaf, including unprojected leaves, readers MUST check that recognized logical and converted
+  annotations satisfy Parquet's physical-type and parameter restrictions (`invalid_footer`). Missing
+  required annotation parameters or empty required unions are invalid; an unknown union alternative is
+  not equivalent to either. Unrecognized annotations or parameter alternatives MUST NOT by themselves
+  prevent reading value columns as physical values (COL-3); KEY-1 still applies.
+
   **Length and magic.** A part shorter than 12 bytes is `invalid_footer`. Otherwise, the reader MUST inspect
   its first and last four bytes. If either is `PARE`, it MUST report `unsupported_encryption`. If neither is
   `PARE` and either is not `PAR1`, it MUST report `invalid_footer`. Otherwise it proceeds with the footer
@@ -449,6 +467,12 @@ A reader checks what it reads. It does not certify data it skips.
   support is reported as unsupported (§10). Nor is a limit of the reader's own resources: a valid dataset that
   exceeds the memory available, or a maximum the reader applies to a manifest, footer, page, key or result
   (§11), is not thereby invalid, and the reader reports the limit as such, distinct from every refusal code.
+  For an indexed key page, failure to decode a complete Thrift page header at the indexed offset is
+  `invalid_page_index`. In a decoded header, negative counts or sizes and invalid V2 level lengths are
+  `invalid_parquet`, and MUST NOT be reclassified as index disagreement. Otherwise, a non-data page, a
+  header-plus-payload extent inconsistent with RG-3, or a valid declared row count differing from the
+  indexed interval is `invalid_page_index`. These rules determine precedence for these header/index
+  failures; §10's allowance for independent faults does not override them.
 - <a id="check-6"></a>[CHECK-6] A part's bytes are one immutable object (COMMIT-2), and a reader MUST NOT combine bytes of two
   versions of a part: in particular, metadata it keeps from a part (its footer, page indexes, the outcome of
   its checks) MUST NOT be used with the bytes of a replacement, even one of the same size. The storage layer
