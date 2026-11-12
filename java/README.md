@@ -358,7 +358,7 @@ listed below remain. The correspondence, Go (package `seekparquet`) to Java (pac
 | `ColumnView.Present, Kind, Len, IsNull, Value, Boolean ... Double, Int96, Bytes` | `BatchColumn.isPresent, type, size, isNull, value, getBoolean ... getDouble(Bits), getInt96, byteLength, bytes, copyBytes` |
 | `Value` (opaque; `Absent`, `IsNull`, `Kind`, typed accessors), `Int96 [3]uint32` | sealed `Value` records (`Absent`, `Null`, `Bool`, `Int32`, `Int64`, `Int96(word0, word1, word2)`, `Float32`, `Float64`, `ByteArray`, `FixedLenByteArray`) |
 | `ReadStats` (mutable, reset per call), `Add` | `ReadStats` (immutable snapshot to a consumer), `plus` |
-| `Dataset.Verify(ctx)`, `Columns(ctx, part)`, `BuildListIndex(ctx, options)`, `Close()` | `verify(ReadOptions)`, `columns(part, ReadOptions)`, `buildListIndex(options, Cancellation)`, `close()` |
+| `Dataset.Verify(ctx, st)`, `Columns(ctx, part)`, `BuildListIndex(ctx, options)`, `Close()` | `verify(ReadOptions)`, `columns(part, ReadOptions)`, `buildListIndex(options, Cancellation)`, `close()` |
 | `Dataset.Metadata()` | `manifest()`, `rowCount()` |
 | `ParseManifest(raw, Limits)` | `Manifest.parse(raw, Limits)` |
 | `Column{Name, Group, Type, Length, Logical, Repetition, Key}` | `Column(name, type, typeLength, logicalType, repetition, key)` |

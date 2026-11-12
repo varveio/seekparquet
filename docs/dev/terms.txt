@@ -1,0 +1,62 @@
+# Terminology lint for scripts/docs/check_docs.py.
+#
+# "scope:" lines list the files the lint applies to (a trailing / is a
+# directory). Every other line is a denied term, a case-insensitive regular
+# expression matched as a whole word outside code, then "=>" and what to
+# write instead. A line containing "terms: ok" (for example in an HTML
+# comment) is exempt, for quoting the term itself. The full table is in
+# docs/dev/docs.md, which quotes the denied terms and so is not in scope.
+#
+# Pages enter the scope as they are rewritten; wave 2 adds the reading and
+# operating guides and the language READMEs.
+
+scope: README.md
+scope: docs/README.md
+scope: docs/concepts.md
+scope: docs/guides/
+scope: docs/reference/compatibility.md
+scope: spec/IMPLEMENTING.md
+scope: conformance/README.md
+scope: conformance/MAINTAINING.md
+
+# Spelling: American.
+behaviour(s)? => behavior (American spelling)
+normalis(e|es|ed|ing|ation) => normalize (American spelling)
+summaris(e|es|ed|ing) => summarize (American spelling)
+recognis(e|es|ed|ing) => recognize (American spelling)
+organis(e|es|ed|ing|ation) => organize (American spelling)
+optimis(e|es|ed|ing|ation) => optimize (American spelling)
+minimis(e|es|ed|ing) => minimize (American spelling)
+serialis(e|es|ed|ing|ation) => serialize (American spelling)
+colour(s)? => color (American spelling)
+licence => license (American spelling)
+catalogue => catalog (American spelling)
+artefact(s)? => artifact (American spelling)
+centre => center (American spelling)
+
+# Versions.
+draft 1 => "draft revision 1"
+draft\.1 => "draft revision 1"
+
+# Keys and groups.
+unique mode => "unique keys"
+grouped mode => "repeated keys"
+repeated-key mode => "repeated keys"
+point quer(y|ies) => "lookup" (Get)
+continuation token(s)? => "cursor token"
+key index => "key page index"
+page-index => "page index" (no hyphen)
+slash listing index => "list index"
+boundary index => "list index"
+first visit => "cold" (first operation on a fresh Dataset)
+revisit => "warm" (repeated on the same Dataset)
+round trip(s)? => "round" (one dependent chain of requests)
+footer window => "tail read"
+metadata prefetch => "tail read"
+
+# History belongs in changelogs.
+previously => no history in docs; the changelog holds it
+no longer => no history in docs; the changelog holds it
+
+# Claims need numbers.
+blazing(ly)? => give a number with a receipt, or nothing

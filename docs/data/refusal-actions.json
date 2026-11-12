@@ -1,0 +1,87 @@
+{
+  "description": "What to do about each refusal and unsupported code: the usual cause and the action, for docs/reference/refusal-codes.md and docs/guides/troubleshooting.md. The codes, meanings, requirements and detection stages come from spec/refusal-codes.json. go/internal/tools/docgen fails when a code there has no entry here, or the reverse.",
+  "refusals": {
+    "no_manifest": {
+      "cause": "The path is not a dataset root, or the producer has not committed the dataset yet: the manifest is the last file written (COMMIT-1).",
+      "action": "Check the path points at the directory or prefix that holds manifest.json. If a producer is still writing, wait for its commit."
+    },
+    "invalid_manifest": {
+      "cause": "A hand-written or hand-edited manifest: a missing or misspelled member, unpadded or URL-safe base64 in a key bound, a part path outside the root, part bounds out of order or overlapping.",
+      "action": "Check the manifest against spec/manifest.schema.json, then the rules of §3. The error detail may identify a member or describe a manifest-wide parsing problem."
+    },
+    "unsupported_version": {
+      "cause": "The dataset was written for a different draft revision or format version than this reader supports.",
+      "action": "Use a reader release that supports the dataset's version pair, or rewrite the dataset with a producer of this reader's version."
+    },
+    "missing_part": {
+      "cause": "A part was deleted or never published, or the manifest names a path that differs from the file (case, directory).",
+      "action": "Restore the part, or rewrite the dataset. A producer must make every part durable before it commits the manifest (COMMIT-1)."
+    },
+    "part_mismatch": {
+      "cause": "A part was replaced or rewritten after the manifest was committed, or the producer recorded the size or row count before the file was finished.",
+      "action": "Treat the dataset as damaged and rewrite it. Parts are immutable once committed (COMMIT-2); a producer records each part's size and rows from the sealed file."
+    },
+    "invalid_footer": {
+      "cause": "A truncated or partially copied part, a file that is not Parquet, or a writer that puts column chunks in other files (file_path).",
+      "action": "Compare the part's size and checksum with the source. Copy parts whole and only after they are complete."
+    },
+    "stamp_mismatch": {
+      "cause": "The part lacks the five seekparquet.* footer stamps or disagrees with the manifest. pyarrow drops them when called with store_schema=False.",
+      "action": "Write the stamps into the part's footer key-value metadata (STAMP-1), exactly as the manifest states the version, schema id and key. See the producing guide."
+    },
+    "invalid_key_column": {
+      "cause": "The key column is nullable, not BYTE_ARRAY, carries an annotation other than STRING, or lacks TYPE_ORDER. DuckDB's COPY TO writes the key OPTIONAL.",
+      "action": "Declare the key a non-nullable binary or string column (Parquet REQUIRED BYTE_ARRAY) with column_orders set (KEY-1, KEY-5)."
+    },
+    "inconsistent_column": {
+      "cause": "Parts written with different schemas: a column changed type, nullability or nesting between parts.",
+      "action": "Write every part with one schema. A part may omit a column (COL-2), but a column it has must match the other parts."
+    },
+    "missing_sorting_columns": {
+      "cause": "The writer was not told the rows are sorted, so it wrote no sorting_columns, or wrote the key descending or not first.",
+      "action": "Declare the key as the first sorting column, ascending, on every non-empty row group (RG-1). In pyarrow: sorting_columns=[pq.SortingColumn(i)]."
+    },
+    "missing_page_index": {
+      "cause": "The writer did not write a page index. pyarrow writes none unless called with write_page_index=True; some writers drop the ColumnIndex for very long keys.",
+      "action": "Enable the page index for the key column (RG-2). In pyarrow: write_page_index=True."
+    },
+    "invalid_page_index": {
+      "cause": "A writer that shortens page bounds incorrectly (for example keys beginning with 0xFF bytes), or a page index edited or damaged after writing.",
+      "action": "Rewrite the part with a writer whose bounds hold every key of the page (RG-5). Validate at the profile level to detect invalid key-page bounds; validation stops when it encounters a fault."
+    },
+    "invalid_key": {
+      "cause": "An empty key, or bytes that are not UTF-8 in a key column annotated STRING.",
+      "action": "Drop or encode empty keys before writing (KEY-2). Store keys that are not UTF-8 in an unannotated binary key column (KEY-6)."
+    },
+    "key_order": {
+      "cause": "Rows sorted as signed bytes, by a string collation or locale, or by UTF-16 code units; or duplicate keys in a dataset whose manifest declares keys unique.",
+      "action": "Sort keys by unsigned byte order (KEY-3), and declare key.unique false when keys repeat."
+    },
+    "invalid_parquet": {
+      "cause": "A damaged page: bit rot, a bad copy, or a writer bug in compression or encoding.",
+      "action": "Rewrite or restore the part. Validate at the full level to check all stored columns. A failed run reports the fault encountered, not every damaged page."
+    },
+    "bounds_mismatch": {
+      "cause": "The manifest's min_key or max_key was taken from intended bounds or from shortened page index bounds, not from the part's actual first and last keys.",
+      "action": "Write the manifest's bounds from the first and last keys actually written to each part (PART-3)."
+    },
+    "digest_mismatch": {
+      "cause": "A part changed after its digest was recorded, or the digest was computed over different bytes.",
+      "action": "Treat the part as damaged and restore or rewrite it. Compute the digest over the sealed file's bytes."
+    }
+  },
+  "unsupported": {
+    "unsupported_encoding": {
+      "cause": "A codec or encoding outside what this reader decodes, such as BROTLI in the Java reader.",
+      "action": "Inspect the error detail to identify the unsupported codec or encoding, then rewrite the affected column using a supported codec and encoding, preferably the ENC-1 baseline. An unprojected value column’s unsupported encoding or codec does not itself block the request."
+    },
+    "unsupported_projection": {
+      "cause": "The request projects a nested or repeated column.",
+      "action": "Project only top-level, non-repeated columns (COL-3), or read the part with a general Parquet reader."
+    },
+    "unsupported_encryption": {
+      "cause": "The part uses Parquet modular encryption.",
+      "action": "Read the part with a Parquet reader that decrypts, or write the dataset unencrypted (FILE-2)."
+    }
+  }
+}
