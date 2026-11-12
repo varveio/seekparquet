@@ -2,11 +2,11 @@
 
 # Limits and caches
 
-Every resource a dataset can make the reader use is bounded by a setting you choose when you open the dataset.
+These settings bound specific input sizes, decoding estimates, retained indexes and lookup row counts. They do not impose an overall memory or open-resource budget; also bound result sizes, dataset lifetime and concurrency.
 A **limit** fails the operation that exceeds it with a limit error: Go `*LimitError`, which wraps `ErrLimitExceeded`, or Java `LimitExceededException`.
 A **cache budget** never fails an operation; past it, the reader stops keeping what it loads.
 Exceeding a limit is a policy of yours or a capacity of the reader, never a refusal of the data ([CHECK-5](../../spec/format-1.md#check-5)).
-A zero setting takes its default; a negative setting is an invalid request when the dataset is opened.
+A zero setting takes its default. Negative settings are rejected when Go opens the dataset or Java builds the Limits.
 
 What to do when an operation exceeds one: [troubleshooting](../guides/troubleshooting.md#limits).
 
@@ -39,7 +39,7 @@ These are capacities of the reader, not settings. Exceeding one is reported like
 
 ## Each setting
 
-The text below is the Go field comment; the Java method's Javadoc says the same of Java.
+The descriptions below are Go’s accounting rules. Java has the same setting names and numeric defaults, but uses different decoding-memory estimates and may reject different pages. In particular, Java’s default PageMemory can reject a binary dictionary within PageBytes and PageValues.
 
 ### `ManifestBytes`
 

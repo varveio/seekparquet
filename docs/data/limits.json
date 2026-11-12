@@ -20,7 +20,7 @@
         {"go": "PageValues", "java": "pageValues", "kind": "limit", "unit": "count",
          "action": "Raise it if you trust the data; it also raises the default PageMemory. Producers should keep pages near 1,024 rows (GEO-1)."},
         {"go": "PageMemory", "java": "pageMemory", "kind": "limit", "unit": "bytes", "derived": true,
-         "action": "You set it below its default to bound decoding memory. Raise it, or lower concurrency instead, since every concurrent read decodes its own pages."},
+         "action": "The page’s decoding estimate exceeds PageMemory. Raise the limit for trusted data if sufficient memory is available, or rewrite the data with smaller pages. Lowering concurrency reduces aggregate memory use but does not make this page pass the limit."},
         {"go": "IndexMemory", "java": "indexMemory", "kind": "limit", "unit": "bytes",
          "action": "The Dataset keeps every key page index it loads. Raise it, open fewer parts per Dataset, or reopen the Dataset to drop what it retains."},
         {"go": "OffsetIndexMemory", "java": "offsetIndexMemory", "kind": "cache", "unit": "bytes",

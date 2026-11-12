@@ -7,7 +7,7 @@
     },
     "invalid_manifest": {
       "cause": "A hand-written or hand-edited manifest: a missing or misspelled member, unpadded or URL-safe base64 in a key bound, a part path outside the root, part bounds out of order or overlapping.",
-      "action": "Check the manifest against spec/manifest.schema.json, then the rules of §3. The error's detail names the member."
+      "action": "Check the manifest against spec/manifest.schema.json, then the rules of §3. The error detail may identify a member or describe a manifest-wide parsing problem."
     },
     "unsupported_version": {
       "cause": "The dataset was written for a different draft revision or format version than this reader supports.",
@@ -39,7 +39,7 @@
     },
     "missing_sorting_columns": {
       "cause": "The writer was not told the rows are sorted, so it wrote no sorting_columns, or wrote the key descending or not first.",
-      "action": "Declare the key as the first sorting column, ascending, on every row group (RG-1). In pyarrow: sorting_columns=[pq.SortingColumn(i)]."
+      "action": "Declare the key as the first sorting column, ascending, on every non-empty row group (RG-1). In pyarrow: sorting_columns=[pq.SortingColumn(i)]."
     },
     "missing_page_index": {
       "cause": "The writer did not write a page index. pyarrow writes none unless called with write_page_index=True; some writers drop the ColumnIndex for very long keys.",
@@ -47,7 +47,7 @@
     },
     "invalid_page_index": {
       "cause": "A writer that shortens page bounds incorrectly (for example keys beginning with 0xFF bytes), or a page index edited or damaged after writing.",
-      "action": "Rewrite the part with a writer whose bounds hold every key of the page (RG-5). Validate at the profile level to find every such page."
+      "action": "Rewrite the part with a writer whose bounds hold every key of the page (RG-5). Validate at the profile level to detect invalid key-page bounds; validation stops when it encounters a fault."
     },
     "invalid_key": {
       "cause": "An empty key, or bytes that are not UTF-8 in a key column annotated STRING.",
@@ -59,7 +59,7 @@
     },
     "invalid_parquet": {
       "cause": "A damaged page: bit rot, a bad copy, or a writer bug in compression or encoding.",
-      "action": "Rewrite or restore the part. Validate at the full level to find every damaged page; reads report only the pages they decode."
+      "action": "Rewrite or restore the part. Validate at the full level to check all stored columns. A failed run reports the fault encountered, not every damaged page."
     },
     "bounds_mismatch": {
       "cause": "The manifest's min_key or max_key was taken from intended bounds or from shortened page index bounds, not from the part's actual first and last keys.",
@@ -73,7 +73,7 @@
   "unsupported": {
     "unsupported_encoding": {
       "cause": "A codec or encoding outside what this reader decodes, such as BROTLI in the Java reader.",
-      "action": "Rewrite the dataset with a baseline codec: UNCOMPRESSED, SNAPPY, GZIP, ZSTD or LZ4_RAW (ENC-1). Requests that do not touch the column still succeed."
+      "action": "Inspect the error detail to identify the unsupported codec or encoding, then rewrite the affected column using a supported codec and encoding, preferably the ENC-1 baseline. An unprojected value column’s unsupported encoding or codec does not itself block the request."
     },
     "unsupported_projection": {
       "cause": "The request projects a nested or repeated column.",

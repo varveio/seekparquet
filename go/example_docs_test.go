@@ -96,10 +96,12 @@ func Example_errors() {
 	var limit *seekparquet.LimitError
 	switch {
 	case errors.As(err, &refusal):
-		// The data breaks the specification. The code is stable.
+		// A fault in the data, or a version pair this reader does not
+		// support (unsupported_version). The code is stable.
 		fmt.Println("refused:", refusal.Code, "in", refusal.Part)
 	case errors.As(err, &unsupported):
-		// Valid data, a feature this reader does not implement.
+		// A feature this reader does not implement. It says nothing
+		// about the validity of the rest of the dataset.
 		fmt.Println("unsupported:", unsupported.Code)
 	case errors.As(err, &limit):
 		// Your Limits, or a capacity of the reader; not a fault of the data.

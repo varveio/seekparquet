@@ -139,11 +139,11 @@ func (g *generator) renderLimits() (string, error) {
 	b.WriteString(header)
 	b.WriteString("# Limits and caches\n\n")
 	b.WriteString(g.pending(page))
-	b.WriteString("Every resource a dataset can make the reader use is bounded by a setting you choose when you open the dataset.\n")
+	b.WriteString("These settings bound specific input sizes, decoding estimates, retained indexes and lookup row counts. They do not impose an overall memory or open-resource budget; also bound result sizes, dataset lifetime and concurrency.\n")
 	b.WriteString("A **limit** fails the operation that exceeds it with a limit error: Go `*LimitError`, which wraps `ErrLimitExceeded`, or Java `LimitExceededException`.\n")
 	b.WriteString("A **cache budget** never fails an operation; past it, the reader stops keeping what it loads.\n")
 	fmt.Fprintf(&b, "Exceeding a limit is a policy of yours or a capacity of the reader, never a refusal of the data (%s).\n", reqLinks(page, []string{"CHECK-5"}))
-	b.WriteString("A zero setting takes its default; a negative setting is an invalid request when the dataset is opened.\n\n")
+	b.WriteString("A zero setting takes its default. Negative settings are rejected when Go opens the dataset or Java builds the Limits.\n\n")
 	fmt.Fprintf(&b, "What to do when an operation exceeds one: [troubleshooting](%s#limits).\n\n", rel(page, "docs/guides/troubleshooting.md"))
 	for _, s := range g.limits.Structs {
 		fmt.Fprintf(&b, "## Settings\n\nGo sets them in `%s`; Java with `%s` methods of the same names.\n\n", s.Go, s.Java)
@@ -167,7 +167,7 @@ func (g *generator) renderLimits() (string, error) {
 		for _, f := range g.limits.Fixed {
 			fmt.Fprintf(&b, "| `%s` | `%s` | %s |\n", f.Go, f.Java, cell(f.Value))
 		}
-		b.WriteString("\n## Each setting\n\nThe text below is the Go field comment; the Java method's Javadoc says the same of Java.\n\n")
+		b.WriteString("\n## Each setting\n\nThe descriptions below are Go’s accounting rules. Java has the same setting names and numeric defaults, but uses different decoding-memory estimates and may reject different pages. In particular, Java’s default PageMemory can reject a binary dictionary within PageBytes and PageValues.\n\n")
 		b.WriteString(details.String())
 	}
 	return strings.TrimRight(b.String(), "\n") + "\n", nil
@@ -180,7 +180,7 @@ func (g *generator) renderReadStats() (string, error) {
 	b.WriteString(header)
 	b.WriteString("# Read statistics\n\n")
 	b.WriteString(g.pending(page))
-	b.WriteString("Every read operation can report what it did. In Go, pass a `*ReadStats` as the operation's statistics argument: it is reset when the operation starts and filled as it runs, whether the operation succeeds or fails.\n")
+	b.WriteString("Go exposes ReadStats for Rows, Get, Scan, List, Dataset.Plan, Plan.Split and Plan.Scan. Java supplies statistics through ReadOptions, including for verify and columns. In Go, pass a `*ReadStats` as the statistics argument: it is reset when the operation starts and filled as it runs, whether the operation succeeds or fails.\n")
 	b.WriteString("In Java, pass a statistics consumer in `ReadOptions`; it receives a `ReadStats` record.\n\n")
 	b.WriteString("The counts describe this reader's access path. They are diagnostics, not part of the format: another reader, or another version of this one, may do the same read with different counts.\n\n")
 	b.WriteString("| Go field | Java component | Meaning |\n|---|---|---|\n")
@@ -236,7 +236,7 @@ func (g *generator) renderRefusalCodes() (string, error) {
 	var b strings.Builder
 	b.WriteString(header)
 	b.WriteString("# Refusal and unsupported codes\n\n")
-	fmt.Fprintf(&b, "When data breaks the [specification](%s), a reader refuses it with one of these codes.\n", rel(page, "spec/format-1.md"))
+	fmt.Fprintf(&b, "A refusal reports a violation of the [specification](%s) or an unsupported dataset version.\n", rel(page, "spec/format-1.md"))
 	fmt.Fprintf(&b, "The codes are stable; the text of an error is not ([§10](%s#10-refusal-codes)).\n", rel(page, "spec/format-1.md"))
 	fmt.Fprintf(&b, "The source of this page is [spec/refusal-codes.json](%s), plus the causes and actions in [docs/data/refusal-actions.json](%s).\n\n", rel(page, "spec/refusal-codes.json"), rel(page, "docs/data/refusal-actions.json"))
 	b.WriteString("\"Detected\" is the latest point at which a reader must detect the fault. A reader may detect it earlier.\n\n")
@@ -244,7 +244,7 @@ func (g *generator) renderRefusalCodes() (string, error) {
 	for _, c := range g.codes.Codes {
 		fmt.Fprintf(&b, "| [`%s`](%s#%s) | %s | %s | %s |\n", c.Code, trouble, c.Code, cell(c.Meaning), stage(c.Detect), cell(g.actions.Refusals[c.Code].Action))
 	}
-	b.WriteString("\n## Unsupported codes\n\nAn unsupported code reports a valid dataset or request that uses a feature the reader does not implement. It is not a refusal of the data.\n\n")
+	b.WriteString("\n## Unsupported codes\n\nAn unsupported code reports a feature the reader does not implement. It does not certify the dataset’s validity; the reader may stop before checking other rules.\n\n")
 	b.WriteString("| Code | Meaning | What to do |\n|---|---|---|\n")
 	for _, c := range g.unsupportedCodes() {
 		fmt.Fprintf(&b, "| [`%s`](%s#%s) | %s | %s |\n", c.Code, trouble, c.Code, cell(c.Meaning), cell(g.actions.Unsupported[c.Code].Action))

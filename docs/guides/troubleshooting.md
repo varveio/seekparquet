@@ -2,7 +2,9 @@
 
 Find your error by its kind and code. Every failure the reader reports is one of four kinds
 ([concepts](../concepts.md#four-kinds-of-error)): a refusal of the data, an unsupported feature, a limit, or
-an error of the environment. Only a refusal says the data is wrong.
+an error of the environment. A refusal reports a fault in the data, or a dataset version pair the reader does
+not support (`unsupported_version`). An unsupported feature does not certify that the rest of the dataset is
+valid. Limits and errors of the environment establish no fault in the data.
 
 ## Classify the error
 
@@ -25,10 +27,12 @@ var unsupported *seekparquet.UnsupportedError
 var limit *seekparquet.LimitError
 switch {
 case errors.As(err, &refusal):
-	// The data breaks the specification. The code is stable.
+	// A fault in the data, or a version pair this reader does not
+	// support (unsupported_version). The code is stable.
 	fmt.Println("refused:", refusal.Code, "in", refusal.Part)
 case errors.As(err, &unsupported):
-	// Valid data, a feature this reader does not implement.
+	// A feature this reader does not implement. It says nothing
+	// about the validity of the rest of the dataset.
 	fmt.Println("unsupported:", unsupported.Code)
 case errors.As(err, &limit):
 	// Your Limits, or a capacity of the reader; not a fault of the data.
@@ -53,10 +57,12 @@ fmt.Println("code:", seekparquet.RefusalCodeOf(err))
 try (Dataset dataset = Dataset.open(dir)) {
     dataset.rows(Query.builder(Span.all()).limit(1000).build());
 } catch (RefusalException e) {
-    // The data breaks the specification. The code is stable.
+    // A fault in the data, or a version pair this reader does not
+    // support (unsupported_version). The code is stable.
     out.println("refused: " + e.code().id() + " in " + e.part().orElse("the manifest"));
 } catch (UnsupportedFeatureException e) {
-    // Valid data, a feature this reader does not implement.
+    // A feature this reader does not implement. It says nothing
+    // about the validity of the rest of the dataset.
     out.println("unsupported: " + e.code().id());
 } catch (LimitExceededException e) {
     // Your Limits, or a capacity of the reader; not a fault of the data.
@@ -66,7 +72,8 @@ try (Dataset dataset = Dataset.open(dir)) {
     out.println("storage: " + e.getMessage());
 }
 // IllegalArgumentException: an invalid request.
-// IllegalStateException: the dataset is closed.
+// IllegalStateException: the dataset is closed, or closed from inside its own request.
+// CancellationException also ends a read that close() interrupts.
 // CancellationException: the read was cancelled.
 ```
 <!-- /snippet -->
@@ -75,9 +82,10 @@ In Go, `RefusalCodeOf(err)` returns the code of a refusal and `""` for anything 
 seekparquet.ErrLimitExceeded)` matches every limit error. In Java, every failure the data, a limit or storage
 causes is a `SeekParquetException`, a sealed class whose four subclasses are the four kinds above.
 
-A refusal of a part is kept: once a read refuses a part, every later read that touches it fails the same way,
-for as long as the dataset is open ([CHECK-1](../../spec/format-1.md#check-1)). Reopening does not help;
-fixing the data does.
+A refusal or unsupported outcome from a part's first-touch checks is retained while the dataset is open: every
+later request that touches the part ends the same way ([CHECK-1](../../spec/format-1.md#check-1)). A failure in
+page data ends that request; another request that avoids the faulty data may succeed
+([CHECK-2](../../spec/format-1.md#check-2)).
 
 ## Refusal codes
 
@@ -97,7 +105,7 @@ The dataset root has no manifest.json. Detected at the latest on open ([LAYOUT-1
 The manifest is not valid: unparseable JSON, duplicate member names (including inside extensions), a missing, extra or ill-typed member, an extensions member that is not an object, a wrong format name, malformed base64, a part with no rows, or a part path that breaks PART-1. Also part bounds in the manifest that are not ascending and disjoint (PART-4). A missing or malformed key declaration is also invalid_manifest. Detected at the latest on open ([MAN-1](../../spec/format-1.md#man-1), [MAN-2](../../spec/format-1.md#man-2), [MAN-3](../../spec/format-1.md#man-3), [MAN-4](../../spec/format-1.md#man-4), [PART-1](../../spec/format-1.md#part-1), [PART-2](../../spec/format-1.md#part-2), [PART-3](../../spec/format-1.md#part-3), [MAN-6](../../spec/format-1.md#man-6), [MAN-7](../../spec/format-1.md#man-7), [PART-4](../../spec/format-1.md#part-4), [MAN-8](../../spec/format-1.md#man-8), [EXT-4](../../spec/format-1.md#ext-4)).
 
 - **Usual cause:** A hand-written or hand-edited manifest: a missing or misspelled member, unpadded or URL-safe base64 in a key bound, a part path outside the root, part bounds out of order or overlapping.
-- **What to do:** Check the manifest against spec/manifest.schema.json, then the rules of §3. The error's detail names the member.
+- **What to do:** Check the manifest against spec/manifest.schema.json, then the rules of §3. The error detail may identify a member or describe a manifest-wide parsing problem.
 
 ### `unsupported_version`
 
@@ -153,7 +161,7 @@ A column appears in several parts with different physical types, repetition or n
 A non-empty row group does not declare key ascending as its first sorting column. Detected at the latest on first touch of the part ([RG-1](../../spec/format-1.md#rg-1)).
 
 - **Usual cause:** The writer was not told the rows are sorted, so it wrote no sorting_columns, or wrote the key descending or not first.
-- **What to do:** Declare the key as the first sorting column, ascending, on every row group (RG-1). In pyarrow: sorting_columns=[pq.SortingColumn(i)].
+- **What to do:** Declare the key as the first sorting column, ascending, on every non-empty row group (RG-1). In pyarrow: sorting_columns=[pq.SortingColumn(i)].
 
 ### `missing_page_index`
 
@@ -167,7 +175,7 @@ A non-empty row group's key column lacks a ColumnIndex or an OffsetIndex. Detect
 A key column's page index is inconsistent with itself or with the physical pages: list lengths differ, a null page, an empty list, row positions or locations out of range, an entry that does not locate exactly one data page, a page whose row count differs from its indexed interval, a bound that is not valid UTF-8 where KEY-6 applies, or decoded keys outside the page's bounds. Detected at the latest on read ([RG-3](../../spec/format-1.md#rg-3), [RG-4](../../spec/format-1.md#rg-4), [RG-5](../../spec/format-1.md#rg-5), [RG-7](../../spec/format-1.md#rg-7), [KEY-6](../../spec/format-1.md#key-6)).
 
 - **Usual cause:** A writer that shortens page bounds incorrectly (for example keys beginning with 0xFF bytes), or a page index edited or damaged after writing.
-- **What to do:** Rewrite the part with a writer whose bounds hold every key of the page (RG-5). Validate at the profile level to find every such page.
+- **What to do:** Rewrite the part with a writer whose bounds hold every key of the page (RG-5). Validate at the profile level to detect invalid key-page bounds; validation stops when it encounters a fault.
 
 ### `invalid_key`
 
@@ -188,7 +196,7 @@ Keys decrease within a page or across pages, row groups or parts, or equal keys 
 Corruption in the Parquet data itself: a page that does not decompress or decode, a malformed dictionary, or a value count that does not match the rows. Detected at the latest on validation, full level ([CHECK-5](../../spec/format-1.md#check-5)).
 
 - **Usual cause:** A damaged page: bit rot, a bad copy, or a writer bug in compression or encoding.
-- **What to do:** Rewrite or restore the part. Validate at the full level to find every damaged page; reads report only the pages they decode.
+- **What to do:** Rewrite or restore the part. Validate at the full level to check all stored columns. A failed run reports the fault encountered, not every damaged page.
 
 ### `bounds_mismatch`
 
@@ -207,8 +215,8 @@ A part's sha256 differs from the manifest's. Detected at the latest on validatio
 
 ## Unsupported codes
 
-The data is valid. This reader does not implement a feature it uses. Requests that do not need the feature
-still succeed.
+This reader encountered a feature it cannot handle. That outcome does not certify the dataset's validity.
+The feature alone does not block a request that does not need it.
 
 <!-- generated: troubleshooting-unsupported -->
 ### `unsupported_encoding`
@@ -216,7 +224,7 @@ still succeed.
 A codec or encoding outside what the reader implements (never one of the ENC-1 baseline; for example BROTLI).
 
 - **Usual cause:** A codec or encoding outside what this reader decodes, such as BROTLI in the Java reader.
-- **What to do:** Rewrite the dataset with a baseline codec: UNCOMPRESSED, SNAPPY, GZIP, ZSTD or LZ4_RAW (ENC-1). Requests that do not touch the column still succeed.
+- **What to do:** Inspect the error detail to identify the unsupported codec or encoding, then rewrite the affected column using a supported codec and encoding, preferably the ENC-1 baseline. An unprojected value column’s unsupported encoding or codec does not itself block the request.
 
 ### `unsupported_projection`
 
@@ -288,7 +296,7 @@ Raise it if you trust the data; it also raises the default PageMemory. Producers
 
 Go `LimitPageMemory`, Java `LimitName.PAGE_MEMORY`. [Default and meaning](../reference/limits.md#pagememory).
 
-You set it below its default to bound decoding memory. Raise it, or lower concurrency instead, since every concurrent read decodes its own pages.
+The page’s decoding estimate exceeds PageMemory. Raise the limit for trusted data if sufficient memory is available, or rewrite the data with smaller pages. Lowering concurrency reduces aggregate memory use but does not make this page pass the limit.
 
 ### `IndexMemory`
 
@@ -319,8 +327,10 @@ Fixed; it cannot be raised. Split the dataset.
 
 | Error | Meaning | What to do |
 |---|---|---|
-| Go `ErrInvalidRequest`, Java `IllegalArgumentException` | the request is malformed: a result limit that is not positive, a malformed cursor or cursor token, a prefix cursor in a range read, a negative setting in `Limits` ([QUERY-1](../../spec/format-1.md#query-1)) | fix the request; nothing was read |
-| Go `ErrClosed`, Java `IllegalStateException` | the dataset was closed before or during the read | do not use a dataset after `Close` |
+| Go `ErrInvalidRequest`, Java `IllegalArgumentException` | the request is malformed: a result limit that is not positive, a malformed cursor or cursor token, a prefix cursor in a range read ([QUERY-1](../../spec/format-1.md#query-1)); or a negative `Limits` setting, which Go rejects when the dataset is opened and Java when `Limits.Builder.build()` runs | fix the request; nothing was read |
+| Go `ErrClosed`, Java `IllegalStateException` | the dataset was already closed | do not use a dataset after `Close` |
+| Go `ErrClosed` (wrapping the read's error), Java `CancellationException` | `Close` was called while the read ran, and ended it | close only after the reads you need have returned |
+| Java `IllegalStateException` from `close()` | `close()` was called from inside one of the dataset's own requests on the same thread, such as a scan visitor; nothing changed | end the request, then close |
 | Go context error, Java `CancellationException` | the read was cancelled or timed out | retry with a longer deadline if needed |
 | Go: the storage's error, wrapped; Java `StorageException` | reading storage failed | retry; this says nothing about the data |
 | Go: an error from `OpenDir` naming the path | the directory does not exist or cannot be opened; a directory without `manifest.json` is the refusal `no_manifest` instead | check the path |
@@ -328,19 +338,25 @@ Fixed; it cannot be raised. Split the dataset.
 
 ## Symptoms
 
-**`Close` never returns.** A scan callback (Go `Scan` function, Java `BatchVisitor`) called `Close`, or
-waits for something that does. `Close` waits for every read in progress, including the scan running the
-callback. Stop the scan by returning Go `Stop` or Java `false`, or by cancelling, and close after it returns.
+**`Close` never returns (Go), or `close()` throws `IllegalStateException` (Java).** Go `Close` waits for every
+read in progress, so calling it from the scan's own callback deadlocks. Java `close()` rejects a call from
+inside one of the dataset's own requests on the same thread. In either language, a callback must not wait for
+another thread that is closing the dataset. End the scan by returning Go `Stop` or Java `false`, or by
+cancelling, then close.
 
-**"Too many open files", or memory growing with use.** An open dataset keeps one open file and one checked
-footer for every part it has touched, until it closes; `Verify` touches every part. Size the process's
+**"Too many open files", or memory growing with use.** Implementation behavior of both readers: an open
+dataset keeps a part open, with its checked footer, for every part it has touched, until it closes; `Verify`
+touches every part. Through Go `OpenDir`, each open part holds one file descriptor. Size the process's
 file-descriptor limit and memory for the most parts one dataset touches.
 
-**A page shorter than the result limit, and more results after it.** A short page does not mean the end. Stop
-when a page is empty.
+**When to stop paging.** The examples continue until an empty page, which is a safe termination rule: the
+format allows a page with fewer entries than the result limit. The current Go and Java readers fill a
+successful page to the result limit unless the query is exhausted.
 
 **A listing returns a common prefix that sorts before my cursor.** That is correct: a common prefix appears
-whenever some key after the cursor rolls up to it ([LIST-5](../../spec/format-1.md#list-5)). Resume from a
+whenever a candidate row after the cursor rolls up to it ([LIST-5](../../spec/format-1.md#list-5)). It then
+carries an exact row only if the first such candidate row has the prefix as its key
+([LIST-8](../../spec/format-1.md#list-8)). Resume from a
 common prefix with its prefix cursor, which skips everything under it.
 
 **A value is neither a value nor null.** It is absent: the row's part does not have that column
@@ -348,4 +364,5 @@ common prefix with its prefix cursor, which skips everything under it.
 `Value.Absent`.
 
 **A read succeeded on a dataset that validation fails.** Reads check only what they decode
-([CHECK-4](../../spec/format-1.md#check-4)). [Validate](validating.md) a dataset to check all of it.
+([CHECK-4](../../spec/format-1.md#check-4)). [Validation](validating.md) checks the scope of the level you ask
+for.
