@@ -33,7 +33,19 @@ Questions go in GitHub issues for now.
   python3 conformance/harness/run.py --adapter "go -C go run ./internal/cmd/conformance"
   ```
 
-Changing fixture bytes needs a reason in the pull request; see [conformance/README.md](conformance/README.md).
+Changing fixture bytes needs a reason in the pull request; see [conformance/MAINTAINING.md](conformance/MAINTAINING.md).
+
+## Documentation
+
+Documentation lives in [docs/](docs/README.md), beside the code it describes. Reference pages, parts of the
+guides, and every code snippet are generated from the code and checked in CI. Before changing a page, read
+[how the documentation works](docs/dev/docs.md): where each kind of content goes, how to regenerate, and the
+style rules. Check your change with:
+
+```bash
+go -C go run ./internal/tools/docgen -w
+python3 scripts/docs/check_docs.py
+```
 
 ## Continuous integration
 

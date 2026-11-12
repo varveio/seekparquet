@@ -45,7 +45,7 @@ class PolicyTests(unittest.TestCase):
 
     def test_gate_rejects_every_missing_failed_cancelled_required_job(self):
         outputs = {k: 'true' for k in ('go', 'java', 'conformance', 'macos')}
-        jobs = ['go-lint', 'go-race', 'go-windows', 'go-macos', 'java', 'java-windows', 'conformance']
+        jobs = ['go-lint', 'go-race', 'go-windows', 'go-macos', 'java', 'java-windows', 'conformance', 'docs']
         needs = {'changes': {'result': 'success', 'outputs': outputs}}
         needs.update({job: {'result': 'success'} for job in jobs})
         policy.gate(needs)
@@ -68,7 +68,11 @@ class PolicyTests(unittest.TestCase):
         outputs = {k: 'false' for k in ('go', 'java', 'conformance', 'macos')}
         needs = {'changes': {'result': 'success', 'outputs': outputs}}
         needs.update({job: {'result': 'skipped'} for job in ('go-lint', 'go-race', 'go-windows', 'go-macos', 'java', 'java-windows', 'conformance')})
+        needs['docs'] = {'result': 'success'}
         policy.gate(needs)
+        needs['docs'] = {'result': 'skipped'}
+        with self.assertRaises(ValueError):
+            policy.gate(needs)
 
     def test_windows_vet_and_tests_are_separate_steps(self):
         workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/ci.yml').read_text()

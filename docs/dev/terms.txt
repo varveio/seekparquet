@@ -5,7 +5,7 @@
 # expression matched as a whole word outside code, then "=>" and what to
 # write instead. A line containing "terms: ok" (for example in an HTML
 # comment) is exempt, for quoting the term itself. The full table is in
-# docs/dev/docs.md.
+# docs/dev/docs.md, which quotes the denied terms and so is not in scope.
 #
 # Pages enter the scope as they are rewritten; wave 2 adds the reading and
 # operating guides and the language READMEs.
@@ -15,7 +15,6 @@ scope: docs/README.md
 scope: docs/concepts.md
 scope: docs/guides/
 scope: docs/reference/compatibility.md
-scope: docs/dev/docs.md
 scope: spec/IMPLEMENTING.md
 scope: conformance/README.md
 scope: conformance/MAINTAINING.md

@@ -57,7 +57,8 @@ def gate(needs):
     expected = {'go-lint': outputs['go'], 'go-race': outputs['go'],
                 'go-windows': outputs['go'], 'go-macos': outputs['macos'],
                 'java': outputs['java'], 'java-windows': outputs['java'],
-                'conformance': outputs['conformance']}
+                'conformance': outputs['conformance'],
+                'docs': 'true'}  # always selected: cheap, and generated docs follow code
     if set(needs) != set(expected) | {'changes'}:
         raise ValueError('gate dependencies differ from policy')
     failures = []
