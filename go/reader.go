@@ -494,7 +494,7 @@ func (r *reader) checkParts(ctx context.Context, st *ReadStats) error {
 // last page it checked once is not checked again.
 func (r *reader) verify(ctx context.Context, st *ReadStats) error {
 	log := pageLog{unique: r.key.Unique}
-	if err := r.verifyParts(ctx, log.pageMemo(), st); err != nil {
+	if err := r.verifyParts(ctx, log.pageMemo(), st, probeVerify); err != nil {
 		return err
 	}
 	for i, p := range r.parts {
@@ -551,7 +551,7 @@ func (pre *fetchedPart) close() {
 // before it), and keeping its verdict, runs in manifest order as its fetch
 // completes, and the fetch is released then: the window bounds the tails
 // and pages held. The first failure stops it.
-func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats) error {
+func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats, want probeSet) error {
 	n := len(r.parts)
 	window := max(1, r.policy.Concurrency)
 	fetched := make([]*fetchedPart, n)
@@ -573,7 +573,7 @@ func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats)
 	launch := func(i int) {
 		p := r.parts[i]
 		check := r.fetch != nil && !p.ready.Load() && p.flags.Load()&partRefused == 0
-		probes := !r.local && p.ready.Load() && r.wantsProbes(p)
+		probes := want != probeNone && !r.local && p.ready.Load() && r.wantsProbes(p)
 		if !check && !probes {
 			return
 		}
@@ -582,9 +582,9 @@ func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats)
 		wg.Go(func() {
 			defer close(done[i])
 			if check {
-				r.prefetchPart(wctx, i, pre)
+				r.prefetchPart(wctx, i, pre, want)
 			} else { // a checked part's pages go to the request's memo
-				_, _ = r.fetchProbes(wctx, p, p.file, p.size, p.footer, p.retainedBytes, false, memo, &pre.st)
+				_, _ = r.fetchProbes(wctx, p, p.file, p.size, p.footer, p.retainedBytes, false, want, memo, &pre.st)
 			}
 		})
 	}
@@ -621,7 +621,7 @@ func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats)
 // its manifest entry, then reads its head with the key pages Verify will
 // decode (fetchProbes) and judges the head as readFooter would have,
 // filling pre. A local read keeps nothing of the part's end.
-func (r *reader) prefetchPart(ctx context.Context, i int, pre *fetchedPart) {
+func (r *reader) prefetchPart(ctx context.Context, i int, pre *fetchedPart, want probeSet) {
 	p := r.parts[i]
 	in, err := r.fetch(ctx, i, &pre.st, !r.local)
 	if err != nil {
@@ -640,7 +640,7 @@ func (r *reader) prefetchPart(ctx context.Context, i int, pre *fetchedPart) {
 		}
 		return tail.data[off-tail.off : off-tail.off+length]
 	}
-	head, headErr := r.fetchProbes(ctx, p, in.file, in.size, in.footer, lookup, tail.headDeferred, &pre.memo, &pre.st)
+	head, headErr := r.fetchProbes(ctx, p, in.file, in.size, in.footer, lookup, tail.headDeferred, want, &pre.memo, &pre.st)
 	if tail.headDeferred && headErr == nil {
 		at := storageReader{r: bind(ctx, in.file), op: operationOf(ctx), st: &pre.st, name: in.name, unreported: unreported(ctx, reportsIO(in.file))}
 		headErr = headVerdict(ctx, in.name, at, in.size, head, tail, nil)
@@ -667,6 +667,18 @@ func (r *reader) wantsProbes(p *part) bool {
 	return false
 }
 
+// probeSet is the key pages fetchProbes reads with a part's head.
+type probeSet uint8
+
+const (
+	// probeNone reads the head alone.
+	probeNone probeSet = iota
+	// probeVerify reads the pages Verify decodes: every row group's first
+	// key page not yet known and, when the part has bounds not yet checked,
+	// its last.
+	probeVerify
+)
+
 // headMergeGap is how far into a part its first key page may begin for
 // Verify to read the head with it in one range.
 const headMergeGap = 64 << 10
@@ -684,7 +696,7 @@ const headMergeGap = 64 << 10
 // an allocation of its own. A page that fails is not kept, and fails when
 // Verify reads it; a failed merged range is followed by an exact 4-byte
 // head read, so that only a failure of the head itself is returned.
-func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, size int64, footer *parquet.File, lookup func(off, length int64) []byte, wantHead bool, memo *pageMemo, st *ReadStats) (head []byte, err error) {
+func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, size int64, footer *parquet.File, lookup func(off, length int64) []byte, wantHead bool, want probeSet, memo *pageMemo, st *ReadStats) (head []byte, err error) {
 	type probe struct{ off, size int64 }
 	var probes []probe
 	leaf, ok := footer.Schema().Lookup(r.key.Column)
@@ -734,14 +746,14 @@ func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, siz
 		return true
 	}
 	for g := range groups {
-		if groups[g].NumRows == 0 || known(g) {
+		if want == probeNone || groups[g].NumRows == 0 || known(g) {
 			continue
 		}
 		if pr, ok := located(g, false); ok {
 			probes = append(probes, pr)
 		}
 	}
-	if p.maxKey != nil && p.flags.Load()&partLastChecked == 0 && lastGroup >= 0 {
+	if want == probeVerify && p.maxKey != nil && p.flags.Load()&partLastChecked == 0 && lastGroup >= 0 {
 		if pr, ok := located(lastGroup, true); ok {
 			probes = append(probes, pr)
 		}

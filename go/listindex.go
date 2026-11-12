@@ -129,6 +129,13 @@ func (d *Dataset) BuildListIndex(ctx context.Context, opt ListIndexOptions) (sta
 	}()
 	built := &listIndex{}
 	var readStats ReadStats
+	// Over a remote Source, the parts are checked together first, and every
+	// key page the build decodes is read ahead in windows (buildWindows).
+	var win *windows
+	if !r.local {
+		_ = r.verifyParts(rctx, new(pageMemo), &readStats, probeNone) // a part that fails is met again below
+		win = rctx.windows()
+	}
 	var previousLast []byte
 	var previousRef groupRef
 	var previousFailed, previousAdmitted bool
@@ -155,6 +162,10 @@ outer:
 				return stats, err
 			}
 			n := min(opt.Workers, len(p.groups)-start)
+			if win != nil {
+				win.release(p.groups[start].start)
+				r.buildWindows(win, groupRef{pi, start})
+			}
 			type result struct {
 				group listGroup
 				pages int64
@@ -297,6 +308,40 @@ func (g *listGroup) add(row int64, key []byte) {
 	g.runs = append(g.runs, b)
 }
 func directory(key []byte) []byte { return key[:bytes.LastIndexByte(key, '/')+1] }
+
+// buildWindows reads ahead, in the build's windows, the key pages of the
+// row groups from g on, in checked parts, up to half of Limits.ReadMemory:
+// the build decodes every one of them. A group whose key column chunk
+// does not lie in its file is left out, for its build to refuse.
+func (r *reader) buildWindows(w *windows, g groupRef) {
+	var exts []extent
+	total, most := int64(0), max(r.limits.ReadMemory/2, r.windowBytes())
+	for ; g.part < len(r.parts) && r.parts[g.part].ready.Load(); g = (groupRef{g.part + 1, 0}) {
+		p := r.parts[g.part]
+		for ; g.index < len(p.groups); g = g.next() {
+			grp := p.groups[g.index]
+			meta := &p.footer.Metadata().RowGroups[grp.physical].Columns[p.key.index].MetaData
+			start, stop, ok := chunkRange(meta)
+			if !ok || stop > p.size {
+				continue
+			}
+			if total > 0 && total+stop-start > most {
+				w.fetch(exts, false)
+				return
+			}
+			total += stop - start
+			end := grp.start + grp.rows
+			if locs := p.planLocs(grp.physical, p.key, start, stop); locs != nil {
+				for _, loc := range locs {
+					exts = append(exts, extent{p, loc.offset, loc.size, end})
+				}
+			} else {
+				exts = append(exts, extent{p, start, stop - start, end})
+			}
+		}
+	}
+	w.fetch(exts, false)
+}
 
 func (r *reader) buildListGroup(ctx context.Context, ref groupRef, opt ListIndexOptions) (g listGroup, pages int64, err error) {
 	g.g = ref

@@ -191,8 +191,7 @@ type ListQuery struct {
 	// SpeculativeRanges bound it, and ReadStats.SpeculativeBytes and
 	// SpeculativeUnusedBytes count it. Its bytes are held, within
 	// Limits.ReadMemory, until the listing passes them or its key scan
-	// ends. A listing with delimiter '/' reads no page ahead when a list
-	// index (Dataset.BuildListIndex) is built.
+	// ends.
 	ReadAhead int
 }
 
@@ -392,12 +391,7 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 	if ahead == 0 {
 		ahead = testListReadAhead
 	}
-	// With a list index built, a '/' listing runs without a read-ahead,
-	// even for a row group the index declines: the index answers its
-	// skips without decoding the pages a read-ahead would predict.
-	if s.listIndex == nil || len(s.listIndex.groups) == 0 || req.Delimiter != '/' {
-		s.ahead = r.newReadAhead(ctx, ahead, req.Limit)
-	}
+	s.ahead = r.newReadAhead(ctx, ahead, req.Limit)
 	var l listing
 	if req.Cursor != nil && req.Cursor.Key != nil {
 		err = s.start(from, false, req.Cursor)

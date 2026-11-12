@@ -188,9 +188,9 @@ func TestListReadAheadRefusals(t *testing.T) {
 	}
 }
 
-// TestListReadAheadListIndex: a '/' listing the list index serves reads no
-// page ahead, and reads what it reads without one; another delimiter,
-// which the index declines, reads ahead as usual.
+// TestListReadAheadListIndex: a '/' listing the list index serves decodes
+// the same pages and skips the same way with read-ahead as without; another
+// delimiter, which the index declines, reads ahead as usual.
 func TestListReadAheadListIndex(t *testing.T) {
 	noTestReadAhead(t)
 	var keys []string
@@ -218,7 +218,7 @@ func TestListReadAheadListIndex(t *testing.T) {
 	if !slices.Equal(entries[0], entries[1]) || len(entries[0]) != 50 {
 		t.Fatalf("%d and %d entries", len(entries[0]), len(entries[1]))
 	}
-	if counts[1] != counts[0] || counts[0].ListIndexSkips == 0 {
+	if decodeCounts(counts[1]) != decodeCounts(counts[0]) || counts[0].ListIndexSkips == 0 || counts[1].ListIndexSkips != counts[0].ListIndexSkips {
 		t.Fatalf("with the index: ReadAhead 8 %+v, without %+v", counts[1], counts[0])
 	}
 }
