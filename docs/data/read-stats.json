@@ -19,6 +19,20 @@
     {"go": "ListIndexDelimiter", "java": "listIndexDelimiter"},
     {"go": "ListIndexMissingGroup", "java": "listIndexMissingGroup"},
     {"go": "ListIndexDensePage", "java": "listIndexDensePage"},
-    {"go": "ListIndexUnsafeRun", "java": "listIndexUnsafeRun"}
+    {"go": "ListIndexUnsafeRun", "java": "listIndexUnsafeRun"},
+    {"go": "SourceBatches", "java": null},
+    {"go": "ScalarFallbackReads", "java": null},
+    {"go": "PhysicalRequests", "java": null},
+    {"go": "PhysicalBytes", "java": null},
+    {"go": "PhysicalRetries", "java": null},
+    {"go": "PhysicalFailures", "java": null},
+    {"go": "PlannedRanges", "java": null},
+    {"go": "PlannedRequests", "java": null},
+    {"go": "PlannedOverReadBytes", "java": null},
+    {"go": "ByteCacheHitBytes", "java": null},
+    {"go": "MetadataHitBytes", "java": null},
+    {"go": "RequestMemoHitBytes", "java": null},
+    {"go": "UnreportedIOCalls", "java": null},
+    {"go": "PeakPhysicalRequests", "java": null}
   ]
 }

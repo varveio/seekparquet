@@ -12,8 +12,11 @@ A dash means the language has no counterpart. Names are checked against the code
 | Open a local directory | `OpenDir` | `Dataset.open` |  |
 | Open through custom storage | `OpenDataset` | `Dataset.open` | Java takes a storage.DatasetStorage. |
 | Open options | `OpenOptions` | `OpenOptions` |  |
+| Read scheduling policy | `ReadPolicy` | — | Go sets OpenOptions.Read; Concurrency bounds logical ranges, not physical requests. Java has no counterpart for the policy struct yet. |
+| Open statistics | `OpenOptions.OpenStats` | — | Go only; a *ReadStats reset on entry and filled on every exit, including manifest I/O. The Dataset does not retain it. |
 | Resource limits | `Limits` | `Limits` | Java builds them with Limits.builder(). See the limits reference. |
-| Check every part now | `Dataset.Verify` | `Dataset.verify` |  |
+| Retained raw page-index cache budget | `Limits.PageIndexCacheMemory` | — | Go only; excludes footers and decoded indexes and does not bound overall metadata. |
+| Check every part now | `Dataset.Verify` | `Dataset.verify` | Go: Verify(ctx, stats), with a *ReadStats or nil. Java: verify(ReadOptions). |
 | Manifest metadata | `Dataset.Metadata` | `Dataset.manifest` |  |
 | Dataset row total | — | `Dataset.rowCount` | In Go, sum PartInfo.Rows over Metadata().Parts. |
 | A part's columns | `Dataset.Columns` | `Dataset.columns` |  |
@@ -80,13 +83,14 @@ A dash means the language has no counterpart. Names are checked against the code
 | Concept | Go | Java | Note |
 |---|---|---|---|
 | Per-operation counters | `ReadStats` | `ReadStats` | Go fills a *ReadStats argument; Java passes a ReadStats to the consumer in ReadOptions. See the read statistics reference. |
+| Batch, physical I/O and byte-reuse counters | `ReadStats.SourceBatches` | — | The new source-batch, scalar-fallback, physical, planned, cache-hit, memo-hit, unreported-call and peak counters are Go only. See the read statistics reference for each field and its reporting requirements. |
 | Per-operation options | — | `ReadOptions` | Go takes a context.Context and a *ReadStats argument. |
 | Cancellation | `context.Context` | `Cancellation` |  |
 | Storage of a dataset root | `Source` | `storage.DatasetStorage` |  |
 | An opened file | `SourceFile` | `storage.PartSource` |  |
 | Bind reads to a context | `ContextBinder` | — | Java passes a Cancellation to every storage call. |
 | Local storage | `OpenDir` | `storage.LocalStorage` |  |
-| A part changed under the reader | — | `storage.PartChangedException` | Go: ErrObjectChanged, pending the reader I/O branch (claude/reader-io-scheduling). |
+| A part changed under the reader | `ErrObjectChanged` | `storage.PartChangedException` |  |
 
 ## Errors
 

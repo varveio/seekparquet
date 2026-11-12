@@ -141,7 +141,7 @@ func (g *generator) renderLimits() (string, error) {
 	b.WriteString(g.pending(page))
 	b.WriteString("These settings bound specific input sizes, decoding estimates, retained indexes and lookup row counts. They do not impose an overall memory or open-resource budget; also bound result sizes, dataset lifetime and concurrency.\n")
 	b.WriteString("A **limit** fails the operation that exceeds it with a limit error: Go `*LimitError`, which wraps `ErrLimitExceeded`, or Java `LimitExceededException`.\n")
-	b.WriteString("A **cache budget** never fails an operation; past it, the reader stops keeping what it loads.\n")
+	b.WriteString("A **cache budget** never fails an operation; past it, the reader evicts cached bytes or stops keeping what it loads.\n")
 	fmt.Fprintf(&b, "Exceeding a limit is a policy of yours or a capacity of the reader, never a refusal of the data (%s).\n", reqLinks(page, []string{"CHECK-5"}))
 	b.WriteString("A zero setting takes its default. Negative settings are rejected when Go opens the dataset or Java builds the Limits.\n\n")
 	fmt.Fprintf(&b, "What to do when an operation exceeds one: [troubleshooting](%s#limits).\n\n", rel(page, "docs/guides/troubleshooting.md"))
@@ -159,7 +159,11 @@ func (g *generator) renderLimits() (string, error) {
 			if f.Kind == "cache" {
 				kind = "cache budget"
 			}
-			fmt.Fprintf(&b, "| [`%s`](#%s) | `%s` | %s | %s |\n", f.Go, strings.ToLower(f.Go), f.Java, def, kind)
+			java := "Go only"
+			if f.Java != nil {
+				java = "`" + *f.Java + "`"
+			}
+			fmt.Fprintf(&b, "| [`%s`](#%s) | %s | %s | %s |\n", f.Go, strings.ToLower(f.Go), java, def, kind)
 			fmt.Fprintf(&details, "### `%s`\n\n%s\n\n", f.Go, doc)
 		}
 		b.WriteString("\n## Fixed capacities\n\nThese are capacities of the reader, not settings. Exceeding one is reported like a limit.\n\n")
@@ -167,7 +171,7 @@ func (g *generator) renderLimits() (string, error) {
 		for _, f := range g.limits.Fixed {
 			fmt.Fprintf(&b, "| `%s` | `%s` | %s |\n", f.Go, f.Java, cell(f.Value))
 		}
-		b.WriteString("\n## Each setting\n\nThe descriptions below are Go’s accounting rules. Java has the same setting names and numeric defaults, but uses different decoding-memory estimates and may reject different pages. In particular, Java’s default PageMemory can reject a binary dictionary within PageBytes and PageValues.\n\n")
+		b.WriteString("\n## Each setting\n\nThe descriptions below are Go’s accounting rules. Where a Java counterpart is listed, its numeric default matches Go's, but Java uses different decoding-memory estimates and may reject different pages. In particular, Java’s default PageMemory can reject a binary dictionary within PageBytes and PageValues.\n\n")
 		b.WriteString(details.String())
 	}
 	return strings.TrimRight(b.String(), "\n") + "\n", nil
@@ -180,8 +184,9 @@ func (g *generator) renderReadStats() (string, error) {
 	b.WriteString(header)
 	b.WriteString("# Read statistics\n\n")
 	b.WriteString(g.pending(page))
-	b.WriteString("Go exposes ReadStats for Rows, Get, Scan, List, Dataset.Plan, Plan.Split and Plan.Scan. Java supplies statistics through ReadOptions, including for verify and columns. In Go, pass a `*ReadStats` as the statistics argument: it is reset when the operation starts and filled as it runs, whether the operation succeeds or fails.\n")
+	b.WriteString("Go exposes ReadStats for Rows, Get, Scan, List, Dataset.Verify, Dataset.Plan, Plan.Split and Plan.Scan. Java supplies statistics through ReadOptions, including for verify and columns. In Go, pass a `*ReadStats` as the statistics argument: it is reset when the operation starts and filled as it runs, whether the operation succeeds or fails. `Dataset.Verify(ctx, stats)` takes the same statistics argument; pass nil to discard statistics.\n")
 	b.WriteString("In Java, pass a statistics consumer in `ReadOptions`; it receives a `ReadStats` record.\n\n")
+	b.WriteString("For Go's open operation, set `OpenOptions.OpenStats`: it includes manifest I/O, is reset on entry to OpenDataset or OpenDir and filled on every exit. The Dataset does not retain it. Manifest reads are excluded from SourceReads and SourceBytes.\n\n")
 	b.WriteString("The counts describe this reader's access path. They are diagnostics, not part of the format: another reader, or another version of this one, may do the same read with different counts.\n\n")
 	b.WriteString("| Go field | Java component | Meaning |\n|---|---|---|\n")
 	java := map[string]string{}
@@ -342,8 +347,12 @@ func (g *generator) renderTroubleLimits(page string) (string, error) {
 			if f.Kind == "cache" {
 				continue
 			}
-			fmt.Fprintf(&b, "### `%s`\n\nGo `Limit%s`, Java `LimitName.%s`. [Default and meaning](%s#%s).\n\n%s\n\n",
-				f.Go, f.Go, upperSnake(f.Java), rel(page, "docs/reference/limits.md"), strings.ToLower(f.Go), f.Action)
+			java := ""
+			if f.Java != nil {
+				java = fmt.Sprintf(", Java `LimitName.%s`", upperSnake(*f.Java))
+			}
+			fmt.Fprintf(&b, "### `%s`\n\nGo `Limit%s`%s. [Default and meaning](%s#%s).\n\n%s\n\n",
+				f.Go, f.Go, java, rel(page, "docs/reference/limits.md"), strings.ToLower(f.Go), f.Action)
 		}
 	}
 	for _, f := range g.limits.Fixed {

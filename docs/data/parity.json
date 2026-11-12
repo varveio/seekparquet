@@ -7,8 +7,11 @@
         {"concept": "Open a local directory", "go": "OpenDir", "java": "Dataset.open"},
         {"concept": "Open through custom storage", "go": "OpenDataset", "java": "Dataset.open", "note": "Java takes a storage.DatasetStorage."},
         {"concept": "Open options", "go": "OpenOptions", "java": "OpenOptions"},
+        {"concept": "Read scheduling policy", "go": "ReadPolicy", "java": null, "note": "Go sets OpenOptions.Read; Concurrency bounds logical ranges, not physical requests. Java has no counterpart for the policy struct yet."},
+        {"concept": "Open statistics", "go": "OpenOptions.OpenStats", "java": null, "note": "Go only; a *ReadStats reset on entry and filled on every exit, including manifest I/O. The Dataset does not retain it."},
         {"concept": "Resource limits", "go": "Limits", "java": "Limits", "note": "Java builds them with Limits.builder(). See the limits reference."},
-        {"concept": "Check every part now", "go": "Dataset.Verify", "java": "Dataset.verify"},
+        {"concept": "Retained raw page-index cache budget", "go": "Limits.PageIndexCacheMemory", "java": null, "note": "Go only; excludes footers and decoded indexes and does not bound overall metadata."},
+        {"concept": "Check every part now", "go": "Dataset.Verify", "java": "Dataset.verify", "note": "Go: Verify(ctx, stats), with a *ReadStats or nil. Java: verify(ReadOptions)."},
         {"concept": "Manifest metadata", "go": "Dataset.Metadata", "java": "Dataset.manifest"},
         {"concept": "Dataset row total", "go": null, "java": "Dataset.rowCount", "note": "In Go, sum PartInfo.Rows over Metadata().Parts."},
         {"concept": "A part's columns", "go": "Dataset.Columns", "java": "Dataset.columns"},
@@ -75,13 +78,14 @@
       "title": "Statistics, cancellation and storage",
       "rows": [
         {"concept": "Per-operation counters", "go": "ReadStats", "java": "ReadStats", "note": "Go fills a *ReadStats argument; Java passes a ReadStats to the consumer in ReadOptions. See the read statistics reference."},
+        {"concept": "Batch, physical I/O and byte-reuse counters", "go": "ReadStats.SourceBatches", "java": null, "note": "The new source-batch, scalar-fallback, physical, planned, cache-hit, memo-hit, unreported-call and peak counters are Go only. See the read statistics reference for each field and its reporting requirements."},
         {"concept": "Per-operation options", "go": null, "java": "ReadOptions", "note": "Go takes a context.Context and a *ReadStats argument."},
         {"concept": "Cancellation", "go": "std:context.Context", "java": "Cancellation"},
         {"concept": "Storage of a dataset root", "go": "Source", "java": "storage.DatasetStorage"},
         {"concept": "An opened file", "go": "SourceFile", "java": "storage.PartSource"},
         {"concept": "Bind reads to a context", "go": "ContextBinder", "java": null, "note": "Java passes a Cancellation to every storage call."},
         {"concept": "Local storage", "go": "OpenDir", "java": "storage.LocalStorage"},
-        {"concept": "A part changed under the reader", "go": null, "java": "storage.PartChangedException", "note": "Go: ErrObjectChanged, pending the reader I/O branch (claude/reader-io-scheduling)."}
+        {"concept": "A part changed under the reader", "go": "ErrObjectChanged", "java": "storage.PartChangedException"}
       ]
     },
     {

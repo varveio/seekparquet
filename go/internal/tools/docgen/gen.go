@@ -44,12 +44,12 @@ type limitsData struct {
 		Go     string `json:"go"`
 		Java   string `json:"java"`
 		Fields []struct {
-			Go      string `json:"go"`
-			Java    string `json:"java"`
-			Kind    string `json:"kind"`
-			Unit    string `json:"unit"`
-			Derived bool   `json:"derived"`
-			Action  string `json:"action"`
+			Go      string  `json:"go"`
+			Java    *string `json:"java"`
+			Kind    string  `json:"kind"`
+			Unit    string  `json:"unit"`
+			Derived bool    `json:"derived"`
+			Action  string  `json:"action"`
 		} `json:"fields"`
 	} `json:"structs"`
 	Fixed []struct {
@@ -471,7 +471,10 @@ func (g *generator) check() error {
 		for _, f := range s.Fields {
 			listed[f.Go] = true
 			described[f.Go] = true
-			if c, ok := root.consts["Limit"+f.Go]; !ok || c.typ != "LimitName" || c.value != f.Go {
+			// Cache budgets need no LimitName because they never fail an
+			// operation. Check an existing constant even for a cache.
+			c, ok := root.consts["Limit"+f.Go]
+			if (ok || f.Kind != "cache") && (!ok || c.typ != "LimitName" || c.value != f.Go) {
 				fail("limits.json: Go has no LimitName Limit%s = %q", f.Go, f.Go)
 			}
 		}
@@ -605,8 +608,11 @@ func (g *generator) checkJava() []error {
 	for _, s := range g.limits.Structs {
 		listed := map[string]bool{}
 		for _, f := range s.Fields {
-			listed[f.Java] = true
-			names[upperSnake(f.Java)] = true
+			if f.Java == nil {
+				continue
+			}
+			listed[*f.Java] = true
+			names[upperSnake(*f.Java)] = true
 			goDefault, err := g.goDefault(s.Go, f.Go, f.Derived)
 			if err != nil {
 				errs = append(errs, err)
@@ -616,14 +622,14 @@ func (g *generator) checkJava() []error {
 			if f.Derived {
 				javaDefault, err = g.java.derivedDefault(g.goPkgs[""].defaults[s.Go])
 			} else {
-				javaDefault, err = g.java.limitDefault(upperSnake(f.Java))
+				javaDefault, err = g.java.limitDefault(upperSnake(*f.Java))
 			}
 			if err != nil {
 				errs = append(errs, err)
 				continue
 			}
 			if goDefault != javaDefault {
-				fail("%s default %d differs from Go's %s, %d", f.Java, javaDefault, f.Go, goDefault)
+				fail("%s default %d differs from Go's %s, %d", *f.Java, javaDefault, f.Go, goDefault)
 			}
 		}
 		members, err := g.java.publicMembers(s.Java)

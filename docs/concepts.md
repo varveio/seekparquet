@@ -259,8 +259,8 @@ part, and makes the storage layer responsible for serving one stable version of 
 retries ([CHECK-6](../spec/format-1.md#check-6)). The Go and Java readers rely on their storage
 implementation for that.
 
-> Pending: the guide to implementing a `Source` over an object store waits for the reader I/O branch
-> (`claude/reader-io-scheduling`).
+> Pending: the storage guide will cover implementing an object-store `Source`, `ReadPolicy` and
+> `OpenOptions.OpenStats`.
 
 ## Glossary
 

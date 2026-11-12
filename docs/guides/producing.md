@@ -352,7 +352,8 @@ DuckDB's `COPY ... TO` (checked with DuckDB 1.4.5) writes the key column `OPTION
 
 ## Check the output
 
-- Open the dataset and call Go `Dataset.Verify` (Java `Dataset.verify`) to check every part now.
+- Open the dataset and call Go `Dataset.Verify(ctx, stats)` (Java `Dataset.verify`) to check every part now;
+  pass a `*ReadStats` for Go statistics, or `nil` to discard them.
 - Validate it in full: see [validating](validating.md).
 
 The writer tests include verification and validation checks. In CI, the module's sample datasets are

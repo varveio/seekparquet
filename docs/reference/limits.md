@@ -4,7 +4,7 @@
 
 These settings bound specific input sizes, decoding estimates, retained indexes and lookup row counts. They do not impose an overall memory or open-resource budget; also bound result sizes, dataset lifetime and concurrency.
 A **limit** fails the operation that exceeds it with a limit error: Go `*LimitError`, which wraps `ErrLimitExceeded`, or Java `LimitExceededException`.
-A **cache budget** never fails an operation; past it, the reader stops keeping what it loads.
+A **cache budget** never fails an operation; past it, the reader evicts cached bytes or stops keeping what it loads.
 Exceeding a limit is a policy of yours or a capacity of the reader, never a refusal of the data ([CHECK-5](../../spec/format-1.md#check-5)).
 A zero setting takes its default. Negative settings are rejected when Go opens the dataset or Java builds the Limits.
 
@@ -26,6 +26,7 @@ Go sets them in `Limits`; Java with `Limits.Builder` methods of the same names.
 | [`PageMemory`](#pagememory) | `pageMemory` | 2 × 24 × `PageValues` + `PageBytes`: 832 MiB at their defaults | limit |
 | [`IndexMemory`](#indexmemory) | `indexMemory` | 1 GiB | limit |
 | [`OffsetIndexMemory`](#offsetindexmemory) | `offsetIndexMemory` | 256 MiB | cache budget |
+| [`PageIndexCacheMemory`](#pageindexcachememory) | Go only | 128 MiB | cache budget |
 | [`GetRows`](#getrows) | `getRows` | 1,000 | limit |
 
 ## Fixed capacities
@@ -39,7 +40,7 @@ These are capacities of the reader, not settings. Exceeding one is reported like
 
 ## Each setting
 
-The descriptions below are Go’s accounting rules. Java has the same setting names and numeric defaults, but uses different decoding-memory estimates and may reject different pages. In particular, Java’s default PageMemory can reject a binary dictionary within PageBytes and PageValues.
+The descriptions below are Go’s accounting rules. Where a Java counterpart is listed, its numeric default matches Go's, but Java uses different decoding-memory estimates and may reject different pages. In particular, Java’s default PageMemory can reject a binary dictionary within PageBytes and PageValues.
 
 ### `ManifestBytes`
 
@@ -82,6 +83,10 @@ IndexMemory bounds the memory one Dataset retains for key page indexes and decod
 ### `OffsetIndexMemory`
 
 OffsetIndexMemory bounds the memory one Dataset retains for the checked page locations of projected column chunks' OffsetIndexes, which it keeps once loaded so that later requests do not read and decode them again. It is a cache, not a limit on reads: past it, each request loads the locations it needs and drops them, as if no cache were kept, and never with ErrLimitExceeded. It counts page entries plus a fixed per-chunk overhead, apart from IndexMemory. It does not count allocator overhead, the locations a request loads without keeping (including concurrent first loads of one chunk, all but one of which are dropped), or the cache's slots: every opened part allocates about 24 bytes per physical row group and 8 per column chunk on 64-bit platforms when it is checked, whatever the budget and even if no request projects a value column. Default 256 MiB.
+
+### `PageIndexCacheMemory`
+
+PageIndexCacheMemory bounds the raw page-index bytes one Dataset keeps from the ends of the parts it checked (ReadPolicy.MetadataPrefetchBytes), to serve later ColumnIndex and OffsetIndex loads without a read. It is a cache, and only of those raw bytes: past it, the part used least recently gives up its bytes, or a part's are not kept, and later loads read the indexes from the Source; it never fails an operation. Footers, which every checked part keeps, decoded key indexes (IndexMemory) and page locations (OffsetIndexMemory) are outside it: no aggregate bound on a Dataset's metadata exists yet. Default 128 MiB.
 
 ### `GetRows`
 

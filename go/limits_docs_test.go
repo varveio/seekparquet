@@ -14,7 +14,7 @@ import (
 
 // limitsDocRow is one row of the settings table of
 // docs/reference/limits.md: Go field, Java method, default, kind.
-var limitsDocRow = regexp.MustCompile("(?m)^\\| \\[`(\\w+)`\\]\\(#\\w+\\) \\| `(\\w+)` \\| ([^|]+) \\| ([^|]+) \\|$")
+var limitsDocRow = regexp.MustCompile("(?m)^\\| \\[`(\\w+)`\\]\\(#\\w+\\) \\| (?:`(\\w+)`|Go only) \\| ([^|]+) \\| ([^|]+) \\|$")
 
 // limitsDocAmount is the amount at the end of a default cell.
 var limitsDocAmount = regexp.MustCompile(`([0-9][0-9,]*)(?: (KiB|MiB|GiB))?(?: at their defaults)?\s*$`)

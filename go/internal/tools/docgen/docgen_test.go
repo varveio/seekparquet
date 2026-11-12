@@ -194,6 +194,10 @@ func TestCheckCatchesDrift(t *testing.T) {
 		{"go conversion in an unread form", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch = RefusalCode(\"digest_\" + \"mismatch\")", "not a string literal"},
 		{"go inferred typed expression", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch RefusalCode = \"digest_mismatch\"\n CodeNewOne = CodeDigestMismatch + \"_new\"", "CodeNewOne has a code type"},
 		{"documented limit without a LimitName", "go/limits.go", "LimitGetRows           LimitName = \"GetRows\"", "", "no LimitName LimitGetRows"},
+		{"cache with an incorrect LimitName", "go/limits.go", "LimitOffsetIndexMemory LimitName = \"OffsetIndexMemory\"", "LimitOffsetIndexMemory LimitName = \"Other\"", "no LimitName LimitOffsetIndexMemory"},
+		{"Go-only cache marked as a limit", "docs/data/limits.json", "\"PageIndexCacheMemory\", \"java\": null, \"kind\": \"cache\"", "\"PageIndexCacheMemory\", \"java\": null, \"kind\": \"limit\"", "no LimitName LimitPageIndexCacheMemory"},
+		{"Go-only cache given a Java counterpart", "docs/data/limits.json", "\"PageIndexCacheMemory\", \"java\": null", "\"PageIndexCacheMemory\", \"java\": \"pageIndexCacheMemory\"", "no public constant DEFAULT_PAGE_INDEX_CACHE_MEMORY"},
+		{"Go-only counter given a Java counterpart", "docs/data/read-stats.json", "\"PhysicalRequests\", \"java\": null", "\"PhysicalRequests\", \"java\": \"physicalRequests\"", "no component physicalRequests"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			root := mutableTree(t)
@@ -205,6 +209,62 @@ func TestCheckCatchesDrift(t *testing.T) {
 	}
 	if got := checkErr(t, mutableTree(t)); got != "" {
 		t.Errorf("the unchanged tree fails:\n%s", got)
+	}
+}
+
+func TestGoOnlyCacheReference(t *testing.T) {
+	g, err := newGenerator(mutableTree(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.check(); err != nil {
+		t.Fatal(err)
+	}
+	page, err := g.renderLimits()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"| [`PageIndexCacheMemory`](#pageindexcachememory) | Go only | 128 MiB | cache budget |",
+		"only of those raw bytes",
+		"no aggregate bound on a Dataset's metadata exists yet",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("cache reference is missing %q", want)
+		}
+	}
+}
+
+func TestReaderIOOperationReferences(t *testing.T) {
+	g, err := newGenerator(mutableTree(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats, err := g.renderReadStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Dataset.Verify(ctx, stats)",
+		"pass nil to discard statistics",
+		"OpenOptions.OpenStats",
+		"includes manifest I/O",
+	} {
+		if !strings.Contains(stats, want) {
+			t.Errorf("statistics reference is missing %q", want)
+		}
+	}
+	parity, err := g.renderParity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"| Read scheduling policy | `ReadPolicy` | — |",
+		"| Open statistics | `OpenOptions.OpenStats` | — |",
+	} {
+		if !strings.Contains(parity, want) {
+			t.Errorf("parity reference is missing %q", want)
+		}
 	}
 }
 

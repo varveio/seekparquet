@@ -1,5 +1,5 @@
 {
-  "description": "Hand-kept facts about reader limits that the code cannot state: the Java name, whether exceeding the setting fails the operation (limit) or never does (cache), its unit, and what to do when it is exceeded. Defaults and meanings come from the code (go/limits.go and, once Java is checked, Limits.java). go/internal/tools/docgen fails when a field or LimitName exists in Go but not here, or here but not in Go.",
+  "description": "Hand-kept facts about reader limits that the code cannot state: the Java name (null means Go only), whether exceeding the setting fails the operation (limit) or never does (cache), its unit, and what to do when it is exceeded. Defaults and meanings come from the code (go/limits.go and, once Java is checked, Limits.java). go/internal/tools/docgen fails when a field or LimitName exists in Go but not here, or here but not in Go.",
   "structs": [
     {
       "go": "Limits",
@@ -25,6 +25,8 @@
          "action": "The Dataset keeps every key page index it loads. Raise it, open fewer parts per Dataset, or reopen the Dataset to drop what it retains."},
         {"go": "OffsetIndexMemory", "java": "offsetIndexMemory", "kind": "cache", "unit": "bytes",
          "action": "Never fails an operation. Past it, each read loads the page locations it needs and drops them; raise it if repeated reads of projected columns show extra reads."},
+        {"go": "PageIndexCacheMemory", "java": null, "kind": "cache", "unit": "bytes",
+         "action": "Go only. Never fails an operation. Past it, the least recently used part gives up its retained raw page-index bytes, or a part's bytes are not kept; later loads read from the Source. Raise it to retain more raw page-index bytes. Footers and decoded indexes are outside this budget; it is not an overall metadata bound."},
         {"go": "GetRows", "java": "getRows", "kind": "limit", "unit": "count",
          "action": "The key has more rows than Get returns at once. Page the group with Rows over KeySpan(key) (Java: rows over Span.key(key)), or raise it."}
       ]
