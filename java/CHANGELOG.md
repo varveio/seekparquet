@@ -7,6 +7,12 @@ independent of the specification's draft revisions.
 
 ### Added
 
+- `ManifestPart.extensions()`: a part's `extensions` object (spec §3.4, EXT-1 to EXT-5), each namespace mapped
+  to its value's JSON text exactly as written, as `Manifest.extensions()` is for the top level; empty when the
+  part has none. A part's `extensions` that is not an object, or has an empty namespace name, is
+  `invalid_manifest`; an undefined part member beside it still is. The six-argument constructor remains, with no
+  extensions. The reader ignores extensions (EXT-3).
+
 - Key page read-ahead for delimited listings, the Go reader's `List.ReadAhead`: `ListQuery.Builder.readAhead(n)`
   (a new record component `readAhead()`, default 0, off; a value above `ListQuery.MAX_READ_AHEAD`, 64, is read
   as it; a negative one is `IllegalArgumentException`). After each entry a listing predicts, from the checked
@@ -123,14 +129,17 @@ independent of the specification's draft revisions.
 
 ### Changed
 
+- The leading `PAR1` magic is checked when a part is first touched (CHECK-1), as Go does: a part no larger than
+  the 64 KiB footer window holds it in the window, so nothing more is read; a larger part costs one more
+  storage read, of its first 4 bytes, before the read of its end. `PARE` at either end is
+  `unsupported_encryption`; any other magic but `PAR1` is `invalid_footer`, with Go's message. LZ4_RAW is now
+  in the ENC-1 baseline, which this reader already decoded.
 - A part's footer is read in fewer bytes: the first read of a part's end, the last 64 KiB or the whole part
   when smaller, is now never more than `Limits.maxFooterBytes` plus the 8-byte trailer, and a footer larger
   than that window costs one more read of only the footer bytes before it (it read the whole footer again).
   Still one read for a footer within the window and two above it; the window is not kept once the footer is
   decoded. Every check, refusal code and message is unchanged, including for truncated parts and garbage
-  tails. As before, the reader does not read a part's leading magic, so a footer within the window is one
-  read whatever the part's size (the Go reader, which checks the leading magic, reads it apart for a part
-  larger than the window).
+  tails (the leading-magic check above adds a read for a part larger than the window).
 - The checked page locations of each projected column chunk's OffsetIndex, kept once a request has loaded
   them so that later requests do not read and decode them again, are now bounded by the new
   `Limits.maxOffsetIndexMemoryBytes` (default 256 MiB, `withMaxOffsetIndexMemoryBytes`, apart from

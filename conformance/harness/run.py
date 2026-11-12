@@ -248,6 +248,9 @@ def compare_entries(got, exp):
                        f"{'unexpected' if len(got) > len(exp) else 'missing'} {show_entry(more)})")
 
 
+VALIDATION_LEVELS = ["structural", "profile", "full"]  # each the prerequisite of the next; digest stands alone
+
+
 def acceptable(exp):
     if "codes" in exp:
         return exp["codes"]
@@ -312,6 +315,13 @@ class Runner:
         levels = resp.get("levels")
         if not isinstance(levels, dict):
             raise CaseFail("validate response without levels")
+        # VAL-1, for every expectation: a level completes or fails only if its prerequisite completed.
+        for lower, higher in zip(VALIDATION_LEVELS, VALIDATION_LEVELS[1:]):
+            g, p = levels.get(higher), levels.get(lower)
+            if isinstance(g, dict) and isinstance(p, dict) and g.get("result") in ("complete", "failed") \
+                    and p.get("result") != "complete":
+                raise CaseFail(f"level {higher}: {g.get('result')} although its prerequisite {lower} is "
+                               f"{p.get('result')!r} (VAL-1)")
         for lvl, w in want.items():
             g = levels.get(lvl)
             if not isinstance(g, dict):
@@ -324,36 +334,48 @@ class Runner:
                                f"{' (' + str(g.get('code') or g.get('reason')) + ')' if g.get('code') or g.get('reason') else ''}")
             if g.get("result") == "failed" and g.get("code") not in acceptable(w):
                 raise CaseFail(f"level {lvl}: expected code {acceptable(w)}, got {g.get('code')!r}")
+            # An incomplete level caused by an unsupported feature (its prerequisite completed) names the
+            # expected unsupported code, whether incomplete is the expected or an accepted result.
+            prereq = VALIDATION_LEVELS[VALIDATION_LEVELS.index(lvl) - 1] if lvl in VALIDATION_LEVELS[1:] else None
+            caused_here = prereq is None or (levels.get(prereq) or {}).get("result") == "complete"
+            if g.get("result") == "incomplete" and caused_here and w["result"] != "failed" \
+                    and ("code" in w or "codes" in w) and g.get("code") not in acceptable(w):
+                raise CaseFail(f"level {lvl}: incomplete, expected unsupported code {acceptable(w)}, "
+                               f"got {g.get('code')!r}")
             if "checked" in w and g.get("result") == w["result"] and g.get("checked") != w["checked"]:
                 raise CaseFail(f"level {lvl}: expected checked {w['checked']}, got {g.get('checked')!r}")
 
     def refusal(self, case):
+        """The fault lifecycle (protocol.md): open, then the request at the declared stage, then verify on a fresh
+        handle when claimed, or validation. The expected outcome is a refusal or, for an unsupported part, an
+        unsupported response, with one of the case's codes."""
         exp = case["expect"]
         ok_codes = acceptable(exp)
+        kind = exp["status"]  # refused or unsupported
+        want = f"{'refusal' if kind == 'refused' else 'unsupported'} with {' or '.join(ok_codes)}"
         detect = case["detect"]
         req = case.get("request", {})
 
         def refused_ok(resp, stage):
-            if resp["status"] == "refused":
-                if resp["code"] in ok_codes:
+            if resp["status"] in ("refused", "unsupported"):
+                if resp["status"] == kind and resp["code"] in ok_codes:
                     return True
-                raise CaseFail(f"{stage}: refused with {resp['code']!r}, expected {' or '.join(ok_codes)}")
+                raise CaseFail(f"{stage}: {resp['status']} with {resp['code']!r}, expected {want}")
             if resp["status"] != "ok":
                 raise CaseFail(f"{stage}: status {resp['status']}{': ' + str(resp.get('message')) if resp.get('message') else ''}"
-                               f"{' (' + resp['code'] + ')' if resp.get('code') else ''}, expected success or "
-                               f"refusal with {' or '.join(ok_codes)}")
+                               f"{' (' + resp['code'] + ')' if resp.get('code') else ''}, expected success or {want}")
             return False
 
         # 1. open
         if refused_ok(self.a.call(self.full(case, {"op": "open"})), "open"):
             return
         if detect == "open":
-            raise CaseFail(f"open succeeded; expected refusal with {' or '.join(ok_codes)}")
+            raise CaseFail(f"open succeeded; expected {want}")
         # 2. read (touch: the read routes to the faulty part)
         if detect in ("read", "touch"):
             resp = self.a.call(self.full(case, req))
-            if not (resp["status"] == "refused" and resp["code"] in ok_codes):
-                raise CaseFail(f"request: expected refusal with {' or '.join(ok_codes)}, got status {resp['status']}"
+            if not (resp["status"] == kind and resp["code"] in ok_codes):
+                raise CaseFail(f"request: expected {want}, got status {resp['status']}"
                                f"{' code ' + resp['code'] if resp.get('code') else ''}")
             if detect == "read" or not self.verify:
                 return
@@ -361,9 +383,9 @@ class Runner:
             if refused_ok(self.a.call(self.full(case, {"op": "open"})), "reopen"):
                 return
             resp = self.a.call(self.full(case, {"op": "verify"}))
-            if resp["status"] == "refused" and resp["code"] in ok_codes:
+            if resp["status"] == kind and resp["code"] in ok_codes:
                 return
-            raise CaseFail(f"verify: expected refusal with {' or '.join(ok_codes)}, got status {resp['status']}"
+            raise CaseFail(f"verify: expected {want}, got status {resp['status']}"
                            f"{' code ' + resp['code'] if resp.get('code') else ''}")
         # 3. validate
         level = detect.split(":", 1)[1]
@@ -375,11 +397,14 @@ class Runner:
         if resp["status"] != "ok":
             raise CaseFail(f"validate: status {resp['status']}{' (' + resp['code'] + ')' if resp.get('code') else ''}; "
                            "expected status ok with the level failed")
-        self.compare_levels(resp, {level: {"result": "failed", "codes": ok_codes}})
+        if kind == "unsupported":
+            self.compare_levels(resp, {level: {"result": "incomplete", "codes": ok_codes}})
+        else:
+            self.compare_levels(resp, {level: {"result": "failed", "codes": ok_codes}})
 
     def run_case(self, case):
         exp = case["expect"]
-        if exp["status"] == "refused":
+        if exp["status"] == "refused" or exp["status"] == "unsupported" and case.get("detect"):
             self.refusal(case)
             return
         req = case.get("request") or case.get("raw_request")

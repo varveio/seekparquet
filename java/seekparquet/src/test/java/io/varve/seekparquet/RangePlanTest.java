@@ -32,8 +32,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * Selection planning against an oracle: every valid conformance dataset (but optional-codecs, whose codecs
- * this reader lacks) read whole by a range read on a separate handle, with the byte extents of the
+ * Selection planning against an oracle: every valid conformance dataset (but optional-codecs and brotli-key,
+ * whose BROTLI this reader lacks) read whole by a range read on a separate handle, with the byte extents of the
  * projected column's chunks from its footers. A plan must count the rows its ranges select, scan exactly
  * those rows with their values, and ask storage for exactly {@link RangePlan#projectedBytes()} bytes of
  * the column's chunks, each read within one chunk.
@@ -231,7 +231,7 @@ class RangePlanTest {
             for (Path dir : dirs.sorted().toList()) {
                 Path structure = dir.resolve("STRUCTURE.txt");
                 if (Files.exists(structure) && Files.readString(structure).contains("\nvalid: yes\n")
-                        && !dir.getFileName().toString().equals("optional-codecs")) {
+                        && !List.of("optional-codecs", "brotli-key").contains(dir.getFileName().toString())) {
                     out.add(dir.getFileName().toString());
                 }
             }

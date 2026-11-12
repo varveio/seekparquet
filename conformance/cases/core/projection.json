@@ -2804,7 +2804,7 @@
     },
     {
       "id": "projection/optional-codecs/lz4col",
-      "description": "An LZ4_RAW column: the exact values, or unsupported_encoding. A refusal or wrong values fail.",
+      "description": "An LZ4_RAW column (ENC-1 baseline): the exact values. Unsupported, a refusal or wrong values fail.",
       "requirements": [
         "RANGE-2",
         "ENC-1"
@@ -2880,9 +2880,6 @@
             ],
             "offset": 0
           }
-        ],
-        "accept_unsupported": [
-          "unsupported_encoding"
         ]
       }
     },

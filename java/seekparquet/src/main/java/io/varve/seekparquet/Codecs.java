@@ -13,8 +13,8 @@ import java.util.zip.Inflater;
 import org.apache.parquet.format.CompressionCodec;
 
 /**
- * Page decompression. The baseline codecs (ENC-1) are UNCOMPRESSED, SNAPPY, GZIP and ZSTD; LZ4_RAW is
- * also read. Every decode is bounded to exactly the size the page header declares, which the caller has
+ * Page decompression. The baseline codecs (ENC-1) are UNCOMPRESSED, SNAPPY, GZIP, ZSTD and LZ4_RAW (not the
+ * legacy LZ4); BROTLI, outside the baseline, is reported unsupported. Every decode is bounded to exactly the size the page header declares, which the caller has
  * checked against its limits, so a hostile page cannot expand into a larger retained output capacity.
  */
 final class Codecs {

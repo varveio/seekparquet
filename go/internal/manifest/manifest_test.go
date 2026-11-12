@@ -21,10 +21,13 @@ const validManifest = `{
      "min_key_base64": "bG9ncy8yMDI2LzAxL2EuZ3o=", "max_key_base64": "bG9ncy8yMDI2LzAxL3ouZ3o=",
      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"},
     {"path": "data/part-00001.parquet", "rows": 2, "bytes": 1790,
-     "min_key_base64": "bG9ncy8yMDI2LzAyL2EuZ3o=", "max_key_base64": "bG9ncy8yMDI2LzAyL2IuZ3o="}
+     "min_key_base64": "bG9ncy8yMDI2LzAyL2EuZ3o=", "max_key_base64": "bG9ncy8yMDI2LzAyL2IuZ3o=",
+     "extensions": {"example-producer": {"batch": [1, {"n": 2.50}]}, "seekparquet": {"unknown": {"version": 99}}}}
   ],
   "extensions": {"example-producer": {"source": "s3://example-bucket/logs/", "complete": true}}
 }`
+
+const partExtensions = `{"example-producer": {"batch": [1, {"n": 2.50}]}, "seekparquet": {"unknown": {"version": 99}}}`
 
 func TestParseValid(t *testing.T) {
 	m, err := Parse([]byte(validManifest), 1000)
@@ -39,6 +42,9 @@ func TestParseValid(t *testing.T) {
 	}
 	if !bytes.Contains(m.Extensions, []byte(`"complete": true`)) {
 		t.Fatalf("extensions %s", m.Extensions)
+	}
+	if m.Parts[0].Extensions != nil || string(m.Parts[1].Extensions) != partExtensions {
+		t.Fatalf("part extensions %q, %q", m.Parts[0].Extensions, m.Parts[1].Extensions)
 	}
 	empty, err := Parse([]byte(`{"format":"seekparquet","format_version":0,"draft_revision":1,"schema_id":"x","key":{"column":"key","unique":true},"parts":[]}`), 1000)
 	if err != nil || len(empty.Parts) != 0 || empty.Extensions != nil {
@@ -100,6 +106,14 @@ func TestParseRefusals(t *testing.T) {
 		{"control in schema_id", edit(`"example/objects/v1"`, `"a\u0007"`), CodeInvalidManifest},
 		{"extensions not an object", edit(`"extensions": {`, `"extensions": [{`) + "]", CodeInvalidManifest},
 		{"empty namespace", edit(`"example-producer"`, `""`), CodeInvalidManifest},
+		{"part extensions not an object", edit(partExtensions, `"x"`), CodeInvalidManifest},
+		{"part extensions null", edit(partExtensions, `null`), CodeInvalidManifest},
+		{"part extensions array", edit(partExtensions, `[]`), CodeInvalidManifest},
+		{"part empty namespace", edit(`"seekparquet": {"unknown"`, `"": {"unknown"`), CodeInvalidManifest},
+		{"duplicate in part extensions", edit(`{"version": 99}`, `{"version": 99, "version": 99}`), CodeInvalidManifest},
+		{"duplicate part extensions", edit(`"extensions": {"example-producer": {"batch"`, `"extensions": {}, "extensions": {"example-producer": {"batch"`), CodeInvalidManifest},
+		{"surrogate in part extensions", edit(`{"version": 99}`, `{"version": "\udfff"}`), CodeInvalidManifest},
+		{"undefined part member beside extensions", edit(`"extensions": {"example-producer": {"batch"`, `"checksum": "x", "extensions": {"example-producer": {"batch"`), CodeInvalidManifest},
 		{"rows zero", edit(`"rows": 3`, `"rows": 0`), CodeInvalidManifest},
 		{"rows negative", edit(`"rows": 3`, `"rows": -3`), CodeInvalidManifest},
 		{"rows exponent", edit(`"rows": 3`, `"rows": 3e0`), CodeInvalidManifest},

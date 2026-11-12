@@ -1,0 +1,105 @@
+{
+  "dataset": "brotli-key",
+  "description": "Valid, but the key column is BROTLI, outside the ENC-1 baseline; the size column is SNAPPY. Structural validation needs no decompression and completes; a reader or validator without BROTLI answers requests, profile and full validation unsupported or incomplete.",
+  "schema_id": "conformance/objects/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "size",
+      "type": "int64",
+      "nullable": false
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        4,
+        4
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "snappy",
+        "use_dictionary": false,
+        "data_page_version": "1.0",
+        "column_compression": {
+          "key": "brotli"
+        },
+        "expect_codecs": {
+          "key": "BROTLI",
+          "size": "SNAPPY"
+        }
+      },
+      "rows": [
+        {
+          "key_base64": "YnJrLzAw",
+          "values": {
+            "size": {
+              "int": "0"
+            }
+          }
+        },
+        {
+          "key_base64": "YnJrLzAx",
+          "values": {
+            "size": {
+              "int": "3"
+            }
+          }
+        },
+        {
+          "key_base64": "YnJrLzAy",
+          "values": {
+            "size": {
+              "int": "6"
+            }
+          }
+        },
+        {
+          "key_base64": "YnJrLzAz",
+          "values": {
+            "size": {
+              "int": "9"
+            }
+          }
+        },
+        {
+          "key_base64": "YnJrLzA0",
+          "values": {
+            "size": {
+              "int": "12"
+            }
+          }
+        },
+        {
+          "key_base64": "YnJrLzA1",
+          "values": {
+            "size": {
+              "int": "15"
+            }
+          }
+        },
+        {
+          "key_base64": "YnJrLzA2",
+          "values": {
+            "size": {
+              "int": "18"
+            }
+          }
+        },
+        {
+          "key_base64": "YnJrLzA3",
+          "values": {
+            "size": {
+              "int": "21"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "key": {
+    "column": "key",
+    "unique": true
+  }
+}

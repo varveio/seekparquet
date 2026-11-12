@@ -1,0 +1,26 @@
+{
+  "format": "seekparquet",
+  "format_version": 0,
+  "draft_revision": 1,
+  "schema_id": "conformance/lz4-raw/v1",
+  "key": {
+    "column": "key",
+    "unique": true
+  },
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "rows": 20,
+      "bytes": 4253,
+      "min_key_base64": "bHo0LzAwMC8=",
+      "max_key_base64": "bHo0LzAxOS94eHh4eA=="
+    },
+    {
+      "path": "data/part-00001.parquet",
+      "rows": 20,
+      "bytes": 3414,
+      "min_key_base64": "bHo0LzAyMC94eHh4eHg=",
+      "max_key_base64": "bHo0LzAzOS94eHh4"
+    }
+  ]
+}

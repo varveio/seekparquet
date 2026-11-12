@@ -41,10 +41,7 @@
       "description": "In ascending key order. An empty array is an empty dataset."
     },
     "extensions": {
-      "type": "object",
-      "propertyNames": {
-        "minLength": 1
-      }
+      "$ref": "#/$defs/extensions"
     },
     "key": {
       "type": "object",
@@ -133,7 +130,17 @@
           "not": {
             "pattern": "[^0-9a-f]"
           }
+        },
+        "extensions": {
+          "$ref": "#/$defs/extensions"
         }
+      }
+    },
+    "extensions": {
+      "description": "EXT-1 to EXT-5: an object keyed by non-empty namespace names, each holding any JSON value. Readers ignore unknown namespaces and members; the namespace seekparquet is reserved for accelerators the specification documents.",
+      "type": "object",
+      "propertyNames": {
+        "minLength": 1
       }
     },
     "key": {

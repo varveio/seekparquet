@@ -143,6 +143,9 @@ type PartInfo struct {
 	// SHA256 is the declared lowercase hex digest, "" when none. Neither
 	// opening nor Verify checks it (PART-5).
 	SHA256 string
+	// Extensions is the part's extensions object exactly as written
+	// (EXT-2), nil when the part has none. The reader ignores it (EXT-3).
+	Extensions json.RawMessage
 }
 
 // Extension returns the value of one extensions namespace exactly as
@@ -155,7 +158,7 @@ func (m Metadata) clone() Metadata {
 	out := m
 	out.Parts = make([]PartInfo, len(m.Parts))
 	for i, p := range m.Parts {
-		p.MinKey, p.MaxKey = bytes.Clone(p.MinKey), bytes.Clone(p.MaxKey)
+		p.MinKey, p.MaxKey, p.Extensions = bytes.Clone(p.MinKey), bytes.Clone(p.MaxKey), bytes.Clone(p.Extensions)
 		out.Parts[i] = p
 	}
 	out.Extensions = bytes.Clone(m.Extensions)

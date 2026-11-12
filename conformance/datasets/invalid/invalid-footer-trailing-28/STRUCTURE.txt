@@ -1,0 +1,16 @@
+# invalid-footer-trailing-28
+
+valid: no
+description: 28 bytes follow the footer metadata, which declares no encryption: a malformed footer, not a signature.
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/basic
+fault (generators/faults.json): invalid-footer-trailing-28: invalid_footer; reader detects on touch; lowest validation level structural (CHECK-1); location: data/part-00000.parquet: footer without an encryption declaration, then 28 bytes
+changes:
+  - data/part-00000.parquet: footer re-encoded (False), followed by 28 bytes the footer length covers
+  - manifest: parts[0].bytes 2828 -> 2856
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 2856, keys 'a/1.txt' .. 'foxtrot'
+
+file data/part-00000.parquet: 2856 bytes; footer unreadable: footer length does not match encoded FileMetaData

@@ -13,7 +13,8 @@ import java.util.Objects;
 /**
  * A parsed and validated {@code manifest.json} (spec §3): the dataset's commit.
  *
- * <p>Extensions are exposed unchanged (EXT-2): each namespace maps to its value's JSON text exactly
+ * <p>Extensions are exposed unchanged (EXT-2), the top-level object here and each part's on {@link
+ * ManifestPart#extensions()}: each namespace maps to its value's JSON text exactly
  * as the manifest spells it, so that a consumer can apply its own acceptance policy with the JSON
  * library of its choice. The reader itself ignores them (EXT-1).
  *
