@@ -61,8 +61,9 @@ A request names its keys with a `Span` (prefix, start, exclusive start, end; `Sp
 `Span.key(k)` for exactly `[k, k + 0x00)`), optionally resumes after a row with a `Selection` cursor, and adds
 a limit and a projection in a `Query`. The reads over a query are:
 
-- `rows(query)`: a collected page of at most `limit` rows, which must be positive (QUERY-1). The caller's
-  limit is the only bound on the result; on an error it returns no rows.
+- `rows(query)`: a collected page of at most `limit` rows, which must be between 1 (QUERY-1) and
+  `Integer.MAX_VALUE` (a `List`'s capacity). The caller's limit is the only bound on the result; on an error it
+  returns no rows.
 - `scan(query, visitor)`: the same rows as borrowed batches ([Batch scans](#batch-scans)). A limit of 0, the
   default, reads to the end of the span: a streaming extension of this library, not a query of the
   specification. No result limit applies.
@@ -76,8 +77,9 @@ statistics](#read-statistics)). The overloads without it use `ReadOptions.DEFAUL
 Keys, bounds and binary values are `Bytes`: immutable byte strings compared in unsigned
 lexicographic order. They need not be UTF-8; `Bytes.utf8(text)` rejects text that is not well-formed
 UTF-16 rather than changing the key, and `toStringUtf8()` is a lossy decoding for display. Values are physical Parquet values (`Bool`, `Int32`,
-`Int64`, `Float32`, `Float64`, `ByteArray`, `FixedLenByteArray`), with `Null` and `Absent` kept
-apart: absent (the row's part has no such column), null (a stored null) and a value are three disjoint states. Floating-point values carry their exact bits. The manifest's `key` declaration names the
+`Int64`, `Int96`, `Float32`, `Float64`, `ByteArray`, `FixedLenByteArray`), with `Null` and `Absent` kept
+apart; an `INT96` is its raw bits, three little-endian 32-bit words least significant first, not interpreted as a
+timestamp: absent (the row's part has no such column), null (a stored null) and a value are three disjoint states. Floating-point values carry their exact bits. The manifest's `key` declaration names the
 key column; projecting that exact name returns the key's bytes, including literal dots in its name.
 
 When `manifest().key().unique()` is false, equal keys form a group in file order. Groups can cross
@@ -185,8 +187,8 @@ dataset.scan(Query.builder(Span.prefix(Bytes.utf8("logs/"))).columns("size").bui
 `Batch` has `size()`, `columns()`, `offset(i)` (the row's offset in its group of equal keys), `key(i)`
 (borrowed, read-only `ByteBuffer`), `copyKey(i)` (owning `Bytes`), `keyLength(i)`, `copyKey(i, dst, offset)`,
 `compareKey(i, bytes)`, `row(i)` and `cursor(i)` (owning), and `column(c)`; a `BatchColumn` has `isPresent()`,
-`type()` (the physical type in the batch's part), `isNull(i)`, a getter per physical type (floating-point values
-also as their exact bits), and for byte arrays `byteLength(i)`, `bytes(i)` (borrowed `ByteBuffer`),
+`size()`, `type()` (the physical type in the batch's part), `isNull(i)`, a getter per physical type (`getInt96`
+included; floating-point values also as their exact bits), and for byte arrays `byteLength(i)`, `bytes(i)` (borrowed `ByteBuffer`),
 `copyBytes(i)` (owning `Bytes`) and `copyBytes(i, dst, offset)`, and `value(i)` (owning `Value`). A projected key
 column is a `BYTE_ARRAY` slot holding the keys; duplicate projections are slots of their own. Reading another
 type than the slot's, a null row or an absent slot throws `IllegalStateException`; an index outside the batch,
@@ -328,8 +330,9 @@ leave it off there.
 
 ### Parity with the Go reader
 
-Java matches the Go reader's operations, names, semantics and defaults, and differs only where Java idiom
-calls for it. The correspondence, Go (package `seekparquet`) to Java (package `io.varve.seekparquet`):
+Java exposes corresponding reader operations and request/result concepts, with matching configurable limit
+defaults. Java representation differences and the capability, resource-accounting and execution differences
+listed below remain. The correspondence, Go (package `seekparquet`) to Java (package `io.varve.seekparquet`):
 
 | Go | Java |
 |---|---|
@@ -346,14 +349,14 @@ calls for it. The correspondence, Go (package `seekparquet`) to Java (package `i
 | `Plan.Count()`, `ProjectedBytes()` `(n, exact)` | `Plan.count()`, `projectedBytes()`: `Estimate(value, exact)` |
 | `Plan.Columns()`, `Plan.Scan(ctx, st, fn)`, `Plan.Split(ctx, n, st)` | `Plan.columns()`, `Plan.scan(ReadOptions, visitor)`, `Plan.split(n, ReadOptions)` |
 | `Dataset.List(ctx, ListQuery, st)` | `Dataset.list(ListQuery, ReadOptions)` |
-| `ListQuery{Prefix, Delimiter, End, Cursor, Limit, Columns, ReadAhead}` | `ListQuery` record and builder, same fields |
+| `ListQuery{Prefix, Delimiter, End, Cursor, Limit, Columns, ReadAhead}` | immutable `ListQuery`, `builder(delimiter)`, `toBuilder()`, same accessors |
 | `ListEntry{CommonPrefix, Row, Exact}`, `IsPrefix`, `Bytes`, `Cursor` | sealed `ListEntry.RowEntry` / `ListEntry.CommonPrefix(prefix, exact)`, `bytes()`, `cursor()` |
 | `Row{Key, Offset, Columns, Values}`, `Value(name)`, `Cursor()` | `Row` record, `value(name)` (`Optional`), `cursor()` |
 | `Cursor{Key, Offset, Prefix}`, `RowCursor`, `PrefixCursor` | sealed `Cursor.RowPosition(key, offset)`, `Cursor.CommonPrefix(prefix)` |
 | `Cursor.Encode()`, `ParseCursor(token)`, `MaxCursorToken` | `Cursor.encode()`, `Cursor.parse(token)`, `Cursor.MAX_TOKEN_LENGTH` |
 | `Batch.Len, Key, Offset, Column, Columns, Row, Cursor` | `Batch.size, key, offset, column, columns, row, cursor`; plus `copyKey`, `keyLength`, `compareKey` |
-| `ColumnView.Present, Kind, IsNull, Value, Boolean ... Double, Bytes` | `BatchColumn.isPresent, type, isNull, value, getBoolean ... getDouble(Bits), byteLength, bytes, copyBytes` |
-| `Value` (opaque; `Absent`, `IsNull`, `Kind`, typed accessors) | sealed `Value` records (`Absent`, `Null`, `Bool`, `Int32`, `Int64`, `Float32`, `Float64`, `ByteArray`, `FixedLenByteArray`) |
+| `ColumnView.Present, Kind, Len, IsNull, Value, Boolean ... Double, Int96, Bytes` | `BatchColumn.isPresent, type, size, isNull, value, getBoolean ... getDouble(Bits), getInt96, byteLength, bytes, copyBytes` |
+| `Value` (opaque; `Absent`, `IsNull`, `Kind`, typed accessors), `Int96 [3]uint32` | sealed `Value` records (`Absent`, `Null`, `Bool`, `Int32`, `Int64`, `Int96(word0, word1, word2)`, `Float32`, `Float64`, `ByteArray`, `FixedLenByteArray`) |
 | `ReadStats` (mutable, reset per call), `Add` | `ReadStats` (immutable snapshot to a consumer), `plus` |
 | `Dataset.Verify(ctx)`, `Columns(ctx, part)`, `BuildListIndex(ctx, options)`, `Close()` | `verify(ReadOptions)`, `columns(part, ReadOptions)`, `buildListIndex(options, Cancellation)`, `close()` |
 | `Dataset.Metadata()` | `manifest()`, `rowCount()` |
@@ -365,34 +368,42 @@ calls for it. The correspondence, Go (package `seekparquet`) to Java (package `i
 | `ErrInvalidRequest`, `ErrClosed`, context errors | `IllegalArgumentException`, `IllegalStateException`, `CancellationException` |
 | `Source`, `SourceFile`, `ContextBinder` | `storage.DatasetStorage`, `storage.PartSource` (explicit `Cancellation` per read) |
 
-**Deliberate differences.** Java has immutable `Bytes`, collections and records where Go has byte slices and
-structs; sealed alternatives (`Cursor`, `ListEntry`, `Value`) where Go has tagged structs; `Optional` for absent
-results (`Row.value`, `Selection.cursor`) and primitives on the batch path; `Estimate` for Go's `(n, exact)`;
-builders for `Span`, `Query`, `ListQuery` and `Limits`. Failures are unchecked domain exceptions (closed set
-under `SeekParquetException`) and the storage SPI throws checked `IOException`; a malformed request is
-`IllegalArgumentException`, a closed dataset `IllegalStateException`, a part index outside the manifest
-`IndexOutOfBoundsException` (Go: `ErrInvalidRequest`). Cancellation is an explicit `Cancellation` plus thread
-interruption instead of a context. Statistics go to a consumer as an immutable snapshot after the operation
-releases the dataset, instead of a caller-owned mutable struct; a throwing consumer is suppressed onto a failure.
-The batch visitor returns `false` to stop and may throw a checked exception of its type, instead of returning
-`Stop` or an error. `AutoCloseable` is only on owning resources (`Dataset`, `PartSource`), never on a batch.
-Negative limits fail when `Limits` is built, not at open. Byte sizes that size one array (manifest, footer, page
-index, page) are `int`; `ListQuery.limit` is an `int` as Go's `int`. The page-memory and decoded-metadata
-estimates are this reader's own (same defaults, not the same accounting). `Batch` has no 4,096-row cap for an
-absent projected column (it stores nothing for one); rows, cursors and statistics are unaffected. Physical
-`INT96` columns are refused (`unsupported_projection`), where Go projects their raw bits: no shared fixture
-covers INT96, so this stays a documented capability difference. A part schema nested deeper than 256 is
-`LimitExceededException` (`SCHEMA_NESTING`); Go refuses a schema deeper than 64 as an invalid footer.
-`buildListIndex` returns its statistics and takes a `Cancellation`, not `ReadOptions`. In `Plan.projectedBytes()` a projected key column counts nothing (Java takes its
-values from the key pages the scan decodes, where Go reads its chunk) and a column projected twice counts once.
-Read statistics describe each reader's own access path: planning positions each selection's ends with a cursor
-of its own, where Go moves one scan through every selection, so counts for the same request can differ; rows,
-counts and projected bytes do not. Java's `get` walks the
-group's keys and then projects its rows; `rows` projects each row as it walks: same results, as Go's.
+**Representation differences (Java idiom).** Java has immutable `Bytes`, collections and records where Go has
+byte slices and structs; sealed alternatives (`Cursor`, `ListEntry`, `Value`) where Go has tagged structs;
+`Optional` for absent results (`Row.value`, `Selection.cursor`) and primitives on the batch path; `Estimate` for
+Go's `(n, exact)`; builders for `Span`, `Query`, `ListQuery` and `Limits`. Failures are unchecked domain
+exceptions (closed set under `SeekParquetException`) and the storage SPI throws checked `IOException`; an invalid
+value is `IllegalArgumentException`, a prohibited null `NullPointerException`, a part index outside the manifest
+`IndexOutOfBoundsException`, a closed dataset or retired batch `IllegalStateException` (Go has
+`ErrInvalidRequest` and `ErrClosed`). Cancellation is an explicit `Cancellation` plus thread interruption instead
+of a context. Statistics go to a consumer as an immutable snapshot after the operation releases the dataset,
+instead of a caller-owned mutable struct; a throwing consumer is suppressed onto a failure. The batch visitor
+returns `false` to stop and may throw a checked exception of its type, instead of returning `Stop` or an error.
+`AutoCloseable` is only on owning resources (`Dataset`, `PartSource`), never on a batch. Negative limits fail
+when `Limits` is built, not at open. Byte sizes that size one array (manifest, footer, page index, page) are
+`int`; `ListQuery.limit` is an `int` as Go's `int`, and a `rows` limit must fit a `List` (at most
+`Integer.MAX_VALUE`, as Go checks its slice length). `BatchColumn`'s typed getters throw on an absent column, a
+null row or another type, where Go's `ColumnView` accessors return zero or unspecified bits: test `isPresent`,
+`isNull` and `type` first. `Batch` has no 4,096-row cap for an absent projected column (it stores nothing for
+one); batch sizes are not promised in either reader. `buildListIndex` returns its statistics and takes a
+`Cancellation`, not `ReadOptions`: it delivers no `ReadStats`, and a failed build reports nothing.
 
-**Remaining gaps** (not in this reader): validation (§8) and its reports; footer and key-page inspection; manifest
-serialisation; a writer and publication; batched storage reads in the storage SPI and convergence of the reader's internals and read
-scheduling with Go's; the listing's row-group shortcut (`ReadStats.groupsSkipped` stays 0).
+**Execution and accounting differences.** Rows, ordering and cursor semantics correspond. Read statistics and
+projected-byte estimates describe each implementation's access path and can differ, including for projected
+keys and duplicate projection names (Java counts no bytes for a projected key column, whose values come from the
+key pages, and counts a column projected twice once). Planning positions each selection's ends with a cursor of
+its own, where Go moves one scan through every selection. The page-memory and decoded-metadata estimates are
+this reader's own (same defaults and the same derivation, not the same accounting), so the two readers need not
+refuse the same pages or footers. `get` walks the group's keys and then projects its rows; `rows` projects each
+row as it walks.
+
+**Remaining gaps** (not in this reader): validation (§8) and its reports; footer and key-page inspection;
+manifest serialisation; a writer and publication; BROTLI (the baseline codecs are implemented); batched storage
+reads in the storage SPI and convergence of the reader's internals and read scheduling with Go's; the listing's
+row-group shortcut (`ReadStats.groupsSkipped` stays 0). Shared with the Go reader: no aggregate cap or eviction
+for the part handles and footers a long-lived dataset retains (size the touched-part working set); no explicit
+offset-index cache disable (0 means the default); no dataset-wide schema operation with per-part coverage and
+annotation provenance (use `columns(part)` for each part).
 
 ### Options, limits and cancellation
 
@@ -420,7 +431,7 @@ progress, waits for them to return, then closes the part sources.
 | Setting | Kind | Default |
 |---|---|---:|
 | `manifestBytes` | admission | 64 MiB |
-| `parts` | admission, enforced while the manifest is parsed | 1,000,000 |
+| `parts` | admission, before more entries are materialized | 1,000,000 |
 | `footerBytes` | admission | 16 MiB |
 | `pageIndexBytes` | admission | 16 MiB |
 | `metadataMemory` | admission: estimated decoded size of one footer, page index or page header | 256 MiB |
@@ -430,7 +441,9 @@ progress, waits for them to return, then closes the part sources.
 | `indexMemory` | retained budget (fails past it) | 1 GiB |
 | `offsetIndexMemory` | retained cache (never fails) | 256 MiB |
 | `getRows` | result limit of `get` | 1,000 |
+| page-header probe ceiling | windows of 8 KiB, 256 KiB, then the ceiling | min(16 MiB, `metadataMemory`) |
 | manifest nesting | fixed capacity | 512 |
+| schema nesting | deeper is `invalid_footer` | 64 |
 | dataset row total | fixed capacity, refused at open | 2^63 − 1 |
 | `OpenOptions.verifyConcurrency` | parts `verify` checks at once | 1 |
 | `ListIndexOptions` | bytes, workers, changes per page | 64 MiB, 1, 8 |
@@ -468,9 +481,12 @@ column's representation (boolean 1, int 4, long 8, byte array 24), a null flag p
 and for byte arrays the arena's bytes; a byte-array dictionary counts 80 bytes per entry and its bytes twice. A
 page over it fails with `LimitExceededException` naming `PAGE_MEMORY`. Its default derives as Go's does, so a
 byte-array dictionary near both `pageValues` and `pageBytes` can exceed it under this reader's estimate; set it
-higher to admit such a page. `metadataMemory` is charged while a footer, page index or page header is decoded:
-48 bytes per structure and per string or binary plus its length, and 16 bytes per list element, before the
-list is allocated. `indexMemory` is a dataset-wide budget for retained key indexes and exact row-group first
+higher to admit such a page. `metadataMemory` is charged by a walk of a footer's, page index's or page header's encoded bytes before the
+decoder allocates anything: 48 bytes per structure, 16 per list element (32 per map entry), and 48 plus twice its
+encoded length per string or binary value (a Java string can take two bytes per UTF-8 byte), each declared length
+checked against the bytes left. A page header of unknown length is read in windows of at most min(16 MiB,
+`metadataMemory`). The parts limit is enforced before materializing more than the permitted number of part
+entries, including intermediate JSON representations, and after the manifest's version is decided. `indexMemory` is a dataset-wide budget for retained key indexes and exact row-group first
 keys; publication is charged once under a shared lock, and a budget failure leaves already cached indexes
 usable. A projected column chunk's OffsetIndex is read and checked the first time a request needs it and its
 page locations kept, within `offsetIndexMemory`; past that budget each request reads it again, never failing
@@ -485,13 +501,16 @@ Every domain failure, what the data, the limits or storage make of a well-formed
 | Exception | Meaning |
 |---|---|
 | `RefusalException` | The data breaks the specification. `code()` is a stable `RefusalCode` (`key_order`, `invalid_manifest`, ...) and `part()` names the part at fault. `rowGroup()` (`OptionalInt`, physical, in the part's footer), `row()` (`OptionalLong`, within the row group) and `key()` (`Optional<Bytes>`) locate it further where the reader has the value in hand, as the Go reader's `RefusalError` does; each is empty otherwise (a manifest or part-level fault has no row group, only `invalid_key` and `key_order` in a page have a row, only `key_order` a key). Only `code()` is a contract; the message is for people. |
-| `UnsupportedFeatureException` | The data is valid but uses something this reader does not implement: `UnsupportedCode.ENCODING` (`unsupported_encoding`), `PROJECTION` (`unsupported_projection`: nested, repeated or `INT96` columns), `ENCRYPTION` (`unsupported_encryption`). |
+| `UnsupportedFeatureException` | The data is valid but uses something this reader does not implement: `UnsupportedCode.ENCODING` (`unsupported_encoding`), `PROJECTION` (`unsupported_projection`: nested or repeated columns), `ENCRYPTION` (`unsupported_encryption`). |
 | `LimitExceededException` | Input or a result beyond a `Limits` setting or a fixed capacity: `limit()` is a `LimitName`, with `declared()` and `maximum()`. |
 | `StorageException` | Reading storage failed. Says nothing about the data. |
 
-Outside that hierarchy: a malformed request (a non-positive `rows` limit, a negative limit, a malformed cursor
-token, `split(0)`) is `IllegalArgumentException`, thrown before anything is read; a request on a closed dataset
-`IllegalStateException`; a cancelled or interrupted one `CancellationException`. A visitor's or statistics
+Outside that hierarchy: an invalid value (a `rows` limit outside 1 to `Integer.MAX_VALUE`, a negative limit, a
+malformed cursor token, `split(0)`) is `IllegalArgumentException` and a prohibited null `NullPointerException`,
+both thrown before anything is read and with zero statistics delivered; a part index outside the manifest
+`IndexOutOfBoundsException`; a request on a closed dataset `IllegalStateException`; a cancelled or interrupted
+one `CancellationException`. A part's refusal is kept for the dataset's lifetime and thrown to each request as a
+fresh exception, with the same code and location. A visitor's or statistics
 consumer's own exceptions propagate unchanged. The public API never returns or accepts `null`; optional values
 are `Optional`.
 
@@ -648,7 +667,7 @@ data in the pages a request decodes is `invalid_parquet` (CHECK-5).
 - Validation (§8: `structural`, `profile`, `full`, `digest`), including SHA-256 digests. The
   conformance adapter answers `validate` with `unsupported_operation`.
 - Writing datasets.
-- Projecting nested or repeated columns, or `INT96` (reported as `unsupported_projection`).
+- Projecting nested or repeated columns (reported as `unsupported_projection`). `INT96` columns are projected as raw bits.
 - BROTLI, LZO and Hadoop-framed LZ4 compression, and modular encryption (reported as unsupported).
   BROTLI is outside the ENC-1 baseline, which includes LZ4_RAW; the Go reader also decodes BROTLI. Beyond
   the baseline, this reader decodes, as the Go reader does, `BYTE_STREAM_SPLIT` values of `FLOAT`, `DOUBLE`, `INT32`, `INT64` and

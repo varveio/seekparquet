@@ -7,13 +7,14 @@ independent of the specification's draft revisions.
 
 ### Changed: the read API is aligned with the Go reader's
 
-Pre-release, without deprecated aliases. Java now has the Go reader's operations, names, semantics and
-defaults, in Java idiom; see the correspondence table in README.md.
+Pre-release, without deprecated aliases. Java exposes corresponding reader operations and request/result
+concepts, with matching configurable limit defaults. Java representation differences and the capability,
+resource-accounting and execution differences listed in README.md remain; see its correspondence table.
 
 - Requests: `Span` (`all`, `prefix`, `key`, builder), `Selection` (a span and an optional row cursor) and an
   immutable `Query` (span or selection, `long` limit, columns, cursor set and clear, `next(Row)`) replace
   `RangeQuery`.
-- Reads: `Dataset.rows(query)` (positive limit), `scan(query, visitor)` (limit 0 reads to the end of the span),
+- Reads: `Dataset.rows(query)` (a limit from 1 to `Integer.MAX_VALUE`, a `List`'s capacity), `scan(query, visitor)` (limit 0 reads to the end of the span),
   `get(key, columns)` (one whole group, capped by `Limits.getRows()`, checked before any value page is read),
   `plan(selections, columns)` and `list(query)`, each also with `ReadOptions`. `range`, `rangeBatches`,
   `lookup` and `planRanges` are removed; so are the row-callback plan scan and `scanBatches`.
@@ -22,7 +23,8 @@ defaults, in Java idiom; see the correspondence table in README.md.
   A planned selection takes no limit. `Plan.stats()` is removed: planning and splitting report through
   `ReadOptions`, including when they fail.
 - `ReadOptions(cancellation, statistics)` for every operation, `verify` and `columns(part)` included. The
-  statistics are delivered once, on every exit, after the request is released. Fixed: a statistics consumer
+  statistics are delivered once, on every exit, after the request is released, an invalid argument
+  (a null visitor, key or column, a limit out of range) included, with zero counts. Fixed: a statistics consumer
   that threw while the operation (or the batch callback) failed replaced the operation's exception; it is now
   added to it as suppressed. `ReadStats.plus` sums two.
 - `BatchVisitor<E extends Exception>` (`true` continues, `false` stops successfully) replaces
@@ -35,18 +37,29 @@ defaults, in Java idiom; see the correspondence table in README.md.
   `clearCursor()` replace `after(c)`.
 - `Limits` is an immutable class with `builder()`/`toBuilder()` and named settings, with the Go reader's
   defaults: footer 16 MiB (was 64), page 64 MiB (was 256), 16,777,216 page values (was 4,194,304), index memory
-  1 GiB (was 256 MiB), page memory derived as Go derives it (48 × page values + page bytes, 832 MiB), and the
-  new `metadataMemory` (256 MiB), charged while footers, page indexes and page headers decode, and `getRows`
-  (1,000). Zero means the default; a negative setting is `IllegalArgumentException`. `maxResultEntries` is
+  1 GiB (was 256 MiB), page memory derived as Go derives it (48 × page values + page bytes, 832 MiB), the new
+  `metadataMemory` (256 MiB), charged by an allocation-free walk of each footer, page index and page header
+  before it is decoded (strings at twice their encoded length), which also caps page-header probing at
+  min(16 MiB, `metadataMemory`) as in Go (was up to the page-byte limit), and `getRows` (1,000). Zero means the default; a negative setting is `IllegalArgumentException`. `maxResultEntries` is
   removed: `rows` and `list` are bounded by the caller's limit, `scan` by nothing.
 - `LimitExceededException.limit()` is a `LimitName` enum. A manifest whose row total exceeds 2^63-1 is refused
-  at open (`DATASET_ROWS`). `Manifest.parse(bytes, limits)` enforces the manifest size and part limits while
-  parsing. `OpenOptions.DEFAULT` verifies one part at a time (was 8), as the Go reader does.
+  at open (`DATASET_ROWS`). `Manifest.parse(bytes, limits)` enforces the manifest size and the parts limit:
+  the parts limit is enforced before materializing more than the permitted number of part entries, including
+  intermediate JSON representations, and after the version is decided. `OpenOptions.DEFAULT` verifies one part at a time (was 8), as the Go reader does.
 - Schema: `Dataset.columns()` and `column(name)`, which described only the parts checked so far, and
   `Column.parts()` are removed; `columns(part)` remains. `Dataset.rows()` (the row total) is `rowCount()`.
 - Storage: `PartSource` no longer extends parquet-java's `InputFile`; `storage.ParquetJavaInterop` holds the
   conversions (`partSource(path, inputFile, version)`, was `PartSource.of`; `inputFile(source)`). `read`
   documents the returned buffer's lifetime.
+- `INT96` columns are projected as raw bits: `Value.Int96(word0, word1, word2)`, least-significant word
+  first, and `BatchColumn.getInt96(i)`; no timestamp interpretation (was `unsupported_projection`).
+- A part schema nested deeper than 64 is `invalid_footer`, as in Go (was a limit at 256).
+- `ListQuery` is an immutable class with `builder(delimiter)` and `toBuilder()` (was a record);
+  `BatchColumn.size()`; `ReadStats.NONE` is public.
+- Fixed: a part's kept refusal was thrown as one shared exception, so what one request attached to it (a
+  suppressed statistics failure) reached later requests; each request now gets a fresh exception with the same
+  code and location.
+- Null extension names and values, and a null `ListIndexStats` duration or options, are rejected.
 - Smaller: `Bytes.successor()` is `prefixEnd()`; `Bytes.utf8` rejects unpaired surrogates;
   `UnsupportedCode` constants are `ENCODING`, `PROJECTION`, `ENCRYPTION`; the compatibility constructors of
   `ReadStats`, `ListIndexStats`, `ListQuery` and `ManifestPart` are removed; `LocalStorage.MAX_STRANDED_OPENS`,
