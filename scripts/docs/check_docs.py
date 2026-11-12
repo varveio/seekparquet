@@ -163,6 +163,7 @@ def check_terms(files, root=ROOT):
             if 'terms: ok' in raw[number - 1]:
                 continue
             line = re.sub(r'\]\([^)]*\)', ']', line)  # link targets are paths, not prose
+            line = re.sub(r'<[^>]+>', '', line)         # nor are HTML tags and their ids
             for regex, pattern, advice in terms:
                 m = regex.search(line)
                 if m:
