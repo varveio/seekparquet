@@ -18,25 +18,30 @@ dataset with pyarrow, below.
    - the key column as a top-level `REQUIRED BYTE_ARRAY`, unannotated or `STRING`
      ([KEY-1](../../spec/format-1.md#key-1));
    - `column_orders`, with `TYPE_ORDER` for the key ([KEY-5](../../spec/format-1.md#key-5));
-   - `sorting_columns` on every row group, the key first and ascending ([RG-1](../../spec/format-1.md#rg-1));
-   - a ColumnIndex and an OffsetIndex on the key column of every row group
+   - `sorting_columns` on every non-empty row group, the key first and ascending ([RG-1](../../spec/format-1.md#rg-1));
+   - a ColumnIndex and an OffsetIndex on the key column of every non-empty row group
      ([RG-2](../../spec/format-1.md#rg-2) to [RG-4](../../spec/format-1.md#rg-4)), with page bounds that are
      bounds: exact, or shortened only where the shortened value still bounds the page
      ([RG-5](../../spec/format-1.md#rg-5));
    - an OffsetIndex on value columns too, recommended ([COL-4](../../spec/format-1.md#col-4));
    - key pages of at most 1,024 rows, recommended ([GEO-1](../../spec/format-1.md#geo-1));
-   - only baseline codecs: `UNCOMPRESSED`, `SNAPPY`, `GZIP`, `ZSTD` or `LZ4_RAW`, which is not the legacy
+   - baseline codecs, recommended: `UNCOMPRESSED`, `SNAPPY`, `GZIP`, `ZSTD` or `LZ4_RAW`, which is not the legacy
      `LZ4` ([ENC-1](../../spec/format-1.md#enc-1)). `BROTLI` is valid, but a reader may not support it;
    - the five `seekparquet.*` footer stamps, repeating the manifest's version, schema id and key declaration
      ([STAMP-1](../../spec/format-1.md#stamp-1)).
-4. **Make every part durable** under its final path: sync the file, move it into place, and sync its
-   directory.
-5. **Commit the manifest** ([§3](../../spec/format-1.md#3-the-manifest)): the parts in key order with their
-   exact row counts, sizes, and first and last keys. Optionally add SHA-256 digests, and `extensions` objects
-   for metadata readers ignore ([§3.4](../../spec/format-1.md#34-extensions); the namespace `seekparquet` is
-   reserved). Write the manifest whole, sync it, install it atomically as `manifest.json`, then sync the root
-   ([COMMIT-1](../../spec/format-1.md#commit-1)). Until then the root holds no dataset
+4. **Make every part complete and durable** under its final path before publishing the manifest
+   ([COMMIT-1](../../spec/format-1.md#commit-1)). Keep those bytes immutable while the manifest may be read
+   ([COMMIT-2](../../spec/format-1.md#commit-2)).
+5. **Commit the manifest atomically** ([§3](../../spec/format-1.md#3-the-manifest)): the parts in key order
+   with their exact row counts, sizes, and first and last keys. Optionally add SHA-256 digests, and
+   `extensions` objects for metadata readers ignore ([§3.4](../../spec/format-1.md#34-extensions); the
+   namespace `seekparquet` is reserved). Until the manifest is published the root holds no dataset
    ([LAYOUT-1](../../spec/format-1.md#layout-1)).
+
+On a local filesystem, the implementation of COMMIT-1 is: make the directory hierarchy durable by syncing
+its parent entries; sync each completed part, rename it into place, and sync its directory. Write the whole
+manifest to a temporary file, sync it, rename it atomically to `manifest.json`, then sync the root. Object
+storage needs equivalent durability and atomic publication guarantees from its storage service.
 
 ## Write a dataset from sorted rows
 
@@ -100,7 +105,8 @@ Here `object` is a struct with a `[]byte` field tagged `parquet:"key"` and an `i
 
 `WriteDir` creates the dataset directory, which must not exist, and syncs its parent. It creates and syncs
 `data/` before publishing any part. It names parts `data/part-NNNNN.parquet`, records each part's SHA-256 in
-the manifest, and ends a part at the first key change after `DatasetOptions.PartBytes`. With no rows it
+the manifest, and checks the encoded part size after each input batch. Once it reaches
+`DatasetOptions.PartBytes`, the next key change ends the part. With no rows it
 commits an empty dataset. When it fails before the commit, including on cancellation, it removes the
 directory.
 
@@ -132,6 +138,17 @@ if err != nil {
 defer root.Close()
 if err := root.Mkdir("data", 0o755); err != nil {
 	log.Fatal(err)
+}
+// Make the root's entry in its parent, and data's entry in the root,
+// durable before publishing a part (the local implementation of COMMIT-1).
+for _, path := range []string{filepath.Dir(dir), dir} {
+	d, err := os.Open(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := errors.Join(d.Sync(), d.Close()); err != nil {
+		log.Fatal(err)
+	}
 }
 ops := local.Ops{Root: root}
 
@@ -198,18 +215,21 @@ fmt.Printf("%s: %d rows, %s to %s\n", part.Path, part.Rows, part.MinKey, part.Ma
 
 ### What `write` guarantees
 
-- It enforces step 3. Its options set the key, the schema id, the codec, page and row-group sizes,
-  `created_by` and column-parallel encoding. They cannot turn off the indexes, the bounds or the stamps.
-- It checks every key as it arrives ([KEY-2](../../spec/format-1.md#key-2),
-  [KEY-3](../../spec/format-1.md#key-3), [KEY-6](../../spec/format-1.md#key-6)). A violation fails with
-  `write.ErrProfile`, naming the rule, instead of writing a part a reader would refuse.
-- Its page bounds are exact on every column, including keys longer than 1,024 bytes and keys that begin with
+The writer installs the required profile metadata and exact page bounds. `WriteRows` checks
+[KEY-2](../../spec/format-1.md#key-2), [KEY-3](../../spec/format-1.md#key-3) and
+[KEY-6](../../spec/format-1.md#key-6) as rows arrive. `WritePage` checks KEY-2 and KEY-3; its caller must
+supply valid UTF-8 where required and schema-correct column values. A checked key violation fails with
+`write.ErrProfile`.
+
+- Options set the key, schema id, codec, page and row-group sizes, `created_by` and column-parallel
+  encoding. They cannot turn off the indexes, bounds or stamps.
+- Page bounds are exact on every column, including keys longer than 1,024 bytes and keys beginning with
   `0xFF` bytes.
-- It streams: it holds one page of rows and one row group of encoded pages, and computes the part's SHA-256
-  as the bytes are written.
-- `WriteRows` copies each row's byte values, so you may reuse your rows at once.
-- `WritePage` copies nothing: you fill each column of a page from your own rows, which must stay unchanged
-  until the call returns. It checks KEY-2 and KEY-3 only, leaving KEY-6 to you and to validation.
+- The writer holds one page of rows and one row group of encoded pages, and computes the part's SHA-256
+  as bytes are written.
+- `WriteRows` copies each row's byte values, so you may reuse the rows after the call.
+- `WritePage` avoids buffering a copy of every input row, but retains copies of boundary keys. Its inputs
+  must stay unchanged until the call returns.
 
 The codec defaults to ZSTD. A column whose parquet-go schema node names its own compression keeps it.
 
@@ -231,15 +251,15 @@ durable.
 
 ## Choose geometry
 
-Every valid geometry reads correctly. Geometry decides how much a read decodes and how many dependent
-requests it waits for. Defaults of the Go writer are in parentheses.
+Geometry does not change the query semantics. Within the reader's limits, it affects how much a read
+decodes and how many dependent requests it waits for. Defaults of the Go writer are in parentheses.
 
 | Choice | Smaller | Larger |
 |---|---|---|
 | Rows per key page (1,024, [GEO-1](../../spec/format-1.md#geo-1)) | fewer keys decoded to find one; a larger page index | more keys decoded per seek |
 | Row group (8 MiB or 1,000,000 rows) | more row-group first keys to route by; a larger footer | a larger key page index to load per row group |
 | Part (`PartBytes`, 128 MiB) | more first touches, each a footer read, and more open files | larger footers to read on first touch |
-| Page bounds | exact bounds let a seek skip every page that cannot hold the key | bounds shortened until they cannot tell neighboring pages apart can force decoding many pages, up to a whole row group |
+| Page bounds | exact bounds distinguish neighboring pages and help a seek skip unrelated pages; routing still decodes first key pages | bounds shortened until they cannot tell neighboring pages apart can force decoding many pages, up to a whole row group |
 | Value-column OffsetIndex ([COL-4](../../spec/format-1.md#col-4)) | present: a read fetches only the value pages of the rows it returns | absent: the reader walks page headers to find them |
 
 - Keys that share a long prefix need bounds long enough to tell pages apart. For example, if keys share
@@ -335,7 +355,7 @@ DuckDB's `COPY ... TO` (checked with DuckDB 1.4.5) writes the key column `OPTION
 - Open the dataset and call Go `Dataset.Verify` (Java `Dataset.verify`) to check every part now.
 - Validate it in full: see [validating](validating.md).
 
-The Go module's own tests do both for every dataset they write. In CI, the module's sample datasets are
+The writer tests include verification and validation checks. In CI, the module's sample datasets are
 validated at the `full` and `digest` levels by the Go validator and by an independent Python validator, read
 by DuckDB, and queried through the Go and Java readers against their source rows
 (`conformance/harness/check_datasets.py`).

@@ -9,9 +9,11 @@
 package write_test
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/parquet-go/parquet-go"
 
@@ -36,6 +38,17 @@ func ExampleNewPart() {
 	defer root.Close()
 	if err := root.Mkdir("data", 0o755); err != nil {
 		log.Fatal(err)
+	}
+	// Make the root's entry in its parent, and data's entry in the root,
+	// durable before publishing a part (the local implementation of COMMIT-1).
+	for _, path := range []string{filepath.Dir(dir), dir} {
+		d, err := os.Open(path)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := errors.Join(d.Sync(), d.Close()); err != nil {
+			log.Fatal(err)
+		}
 	}
 	ops := local.Ops{Root: root}
 
