@@ -50,7 +50,7 @@ func checkScanDeliveryRows(t *testing.T, got []Row, want []scanDeliveryRecord) {
 		t.Fatalf("delivered %d rows, want %d", len(got), len(want))
 	}
 	for i, row := range got {
-		if !bytes.Equal(row.Key, want[i].Key) || row.Offset != 0 || len(row.Values) != 1 || row.Values[0].Absent || string(row.Values[0].ByteArray()) != want[i].Value {
+		if !bytes.Equal(row.Key, want[i].Key) || row.Offset != 0 || len(row.Values) != 1 || row.Values[0].Absent() || string(row.Values[0].Bytes()) != want[i].Value {
 			t.Fatalf("delivered row %d: %+v", i, row)
 		}
 	}
@@ -68,8 +68,8 @@ func TestScanDeliversBatchesBeforePageError(t *testing.T) {
 			// key page fails only after every row of the first key page was delivered.
 			want := records[:index.FirstRowIndex(1)]
 			editPageHeader(t, partFile(dir, 0), index.Offset(1), func(h *format.PageHeader) { h.UncompressedPageSize++ })
-			d := open(t, dir, Options{})
-			plan, err := d.PlanRanges(ctx, []Range{{}}, []string{"value"})
+			d := open(t, dir, OpenOptions{})
+			plan, err := d.Plan(ctx, []Selection{{}}, []string{"value"}, nil)
 			must(t, err)
 			for _, batches := range []bool{false, true} {
 				t.Run(fmt.Sprintf("batches=%t", batches), func(t *testing.T) {
@@ -77,16 +77,16 @@ func TestScanDeliversBatchesBeforePageError(t *testing.T) {
 					var st ReadStats
 					var err error
 					if batches {
-						err = plan.ScanBatches(ctx, &st, func(b *Batch) error {
+						err = plan.Scan(ctx, &st, func(b *Batch) error {
 							for i := 0; i < b.Len(); i++ {
 								got = append(got, b.Row(i))
 							}
 							return nil
 						})
 					} else {
-						err = plan.Scan(ctx, &st, func(row Row) error { got = append(got, row); return nil })
+						err = scanRows(ctx, plan, &st, func(row Row) error { got = append(got, row); return nil })
 					}
-					if CodeOf(err) != CodeInvalidParquet {
+					if RefusalCodeOf(err) != CodeInvalidParquet {
 						t.Fatalf("error %v, want invalid_parquet", err)
 					}
 					checkScanDeliveryRows(t, got, want)
@@ -101,21 +101,21 @@ func TestScanDeliversBatchesBeforePageError(t *testing.T) {
 
 func TestScanCancellationBetweenBatches(t *testing.T) {
 	dir, records, _, _ := scanDeliveryFixture(t)
-	d := open(t, dir, Options{})
-	plan, err := d.PlanRanges(ctx, []Range{{}}, []string{"value"})
+	d := open(t, dir, OpenOptions{})
+	plan, err := d.Plan(ctx, []Selection{{}}, []string{"value"}, nil)
 	must(t, err)
 	// Discover the first batch's actual size; the API does not promise maximal
 	// batches. Cancelling in its first row must still deliver all of that batch.
 	firstBatch := 0
 	stop := errors.New("first batch")
-	err = plan.ScanBatches(ctx, nil, func(b *Batch) error { firstBatch = b.Len(); return stop })
+	err = plan.Scan(ctx, nil, func(b *Batch) error { firstBatch = b.Len(); return stop })
 	if err != stop || firstBatch < 2 || firstBatch >= len(records) {
 		t.Fatalf("first batch %d, error %v", firstBatch, err)
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var got []Row
-	err = plan.Scan(cancelled, nil, func(row Row) error {
+	err = scanRows(cancelled, plan, nil, func(row Row) error {
 		got = append(got, row)
 		if len(got) == 1 {
 			cancel()

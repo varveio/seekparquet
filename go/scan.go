@@ -9,7 +9,7 @@ import (
 )
 
 // scan is one request's forward walk over the key column in dataset
-// order, the one traversal behind Range and List. It positions at the
+// order, the one traversal behind Rows, Get, Scan and List. It positions at the
 // first row at or after a key, or after a cursor, and steps row by row
 // across row groups. It is the only place offsets are counted: a row's
 // offset in its equal-key group (PAGE-1) is its dataset ordinal minus that

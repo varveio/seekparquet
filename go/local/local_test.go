@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -43,7 +44,7 @@ func must(t testing.TB, err error) {
 // it checks the parts' names, digests and that no temporary file is left.
 func checkDataset(t *testing.T, dir string, s samples.Sample) seekparquet.Metadata {
 	t.Helper()
-	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.OpenOptions{})
 	if err != nil {
 		t.Fatalf("%s: open: %v", s.Name, err)
 	}
@@ -58,9 +59,9 @@ func checkDataset(t *testing.T, dir string, s samples.Sample) seekparquet.Metada
 	}
 	keys := s.Keys()
 	var got []seekparquet.Row
-	req := seekparquet.Range{Limit: 997, Columns: columns}
+	req := seekparquet.Query{Limit: 997, Columns: columns}
 	for {
-		rows, err := d.Range(context.Background(), req)
+		rows, err := d.Rows(context.Background(), req, nil)
 		if err != nil {
 			t.Fatalf("%s: range: %v", s.Name, err)
 		}
@@ -79,8 +80,8 @@ func checkDataset(t *testing.T, dir string, s samples.Sample) seekparquet.Metada
 		}
 		for c, v := range row.Values {
 			want := s.Rows[i][c]
-			if !parquet.Equal(v.Value, want) && !(v.IsNull() && want.IsNull()) {
-				t.Fatalf("%s: row %d column %s: %v, want %v", s.Name, i, columns[c], v.Value, want)
+			if !sameValue(v, want) {
+				t.Fatalf("%s: row %d column %s: %v, want %v", s.Name, i, columns[c], v, want)
 			}
 		}
 	}
@@ -371,7 +372,7 @@ func TestCommitRefuses(t *testing.T) {
 	}
 	bad = m
 	bad.SchemaID = ""
-	if ok, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, bad); ok || seekparquet.CodeOf(err) != seekparquet.CodeInvalidManifest {
+	if ok, err := local.Commit(local.Ops{Root: root, AllowUnsynced: unsynced}, bad); ok || seekparquet.RefusalCodeOf(err) != seekparquet.CodeInvalidManifest {
 		t.Errorf("invalid manifest: %v, %v", ok, err)
 	}
 	if exists(root, seekparquet.ManifestName) {
@@ -497,10 +498,37 @@ func TestWriteDirCrashPoints(t *testing.T) {
 // verifyDir opens the dataset at dir, verifies every part and its first
 // and last key pages (Dataset.Verify), and closes it.
 func verifyDir(dir string) error {
-	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.OpenOptions{})
 	if err != nil {
 		return err
 	}
 	defer d.Close()
 	return d.Verify(context.Background())
+}
+
+// sameValue reports whether a read value is the value written: both null,
+// or of one physical kind with equal values, floats by their bits.
+func sameValue(v seekparquet.Value, want parquet.Value) bool {
+	if v.Absent() || v.IsNull() || want.IsNull() {
+		return !v.Absent() && v.IsNull() && want.IsNull()
+	}
+	switch want.Kind() {
+	case parquet.Boolean:
+		return v.Kind() == seekparquet.KindBoolean && v.Boolean() == want.Boolean()
+	case parquet.Int32:
+		return v.Kind() == seekparquet.KindInt32 && v.Int32() == want.Int32()
+	case parquet.Int64:
+		return v.Kind() == seekparquet.KindInt64 && v.Int64() == want.Int64()
+	case parquet.Int96:
+		return v.Kind() == seekparquet.KindInt96 && v.Int96() == seekparquet.Int96(want.Int96())
+	case parquet.Float:
+		return v.Kind() == seekparquet.KindFloat && math.Float32bits(v.Float()) == math.Float32bits(want.Float())
+	case parquet.Double:
+		return v.Kind() == seekparquet.KindDouble && math.Float64bits(v.Double()) == math.Float64bits(want.Double())
+	case parquet.ByteArray:
+		return v.Kind() == seekparquet.KindByteArray && bytes.Equal(v.Bytes(), want.ByteArray())
+	case parquet.FixedLenByteArray:
+		return v.Kind() == seekparquet.KindFixedLenByteArray && bytes.Equal(v.Bytes(), want.ByteArray())
+	}
+	return false
 }

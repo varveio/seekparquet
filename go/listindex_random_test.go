@@ -78,14 +78,14 @@ func testListIndexRandomSeed(t *testing.T, seed int64) {
 	fixture := parts(geo, ps...)
 	fixture.RepeatedKeys = repeated
 	dir := write(t, fixture)
-	plain := open(t, dir, Options{})
+	plain := open(t, dir, OpenOptions{})
 	var cases []listIndexCase
 	prefixes := []string{"", "a", "a/", "b/", "a/a", "//", "/", "\xff", "a/b/", "ab"}
 	for _, pfx := range prefixes {
 		for _, limit := range []int{1, 3, 1000} {
-			q := List{Prefix: []byte(pfx), Delimiter: '/', Limit: limit, Columns: []string{"size"}}
+			q := ListQuery{Prefix: []byte(pfx), Delimiter: '/', Limit: limit, Columns: []string{"size"}}
 			for page := 0; page < 400; page++ {
-				want, err := plain.List(ctx, q)
+				want, err := plain.List(ctx, q, nil)
 				cases = append(cases, listIndexCase{query: q, want: want, err: err})
 				if len(want) < limit {
 					break
@@ -97,12 +97,12 @@ func testListIndexRandomSeed(t *testing.T, seed int64) {
 	for _, cap := range []int{1, 3, 1000} {
 		for _, budget := range []int64{600, 3000, 1 << 24} {
 			t.Run(fmt.Sprintf("cap-%d/budget-%d", cap, budget), func(t *testing.T) {
-				idx := open(t, dir, Options{})
+				idx := open(t, dir, OpenOptions{})
 				if _, err := idx.BuildListIndex(ctx, ListIndexOptions{MaxBytes: budget, MaxChangesPerPage: cap, Workers: 3}); err != nil {
 					t.Fatal(err)
 				}
 				for _, tc := range cases {
-					got, err := idx.List(ctx, tc.query)
+					got, err := idx.List(ctx, tc.query, nil)
 					if (tc.err == nil) != (err == nil) || !reflect.DeepEqual(tc.want, got) {
 						t.Fatalf("seed=%d cap=%d budget=%d prefix=%q limit=%d cursor=%+v err=%v/%v\nwant=%v\ngot =%v", seed, cap, budget, tc.query.Prefix, tc.query.Limit, tc.query.Cursor, tc.err, err, entriesOf(tc.want), entriesOf(got))
 					}
@@ -146,7 +146,7 @@ func TestListIndexExportRandomFixtures(t *testing.T) {
 		fixture.RepeatedKeys = seed%2 == 1
 		dir := filepath.Join(root, fmt.Sprintf("seed-%02d", seed))
 		must(t, testutil.Write(dir, fixture))
-		d := open(t, dir, Options{})
+		d := open(t, dir, OpenOptions{})
 		st, err := d.BuildListIndex(ctx, ListIndexOptions{})
 		must(t, err)
 		if !st.HasIndex {

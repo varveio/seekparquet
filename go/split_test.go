@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -29,7 +30,7 @@ var splitCounts = []int{1, 2, 3, 7, 64}
 func scanRow(row Row) string {
 	s := fmt.Sprintf("%q/%d", row.Key, row.Offset)
 	if len(row.Values) > 0 {
-		if v := row.Values[0]; v.IsNull() {
+		if v := row.Values[0]; v.IsNull() || v.Absent() { // the oracle's value is null when absent
 			s += "=null"
 		} else {
 			s += fmt.Sprintf("=%d", v.Int64())
@@ -39,11 +40,11 @@ func scanRow(row Row) string {
 }
 
 // scanShard scans plan, returning its rows and keys.
-func scanShard(t *testing.T, plan *RangePlan, st *ReadStats) ([]string, [][]byte) {
+func scanShard(t *testing.T, plan *Plan, st *ReadStats) ([]string, [][]byte) {
 	t.Helper()
 	var rows []string
 	var keys [][]byte
-	must(t, plan.Scan(ctx, st, func(row Row) error {
+	must(t, scanRows(ctx, plan, st, func(row Row) error {
 		rows = append(rows, scanRow(row))
 		keys = append(keys, row.Key)
 		return nil
@@ -58,11 +59,13 @@ func scanShard(t *testing.T, plan *RangePlan, st *ReadStats) ([]string, [][]byte
 // counts and projected bytes add up to the plan's; with exact bytes, each
 // shard's scan asks for exactly its projected bytes; no group of equal
 // keys crosses two shards.
-func checkSplit(t *testing.T, d *Dataset, src *extentSource, rows []oracleRow, extents []chunkExtent, column string, ranges []Range) {
+func checkSplit(t *testing.T, d *Dataset, src *extentSource, rows []oracleRow, extents []chunkExtent, column string, ranges []Selection) {
 	t.Helper()
 	var want []string
 	for _, row := range rows {
-		if slices.ContainsFunc(ranges, func(rng Range) bool { return selects(rng, row.key) && afterCursor(rng.Cursor, row.key, row.offset) }) {
+		if slices.ContainsFunc(ranges, func(rng Selection) bool {
+			return selects(rng.Span, row.key) && afterCursor(rng.Cursor, row.key, row.offset)
+		}) {
 			s := fmt.Sprintf("%q/%d", row.key, row.offset)
 			if row.value.IsNull() {
 				s += "=null"
@@ -74,12 +77,12 @@ func checkSplit(t *testing.T, d *Dataset, src *extentSource, rows []oracleRow, e
 	}
 	for _, columns := range [][]string{{column}, nil} {
 		name := fmt.Sprintf("%v over %s", columns, describe(ranges))
-		plan, err := d.PlanRanges(ctx, ranges, columns)
+		plan, err := d.Plan(ctx, ranges, columns, nil)
 		must(t, err)
 		count, countExact := plan.Count()
 		bytesTotal, bytesExact := plan.ProjectedBytes()
 		for _, n := range splitCounts {
-			shards, err := plan.Split(ctx, n)
+			shards, err := plan.Split(ctx, n, nil)
 			if err != nil {
 				t.Fatalf("%s: split %d: %v", name, n, err)
 			}
@@ -150,13 +153,13 @@ func TestSplitConformanceOracle(t *testing.T) {
 				keys[i] = row.key
 			}
 			ranges := planRanges(keys)
-			checkSplit(t, d, src, rows, extents, column, []Range{{}})
+			checkSplit(t, d, src, rows, extents, column, []Selection{{}})
 			for i := 0; i < len(ranges); i += 11 {
-				checkSplit(t, d, src, rows, extents, column, []Range{ranges[i]})
+				checkSplit(t, d, src, rows, extents, column, []Selection{ranges[i]})
 			}
 			random := rand.New(rand.NewPCG(2, uint64(len(rows))))
 			for range 10 {
-				var set []Range
+				var set []Selection
 				for range 2 + random.IntN(3) {
 					set = append(set, ranges[random.IntN(len(ranges))])
 				}
@@ -198,20 +201,14 @@ func TestSplitGeometries(t *testing.T) {
 			d, src, rows, extents := openOracle(t, write(t, doc), "size")
 			distinct := slices.CompactFunc(slices.Clone(rows), func(a, b oracleRow) bool { return bytes.Equal(a.key, b.key) })
 			step := max(1, len(distinct)/12)
-			checkSplit(t, d, src, rows, extents, "size", []Range{{}})
+			checkSplit(t, d, src, rows, extents, "size", []Selection{{}})
 			for i := 0; i < len(distinct); i += step {
 				k := distinct[i].key
 				after := distinct[min(i+len(distinct)/3, len(distinct)-1)].key
-				for _, rng := range []Range{
-					{Start: k},
-					{End: k},
-					{Start: k, End: after},
-					{Start: k, Cursor: &Cursor{Key: k, Offset: 1}},
-					KeyRange(k, 0),
-				} {
-					checkSplit(t, d, src, rows, extents, "size", []Range{rng})
+				for _, rng := range []Selection{{Span: Span{Start: k}}, {Span: Span{End: k}}, {Span: Span{Start: k, End: after}}, {Span: Span{Start: k}, Cursor: &Cursor{Key: k, Offset: 1}}, Selection{Span: KeySpan(k)}} {
+					checkSplit(t, d, src, rows, extents, "size", []Selection{rng})
 				}
-				checkSplit(t, d, src, rows, extents, "size", []Range{{End: k}, {Start: after}})
+				checkSplit(t, d, src, rows, extents, "size", []Selection{{Span: Span{End: k}}, {Span: Span{Start: after}}})
 			}
 		})
 	}
@@ -227,11 +224,12 @@ func TestSplitBalance(t *testing.T) {
 	for _, repeated := range []bool{false, true} {
 		doc := parts(testutil.Part{GroupRows: 20, PageBytes: 256}, split(keys, 2)...)
 		doc.RepeatedKeys = repeated
-		d := open(t, write(t, doc), Options{})
+		d := open(t, write(t, doc), OpenOptions{})
 		for _, columns := range [][]string{{"size"}, nil} {
-			plan, err := d.PlanRanges(ctx, []Range{{}}, columns)
+			plan, err := d.Plan(ctx, []Selection{{}}, columns, nil)
 			must(t, err)
-			shards, err := plan.Split(ctx, 4)
+			var st ReadStats
+			shards, err := plan.Split(ctx, 4, &st)
 			must(t, err)
 			if len(shards) != 4 {
 				t.Fatalf("repeated %v, %v: %d shards", repeated, columns, len(shards))
@@ -241,10 +239,12 @@ func TestSplitBalance(t *testing.T) {
 				if columns != nil && n%20 != 0 || n < 40 || n > 80 {
 					t.Fatalf("repeated %v, %v: shard %d has %d rows", repeated, columns, i, n)
 				}
-				if st := shard.Stats(); (st.KeyPagesDecoded > 0) != (repeated && i < 3 && i != 1) {
-					// The boundary after shard 1 is part 1's first row.
-					t.Fatalf("repeated %v, %v: shard %d placed its end with %+v", repeated, columns, i, st)
-				}
+			}
+			// Two of the three boundaries each decode the two key pages
+			// around them; the boundary after shard 1 is part 1's first row.
+			// Unique keys read nothing.
+			if want := map[bool]ReadStats{false: {}, true: {KeyPagesDecoded: 4}}[repeated]; st.KeyPagesDecoded != want.KeyPagesDecoded || !repeated && st != want {
+				t.Fatalf("repeated %v, %v: the split read %+v", repeated, columns, st)
 			}
 		}
 		// A cancelled split fails in both modes: with repeated keys at its
@@ -253,21 +253,21 @@ func TestSplitBalance(t *testing.T) {
 		cancelled, cancel := context.WithCancel(ctx)
 		cancel()
 		for _, columns := range [][]string{{"size"}, nil} {
-			plan, err := d.PlanRanges(ctx, []Range{{}}, columns)
+			plan, err := d.Plan(ctx, []Selection{{}}, columns, nil)
 			must(t, err)
-			if shards, err := plan.Split(cancelled, 4); !errors.Is(err, context.Canceled) || shards != nil {
+			if shards, err := plan.Split(cancelled, 4, nil); !errors.Is(err, context.Canceled) || shards != nil {
 				t.Fatalf("repeated %v, %v: a cancelled split: %d shards, %v", repeated, columns, len(shards), err)
 			}
 		}
-		plan, err := d.PlanRanges(ctx, []Range{{Start: []byte(keys[3]), End: []byte(keys[15])}}, []string{"size"})
+		plan, err := d.Plan(ctx, []Selection{{Span: Span{Start: []byte(keys[3]), End: []byte(keys[15])}}}, []string{"size"}, nil)
 		must(t, err)
-		if shards, err := plan.Split(ctx, 5); err != nil || len(shards) != 1 {
+		if shards, err := plan.Split(ctx, 5, nil); err != nil || len(shards) != 1 {
 			t.Fatalf("a selection inside one row group: %d shards, %v", len(shards), err)
 		}
 	}
-	empty, err := open(t, write(t, parts(testutil.Part{}, keys[:10])), Options{}).PlanRanges(ctx, []Range{{Start: []byte("zzzz")}}, nil)
+	empty, err := open(t, write(t, parts(testutil.Part{}, keys[:10])), OpenOptions{}).Plan(ctx, []Selection{{Span: Span{Start: []byte("zzzz")}}}, nil, nil)
 	must(t, err)
-	if shards, err := empty.Split(ctx, 3); err != nil || shards != nil {
+	if shards, err := empty.Split(ctx, 3, nil); err != nil || shards != nil {
 		t.Fatalf("an empty plan: %v, %v", shards, err)
 	}
 }
@@ -278,19 +278,19 @@ func TestSplitBalance(t *testing.T) {
 func TestSplitConcurrentScans(t *testing.T) {
 	doc := parts(testutil.Part{GroupRows: 7, PageBytes: 16}, repeatedParts()...)
 	doc.RepeatedKeys = true
-	d := open(t, write(t, doc), Options{})
-	plan, err := d.PlanRanges(ctx, []Range{{Start: []byte("a/")}}, []string{"size"})
+	d := open(t, write(t, doc), OpenOptions{})
+	plan, err := d.Plan(ctx, []Selection{{Span: Span{Start: []byte("a/")}}}, []string{"size"}, nil)
 	must(t, err)
 	want, _ := scanShard(t, plan, nil)
 	for range 4 {
-		shards, err := plan.Split(ctx, 7)
+		shards, err := plan.Split(ctx, 7, nil)
 		must(t, err)
 		got := make([][]string, len(shards))
 		stats := make([]ReadStats, len(shards))
 		var wg sync.WaitGroup
 		for i, shard := range shards {
 			wg.Go(func() {
-				err := shard.Scan(ctx, &stats[i], func(row Row) error {
+				err := scanRows(ctx, shard, &stats[i], func(row Row) error {
 					got[i] = append(got[i], scanRow(row))
 					return nil
 				})
@@ -318,14 +318,14 @@ func TestSplitRequests(t *testing.T) {
 	keys := fixtureKeys(300)
 	dir := write(t, parts(testutil.Part{GroupRows: 25, PageBytes: 256}, split(keys, 3)...))
 	rewrite(t, dir, 1, func(m *format.FileMetaData) { m.KeyValueMetadata = nil })
-	d := open(t, dir, Options{})
-	plan, err := d.PlanRanges(ctx, []Range{{Start: []byte(keys[10]), End: []byte(keys[290])}}, nil)
+	d := open(t, dir, OpenOptions{})
+	plan, err := d.Plan(ctx, []Selection{{Span: Span{Start: []byte(keys[10]), End: []byte(keys[290])}}}, nil, nil)
 	must(t, err)
-	shards, err := plan.Split(ctx, 7)
+	shards, err := plan.Split(ctx, 7, nil)
 	must(t, err)
 	refused := 0
 	for i, shard := range shards {
-		err := shard.Scan(ctx, nil, func(Row) error { return nil })
+		err := scanRows(ctx, shard, nil, func(Row) error { return nil })
 		var refusal *RefusalError
 		touches := slices.ContainsFunc(shard.spans, func(sp span) bool { return sp.start < 200 && sp.end > 100 })
 		if touches != errors.As(err, &refusal) || !touches && err != nil {
@@ -340,27 +340,33 @@ func TestSplitRequests(t *testing.T) {
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if err := shards[0].Scan(cancelled, nil, func(Row) error { return nil }); !errors.Is(err, context.Canceled) {
+	if err := scanRows(cancelled, shards[0], nil, func(Row) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("a cancelled shard scan: %v", err)
 	}
-	// An empty plan, or n below 1, has no shard, but a cancelled context
-	// still fails the split, and so does a Close.
-	empty, err := d.PlanRanges(ctx, []Range{{Start: []byte("zzzz")}}, nil)
+	// An empty plan has no shard, but a cancelled context still fails the
+	// split, and so does a Close. n below 1 is an invalid request, before
+	// anything else, with statistics reset.
+	empty, err := d.Plan(ctx, []Selection{{Span: Span{Start: []byte("zzzz")}}}, nil, nil)
 	must(t, err)
-	if shards, err := empty.Split(cancelled, 4); !errors.Is(err, context.Canceled) || shards != nil {
+	if shards, err := empty.Split(cancelled, 4, nil); !errors.Is(err, context.Canceled) || shards != nil {
 		t.Fatalf("a cancelled split of an empty plan: %d shards, %v", len(shards), err)
 	}
-	if shards, err := plan.Split(cancelled, 0); !errors.Is(err, context.Canceled) || shards != nil {
-		t.Fatalf("a cancelled split into no shard: %d shards, %v", len(shards), err)
-	}
-	if shards, err := plan.Split(ctx, 0); err != nil || shards != nil {
-		t.Fatalf("n 0: %v, %v", shards, err)
+	for _, n := range []int{0, -1, math.MinInt} {
+		for _, c := range []context.Context{ctx, cancelled} {
+			st := ReadStats{KeyPagesDecoded: 3}
+			if shards, err := plan.Split(c, n, &st); !errors.Is(err, ErrInvalidRequest) || shards != nil || st != (ReadStats{}) {
+				t.Fatalf("n %d: %d shards, %v, %+v", n, len(shards), err, st)
+			}
+			if shards, err := empty.Split(c, n, nil); !errors.Is(err, ErrInvalidRequest) || shards != nil {
+				t.Fatalf("n %d of an empty plan: %d shards, %v", n, len(shards), err)
+			}
+		}
 	}
 	must(t, d.Close())
-	if _, err := plan.Split(ctx, 2); !errors.Is(err, ErrClosed) {
+	if _, err := plan.Split(ctx, 2, nil); !errors.Is(err, ErrClosed) {
 		t.Fatalf("a split after close: %v", err)
 	}
-	if _, err := empty.Split(ctx, 2); !errors.Is(err, ErrClosed) {
+	if _, err := empty.Split(ctx, 2, nil); !errors.Is(err, ErrClosed) {
 		t.Fatalf("a split of an empty plan after close: %v", err)
 	}
 }
@@ -403,7 +409,7 @@ func boundaryDataset(t *testing.T) string {
 	doc := parts(testutil.Part{GroupRows: 20, PageBytes: 512}, keys)
 	doc.RepeatedKeys = true
 	dir := write(t, doc)
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	p, err := d.r.part(ctx, 0, new(ReadStats))
 	must(t, err)
 	for _, grp := range p.groups {
@@ -416,21 +422,18 @@ func boundaryDataset(t *testing.T) string {
 	return dir
 }
 
-// TestSplitBoundaryStats: each shard's Stats are exactly the key pages
-// that placed its end, the last page of its last row group and the first
-// of the next, though one scan places every boundary.
+// TestSplitBoundaryStats: the split's statistics are exactly the key pages
+// that placed its three boundaries, each the last page of a row group and
+// the first of the next, though one scan places every boundary.
 func TestSplitBoundaryStats(t *testing.T) {
-	d := open(t, boundaryDataset(t), Options{})
-	plan, err := d.PlanRanges(ctx, []Range{{}}, nil)
+	d := open(t, boundaryDataset(t), OpenOptions{})
+	plan, err := d.Plan(ctx, []Selection{{}}, nil, nil)
 	must(t, err)
-	shards, err := plan.Split(ctx, 4)
+	st := ReadStats{SourceReads: 99}
+	shards, err := plan.Split(ctx, 4, &st)
 	must(t, err)
-	var got []int64
-	for _, shard := range shards {
-		got = append(got, shard.Stats().KeyPagesDecoded)
-	}
-	if !slices.Equal(got, []int64{2, 2, 2, 0}) {
-		t.Fatalf("key pages decoded per shard: %v", got)
+	if len(shards) != 4 || st.KeyPagesDecoded != 6 || st.ValuePagesDecoded != 0 {
+		t.Fatalf("%d shards, key pages decoded %d: %+v", len(shards), st.KeyPagesDecoded, st)
 	}
 }
 
@@ -438,16 +441,16 @@ func TestSplitBoundaryStats(t *testing.T) {
 // group, never one between two ranges.
 func TestSplitDisjointRanges(t *testing.T) {
 	keys := fixtureKeys(300)
-	d := open(t, write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 256}, keys)), Options{})
-	between := func(a, b int) Range { return Range{Start: []byte(keys[a]), End: []byte(keys[b])} }
-	plan, err := d.PlanRanges(ctx, []Range{between(10, 20), between(210, 220)}, nil)
+	d := open(t, write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 256}, keys)), OpenOptions{})
+	between := func(a, b int) Selection { return Selection{Span: Span{Start: []byte(keys[a]), End: []byte(keys[b])}} }
+	plan, err := d.Plan(ctx, []Selection{between(10, 20), between(210, 220)}, nil, nil)
 	must(t, err)
-	if shards, err := plan.Split(ctx, 2); err != nil || len(shards) != 1 {
+	if shards, err := plan.Split(ctx, 2, nil); err != nil || len(shards) != 1 {
 		t.Fatalf("no row group begins inside the ranges: %d shards, %v", len(shards), err)
 	}
-	plan, err = d.PlanRanges(ctx, []Range{between(10, 20), between(100, 110)}, nil)
+	plan, err = d.Plan(ctx, []Selection{between(10, 20), between(100, 110)}, nil, nil)
 	must(t, err)
-	shards, err := plan.Split(ctx, 2)
+	shards, err := plan.Split(ctx, 2, nil)
 	must(t, err)
 	if len(shards) != 2 || shards[1].spans[0].start != 100 || shards[1].spans[0].ordinal {
 		t.Fatalf("row group 1 begins the second range: %d shards", len(shards))
@@ -465,18 +468,18 @@ func TestSplitDisjointRanges(t *testing.T) {
 func TestSplitInterrupted(t *testing.T) {
 	dir := boundaryDataset(t)
 	src := &hookSource{Source: dirOf(t, dir)}
-	d, err := OpenDataset(ctx, src, Options{})
+	d, err := OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	defer d.Close()
-	plan, err := d.PlanRanges(ctx, []Range{{}}, nil)
+	plan, err := d.Plan(ctx, []Selection{{}}, nil, nil)
 	must(t, err)
 	cancelled, cancel := context.WithCancel(ctx)
 	src.hook = cancel
-	if _, err := plan.Split(cancelled, 4); !errors.Is(err, context.Canceled) {
+	if _, err := plan.Split(cancelled, 4, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("a split cancelled during a read: %v", err)
 	}
 	src.hook = nil
-	shards, err := plan.Split(ctx, 4)
+	shards, err := plan.Split(ctx, 4, nil)
 	must(t, err)
 	for i, shard := range shards {
 		if n, exact := shard.Count(); n != 20 || !exact || len(shards) != 4 {
@@ -484,7 +487,7 @@ func TestSplitInterrupted(t *testing.T) {
 		}
 	}
 
-	d0 := open(t, dir, Options{})
+	d0 := open(t, dir, OpenOptions{})
 	p, err := d0.r.part(ctx, 0, new(ReadStats))
 	must(t, err)
 	index, err := p.keyIndex(ctx, p.groups[1].physical, new(ReadStats))
@@ -493,11 +496,11 @@ func TestSplitInterrupted(t *testing.T) {
 	must(t, err)
 	_, err = f.WriteAt(make([]byte, index.pages[0].size), index.pages[0].offset)
 	must(t, errors.Join(err, f.Close()))
-	broken := open(t, dir, Options{})
-	plan, err = broken.PlanRanges(ctx, []Range{{}}, nil)
+	broken := open(t, dir, OpenOptions{})
+	plan, err = broken.Plan(ctx, []Selection{{}}, nil, nil)
 	must(t, err)
 	var refusal *RefusalError
-	if _, err := plan.Split(ctx, 4); !errors.As(err, &refusal) {
+	if _, err := plan.Split(ctx, 4, nil); !errors.As(err, &refusal) {
 		t.Fatalf("a refused boundary key page: %v", err)
 	}
 }

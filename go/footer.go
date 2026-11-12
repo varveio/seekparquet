@@ -71,8 +71,11 @@ func readFull(at io.ReaderAt, p []byte, off int64) error {
 	return err
 }
 
-// errEncrypted reports an encrypted part (FILE-2).
-var errEncrypted = &UnsupportedError{Code: UnsupportedEncryption, Detail: "the part uses Parquet modular encryption"}
+// errEncrypted reports an encrypted part (FILE-2): a new error each time,
+// so that no caller can change what another read reports.
+func errEncrypted() *UnsupportedError {
+	return &UnsupportedError{Code: UnsupportedEncryption, Detail: "the part uses Parquet modular encryption"}
+}
 
 // prefetched serves reads that fall inside data, the bytes at off, or
 // inside head, the file's first bytes, from memory, and every other read
@@ -118,7 +121,7 @@ func ownCopy(b []byte) []byte {
 func decodeBounded(raw []byte, v any, budget int64) (int, error) {
 	n, _, err := thriftcheck.Check(raw, reflect.TypeOf(v), budget)
 	if errors.Is(err, thriftcheck.ErrBudget) {
-		return 0, exceeded("decoding would use more than %d bytes (Limits.MetadataMemory)", budget)
+		return 0, exceeded(LimitMetadataMemory, -1, budget, "decoding metadata")
 	}
 	if err != nil {
 		return 0, err
@@ -179,7 +182,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	}
 	tail := win[window-8:]
 	if string(head) == "PARE" || string(tail[4:]) == "PARE" {
-		return nil, errEncrypted
+		return nil, errEncrypted()
 	}
 	if string(head) != "PAR1" || string(tail[4:]) != "PAR1" {
 		return nil, bad("the file does not begin and end with PAR1")
@@ -189,7 +192,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 		return nil, bad("the footer length %d does not fit in the file", n)
 	}
 	if n > lim.FooterBytes {
-		return nil, exceeded("part %s: the footer is %d bytes (Limits.FooterBytes %d)", name, n, lim.FooterBytes)
+		return nil, exceeded(LimitFooterBytes, n, lim.FooterBytes, "part %s: the footer", name)
 	}
 	var raw []byte
 	if n+8 <= window {
@@ -210,7 +213,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	case err != nil:
 		return nil, bad("decode the footer: %v", err)
 	case int64(used) == n-28:
-		return nil, errEncrypted // a signed plaintext footer
+		return nil, errEncrypted() // a signed plaintext footer
 	case int64(used) != n:
 		return nil, bad("the footer has %d bytes after its metadata", n-int64(used))
 	}
@@ -277,7 +280,7 @@ func checkMetadata(name string, meta *format.FileMetaData) error {
 		return refusePart(CodeInvalidFooter, name, group, format, args...)
 	}
 	if meta.EncryptionAlgorithm.Value != nil || len(meta.FooterSigningKeyMetadata) > 0 {
-		return errEncrypted
+		return errEncrypted()
 	}
 	leaves, err := checkSchema(meta.Schema)
 	if err != nil {
@@ -299,7 +302,7 @@ func checkMetadata(name string, meta *format.FileMetaData) error {
 				return bad(g, "a column chunk refers to another file (file_path %q)", chunk.FilePath)
 			}
 			if chunk.CryptoMetadata.Value != nil || len(chunk.EncryptedColumnMetadata) > 0 {
-				return errEncrypted
+				return errEncrypted()
 			}
 			// The chunk's metadata describes the leaf it holds: the reader
 			// decodes by the schema's type, so a chunk claiming another is
@@ -624,23 +627,22 @@ func columnsOf(schema []format.SchemaElement, keyColumn string) []Column {
 	return out
 }
 
-// columnOf describes one top-level schema element. Its logical type is
-// copied, so that a caller cannot change the retained footer.
+// columnOf describes one top-level schema element.
 func columnOf(se *format.SchemaElement, keyColumn string) Column {
 	c := Column{Name: se.Name, Key: se.Name == keyColumn}
-	c.Repetition, _ = se.RepetitionType.Get()
+	repetition, _ := se.RepetitionType.Get()
+	c.Repetition = Repetition(repetition)
 	if children, ok := se.NumChildren.Get(); ok && children > 0 {
 		c.Group = true
 		return c
 	}
-	c.Type, _ = se.Type.Get()
-	if c.Type == format.FixedLenByteArray {
+	typ, _ := se.Type.Get()
+	c.Type = Kind(typ + 1)
+	if typ == format.FixedLenByteArray {
 		c.Length = se.TypeLength.V
 	}
 	if v := se.LogicalType.Value; v != nil {
-		copied := reflect.New(reflect.TypeOf(v).Elem())
-		copied.Elem().Set(reflect.ValueOf(v).Elem())
-		c.Logical = &format.LogicalType{Value: copied.Interface().(format.LogicalTypeValue)}
+		c.Logical = logicalOf(v)
 	} else if ct, ok := se.ConvertedType.Get(); ok {
 		c.Logical = convertedLogical(ct, se)
 	}
@@ -649,40 +651,36 @@ func columnOf(se *format.SchemaElement, keyColumn string) Column {
 
 // convertedLogical returns the logical type a leaf's legacy converted_type
 // stands for, as Parquet's LogicalTypes.md maps it (time and timestamp
-// adjusted to UTC), or nil for INTERVAL, which has none.
-func convertedLogical(ct deprecated.ConvertedType, se *format.SchemaElement) *format.LogicalType {
-	millis := format.TimeUnit{Value: &format.MilliSeconds{}}
-	micros := format.TimeUnit{Value: &format.MicroSeconds{}}
-	var v format.LogicalTypeValue
+// adjusted to UTC), or none for INTERVAL, which has none, and for the
+// converted types of groups.
+func convertedLogical(ct deprecated.ConvertedType, se *format.SchemaElement) Logical {
 	switch ct {
 	case deprecated.UTF8:
-		v = &format.StringType{}
+		return Logical{Kind: LogicalString}
 	case deprecated.Enum:
-		v = &format.EnumType{}
+		return Logical{Kind: LogicalEnum}
 	case deprecated.Json:
-		v = &format.JsonType{}
+		return Logical{Kind: LogicalJSON}
 	case deprecated.Bson:
-		v = &format.BsonType{}
+		return Logical{Kind: LogicalBSON}
 	case deprecated.Date:
-		v = &format.DateType{}
+		return Logical{Kind: LogicalDate}
 	case deprecated.TimeMillis:
-		v = &format.TimeType{IsAdjustedToUTC: true, Unit: millis}
+		return Logical{Kind: LogicalTime, AdjustedToUTC: true, Unit: Millis}
 	case deprecated.TimeMicros:
-		v = &format.TimeType{IsAdjustedToUTC: true, Unit: micros}
+		return Logical{Kind: LogicalTime, AdjustedToUTC: true, Unit: Micros}
 	case deprecated.TimestampMillis:
-		v = &format.TimestampType{IsAdjustedToUTC: true, Unit: millis}
+		return Logical{Kind: LogicalTimestamp, AdjustedToUTC: true, Unit: Millis}
 	case deprecated.TimestampMicros:
-		v = &format.TimestampType{IsAdjustedToUTC: true, Unit: micros}
+		return Logical{Kind: LogicalTimestamp, AdjustedToUTC: true, Unit: Micros}
 	case deprecated.Int8, deprecated.Int16, deprecated.Int32, deprecated.Int64:
-		v = &format.IntType{BitWidth: int8(8 << (ct - deprecated.Int8)), IsSigned: true}
+		return Logical{Kind: LogicalInt, BitWidth: int8(8 << (ct - deprecated.Int8)), Signed: true}
 	case deprecated.Uint8, deprecated.Uint16, deprecated.Uint32, deprecated.Uint64:
-		v = &format.IntType{BitWidth: int8(8 << (ct - deprecated.Uint8))}
+		return Logical{Kind: LogicalInt, BitWidth: int8(8 << (ct - deprecated.Uint8))}
 	case deprecated.Decimal:
-		v = &format.DecimalType{Precision: se.Precision.V, Scale: se.Scale.V}
-	default:
-		return nil
+		return Logical{Kind: LogicalDecimal, Precision: se.Precision.V, Scale: se.Scale.V}
 	}
-	return &format.LogicalType{Value: v}
+	return Logical{}
 }
 
 // checkKeyColumn applies KEY-1 and KEY-5 and reports whether the key is

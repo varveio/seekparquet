@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"reflect"
@@ -21,7 +22,7 @@ import (
 	"github.com/varveio/seekparquet/go/internal/testutil"
 )
 
-// rangeBatchesResult is what one RangeBatches call handed over, copied with
+// rangeBatchesResult is what one Dataset.Scan call handed over, copied with
 // Batch.Row and Batch.Cursor.
 type rangeBatchesResult struct {
 	rows    []Row
@@ -30,17 +31,16 @@ type rangeBatchesResult struct {
 	stats   ReadStats
 }
 
-// collectRangeBatches runs RangeBatches on rng, checking every batch's shape:
+// collectRangeBatches runs Dataset.Scan on rng, checking every batch's shape:
 // positive, within the limit, columns of Len() values with no spare capacity,
 // borrowed keys and offsets equal to the owning copies, and, when ordinal is
 // set, no batch crossing a page, row group or part boundary in cuts.
-func collectRangeBatches(t *testing.T, d *Dataset, rng Range, ordinal func(key []byte, offset int64) int, cuts []int) rangeBatchesResult {
+func collectRangeBatches(t *testing.T, d *Dataset, rng Query, ordinal func(key []byte, offset int64) int, cuts []int) rangeBatchesResult {
 	t.Helper()
 	var res rangeBatchesResult
-	rng.Stats = &res.stats
 	var object *Batch
-	err := d.RangeBatches(ctx, rng, func(b *Batch) error {
-		if b.Len() <= 0 || len(res.rows)+b.Len() > rng.Limit {
+	err := d.Scan(ctx, rng, &res.stats, func(b *Batch) error {
+		if b.Len() <= 0 || int64(len(res.rows)+b.Len()) > rng.Limit {
 			t.Fatalf("batch of %d rows after %d, limit %d", b.Len(), len(res.rows), rng.Limit)
 		}
 		if object != nil && object != b {
@@ -48,7 +48,7 @@ func collectRangeBatches(t *testing.T, d *Dataset, rng Range, ordinal func(key [
 		}
 		object = b
 		for c := range rng.Columns {
-			if values, ok := b.Column(c); ok && (len(values) != b.Len() || cap(values) != len(values)) {
+			if values, ok := rawColumn(b, c); ok && (len(values) != b.Len() || cap(values) != len(values)) {
 				t.Fatalf("column %d: len %d cap %d, batch %d", c, len(values), cap(values), b.Len())
 			}
 		}
@@ -78,17 +78,16 @@ func collectRangeBatches(t *testing.T, d *Dataset, rng Range, ordinal func(key [
 	return res
 }
 
-// checkRangeBatches checks RangeBatches against Range on rng: the same rows,
+// checkRangeBatches checks Scan against Rows on rng: the same rows,
 // keys, values and cursors, and the same read statistics on a warm dataset
-// (Range runs first, so neither call finds the other's index reads).
-func checkRangeBatches(t *testing.T, label string, d *Dataset, rng Range, ordinal func([]byte, int64) int, cuts []int) []Row {
+// (Rows runs first, so neither call finds the other's index reads).
+func checkRangeBatches(t *testing.T, label string, d *Dataset, rng Query, ordinal func([]byte, int64) int, cuts []int) []Row {
 	t.Helper()
-	want, err := d.Range(ctx, rng)
+	want, err := d.Rows(ctx, rng, nil)
 	must(t, err)
 	got := collectRangeBatches(t, d, rng, ordinal, cuts)
 	var warm ReadStats
-	rng.Stats = &warm
-	again, err := d.Range(ctx, rng)
+	again, err := d.Rows(ctx, rng, &warm)
 	must(t, err)
 	if len(want) == 0 {
 		want = nil
@@ -123,7 +122,7 @@ func TestRangeBatchesMatchesRange(t *testing.T) {
 		for _, indexed := range []bool{true, false} {
 			t.Run(fmt.Sprintf("seed=%d/indexed=%t", seed, indexed), func(t *testing.T) {
 				dir, rows, nkeys, cuts := batchOracleFixture(t, seed, indexed)
-				d := open(t, dir, Options{})
+				d := open(t, dir, OpenOptions{})
 				ordinals := map[string]int{}
 				for _, row := range rows {
 					ordinals[fmt.Sprintf("%s/%d", row.rec.Key, row.offset)] = row.ord
@@ -140,23 +139,23 @@ func TestRangeBatchesMatchesRange(t *testing.T) {
 				for k := 1; k < len(cuts); k += 1 + k/8 {
 					for _, limit := range []int{cuts[k] - 1, cuts[k], cuts[k] + 1} {
 						if limit > 0 {
-							checkRangeBatches(t, fmt.Sprintf("limit %d", limit), d, Range{Limit: limit, Columns: batchOracleColumns}, ordinal, cuts)
+							checkRangeBatches(t, fmt.Sprintf("limit %d", limit), d, Query{Limit: int64(limit), Columns: batchOracleColumns}, ordinal, cuts)
 						}
 					}
 				}
 				r := rand.New(rand.NewSource(seed * 11))
 				for trial := 0; trial < 24; trial++ {
 					ranges := batchOracleRanges(r, nkeys, rows)
-					rng := ranges[r.Intn(len(ranges))]
+					rng := Query{Selection: ranges[r.Intn(len(ranges))]}
 					rng.Columns = projections[r.Intn(len(projections))]
-					rng.Limit = 1 + r.Intn(len(rows)/3)
+					rng.Limit = int64(1 + r.Intn(len(rows)/3))
 					if r.Intn(4) == 0 {
-						rng.Limit = len(rows)
+						rng.Limit = int64(len(rows))
 					}
 					label := fmt.Sprintf("trial %d %s", trial, describe(rng))
 					// Page through the range with each page's last cursor,
 					// against the oracle.
-					oracle := batchOracleExpected([]Range{rng}, rows)
+					oracle := batchOracleExpected([]Selection{rng.Selection}, rows)
 					var all []Row
 					for page := 0; ; page++ {
 						// Cuts hold every column's pages: only a full projection
@@ -167,7 +166,7 @@ func TestRangeBatchesMatchesRange(t *testing.T) {
 						}
 						got := checkRangeBatches(t, fmt.Sprintf("%s page %d", label, page), d, rng, ordinal, bounds)
 						all = append(all, got...)
-						if len(got) < rng.Limit {
+						if int64(len(got)) < rng.Limit {
 							break
 						}
 						rng.Cursor = got[len(got)-1].Cursor()
@@ -186,7 +185,7 @@ func TestRangeBatchesMatchesRange(t *testing.T) {
 	}
 }
 
-// A small limit on a long range reads what Range reads, cold: no OffsetIndex
+// A small limit on a long range reads what Rows reads, cold: no OffsetIndex
 // or dictionary of a row group the rows do not reach, unlike a plan.
 func TestRangeBatchesDoesNotPlan(t *testing.T) {
 	records := transitionRecords(4096, true)
@@ -195,12 +194,11 @@ func TestRangeBatchesDoesNotPlan(t *testing.T) {
 		spec.Parts = append(spec.Parts, testutil.Part{Rows: records[start : start+1024], GroupRows: 256, PageBytes: 512, DictionaryMaxBytes: 1024})
 	}
 	dir := write(t, spec)
-	rng := Range{Start: records[100].Key, Limit: 50, Columns: transitionColumns}
+	rng := Query{Selection: Selection{Span: Span{Start: records[100].Key}}, Limit: 50, Columns: transitionColumns}
 	var cold, batched ReadStats
-	rng.Stats = &cold
-	want, err := open(t, dir, Options{}).Range(ctx, rng)
+	want, err := open(t, dir, OpenOptions{}).Rows(ctx, rng, &cold)
 	must(t, err)
-	got := collectRangeBatches(t, open(t, dir, Options{}), rng, nil, nil)
+	got := collectRangeBatches(t, open(t, dir, OpenOptions{}), rng, nil, nil)
 	batched = got.stats
 	if !reflect.DeepEqual(got.rows, want) {
 		t.Fatal("rows differ from Range")
@@ -208,50 +206,43 @@ func TestRangeBatchesDoesNotPlan(t *testing.T) {
 	if batched != cold {
 		t.Fatalf("cold stats\nRangeBatches %+v\nRange        %+v", batched, cold)
 	}
-	plan, err := open(t, dir, Options{}).PlanRanges(ctx, []Range{{Start: records[100].Key}}, transitionColumns)
+	var planned ReadStats
+	_, err = open(t, dir, OpenOptions{}).Plan(ctx, []Selection{{Span: Span{Start: records[100].Key}}}, transitionColumns, &planned)
 	must(t, err)
-	if planned := plan.Stats(); planned.SourceReads <= batched.SourceReads || planned.PartsOpened <= batched.PartsOpened {
+	if planned.SourceReads <= batched.SourceReads || planned.PartsOpened <= batched.PartsOpened {
 		t.Fatalf("planning read %+v, RangeBatches %+v: the fixture needs planning to cost more", planned, batched)
 	}
 }
 
 func TestRangeBatchesEmptyAndInvalid(t *testing.T) {
 	keys := fixtureKeys(300)
-	d := open(t, write(t, parts(testutil.Part{GroupRows: 50, PageBytes: 128}, split(keys, 2)...)), Options{})
-	empty := []Range{
-		{Start: []byte(keys[10]), End: []byte(keys[10]), Limit: 5},
-		{Start: []byte(keys[20]), End: []byte(keys[10]), Limit: 5},
-		{Start: []byte(keys[299]), StartExclusive: true, Limit: 5},
-		{Prefix: []byte("~nothing"), Limit: 5},
-		{End: []byte{}, Limit: 5},
-		{Cursor: &Cursor{Key: []byte(keys[299])}, Limit: 5},
-	}
+	d := open(t, write(t, parts(testutil.Part{GroupRows: 50, PageBytes: 128}, split(keys, 2)...)), OpenOptions{})
+	empty := []Query{{Selection: Selection{Span: Span{Start: []byte(keys[10]), End: []byte(keys[10])}}, Limit: 5}, {Selection: Selection{Span: Span{Start: []byte(keys[20]), End: []byte(keys[10])}}, Limit: 5}, {Selection: Selection{Span: Span{Start: []byte(keys[299]), StartExclusive: true}}, Limit: 5}, {Selection: Selection{Span: Span{Prefix: []byte("~nothing")}}, Limit: 5}, {Selection: Selection{Span: Span{End: []byte{}}}, Limit: 5}, {Selection: Selection{Cursor: &Cursor{Key: []byte(keys[299])}}, Limit: 5}}
 	for _, rng := range empty {
 		got := checkRangeBatches(t, describe(rng), d, rng, nil, nil)
 		if len(got) != 0 {
 			t.Fatalf("%s: %d rows", describe(rng), len(got))
 		}
 	}
-	noRows := open(t, write(t, testutil.Dataset{}), Options{})
-	must(t, noRows.RangeBatches(ctx, Range{Limit: 1}, func(*Batch) error { t.Fatal("fn called"); return nil }))
+	noRows := open(t, write(t, testutil.Dataset{}), OpenOptions{})
+	must(t, noRows.Scan(ctx, Query{Limit: 1}, nil, func(*Batch) error { t.Fatal("fn called"); return nil }))
 
 	fn := func(*Batch) error { t.Fatal("fn called"); return nil }
 	invalid := []struct {
-		rng Range
+		rng Query
 		fn  func(*Batch) error
 	}{
-		{Range{Limit: 0}, fn},
-		{Range{Limit: -1}, fn},
-		{Range{Limit: 1, Cursor: &Cursor{}}, fn},
-		{Range{Limit: 1, Cursor: &Cursor{Key: []byte("a"), Prefix: []byte("a")}}, fn},
-		{Range{Limit: 1, Cursor: &Cursor{Key: []byte("a"), Offset: -1}}, fn},
-		{Range{Limit: 1, Cursor: &Cursor{Prefix: []byte("a")}}, fn},
-		{Range{Limit: 1}, nil},
+		{Query{Limit: -1}, fn},
+		{Query{Limit: math.MinInt64}, fn},
+		{Query{Selection: Selection{Cursor: &Cursor{}}, Limit: 1}, fn},
+		{Query{Selection: Selection{Cursor: &Cursor{Key: []byte("a"), Prefix: []byte("a")}}, Limit: 1}, fn},
+		{Query{Selection: Selection{Cursor: &Cursor{Key: []byte("a"), Offset: -1}}, Limit: 1}, fn},
+		{Query{Selection: Selection{Cursor: &Cursor{Prefix: []byte("a")}}, Limit: 1}, fn},
+		{Query{Limit: 1}, nil},
 	}
 	for i, c := range invalid {
 		st := ReadStats{KeyPagesDecoded: 7}
-		c.rng.Stats = &st
-		if err := d.RangeBatches(ctx, c.rng, c.fn); !errors.Is(err, ErrInvalidRequest) || st != (ReadStats{}) {
+		if err := d.Scan(ctx, c.rng, &st, c.fn); !errors.Is(err, ErrInvalidRequest) || st != (ReadStats{}) {
 			t.Fatalf("case %d: %v, stats %+v", i, err, st)
 		}
 	}
@@ -260,15 +251,14 @@ func TestRangeBatchesEmptyAndInvalid(t *testing.T) {
 func TestRangeBatchesStopCancelAndClose(t *testing.T) {
 	records := transitionRecords(2048, true)
 	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 512, PageBytes: 128}}})
-	d := open(t, dir, Options{})
-	rng := Range{Limit: len(records), Columns: transitionColumns}
+	d := open(t, dir, OpenOptions{})
+	rng := Query{Limit: int64(len(records)), Columns: transitionColumns}
 
 	// A callback error is returned unchanged, with the reads made so far.
 	sentinel := errors.New("callback stop")
 	var st ReadStats
-	rng.Stats = &st
 	calls := 0
-	err := d.RangeBatches(ctx, rng, func(*Batch) error { calls++; return sentinel })
+	err := d.Scan(ctx, rng, &st, func(*Batch) error { calls++; return sentinel })
 	if err != sentinel || calls != 1 || st.KeyPagesDecoded == 0 || st.ValuePagesDecoded == 0 {
 		t.Fatalf("callback error %v, calls %d, stats %+v", err, calls, st)
 	}
@@ -276,8 +266,8 @@ func TestRangeBatchesStopCancelAndClose(t *testing.T) {
 	// Cancelled before any read: no callback and no read, on a cold dataset.
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	cold := open(t, dir, Options{})
-	err = cold.RangeBatches(cancelled, rng, func(*Batch) error { calls++; return nil })
+	cold := open(t, dir, OpenOptions{})
+	err = cold.Scan(cancelled, rng, &st, func(*Batch) error { calls++; return nil })
 	if !errors.Is(err, context.Canceled) || st.SourceReads != 0 || st.KeyPagesDecoded != 0 {
 		t.Fatalf("entry cancel %v, stats %+v", err, st)
 	}
@@ -286,18 +276,18 @@ func TestRangeBatchesStopCancelAndClose(t *testing.T) {
 	cancelled, cancel = context.WithCancel(ctx)
 	defer cancel()
 	calls = 0
-	err = d.RangeBatches(cancelled, rng, func(*Batch) error { calls++; cancel(); return nil })
+	err = d.Scan(cancelled, rng, nil, func(*Batch) error { calls++; cancel(); return nil })
 	if !errors.Is(err, context.Canceled) || calls != 1 {
 		t.Fatalf("cancel between callbacks %v, calls %d", err, calls)
 	}
 
 	// Owning copies outlive the callback and a reentrant call; the borrowed
-	// batch is unchanged by a reentrant RangeBatches.
+	// batch is unchanged by a reentrant Scan.
 	var kept []Row
 	var cursor *Cursor
-	err = d.RangeBatches(ctx, rng, func(b *Batch) error {
+	err = d.Scan(ctx, rng, nil, func(b *Batch) error {
 		saved := b.Row(0)
-		if err := d.RangeBatches(ctx, Range{Limit: 7, Columns: transitionColumns}, func(*Batch) error { return nil }); err != nil {
+		if err := d.Scan(ctx, Query{Limit: 7, Columns: transitionColumns}, nil, func(*Batch) error { return nil }); err != nil {
 			return err
 		}
 		if !reflect.DeepEqual(saved, b.Row(0)) {
@@ -325,7 +315,7 @@ func TestRangeBatchesStopCancelAndClose(t *testing.T) {
 	scanned := make(chan error, 1)
 	go func() {
 		first := true
-		scanned <- d.RangeBatches(ctx, rng, func(*Batch) error {
+		scanned <- d.Scan(ctx, rng, nil, func(*Batch) error {
 			if first {
 				first = false
 				close(inside)
@@ -350,7 +340,7 @@ func TestRangeBatchesStopCancelAndClose(t *testing.T) {
 		t.Fatalf("scan after Close: %v", err)
 	}
 	must(t, <-closed)
-	if err := d.RangeBatches(ctx, rng, func(*Batch) error { t.Fatal("closed callback"); return nil }); !errors.Is(err, ErrClosed) {
+	if err := d.Scan(ctx, rng, nil, func(*Batch) error { t.Fatal("closed callback"); return nil }); !errors.Is(err, ErrClosed) {
 		t.Fatal(err)
 	}
 }
@@ -359,19 +349,17 @@ func TestRangeBatchesStopCancelAndClose(t *testing.T) {
 // scratch: run under -race.
 func TestRangeBatchesConcurrent(t *testing.T) {
 	dir, rows, nkeys, _ := batchOracleFixture(t, 5, true)
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	r := rand.New(rand.NewSource(5))
-	var reqs []Range
+	var reqs []Query
 	for range 12 {
 		ranges := batchOracleRanges(r, nkeys, rows)
-		rng := ranges[0]
-		rng.Limit, rng.Columns = 1+r.Intn(len(rows)/2), batchOracleColumns
-		reqs = append(reqs, rng)
+		reqs = append(reqs, Query{Selection: ranges[0], Limit: int64(1 + r.Intn(len(rows)/2)), Columns: batchOracleColumns})
 	}
 	want := make([][]Row, len(reqs))
 	for i, rng := range reqs {
 		var err error
-		want[i], err = open(t, dir, Options{}).Range(ctx, rng)
+		want[i], err = open(t, dir, OpenOptions{}).Rows(ctx, rng, nil)
 		must(t, err)
 	}
 	for range 2 {
@@ -380,7 +368,7 @@ func TestRangeBatchesConcurrent(t *testing.T) {
 		var wg sync.WaitGroup
 		for i, rng := range reqs {
 			wg.Go(func() {
-				errs[i] = d.RangeBatches(ctx, rng, func(b *Batch) error {
+				errs[i] = d.Scan(ctx, rng, nil, func(b *Batch) error {
 					for k := 0; k < b.Len(); k++ {
 						got[i] = append(got[i], b.Row(k))
 					}
@@ -401,22 +389,21 @@ func TestRangeBatchesConcurrent(t *testing.T) {
 	}
 }
 
-// checkRangeBatchesCold compares RangeBatches with Range on fresh Datasets,
+// checkRangeBatchesCold compares Scan with Rows on fresh Datasets,
 // so that every footer, index and page either reads counts: an extra
 // advance past the last row (another key page, row group or part) fails it
 // even when the rows are the same.
-func checkRangeBatchesCold(t *testing.T, label, dir string, rng Range) {
+func checkRangeBatchesCold(t *testing.T, label, dir string, rng Query) {
 	t.Helper()
 	var cold ReadStats
-	rng.Stats = &cold
-	want, err := open(t, dir, Options{}).Range(ctx, rng)
+	want, err := open(t, dir, OpenOptions{}).Rows(ctx, rng, &cold)
 	must(t, err)
-	got := collectRangeBatches(t, open(t, dir, Options{}), rng, nil, nil)
+	got := collectRangeBatches(t, open(t, dir, OpenOptions{}), rng, nil, nil)
 	if len(want) == 0 {
 		want = nil
 	}
 	if !reflect.DeepEqual(got.rows, want) {
-		t.Fatalf("%s: %d rows, Range %d", label, len(got.rows), len(want))
+		t.Fatalf("%s: %d rows, Query %d", label, len(got.rows), len(want))
 	}
 	if got.stats != cold {
 		t.Fatalf("%s: cold stats\nRangeBatches %+v\nRange        %+v", label, got.stats, cold)
@@ -485,11 +472,11 @@ func boundaryFixture(t *testing.T) (dir string, records []scanDeliveryRecord, cu
 func TestRangeBatchesBoundaries(t *testing.T) {
 	dir, records, cuts, keyPages := boundaryFixture(t)
 	columns := []string{"value"}
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	for class, cut := range cuts {
 		for _, limit := range []int{cut - 1, cut, cut + 1} {
 			for _, start := range []int{0, cut - 3} {
-				rng := Range{Start: records[start].Key, Limit: limit - start, Columns: columns}
+				rng := Query{Selection: Selection{Span: Span{Start: records[start].Key}}, Limit: int64(limit - start), Columns: columns}
 				label := fmt.Sprintf("%s boundary %d: rows [%d, %d)", class, cut, start, limit)
 				got := checkRangeBatches(t, label, d, rng, nil, nil)
 				checkRangeBatchesCold(t, label, dir, rng)
@@ -509,7 +496,7 @@ func TestRangeBatchesBoundaries(t *testing.T) {
 			if start >= end {
 				continue
 			}
-			rng := Range{Start: records[start].Key, End: records[end].Key, Limit: len(records), Columns: columns}
+			rng := Query{Selection: Selection{Span: Span{Start: records[start].Key, End: records[end].Key}}, Limit: int64(len(records)), Columns: columns}
 			label := fmt.Sprintf("End %d (key page %v) from %d", end, page, start)
 			got := checkRangeBatches(t, label, d, rng, nil, nil)
 			checkRangeBatchesCold(t, label, dir, rng)
@@ -521,38 +508,35 @@ func TestRangeBatchesBoundaries(t *testing.T) {
 }
 
 // Completion wins over a cancellation or Close that arrives in the callback
-// that reaches the limit, as for Range, which checks nothing after its last
+// that reaches the limit, as for Rows, which checks nothing after its last
 // read; an empty request returns nil even with a cancelled context.
 func TestRangeBatchesCompletion(t *testing.T) {
 	dir, records, cuts, _ := boundaryFixture(t)
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	for _, rng := range []Range{
-		{Start: records[10].Key, End: records[10].Key, Limit: 5},
-		{Prefix: []byte("~"), Limit: 5},
-	} {
-		rows, err := d.Range(cancelled, rng)
+	for _, rng := range []Query{{Selection: Selection{Span: Span{Start: records[10].Key, End: records[10].Key}}, Limit: 5}, {Selection: Selection{Span: Span{Prefix: []byte("~")}}, Limit: 5}} {
+		rows, err := d.Rows(cancelled, rng, nil)
 		if err != nil || rows != nil {
-			t.Fatalf("Range on a cancelled empty request: %v", err)
+			t.Fatalf("Query on a cancelled empty request: %v", err)
 		}
-		if err := d.RangeBatches(cancelled, rng, func(*Batch) error { t.Fatal("fn called"); return nil }); err != nil {
+		if err := d.Scan(cancelled, rng, nil, func(*Batch) error { t.Fatal("fn called"); return nil }); err != nil {
 			t.Fatalf("RangeBatches on a cancelled empty request: %v", err)
 		}
 	}
 
 	// Limits that end one batch and two batches in.
-	rng := Range{Limit: len(records), Columns: []string{"value"}}
+	rng := Query{Limit: int64(len(records)), Columns: []string{"value"}}
 	var lengths []int
-	must(t, d.RangeBatches(ctx, rng, func(b *Batch) error { lengths = append(lengths, b.Len()); return nil }))
+	must(t, d.Scan(ctx, rng, nil, func(b *Batch) error { lengths = append(lengths, b.Len()); return nil }))
 	if len(lengths) < 3 || lengths[0]+lengths[1] > cuts["group"] {
 		t.Fatalf("fixture needs small batches: %v", lengths)
 	}
 	for _, limit := range []int{lengths[0], lengths[0] + lengths[1]} {
-		rng.Limit = limit
+		rng.Limit = int64(limit)
 		cancelled, cancel := context.WithCancel(ctx)
 		n := 0
-		err := d.RangeBatches(cancelled, rng, func(b *Batch) error {
+		err := d.Scan(cancelled, rng, nil, func(b *Batch) error {
 			if n += b.Len(); n == limit {
 				cancel()
 			}
@@ -566,11 +550,11 @@ func TestRangeBatchesCompletion(t *testing.T) {
 
 	// Close during the final callback waits for it; the scan then returns
 	// either nil (completion) or ErrClosed, never another error.
-	rng.Limit = lengths[0]
+	rng.Limit = int64(lengths[0])
 	inside, release := make(chan struct{}), make(chan struct{})
 	scanned := make(chan error, 1)
 	go func() {
-		scanned <- d.RangeBatches(ctx, rng, func(*Batch) error {
+		scanned <- d.Scan(ctx, rng, nil, func(*Batch) error {
 			close(inside)
 			<-release
 			return nil
@@ -594,15 +578,15 @@ func TestRangeBatchesCompletion(t *testing.T) {
 	must(t, <-closed)
 }
 
-// A corrupt projected page or a corrupt dictionary is refused as Range
+// A corrupt projected page or a corrupt dictionary is refused as Rows
 // refuses it, after the batches before it; a dictionary is read only when
 // a page needs it, so a limit that ends before the corrupt group succeeds.
 func TestRangeBatchesRefusals(t *testing.T) {
 	t.Run("value page", func(t *testing.T) {
 		dir, records, _, values := scanDeliveryFixture(t)
 		editPageHeader(t, partFile(dir, 0), values.Offset(1), func(h *format.PageHeader) { h.UncompressedPageSize++ })
-		checkRangeBatchesRefusal(t, dir, Range{Limit: len(records), Columns: []string{"value"}}, int(values.FirstRowIndex(1)))
-		checkRangeBatchesCold(t, "before the corrupt page", dir, Range{Limit: int(values.FirstRowIndex(1)), Columns: []string{"value"}})
+		checkRangeBatchesRefusal(t, dir, Query{Limit: int64(len(records)), Columns: []string{"value"}}, int(values.FirstRowIndex(1)))
+		checkRangeBatchesCold(t, "before the corrupt page", dir, Query{Limit: int64(int(values.FirstRowIndex(1))), Columns: []string{"value"}})
 	})
 	t.Run("dictionary", func(t *testing.T) {
 		records := transitionRecords(1024, false)
@@ -616,21 +600,20 @@ func TestRangeBatchesRefusals(t *testing.T) {
 			t.Fatalf("fixture needs a dictionary in group 1: %+v", meta.PathInSchema)
 		}
 		editPageHeader(t, partFile(dir, 0), meta.DictionaryPageOffset, func(h *format.PageHeader) { h.UncompressedPageSize++ })
-		checkRangeBatchesRefusal(t, dir, Range{Limit: len(records), Columns: []string{"dict"}}, 512)
-		checkRangeBatchesCold(t, "before the corrupt dictionary", dir, Range{Limit: 512, Columns: []string{"dict"}})
+		checkRangeBatchesRefusal(t, dir, Query{Limit: int64(len(records)), Columns: []string{"dict"}}, 512)
+		checkRangeBatchesCold(t, "before the corrupt dictionary", dir, Query{Limit: 512, Columns: []string{"dict"}})
 	})
 }
 
-func checkRangeBatchesRefusal(t *testing.T, dir string, rng Range, delivered int) {
+func checkRangeBatchesRefusal(t *testing.T, dir string, rng Query, delivered int) {
 	t.Helper()
-	if _, err := open(t, dir, Options{}).Range(ctx, rng); CodeOf(err) != CodeInvalidParquet {
+	if _, err := open(t, dir, OpenOptions{}).Rows(ctx, rng, nil); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("Range: %v, want invalid_parquet", err)
 	}
 	var st ReadStats
-	rng.Stats = &st
 	n := 0
-	err := open(t, dir, Options{}).RangeBatches(ctx, rng, func(b *Batch) error { n += b.Len(); return nil })
-	if CodeOf(err) != CodeInvalidParquet || n != delivered || st.ValuePagesDecoded == 0 {
+	err := open(t, dir, OpenOptions{}).Scan(ctx, rng, &st, func(b *Batch) error { n += b.Len(); return nil })
+	if RefusalCodeOf(err) != CodeInvalidParquet || n != delivered || st.ValuePagesDecoded == 0 {
 		t.Fatalf("RangeBatches: %v after %d rows (want %d), stats %+v", err, n, delivered, st)
 	}
 }

@@ -167,26 +167,25 @@ func folderDataset(t testing.TB, folders, perFolder, pageRows, repeat int) strin
 
 // listing is one measured List on a fresh Dataset over a slow source.
 type listing struct {
-	entries                   []seekparquet.Entry
+	entries                   []seekparquet.ListEntry
 	stats                     seekparquet.ReadStats
 	wall                      time.Duration
 	reads, bytes, maxInFlight int64
 }
 
-func measureList(t *testing.T, dir string, delay time.Duration, req seekparquet.List) listing {
+func measureList(t *testing.T, dir string, delay time.Duration, req seekparquet.ListQuery) listing {
 	t.Helper()
 	ctx := context.Background()
 	src := newSlowSource(t, dir, delay)
-	d, err := seekparquet.OpenDataset(ctx, src, seekparquet.Options{})
+	d, err := seekparquet.OpenDataset(ctx, src, seekparquet.OpenOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer d.Close()
 	src.reset()
 	var l listing
-	req.Stats = &l.stats
 	start := time.Now()
-	l.entries, err = d.List(ctx, req)
+	l.entries, err = d.List(ctx, req, &l.stats)
 	l.wall = time.Since(start)
 	if err != nil {
 		t.Fatal(err)
@@ -196,12 +195,12 @@ func measureList(t *testing.T, dir string, delay time.Duration, req seekparquet.
 		t.Fatalf("the source saw %d reads of %d bytes, ReadStats %d of %d", l.reads, l.bytes, l.stats.SourceReads, l.stats.SourceBytes)
 	}
 	if n := src.inFlight.Load(); n != 0 {
-		t.Fatalf("%d reads still in flight after List returned", n)
+		t.Fatalf("%d reads still in flight after ListQuery returned", n)
 	}
 	return l
 }
 
-func sameEntries(t *testing.T, what string, got, want []seekparquet.Entry) {
+func sameEntries(t *testing.T, what string, got, want []seekparquet.ListEntry) {
 	t.Helper()
 	if len(got) != len(want) {
 		t.Fatalf("%s: %d entries, want %d", what, len(got), len(want))
@@ -224,7 +223,7 @@ func TestListReadAheadLatency(t *testing.T) {
 	seekparquet.NoTestReadAhead(t)
 	const delay = 5 * time.Millisecond
 	dir := folderDataset(t, 100, 1000, 256, 1)
-	req := seekparquet.List{Prefix: []byte("crawl-data/CC-MAIN-2024-18/segments/"), Delimiter: '/', Limit: 1000}
+	req := seekparquet.ListQuery{Prefix: []byte("crawl-data/CC-MAIN-2024-18/segments/"), Delimiter: '/', Limit: 1000}
 	off := measureList(t, dir, delay, req)
 	if len(off.entries) != 100 {
 		t.Fatalf("%d entries, want the 100 folders", len(off.entries))
@@ -270,7 +269,7 @@ func TestListReadAheadPagination(t *testing.T) {
 	for _, repeat := range []int{1, 3} {
 		dir := folderDataset(t, 20, 200, 64, repeat)
 		var readAhead int64
-		reqs := []seekparquet.List{
+		reqs := []seekparquet.ListQuery{
 			{Prefix: []byte("crawl-data/CC-MAIN-2024-18/segments/"), Delimiter: '/', Limit: 7},
 			{Prefix: []byte("crawl-data/CC-MAIN-2024-18/segments/1712296817003.03/"), Delimiter: '/', Limit: 2},
 			{Prefix: []byte("crawl-data/CC-MAIN-2024-18/segments/1712296817003.03/warc/"), Delimiter: '/', Limit: 50},
@@ -278,19 +277,18 @@ func TestListReadAheadPagination(t *testing.T) {
 			{Delimiter: '.', Limit: 5},
 		}
 		for _, base := range reqs {
-			var pages [2][]seekparquet.Entry
+			var pages [2][]seekparquet.ListEntry
 			for mode, ahead := range []int{0, 4} {
 				src := newSlowSource(t, dir, 0)
-				d, err := seekparquet.OpenDataset(context.Background(), src, seekparquet.Options{})
+				d, err := seekparquet.OpenDataset(context.Background(), src, seekparquet.OpenOptions{})
 				if err != nil {
 					t.Fatal(err)
 				}
 				req := base
 				req.ReadAhead = ahead
 				var st seekparquet.ReadStats
-				req.Stats = &st
 				for range 1000 {
-					entries, err := d.List(context.Background(), req)
+					entries, err := d.List(context.Background(), req, &st)
 					readAhead += st.ReadAheadReads
 					if err != nil {
 						t.Fatal(err)
@@ -334,12 +332,12 @@ func waitStarted(t *testing.T, src *slowSource, n int64) {
 // and no read, and no goroutine, outlives it.
 func TestListReadAheadCancelAndClose(t *testing.T) {
 	dir := folderDataset(t, 40, 500, 64, 1)
-	req := seekparquet.List{Prefix: []byte("crawl-data/CC-MAIN-2024-18/segments/"), Delimiter: '/', Limit: 1000, ReadAhead: 8}
+	req := seekparquet.ListQuery{Prefix: []byte("crawl-data/CC-MAIN-2024-18/segments/"), Delimiter: '/', Limit: 1000, ReadAhead: 8}
 	for _, how := range []string{"cancel", "close"} {
 		t.Run(how, func(t *testing.T) {
 			goroutines := runtime.NumGoroutine()
 			src := newSlowSource(t, dir, 0)
-			d, err := seekparquet.OpenDataset(context.Background(), src, seekparquet.Options{})
+			d, err := seekparquet.OpenDataset(context.Background(), src, seekparquet.OpenOptions{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -347,7 +345,7 @@ func TestListReadAheadCancelAndClose(t *testing.T) {
 			defer cancel()
 			// Open the part and its row group's index, then make every read wait
 			// 200 ms, or until its context ends.
-			if _, err := d.List(ctx, seekparquet.List{Prefix: req.Prefix, Delimiter: '/', Limit: 1}); err != nil {
+			if _, err := d.List(ctx, seekparquet.ListQuery{Prefix: req.Prefix, Delimiter: '/', Limit: 1}, nil); err != nil {
 				t.Fatal(err)
 			}
 			src.delay.Store(int64(200 * time.Millisecond))
@@ -356,7 +354,7 @@ func TestListReadAheadCancelAndClose(t *testing.T) {
 			wg.Go(func() {
 				r := req
 				r.Cursor = &seekparquet.Cursor{Prefix: []byte("crawl-data/CC-MAIN-2024-18/segments/1712296817001.01/")}
-				_, listErr = d.List(ctx, r)
+				_, listErr = d.List(ctx, r, nil)
 			})
 			waitStarted(t, src, 2) // reads ahead in flight
 			var closeErr error
@@ -367,13 +365,13 @@ func TestListReadAheadCancelAndClose(t *testing.T) {
 			}
 			wg.Wait()
 			if n := src.inFlight.Load(); n != 0 {
-				t.Fatalf("%d reads in flight after List returned", n)
+				t.Fatalf("%d reads in flight after ListQuery returned", n)
 			}
 			switch {
 			case how == "cancel" && !errors.Is(listErr, context.Canceled):
-				t.Fatalf("List after cancel: %v", listErr)
+				t.Fatalf("ListQuery after cancel: %v", listErr)
 			case how == "close" && !errors.Is(listErr, seekparquet.ErrClosed):
-				t.Fatalf("List during Close: %v (Close: %v)", listErr, closeErr)
+				t.Fatalf("ListQuery during Close: %v (Close: %v)", listErr, closeErr)
 			}
 			_ = d.Close()
 			deadline := time.Now().Add(5 * time.Second)
@@ -390,12 +388,12 @@ func TestListReadAheadCancelAndClose(t *testing.T) {
 // TestListReadAheadInvalid: a negative ReadAhead is an invalid request.
 func TestListReadAheadInvalid(t *testing.T) {
 	dir := folderDataset(t, 2, 10, 64, 1)
-	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.OpenOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer d.Close()
-	_, err = d.List(context.Background(), seekparquet.List{Delimiter: '/', Limit: 1, ReadAhead: -1})
+	_, err = d.List(context.Background(), seekparquet.ListQuery{Delimiter: '/', Limit: 1, ReadAhead: -1}, nil)
 	if !errors.Is(err, seekparquet.ErrInvalidRequest) {
 		t.Fatalf("ReadAhead -1: %v", err)
 	}

@@ -13,9 +13,9 @@ import (
 // concurrently: plans over consecutive sub-ranges of its rows, bound to the
 // same Dataset, in dataset order. Scanning every shard yields exactly the
 // rows of the plan, each once, with the same offsets and values; within a
-// shard in dataset order, and across shards by shard index. A plan with no
-// rows, or n below 1, has no shard; a plan with fewer row groups than n
-// has fewer shards.
+// shard in dataset order, and across shards by shard index. n below 1 is
+// ErrInvalidRequest; a plan with no rows has no shard; a plan with fewer
+// row groups than n has fewer shards.
 //
 // A boundary between two shards is a selected row that is the first row
 // of a row group (or of a part no read has checked yet, whose row groups
@@ -32,15 +32,19 @@ import (
 // plan's are. Shards share the Dataset's checked parts and page indexes as
 // any concurrent requests do; each Scan takes its own context and
 // ReadStats, and a part a read refuses is refused to every shard touching
-// it.
+// it. Each shard's Columns are the plan's.
 //
 // Splitting reads nothing when keys are unique. When they are not, it
 // decodes the two key pages around each boundary inside a part, checking
-// them as a Range does (CHECK-2), to keep groups whole; a shard's Stats are
-// the reads that placed its end. A cancelled ctx, or a Close, fails a
-// split whether or not it reads. Splitting is a convenience of
-// this reader, not a rule of the format.
-func (plan *RangePlan) Split(ctx context.Context, n int) (_ []*RangePlan, err error) {
+// them as Rows does (CHECK-2), to keep groups whole. st, when not nil, is
+// reset and receives the reads of splitting, whether it succeeds or fails.
+// A cancelled ctx, or a Close, fails a split whether or not it reads.
+// Splitting is a convenience of this reader, not a rule of the format.
+func (plan *Plan) Split(ctx context.Context, n int, st *ReadStats) (_ []*Plan, err error) {
+	st = resetStats(st)
+	if n < 1 {
+		return nil, invalidRequest("split into %d shards", n)
+	}
 	r := plan.r
 	rctx, end, err := r.begin(ctx)
 	if err != nil {
@@ -55,14 +59,14 @@ func (plan *RangePlan) Split(ctx context.Context, n int) (_ []*RangePlan, err er
 	if err := rctx.Err(); err != nil {
 		return nil, err
 	}
-	if n < 1 || len(plan.spans) == 0 {
+	if len(plan.spans) == 0 {
 		return nil, nil
 	}
-	cuts, stats, err := plan.cuts(rctx, n)
+	cuts, err := plan.cuts(rctx, n, st)
 	if err != nil {
 		return nil, err
 	}
-	shards := make([]*RangePlan, 0, len(cuts)+1)
+	shards := make([]*Plan, 0, len(cuts)+1)
 	lo := int64(0)
 	for i := range len(cuts) + 1 {
 		if err := rctx.Err(); err != nil {
@@ -72,18 +76,15 @@ func (plan *RangePlan) Split(ctx context.Context, n int) (_ []*RangePlan, err er
 		if i < len(cuts) {
 			hi = cuts[i]
 		}
-		shard := plan.shard(lo, hi)
-		shard.stats = stats[i]
-		shards = append(shards, shard)
+		shards = append(shards, plan.shard(lo, hi))
 		lo = hi
 	}
 	return shards, nil
 }
 
 // cuts returns at most n-1 shard boundaries, ascending dataset ordinals
-// each with rows of the plan on both sides, and the read statistics of the
-// shards they divide the plan into.
-func (plan *RangePlan) cuts(ctx context.Context, n int) ([]int64, []ReadStats, error) {
+// each with rows of the plan on both sides, counting its reads in st.
+func (plan *Plan) cuts(ctx context.Context, n int, st *ReadStats) ([]int64, error) {
 	r, spans := plan.r, plan.spans
 	first := spans[0].start
 	// The candidates are the selected rows that begin a row group, or a
@@ -92,7 +93,7 @@ func (plan *RangePlan) cuts(ctx context.Context, n int) ([]int64, []ReadStats, e
 	for _, sp := range spans {
 		for i := r.partAt(sp.start); i < len(r.parts) && r.parts[i].start < sp.end; i++ {
 			if err := ctx.Err(); err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			p := r.parts[i]
 			if !p.ready.Load() {
@@ -145,17 +146,12 @@ func (plan *RangePlan) cuts(ctx context.Context, n int) ([]int64, []ReadStats, e
 		chosen = append(chosen, j)
 	}
 	// Each boundary inside a group of equal keys moves to the next
-	// candidate that is not, before the next boundary, or is dropped. The
-	// reads of placing a boundary are the stats of the shard it ends: one
-	// scan counts them all, and each accepted boundary takes the reads
-	// since the one before.
+	// candidate that is not, before the next boundary, or is dropped.
 	cuts := make([]int64, 0, len(chosen))
-	stats := make([]ReadStats, 0, len(chosen)+1)
-	var all, mark ReadStats
-	s := r.newScan(ctx, nil, &all)
+	s := r.newScan(ctx, nil, st)
 	for i, j := range chosen {
 		if err := ctx.Err(); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		next := len(candidates)
 		if i+1 < len(chosen) {
@@ -165,7 +161,7 @@ func (plan *RangePlan) cuts(ctx context.Context, n int) ([]int64, []ReadStats, e
 		for ; before(j); j++ {
 			inside, err := plan.insideGroup(s, candidates[j])
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			if !inside {
 				break
@@ -173,19 +169,16 @@ func (plan *RangePlan) cuts(ctx context.Context, n int) ([]int64, []ReadStats, e
 		}
 		if before(j) {
 			cuts = append(cuts, candidates[j])
-			stats = append(stats, all.minus(mark))
-			mark = all
 		}
 	}
-	stats = append(stats, all.minus(mark))
-	return cuts, stats, nil
+	return cuts, nil
 }
 
 // insideGroup reports whether row c, the first of its row group, and the
 // row before it are rows of the plan with equal keys, so that a boundary
 // at c would divide their group. Only when keys are not unique and the two
 // rows are in one part (PART-4) does it decode the key pages holding them.
-func (plan *RangePlan) insideGroup(s *scan, c int64) (bool, error) {
+func (plan *Plan) insideGroup(s *scan, c int64) (bool, error) {
 	r := plan.r
 	if r.key.Unique || r.parts[r.partAt(c)].start == c {
 		return false, nil
@@ -209,8 +202,8 @@ func (plan *RangePlan) insideGroup(s *scan, c int64) (bool, error) {
 // projected bytes of the row groups holding them. The plan's spans and
 // row groups are ascending and disjoint, so it visits only those in
 // [lo, hi), after a binary search: many shards cost no more than few.
-func (plan *RangePlan) shard(lo, hi int64) *RangePlan {
-	shard := &RangePlan{r: plan.r, columns: plan.columns}
+func (plan *Plan) shard(lo, hi int64) *Plan {
+	shard := &Plan{r: plan.r, columns: plan.columns}
 	k := sort.Search(len(plan.spans), func(k int) bool { return plan.spans[k].end > lo })
 	for _, sp := range plan.spans[k:] {
 		if sp.start >= hi {

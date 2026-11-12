@@ -144,7 +144,7 @@ func columnValues(t *testing.T, chunk parquet.ColumnChunk) []parquet.Value {
 }
 
 // selects reports whether rng's bounds select key, by the definition.
-func selects(rng Range, key []byte) bool {
+func selects(rng Span, key []byte) bool {
 	if !bytes.HasPrefix(key, rng.Prefix) {
 		return false
 	}
@@ -159,7 +159,7 @@ func selects(rng Range, key []byte) bool {
 // planRanges returns ranges over keys: every pair of a sample of bounds,
 // inclusive and exclusive, bounds between and above keys, an empty End,
 // prefixes of several lengths and lookups of single keys.
-func planRanges(keys [][]byte) []Range {
+func planRanges(keys [][]byte) []Selection {
 	var distinct [][]byte
 	for _, k := range keys {
 		if len(distinct) == 0 || !bytes.Equal(distinct[len(distinct)-1], k) {
@@ -175,19 +175,19 @@ func planRanges(keys [][]byte) []Range {
 	if n := len(distinct); n > 0 {
 		bounds = append(bounds, distinct[n-1], append(bytes.Clone(distinct[n-1]), 0xff))
 	}
-	var out []Range
+	var out []Selection
 	for _, a := range bounds {
 		for _, b := range bounds {
-			out = append(out, Range{Start: a, End: b}, Range{Start: a, StartExclusive: a != nil, End: b})
+			out = append(out, Selection{Span: Span{Start: a, End: b}}, Selection{Span: Span{Start: a, StartExclusive: a != nil, End: b}})
 		}
 	}
-	out = append(out, Range{End: []byte{}})
+	out = append(out, Selection{Span: Span{End: []byte{}}})
 	for i := 0; i < len(distinct); i += step {
 		k := distinct[i]
 		for _, n := range []int{1, (len(k) + 1) / 2, len(k)} {
-			out = append(out, PrefixRange(k[:n], 0), Range{Prefix: k[:n], Start: k, End: append(bytes.Clone(k), 1)})
+			out = append(out, Selection{Span: PrefixSpan(k[:n])}, Selection{Span: Span{Prefix: k[:n], Start: k, End: append(bytes.Clone(k), 1)}})
 		}
-		out = append(out, KeyRange(k, 0))
+		out = append(out, Selection{Span: KeySpan(k)})
 	}
 	return out
 }
@@ -196,13 +196,13 @@ func planRanges(keys [][]byte) []Range {
 // oracle: its count, every row Scan yields with its offset and value, the
 // sum of the column's values, and that the bytes Scan asked for in the
 // column's chunks are exactly ProjectedBytes, each within one chunk.
-func checkPlan(t *testing.T, d *Dataset, src *extentSource, rows []oracleRow, extents []chunkExtent, column string, ranges []Range) {
+func checkPlan(t *testing.T, d *Dataset, src *extentSource, rows []oracleRow, extents []chunkExtent, column string, ranges []Selection) {
 	t.Helper()
 	name := fmt.Sprintf("%s over %s", column, describe(ranges))
 	var want []oracleRow
 	var wantSum int64
 	for _, row := range rows {
-		if slices.ContainsFunc(ranges, func(rng Range) bool { return selects(rng, row.key) }) {
+		if slices.ContainsFunc(ranges, func(rng Selection) bool { return selects(rng.Span, row.key) }) {
 			want = append(want, row)
 			if !row.value.IsNull() {
 				wantSum += row.value.Int64()
@@ -211,19 +211,20 @@ func checkPlan(t *testing.T, d *Dataset, src *extentSource, rows []oracleRow, ex
 	}
 	columns := []string{column}
 	src.take()
-	plan, err := d.PlanRanges(ctx, ranges, columns)
+	var planned ReadStats
+	plan, err := d.Plan(ctx, ranges, columns, &planned)
 	if err != nil {
 		t.Fatalf("%s: plan: %v", name, err)
 	}
 	if n, exact := plan.Count(); n != int64(len(want)) || !exact {
 		t.Fatalf("%s: count %d (exact %v), want %d", name, n, exact, len(want))
 	}
-	if st := plan.Stats(); st.ValuePagesDecoded != 0 || chunkBytes(t, name, src.take(), extents) != 0 {
+	if st := planned; st.ValuePagesDecoded != 0 || chunkBytes(t, name, src.take(), extents) != 0 {
 		t.Fatalf("%s: planning read value pages", name)
 	}
 	var got []Row
 	var st ReadStats
-	must(t, plan.Scan(ctx, &st, func(row Row) error {
+	must(t, scanRows(ctx, plan, &st, func(row Row) error {
 		got = append(got, row)
 		return nil
 	}))
@@ -235,10 +236,11 @@ func checkPlan(t *testing.T, d *Dataset, src *extentSource, rows []oracleRow, ex
 	for i, row := range got {
 		w := want[i]
 		v := row.Values[0]
-		if !bytes.Equal(row.Key, w.key) || row.Offset != w.offset || v.IsNull() != w.value.IsNull() {
-			t.Fatalf("%s: row %d is %q/%d (null %v), want %q/%d (null %v)", name, i, row.Key, row.Offset, v.IsNull(), w.key, w.offset, w.value.IsNull())
+		none := v.IsNull() || v.Absent() // the oracle's value is null when absent
+		if !bytes.Equal(row.Key, w.key) || row.Offset != w.offset || none != w.value.IsNull() {
+			t.Fatalf("%s: row %d is %q/%d (null %v), want %q/%d (null %v)", name, i, row.Key, row.Offset, none, w.key, w.offset, w.value.IsNull())
 		}
-		if !v.IsNull() {
+		if !none {
 			sum += v.Int64()
 		}
 	}
@@ -268,7 +270,7 @@ func TestPlanConformanceOracle(t *testing.T) {
 		dir := filepath.Dir(structure)
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			src := &extentSource{Source: dirOf(t, dir)}
-			d, err := OpenDataset(ctx, src, Options{})
+			d, err := OpenDataset(ctx, src, OpenOptions{})
 			must(t, err)
 			defer d.Close()
 			column := "size"
@@ -282,12 +284,12 @@ func TestPlanConformanceOracle(t *testing.T) {
 			}
 			ranges := planRanges(keys)
 			for _, rng := range ranges {
-				checkPlan(t, d, src, rows, extents, column, []Range{rng})
+				checkPlan(t, d, src, rows, extents, column, []Selection{rng})
 			}
 			random := rand.New(rand.NewPCG(1, uint64(len(rows))))
 			for range 40 {
 				n := 2 + random.IntN(3)
-				var set []Range
+				var set []Selection
 				for range n {
 					set = append(set, ranges[random.IntN(len(ranges))])
 				}
@@ -320,7 +322,7 @@ func chunkBytes(t *testing.T, name string, reads []extentRead, extents []chunkEx
 func openOracle(t *testing.T, dir, column string) (*Dataset, *extentSource, []oracleRow, []chunkExtent) {
 	t.Helper()
 	src := &extentSource{Source: dirOf(t, dir)}
-	d, err := OpenDataset(ctx, src, Options{})
+	d, err := OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	rows, extents := oracle(t, dir, d.Metadata(), column)
@@ -342,12 +344,12 @@ func TestPlanSharedDictionary(t *testing.T) {
 	}
 	dict := meta.DataPageOffset - meta.DictionaryPageOffset
 	bytesOf := func(keys ...string) int64 {
-		var ranges []Range
+		var ranges []Selection
 		for _, k := range keys {
-			ranges = append(ranges, KeyRange([]byte(k), 0))
+			ranges = append(ranges, Selection{Span: KeySpan([]byte(k))})
 		}
 		checkPlan(t, d, src, rows, extents, "i64", ranges)
-		plan, err := d.PlanRanges(ctx, ranges, []string{"i64"})
+		plan, err := d.Plan(ctx, ranges, []string{"i64"}, nil)
 		must(t, err)
 		n, exact := plan.ProjectedBytes()
 		if !exact {
@@ -392,24 +394,12 @@ func TestPlanBoundaries(t *testing.T) {
 			last := []byte(keys[len(keys)-1])
 			for i, k := range keys {
 				key := []byte(k)
-				for _, rng := range []Range{
-					{End: key},
-					{Start: key},
-					{Start: key, StartExclusive: true},
-					KeyRange(key, 0),
-					{Start: key, End: []byte(keys[min(i+7, len(keys)-1)])},
-				} {
-					checkPlan(t, d, src, rows, extents, "size", []Range{rng})
+				for _, rng := range []Selection{{Span: Span{End: key}}, {Span: Span{Start: key}}, {Span: Span{Start: key, StartExclusive: true}}, Selection{Span: KeySpan(key)}, {Span: Span{Start: key, End: []byte(keys[min(i+7, len(keys)-1)])}}} {
+					checkPlan(t, d, src, rows, extents, "size", []Selection{rng})
 				}
 			}
-			for _, rng := range []Range{
-				{Start: []byte(keys[9]), End: []byte(keys[9])},
-				{Start: []byte(keys[90]), End: []byte(keys[10])},
-				PrefixRange([]byte("nothing"), 0),
-				{Start: last, StartExclusive: true},
-				{Start: append(bytes.Clone(last), 0)},
-			} {
-				plan, err := d.PlanRanges(ctx, []Range{rng}, []string{"size"})
+			for _, rng := range []Selection{{Span: Span{Start: []byte(keys[9]), End: []byte(keys[9])}}, {Span: Span{Start: []byte(keys[90]), End: []byte(keys[10])}}, Selection{Span: PrefixSpan([]byte("nothing"))}, {Span: Span{Start: last, StartExclusive: true}}, {Span: Span{Start: append(bytes.Clone(last), 0)}}} {
+				plan, err := d.Plan(ctx, []Selection{rng}, []string{"size"}, nil)
 				must(t, err)
 				if n, exact := plan.Count(); n != 0 || !exact {
 					t.Fatalf("%s: count %d (exact %v)", describe(rng), n, exact)
@@ -417,7 +407,7 @@ func TestPlanBoundaries(t *testing.T) {
 				if n, _ := plan.ProjectedBytes(); n != 0 {
 					t.Fatalf("%s: %d bytes", describe(rng), n)
 				}
-				checkPlan(t, d, src, rows, extents, "size", []Range{rng})
+				checkPlan(t, d, src, rows, extents, "size", []Selection{rng})
 			}
 		})
 	}
@@ -430,22 +420,23 @@ func TestPlanBoundaries(t *testing.T) {
 // between, and the count is exact.
 func TestPlanCountsUseOnlyCheckedParts(t *testing.T) {
 	keys := fixtureKeys(300)
-	d := open(t, write(t, parts(testutil.Part{GroupRows: 25, PageBytes: 256}, split(keys, 3)...)), Options{})
-	plan := func(rng Range, columns ...string) (int64, bool, ReadStats) {
+	d := open(t, write(t, parts(testutil.Part{GroupRows: 25, PageBytes: 256}, split(keys, 3)...)), OpenOptions{})
+	plan := func(rng Query, columns ...string) (int64, bool, ReadStats) {
 		t.Helper()
-		p, err := d.PlanRanges(ctx, []Range{rng}, columns)
+		var st ReadStats
+		p, err := d.Plan(ctx, []Selection{rng.Selection}, columns, &st)
 		must(t, err)
 		n, exact := p.Count()
-		return n, exact, p.Stats()
+		return n, exact, st
 	}
-	span := Range{Start: []byte(keys[50]), End: []byte(keys[250])}
+	span := Query{Selection: Selection{Span: Span{Start: []byte(keys[50]), End: []byte(keys[250])}}}
 	if n, exact, st := plan(span); n != 200 || exact || st.PartsOpened != 2 || st.ValuePagesDecoded != 0 {
 		t.Fatalf("across an unchecked part: %d (exact %v), %+v", n, exact, st)
 	}
-	if n, exact, st := plan(Range{Start: []byte(keys[10]), End: []byte(keys[200])}); n != 190 || exact || st.PartsOpened != 0 {
+	if n, exact, st := plan(Query{Selection: Selection{Span: Span{Start: []byte(keys[10]), End: []byte(keys[200])}}}); n != 190 || exact || st.PartsOpened != 0 {
 		t.Fatalf("up to part 2's first key: %d (exact %v), %+v", n, exact, st)
 	}
-	if n, exact, _ := plan(Range{Start: []byte(keys[210]), End: []byte(keys[290])}); n != 80 || !exact {
+	if n, exact, _ := plan(Query{Selection: Selection{Span: Span{Start: []byte(keys[210]), End: []byte(keys[290])}}}); n != 80 || !exact {
 		t.Fatalf("within a part: %d (exact %v)", n, exact)
 	}
 	if n, exact, st := plan(span, "size"); n != 200 || !exact || st.PartsOpened != 1 || st.ValuePagesDecoded != 0 {
@@ -460,22 +451,22 @@ func TestPlanCountsUseOnlyCheckedParts(t *testing.T) {
 // callback, and a plan of a closed dataset.
 func TestPlanRequests(t *testing.T) {
 	keys := fixtureKeys(60)
-	d, err := OpenDir(ctx, write(t, parts(testutil.Part{GroupRows: 20}, split(keys, 2)...)), Options{})
+	d, err := OpenDir(ctx, write(t, parts(testutil.Part{GroupRows: 20}, split(keys, 2)...)), OpenOptions{})
 	must(t, err)
-	for _, rng := range []Range{{Limit: 1}, {Columns: []string{"size"}}, {Stats: new(ReadStats)}, {Cursor: &Cursor{Prefix: []byte("a")}}} {
-		if _, err := d.PlanRanges(ctx, []Range{rng}, nil); !errors.Is(err, ErrInvalidRequest) {
+	for _, rng := range []Selection{{Cursor: &Cursor{Prefix: []byte("a")}}, {Cursor: &Cursor{Key: []byte("a"), Offset: -1}}, {Cursor: &Cursor{}}} {
+		if _, err := d.Plan(ctx, []Selection{rng}, nil, nil); !errors.Is(err, ErrInvalidRequest) {
 			t.Fatalf("%s: %v", describe(rng), err)
 		}
 	}
-	all, err := d.Range(ctx, Range{Limit: 100})
+	all, err := d.Rows(ctx, Query{Limit: 100}, nil)
 	must(t, err)
-	plan, err := d.PlanRanges(ctx, []Range{{Cursor: all[29].Cursor()}}, []string{"name"})
+	plan, err := d.Plan(ctx, []Selection{{Cursor: all[29].Cursor()}}, []string{"name"}, nil)
 	must(t, err)
 	var got []string
 	stop := errors.New("stop")
-	err = plan.Scan(ctx, nil, func(row Row) error {
+	err = scanRows(ctx, plan, nil, func(row Row) error {
 		got = append(got, string(row.Key))
-		if v, _ := row.Value("name"); len(got) == 5 && !v.IsNull() && !strings.HasPrefix(string(v.ByteArray()), "name-") {
+		if v, _ := row.Value("name"); len(got) == 5 && !v.IsNull() && !strings.HasPrefix(string(v.Bytes()), "name-") {
 			t.Errorf("value %v", v)
 		}
 		if len(got) == 20 {
@@ -490,15 +481,15 @@ func TestPlanRequests(t *testing.T) {
 		t.Fatalf("count after a cursor: %d %v", n, exact)
 	}
 	must(t, d.Close())
-	if err := plan.Scan(ctx, nil, func(Row) error { return nil }); !errors.Is(err, ErrClosed) {
+	if err := scanRows(ctx, plan, nil, func(Row) error { return nil }); !errors.Is(err, ErrClosed) {
 		t.Fatalf("scan after close: %v", err)
 	}
-	if _, err := d.PlanRanges(ctx, nil, nil); !errors.Is(err, ErrClosed) {
+	if _, err := d.Plan(ctx, nil, nil, nil); !errors.Is(err, ErrClosed) {
 		t.Fatalf("plan after close: %v", err)
 	}
-	typed := open(t, write(t, typedDataset()), Options{})
+	typed := open(t, write(t, typedDataset()), OpenOptions{})
 	var unsupported *UnsupportedError
-	if _, err := typed.PlanRanges(ctx, []Range{{Start: []byte("t")}}, []string{"tags"}); !errors.As(err, &unsupported) {
+	if _, err := typed.Plan(ctx, []Selection{{Span: Span{Start: []byte("t")}}}, []string{"tags"}, nil); !errors.As(err, &unsupported) {
 		t.Fatalf("nested projection: %v", err)
 	}
 }
@@ -507,14 +498,11 @@ func TestPlanRequests(t *testing.T) {
 // goroutines at once, each scan agreeing with a sequential one.
 func TestPlanConcurrent(t *testing.T) {
 	keys := fixtureKeys(400)
-	d := open(t, write(t, parts(testutil.Part{GroupRows: 30, PageBytes: 256}, split(keys, 4)...)), Options{})
-	ranges := [][]Range{
-		{PrefixRange([]byte("d0"), 0), {Start: []byte(keys[300]), End: []byte(keys[350])}},
-		{{Start: []byte(keys[20]), End: []byte(keys[380])}, KeyRange([]byte(keys[5]), 0)},
-	}
-	scan := func(plan *RangePlan) (string, error) {
+	d := open(t, write(t, parts(testutil.Part{GroupRows: 30, PageBytes: 256}, split(keys, 4)...)), OpenOptions{})
+	ranges := [][]Selection{{Selection{Span: PrefixSpan([]byte("d0"))}, {Span: Span{Start: []byte(keys[300]), End: []byte(keys[350])}}}, {{Span: Span{Start: []byte(keys[20]), End: []byte(keys[380])}}, Selection{Span: KeySpan([]byte(keys[5]))}}}
+	scan := func(plan *Plan) (string, error) {
 		var b strings.Builder
-		err := plan.Scan(ctx, nil, func(row Row) error {
+		err := scanRows(ctx, plan, nil, func(row Row) error {
 			fmt.Fprintf(&b, "%q=%v;", row.Key, row.Values[0].Int64())
 			return nil
 		})
@@ -527,7 +515,7 @@ func TestPlanConcurrent(t *testing.T) {
 		results[i] = make([]string, 4)
 		for j := range 4 {
 			wg.Go(func() {
-				plan, err := d.PlanRanges(ctx, set, []string{"size"})
+				plan, err := d.Plan(ctx, set, []string{"size"}, nil)
 				if err != nil {
 					errs <- err
 					return
@@ -544,7 +532,7 @@ func TestPlanConcurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, set := range ranges {
-		plan, err := d.PlanRanges(ctx, set, []string{"size"})
+		plan, err := d.Plan(ctx, set, []string{"size"}, nil)
 		must(t, err)
 		want, err := scan(plan)
 		must(t, err)
@@ -563,7 +551,7 @@ type fallbackRow struct {
 }
 
 // TestRangeReadsDictionaryOnlyForItsPages: a chunk whose dictionary
-// outgrew its limit continues in PLAIN pages; a Range projecting only a
+// outgrew its limit continues in PLAIN pages; a Rows projecting only a
 // PLAIN page reads no byte of the dictionary, and succeeds under a
 // Limits.PageBytes the dictionary page exceeds, while a plan's Scan, which
 // counts the dictionary, reads it and so meets the limit.
@@ -585,7 +573,7 @@ func TestRangeReadsDictionaryOnlyForItsPages(t *testing.T) {
 
 	limits := Limits{PageBytes: 1024}
 	src := &extentSource{Source: dirOf(t, dir)}
-	d, err := OpenDataset(ctx, src, Options{Limits: limits})
+	d, err := OpenDataset(ctx, src, OpenOptions{Limits: limits})
 	must(t, err)
 	defer d.Close()
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
@@ -607,24 +595,24 @@ func TestRangeReadsDictionaryOnlyForItsPages(t *testing.T) {
 	}
 
 	src.take()
-	got, err := d.Range(ctx, KeyRange(last, 1, "size"))
+	got, err := d.Rows(ctx, Query{Selection: Selection{Span: KeySpan(last)}, Limit: 1, Columns: []string{"size"}}, nil)
 	must(t, err)
 	if len(got) != 1 || got[0].Values[0].Int64() != rows[len(rows)-1].Size {
 		t.Fatalf("range: %+v", got)
 	}
 	reads := src.take()
 	if n := chunkBytes(t, "range", reads, []chunkExtent{dict}); n != 0 {
-		t.Fatalf("a Range of a PLAIN page read %d bytes of the dictionary", n)
+		t.Fatalf("a Query of a PLAIN page read %d bytes of the dictionary", n)
 	}
 	if n := chunkBytes(t, "range", reads, []chunkExtent{whole}); n != cp.locs[len(cp.locs)-1].size {
-		t.Fatalf("a Range of one page read %d bytes of the chunk, the page is %d", n, cp.locs[len(cp.locs)-1].size)
+		t.Fatalf("a Query of one page read %d bytes of the chunk, the page is %d", n, cp.locs[len(cp.locs)-1].size)
 	}
-	plan, err := d.PlanRanges(ctx, []Range{KeyRange(last, 0)}, []string{"size"})
+	plan, err := d.Plan(ctx, []Selection{Selection{Span: KeySpan(last)}}, []string{"size"}, nil)
 	must(t, err)
 	if n, _ := plan.ProjectedBytes(); n != cp.dictionaryBytes()+cp.locs[len(cp.locs)-1].size {
 		t.Fatalf("projected %d bytes", n)
 	}
-	if err := plan.Scan(ctx, nil, func(Row) error { return nil }); !errors.Is(err, ErrLimitExceeded) {
+	if err := scanRows(ctx, plan, nil, func(Row) error { return nil }); !errors.Is(err, ErrLimitExceeded) {
 		t.Fatalf("a planned scan of a dictionary over the limit: %v", err)
 	}
 }
@@ -632,7 +620,7 @@ func TestRangeReadsDictionaryOnlyForItsPages(t *testing.T) {
 // TestPlanCursorInEqualKeys plans a range continuing after a cursor deep
 // inside a group of equal keys that spans several pages, with ranges
 // overlapping it and each other, and checks the rows and offsets Scan
-// yields, and the count, against the rows a full Range returns.
+// yields, and the count, against the rows a full Rows returns.
 func TestPlanCursorInEqualKeys(t *testing.T) {
 	stem := strings.Repeat("x", 40)
 	var keys []string
@@ -642,8 +630,8 @@ func TestPlanCursorInEqualKeys(t *testing.T) {
 	}
 	keys = append(keys, "c"+stem, "c"+stem, "c"+stem, "d"+stem)
 	dir := write(t, testutil.Dataset{RepeatedKeys: true, Parts: []testutil.Part{{Rows: testutil.Rows(keys...), PageBytes: 128, GroupRows: 25}}})
-	d := open(t, dir, Options{})
-	all, err := d.Range(ctx, Range{Limit: 1000, Columns: []string{"size"}})
+	d := open(t, dir, OpenOptions{})
+	all, err := d.Rows(ctx, Query{Limit: 1000, Columns: []string{"size"}}, nil)
 	must(t, err)
 	index, err := d.r.parts[0].keyIndex(ctx, d.r.parts[0].groups[1].physical, new(ReadStats))
 	must(t, err)
@@ -651,24 +639,19 @@ func TestPlanCursorInEqualKeys(t *testing.T) {
 		t.Fatalf("row group 1 has %d key pages: the group of b is not across pages", len(index.pages))
 	}
 	b, c, end := []byte("b"+stem), []byte("c"+stem), []byte("d")
-	for _, ranges := range [][]Range{
-		{{Start: b, End: end, Cursor: &Cursor{Key: b, Offset: 37}}, {Start: b, Cursor: &Cursor{Key: b, Offset: 50}}},
-		{{Start: b, Cursor: &Cursor{Key: b, Offset: 41}}, {Start: c, End: end}, KeyRange(b, 0)},
-		{{Start: b, End: c, Cursor: &Cursor{Key: b, Offset: 59}}, {Prefix: []byte("c")}},
-		{{Start: b, End: end, Cursor: &Cursor{Key: b, Offset: 12}}, {Prefix: []byte("b"), Cursor: &Cursor{Key: b, Offset: 30}}},
-	} {
+	for _, ranges := range [][]Selection{{{Span: Span{Start: b, End: end}, Cursor: &Cursor{Key: b, Offset: 37}}, {Span: Span{Start: b}, Cursor: &Cursor{Key: b, Offset: 50}}}, {{Span: Span{Start: b}, Cursor: &Cursor{Key: b, Offset: 41}}, {Span: Span{Start: c, End: end}}, Selection{Span: KeySpan(b)}}, {{Span: Span{Start: b, End: c}, Cursor: &Cursor{Key: b, Offset: 59}}, {Span: Span{Prefix: []byte("c")}}}, {{Span: Span{Start: b, End: end}, Cursor: &Cursor{Key: b, Offset: 12}}, {Span: Span{Prefix: []byte("b")}, Cursor: &Cursor{Key: b, Offset: 30}}}} {
 		var want []string
 		for _, row := range all {
-			if slices.ContainsFunc(ranges, func(rng Range) bool {
-				return selects(rng, row.Key) && afterCursor(rng.Cursor, row.Key, row.Offset)
+			if slices.ContainsFunc(ranges, func(rng Selection) bool {
+				return selects(rng.Span, row.Key) && afterCursor(rng.Cursor, row.Key, row.Offset)
 			}) {
 				want = append(want, fmt.Sprintf("%s/%d=%d", row.Key, row.Offset, row.Values[0].Int64()))
 			}
 		}
-		plan, err := d.PlanRanges(ctx, ranges, []string{"size"})
+		plan, err := d.Plan(ctx, ranges, []string{"size"}, nil)
 		must(t, err)
 		var got []string
-		must(t, plan.Scan(ctx, nil, func(row Row) error {
+		must(t, scanRows(ctx, plan, nil, func(row Row) error {
 			got = append(got, fmt.Sprintf("%s/%d=%d", row.Key, row.Offset, row.Values[0].Int64()))
 			return nil
 		}))

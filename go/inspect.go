@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/parquet-go/parquet-go"
-	"github.com/parquet-go/parquet-go/format"
 )
 
 // Footer is what one part's footer says: its row count, its top-level
@@ -31,19 +30,43 @@ type Footer struct {
 type Column struct {
 	Name string
 	// Group reports a column with nested fields, which has no physical
-	// type: Type and Length are then zero.
+	// type: Type is then KindNone and Length zero.
 	Group bool
 	// Type is the physical type, and Length a FIXED_LEN_BYTE_ARRAY's
 	// type_length (0 for every other type).
-	Type   format.Type
+	Type   Kind
 	Length int32
-	// Logical is the logical type, nil when the column has none: the
-	// logical_type field, or else the legacy converted_type normalized into
-	// it as Parquet's LogicalTypes.md maps it (INTERVAL has no logical type).
-	Logical    *format.LogicalType
-	Repetition format.FieldRepetitionType
+	// Logical is the logical annotation, with its parameters, the zero
+	// Logical when the column has none: the logical_type field, or else the
+	// legacy converted_type normalized into it as Parquet's LogicalTypes.md
+	// maps it (time and timestamp adjusted to UTC; INTERVAL has no logical
+	// type).
+	Logical    Logical
+	Repetition Repetition
 	// Key reports the dataset's key column.
 	Key bool
+}
+
+// String describes the column for people, such as
+// "mtime INT64 OPTIONAL TIMESTAMP(isAdjustedToUTC=true,unit=MICROS)".
+func (c Column) String() string {
+	s := c.Name + " "
+	switch {
+	case c.Group:
+		s += "group"
+	case c.Type == KindFixedLenByteArray:
+		s += c.Type.String() + "(" + strconv.Itoa(int(c.Length)) + ")"
+	default:
+		s += c.Type.String()
+	}
+	s += " " + c.Repetition.String()
+	if c.Logical.Kind != LogicalNone {
+		s += " " + c.Logical.String()
+	}
+	if c.Key {
+		s += " key"
+	}
+	return s
 }
 
 // KeyPage is one data page of a part's key column, as the row group's
@@ -128,7 +151,7 @@ func inspect(r io.ReaderAt, size int64) (*reader, Footer, error) {
 	if err != nil {
 		return nil, Footer{}, err
 	}
-	rd, err := openParts(ctx, []partInput{{file: readerOnly{r}, size: size, footer: footer}}, ft.Key, Options{Limits: lim})
+	rd, err := openParts(ctx, []partInput{{file: readerOnly{r}, size: size, footer: footer}}, ft.Key, OpenOptions{Limits: lim})
 	if err != nil {
 		return nil, Footer{}, err
 	}

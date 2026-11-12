@@ -3,10 +3,12 @@
 
 package seekparquet
 
-// ReadStats counts the work of one Range or List request, one PlanRanges
-// (RangePlan.Stats) or one RangePlan.Scan. Set it as the request's Stats
-// field, or pass it to Scan, to receive it. The counts are exact for the request
-// and are filled whether it succeeds or fails, up to the point it stopped.
+// ReadStats counts the work of one operation: Dataset.Rows, Get, Scan or
+// List, Dataset.Plan, Plan.Split or Plan.Scan. Pass a *ReadStats as the
+// operation's statistics argument to receive it: it is reset when the
+// operation starts and filled as it runs. The counts are exact for the
+// operation and are filled whether it succeeds or fails, up to the point it
+// stopped. Add sums the counts of several operations.
 //
 // They are diagnostics of this reader's access path, not part of the
 // SeekParquet format contract: another reader, or a later version of this
@@ -69,7 +71,7 @@ type ReadStats struct {
 	// made on behalf of the request.
 	SourceReads, SourceBytes int64
 	// ReadAheadReads is the number of key pages a listing read ahead
-	// (List.ReadAhead), each in one read counted in SourceReads and
+	// (ListQuery.ReadAhead), each in one read counted in SourceReads and
 	// SourceBytes; ReadAheadUnused and ReadAheadUnusedBytes are the pages
 	// of them, and their bytes, that it did not use: wrong predictions,
 	// pages past where the listing stopped, and reads that failed (the
@@ -87,28 +89,26 @@ func resetStats(st *ReadStats) *ReadStats {
 	return st
 }
 
-// minus returns the counts of st beyond o, for a request that reports the
-// reads of its steps apart.
-func (st ReadStats) minus(o ReadStats) ReadStats {
-	return ReadStats{
-		ListIndexSkips:        st.ListIndexSkips - o.ListIndexSkips,
-		ListIndexDelimiter:    st.ListIndexDelimiter - o.ListIndexDelimiter,
-		ListIndexMissingGroup: st.ListIndexMissingGroup - o.ListIndexMissingGroup,
-		ListIndexDensePage:    st.ListIndexDensePage - o.ListIndexDensePage,
-		ListIndexUnsafeRun:    st.ListIndexUnsafeRun - o.ListIndexUnsafeRun,
-		PartsOpened:           st.PartsOpened - o.PartsOpened,
-		KeyPagesDecoded:       st.KeyPagesDecoded - o.KeyPagesDecoded,
-		ValuePagesDecoded:     st.ValuePagesDecoded - o.ValuePagesDecoded,
-		KeysDecoded:           st.KeysDecoded - o.KeysDecoded,
-		RowGroupsOpened:       st.RowGroupsOpened - o.RowGroupsOpened,
-		IndexLoads:            st.IndexLoads - o.IndexLoads,
-		PageIndexSeeks:        st.PageIndexSeeks - o.PageIndexSeeks,
-		PrefixSkips:           st.PrefixSkips - o.PrefixSkips,
-		GroupsSkipped:         st.GroupsSkipped - o.GroupsSkipped,
-		SourceReads:           st.SourceReads - o.SourceReads,
-		SourceBytes:           st.SourceBytes - o.SourceBytes,
-		ReadAheadReads:        st.ReadAheadReads - o.ReadAheadReads,
-		ReadAheadUnused:       st.ReadAheadUnused - o.ReadAheadUnused,
-		ReadAheadUnusedBytes:  st.ReadAheadUnusedBytes - o.ReadAheadUnusedBytes,
-	}
+// Add adds every count of o to st: the work of several operations, such as
+// a plan, its split and the scans of its shards.
+func (st *ReadStats) Add(o ReadStats) {
+	st.ListIndexSkips += o.ListIndexSkips
+	st.ListIndexDelimiter += o.ListIndexDelimiter
+	st.ListIndexMissingGroup += o.ListIndexMissingGroup
+	st.ListIndexDensePage += o.ListIndexDensePage
+	st.ListIndexUnsafeRun += o.ListIndexUnsafeRun
+	st.PartsOpened += o.PartsOpened
+	st.KeyPagesDecoded += o.KeyPagesDecoded
+	st.ValuePagesDecoded += o.ValuePagesDecoded
+	st.KeysDecoded += o.KeysDecoded
+	st.RowGroupsOpened += o.RowGroupsOpened
+	st.IndexLoads += o.IndexLoads
+	st.PageIndexSeeks += o.PageIndexSeeks
+	st.PrefixSkips += o.PrefixSkips
+	st.GroupsSkipped += o.GroupsSkipped
+	st.SourceReads += o.SourceReads
+	st.SourceBytes += o.SourceBytes
+	st.ReadAheadReads += o.ReadAheadReads
+	st.ReadAheadUnused += o.ReadAheadUnused
+	st.ReadAheadUnusedBytes += o.ReadAheadUnusedBytes
 }

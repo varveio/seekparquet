@@ -38,7 +38,7 @@ func BenchmarkLocalWorkloads(b *testing.B) {
 			dir := write(b, spec)
 			b.Run("OpenDir", func(b *testing.B) {
 				for b.Loop() {
-					d, err := OpenDir(ctx, dir, Options{})
+					d, err := OpenDir(ctx, dir, OpenOptions{})
 					must(b, err)
 					must(b, d.Close())
 				}
@@ -47,7 +47,7 @@ func BenchmarkLocalWorkloads(b *testing.B) {
 				src := &workloadSource{Source: dirOf(b, dir)}
 				b.ResetTimer()
 				for b.Loop() {
-					d, err := OpenDataset(ctx, src, Options{})
+					d, err := OpenDataset(ctx, src, OpenOptions{})
 					must(b, err)
 					must(b, d.Close())
 				}
@@ -60,21 +60,21 @@ func BenchmarkLocalWorkloads(b *testing.B) {
 				run  func(*Dataset) error
 			}{
 				{"point", func(d *Dataset) error {
-					rows, err := d.Range(ctx, KeyRange(key, 1, "size"))
+					rows, err := d.Rows(ctx, Query{Selection: Selection{Span: KeySpan(key)}, Limit: 1, Columns: []string{"size"}}, nil)
 					if err == nil && (len(rows) != 1 || string(rows[0].Key) != string(key)) {
 						return fmt.Errorf("point mismatch")
 					}
 					return err
 				}},
 				{"range100", func(d *Dataset) error {
-					rows, err := d.Range(ctx, Range{Start: []byte(fmt.Sprintf("inventory/%06d/", n-1)), Limit: 100, Columns: []string{"size"}})
+					rows, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte(fmt.Sprintf("inventory/%06d/", n-1))}}, Limit: 100, Columns: []string{"size"}}, nil)
 					if err == nil && len(rows) != 100 {
 						return fmt.Errorf("range mismatch")
 					}
 					return err
 				}},
 				{"delimiter", func(d *Dataset) error {
-					entries, err := d.List(ctx, List{Prefix: []byte("inventory/"), Delimiter: '/', Limit: 100})
+					entries, err := d.List(ctx, ListQuery{Prefix: []byte("inventory/"), Delimiter: '/', Limit: 100}, nil)
 					if err == nil && len(entries) != min(n, 100) {
 						return fmt.Errorf("listing mismatch")
 					}
@@ -82,10 +82,10 @@ func BenchmarkLocalWorkloads(b *testing.B) {
 				}},
 			}
 			// Obtain a real cursor near the end using the identical range request.
-			initial := Range{Start: key, Limit: 1, Columns: []string{"size"}}
-			d, err := OpenDir(ctx, dir, Options{})
+			initial := Query{Selection: Selection{Span: Span{Start: key}}, Limit: 1, Columns: []string{"size"}}
+			d, err := OpenDir(ctx, dir, OpenOptions{})
 			must(b, err)
-			rows, err := d.Range(ctx, initial)
+			rows, err := d.Rows(ctx, initial, nil)
 			must(b, err)
 			initial.Cursor = rows[0].Cursor()
 			must(b, d.Close())
@@ -93,7 +93,7 @@ func BenchmarkLocalWorkloads(b *testing.B) {
 				name string
 				run  func(*Dataset) error
 			}{"late_resume", func(d *Dataset) error {
-				rows, err := d.Range(ctx, initial)
+				rows, err := d.Rows(ctx, initial, nil)
 				if err == nil && (len(rows) != 1 || string(rows[0].Key) != fmt.Sprintf("inventory/%06d/object/000065", n-1)) {
 					return fmt.Errorf("resume mismatch")
 				}
@@ -107,7 +107,7 @@ func BenchmarkLocalWorkloads(b *testing.B) {
 						b.ResetTimer()
 						for b.Loop() {
 							b.StopTimer()
-							d, err := OpenDataset(ctx, src, Options{})
+							d, err := OpenDataset(ctx, src, OpenOptions{})
 							must(b, err)
 							if warm {
 								must(b, w.run(d))

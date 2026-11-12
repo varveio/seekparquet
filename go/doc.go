@@ -29,19 +29,27 @@
 // repetition, the key) from the footer the dataset checked and
 // holds for it, checking the part first if no read has.
 //
-// Every size a file declares is checked against Options.Limits before
+// Every size a file declares is checked against OpenOptions.Limits before
 // anything is allocated for it, and so are the value counts and decoded
-// sizes inside each page; exceeding a limit is ErrLimitExceeded.
+// sizes inside each page; exceeding a limit is a *LimitError wrapping
+// ErrLimitExceeded.
 //
 // # Reading
 //
-// Dataset.Range and Dataset.List check a row group's key page index before
-// using the group, and every key page they decode (CHECK-2): the page
-// header matches its OffsetIndex entry, one non-empty key per row, in the
-// declared order (strictly ascending when keys are unique), inside the
-// page's ColumnIndex bounds and its part's manifest bounds, and in dataset
-// order with every other page the request decoded. A fault ends the
-// request with a *RefusalError carrying a stable Code.
+// A Query reads the rows of a Selection (a Span of keys, and a Cursor to
+// continue after), at most Limit of them, with the values of its Columns.
+// Dataset.Rows returns them as owning rows; Dataset.Scan hands them to a
+// callback as borrowed batches (Batch, ColumnView), and with a zero Limit
+// scans to the end of the span. Dataset.Get returns every row of one key,
+// up to Limits.GetRows. Dataset.List lists a prefix with delimiter rollups.
+//
+// Every read checks a row group's key page index before using the group,
+// and every key page it decodes (CHECK-2): the page header matches its
+// OffsetIndex entry, one non-empty key per row, in the declared order
+// (strictly ascending when keys are unique), inside the page's ColumnIndex
+// bounds and its part's manifest bounds, and in dataset order with every
+// other page the request decoded. A fault ends the request with a
+// *RefusalError carrying a stable RefusalCode.
 //
 // What is not certified: rows a request does not decode (CHECK-4), values
 // beyond decoding them, the parts' SHA-256 digests, and that the files are
@@ -60,18 +68,19 @@
 //
 // # Planned selections
 //
-// Dataset.PlanRanges plans reading every row of a set of ranges before
-// reading it: RangePlan.Count is the number of rows, derived from the key
-// pages at the two ends of each range (checked as a Range checks them),
+// Dataset.Plan plans reading every row of a set of selections before
+// reading it: Plan.Count is the number of rows, derived from the key pages
+// at the two ends of each selection (checked as Rows checks them),
 // row-group row counts and OffsetIndex row positions, and exact once every
-// part holding one of the rows is checked; RangePlan.ProjectedBytes is the
+// part holding one of the rows is checked; Plan.ProjectedBytes is the
 // compressed bytes of the projected columns' pages, and dictionaries, that
-// RangePlan.Scan will request, each extent once, so that a caller can
-// refuse a read over budget before it reads a data page. Scan yields the
-// rows in dataset order, checking every key page it decodes. A count
-// certifies only the rows at the ends it decoded (CHECK-4).
+// Plan.Scan will request, each extent once, so that a caller can refuse a
+// read over budget before it reads a data page. Plan.Scan yields the rows
+// in dataset order as borrowed batches, checking every key page it
+// decodes. A count certifies only the rows at the ends it decoded
+// (CHECK-4).
 //
-// RangePlan.Split divides a plan into shards along row-group boundaries,
+// Plan.Split divides a plan into shards along row-group boundaries,
 // never inside a group of equal keys, balanced by projected bytes (or rows
 // without exact bytes), for a caller to scan concurrently with its own
 // goroutines: the shards' scans together yield the plan's rows, each once,
@@ -84,39 +93,44 @@
 //
 // When the manifest declares keys not unique, consecutive rows with equal
 // keys form a group in producer file order, and a group never crosses
-// parts. Each Row carries its Offset in its group. KeyRange looks up one
-// whole group. Every result is paginated the same way: set the request's
-// Cursor to the last entry's Cursor (Row.Cursor, Entry.Cursor) and repeat
-// it. A row cursor is the row's key and offset; a listing may also
-// continue after a common prefix. A page may end inside a group, and a
-// cursor deep inside a large group resumes there through the page index
-// without reading the rows before it.
+// parts. Each Row carries its Offset in its group. KeySpan selects one
+// whole group, and Get reads one. Every result is paginated the same way:
+// set the request's Cursor to the last entry's Cursor (Row.Cursor,
+// ListEntry.Cursor) and repeat it. A row cursor is the row's key and
+// offset; a listing may also continue after a common prefix. A page may
+// end inside a group, and a cursor deep inside a large group resumes there
+// through the page index without reading the rows before it.
+// Cursor.Encode and ParseCursor carry a cursor between pages as a text
+// token (spec/cursor-token-1.md).
 //
 // # Errors
 //
-// A *RefusalError reports data that breaks the specification (CodeOf
+// A *RefusalError reports data that breaks the specification (RefusalCodeOf
 // returns its code). ErrInvalidRequest reports a malformed request, such as
-// a limit that is not positive or a prefix cursor on a range. An
-// *UnsupportedError reports valid data this reader does not handle, such
-// as a nested projected column or an encrypted part. Anything else
-// (storage failures, a cancelled context, ErrClosed, ErrLimitExceeded) is
-// an error of the environment or of the caller's policy, not a statement
-// about the data.
+// a limit that is not positive, a prefix cursor on a range or a malformed
+// cursor token. An *UnsupportedError reports valid data this reader does
+// not handle, such as a nested projected column or an encrypted part (its
+// Code is an UnsupportedCode). A *LimitError (ErrLimitExceeded) reports a
+// limit of the caller's policy. Anything else (storage failures, a
+// cancelled context, ErrClosed) is an error of the environment, not a
+// statement about the data.
 //
 // # Values
 //
-// Projected values are parquet-go values (github.com/parquet-go/parquet-go
-// Value): this package commits to parquet-go's types instead of defining
-// its own, so its API moves with parquet-go's. A Value additionally reports
-// whether the row's part lacks the column (Absent), which is distinct from
-// null (COL-2).
+// A projected Value is one of three states: absent, when the row's part
+// lacks the column (COL-2); a null stored in the column; or a physical
+// Parquet value of a Kind, read with typed accessors. Absent is not null.
+// A ColumnView reads one projected column of a batch in place. Schema
+// descriptions (Column) use this package's Kind, Repetition and Logical.
+// No parquet-go type appears in the read API; package write takes a
+// parquet-go schema.
 //
 // # Read statistics
 //
-// Setting Range.Stats or List.Stats to a *ReadStats (or passing one to
-// RangePlan.Scan) makes the request report
-// the pages, keys, row groups and Source reads it used, exactly, even when
-// it fails. They are diagnostics, not part of the format contract.
+// Passing a *ReadStats to a read (Rows, Get, Scan, List, Plan, Split,
+// Plan.Scan) makes it report the pages, keys, row groups and Source reads
+// it used, exactly, even when it fails. They are diagnostics, not part of
+// the format contract.
 //
 // # Manifests, parts and writing
 //

@@ -10,30 +10,30 @@ import (
 	"strconv"
 )
 
-// Code is a refusal code from the specification's refusal-codes.json. Codes
-// are stable; the text of an error is not.
-type Code string
+// RefusalCode is a refusal code from the specification's
+// refusal-codes.json. Codes are stable; the text of an error is not.
+type RefusalCode string
 
 // The refusal codes of format 1, draft revision 1. digest_mismatch is
 // reported only by validation at the digest level (Validate).
 const (
-	CodeNoManifest            Code = "no_manifest"
-	CodeInvalidManifest       Code = "invalid_manifest"
-	CodeUnsupportedVersion    Code = "unsupported_version"
-	CodeMissingPart           Code = "missing_part"
-	CodePartMismatch          Code = "part_mismatch"
-	CodeInvalidFooter         Code = "invalid_footer"
-	CodeStampMismatch         Code = "stamp_mismatch"
-	CodeInvalidKeyColumn      Code = "invalid_key_column"
-	CodeInconsistentColumn    Code = "inconsistent_column"
-	CodeMissingSortingColumns Code = "missing_sorting_columns"
-	CodeMissingPageIndex      Code = "missing_page_index"
-	CodeInvalidPageIndex      Code = "invalid_page_index"
-	CodeInvalidKey            Code = "invalid_key"
-	CodeKeyOrder              Code = "key_order"
-	CodeInvalidParquet        Code = "invalid_parquet"
-	CodeBoundsMismatch        Code = "bounds_mismatch"
-	CodeDigestMismatch        Code = "digest_mismatch"
+	CodeNoManifest            RefusalCode = "no_manifest"
+	CodeInvalidManifest       RefusalCode = "invalid_manifest"
+	CodeUnsupportedVersion    RefusalCode = "unsupported_version"
+	CodeMissingPart           RefusalCode = "missing_part"
+	CodePartMismatch          RefusalCode = "part_mismatch"
+	CodeInvalidFooter         RefusalCode = "invalid_footer"
+	CodeStampMismatch         RefusalCode = "stamp_mismatch"
+	CodeInvalidKeyColumn      RefusalCode = "invalid_key_column"
+	CodeInconsistentColumn    RefusalCode = "inconsistent_column"
+	CodeMissingSortingColumns RefusalCode = "missing_sorting_columns"
+	CodeMissingPageIndex      RefusalCode = "missing_page_index"
+	CodeInvalidPageIndex      RefusalCode = "invalid_page_index"
+	CodeInvalidKey            RefusalCode = "invalid_key"
+	CodeKeyOrder              RefusalCode = "key_order"
+	CodeInvalidParquet        RefusalCode = "invalid_parquet"
+	CodeBoundsMismatch        RefusalCode = "bounds_mismatch"
+	CodeDigestMismatch        RefusalCode = "digest_mismatch"
 )
 
 // RefusalError reports data that breaks the specification: a dataset
@@ -41,7 +41,7 @@ const (
 // Code is the contract; the location fields are facts for diagnosis, and
 // Detail is for people.
 type RefusalError struct {
-	Code Code
+	Code RefusalCode
 	// Part is the part's path or name, "" when the fault is not one
 	// part's (a manifest fault).
 	Part string
@@ -81,13 +81,13 @@ func (e *RefusalError) Error() string {
 }
 
 // refuse returns a *RefusalError of no particular part.
-func refuse(code Code, format string, args ...any) *RefusalError {
+func refuse(code RefusalCode, format string, args ...any) *RefusalError {
 	return &RefusalError{Code: code, RowGroup: -1, Row: -1, Detail: fmt.Sprintf(format, args...)}
 }
 
 // refusePart returns a *RefusalError located at a part and, when group is
 // not -1, a row group of it.
-func refusePart(code Code, part string, group int, format string, args ...any) *RefusalError {
+func refusePart(code RefusalCode, part string, group int, format string, args ...any) *RefusalError {
 	return &RefusalError{Code: code, Part: part, RowGroup: group, Row: -1, Detail: fmt.Sprintf(format, args...)}
 }
 
@@ -98,8 +98,8 @@ func keyOrder(part string, group int, row int64, key []byte) *RefusalError {
 		Detail: "the key breaks the declared key order with the key before it"}
 }
 
-// CodeOf returns err's refusal code, or "" when err is not a refusal.
-func CodeOf(err error) Code {
+// RefusalCodeOf returns err's refusal code, or "" when err is not a refusal.
+func RefusalCodeOf(err error) RefusalCode {
 	var refusal *RefusalError
 	if errors.As(err, &refusal) {
 		return refusal.Code
@@ -115,29 +115,32 @@ func invalidRequest(format string, args ...any) error {
 	return fmt.Errorf("%w: "+format, append([]any{ErrInvalidRequest}, args...)...)
 }
 
-// Unsupported codes (spec/refusal-codes.json, non_refusals).
+// UnsupportedCode is the code of an UnsupportedError, from the
+// specification's refusal-codes.json (non_refusals). Codes are stable.
+type UnsupportedCode string
+
+// The unsupported codes.
 const (
 	// UnsupportedProjection: a request projects a nested or repeated
 	// column (COL-3).
-	UnsupportedProjection = "unsupported_projection"
+	UnsupportedProjection UnsupportedCode = "unsupported_projection"
 	// UnsupportedEncoding: a file uses an encoding or codec outside what
 	// this reader decodes (ENC-1).
-	UnsupportedEncoding = "unsupported_encoding"
+	UnsupportedEncoding UnsupportedCode = "unsupported_encoding"
 	// UnsupportedEncryption: a part uses Parquet modular encryption
 	// (FILE-2).
-	UnsupportedEncryption = "unsupported_encryption"
+	UnsupportedEncryption UnsupportedCode = "unsupported_encryption"
 )
 
 // UnsupportedError reports a valid dataset or request that uses a feature
 // this reader does not support. It is not a refusal of the data.
 type UnsupportedError struct {
-	// Code is one of the Unsupported constants.
-	Code   string
+	Code   UnsupportedCode
 	Detail string
 }
 
 func (e *UnsupportedError) Error() string {
-	return "seekparquet: unsupported (" + e.Code + "): " + e.Detail
+	return "seekparquet: unsupported (" + string(e.Code) + "): " + e.Detail
 }
 
 // ErrClosed reports a read of a closed Dataset.
@@ -147,3 +150,19 @@ var ErrClosed = errors.New("seekparquet: closed")
 // dataset row total above the reader's signed 64-bit ordinal capacity.
 // It is an implementation or caller limit, not a refusal of the data.
 var ErrLimitExceeded = errors.New("seekparquet: limit exceeded")
+
+// detach returns a copy of a refusal or unsupported error that shares
+// nothing with err, so that a caller changing the error it was handed
+// cannot change the copy a part keeps for later reads.
+func detach(err error) error {
+	switch e := err.(type) {
+	case *RefusalError:
+		c := *e
+		c.Key = bytes.Clone(e.Key)
+		return &c
+	case *UnsupportedError:
+		c := *e
+		return &c
+	}
+	return err
+}

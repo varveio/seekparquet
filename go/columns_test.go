@@ -22,23 +22,38 @@ import (
 // generator declares them, from Columns before and after Verify and from
 // InspectFooter, which agree. Columns checks the part it answers for.
 func TestColumnsAnnotated(t *testing.T) {
-	ms := &format.LogicalType{Value: &format.TimestampType{Unit: format.TimeUnit{Value: &format.MilliSeconds{}}}}
-	us := &format.LogicalType{Value: &format.TimestampType{IsAdjustedToUTC: true, Unit: format.TimeUnit{Value: &format.MicroSeconds{}}}}
-	decimal := func(precision, scale int32) *format.LogicalType {
-		return &format.LogicalType{Value: &format.DecimalType{Precision: precision, Scale: scale}}
+	ms := Logical{Kind: LogicalTimestamp, Unit: Millis}
+	us := Logical{Kind: LogicalTimestamp, AdjustedToUTC: true, Unit: Micros}
+	decimal := func(precision, scale int32) Logical {
+		return Logical{Kind: LogicalDecimal, Precision: precision, Scale: scale}
 	}
 	want := []Column{
-		{Name: "key", Type: format.ByteArray, Repetition: format.Required, Key: true},
-		{Name: "d", Type: format.Int32, Logical: &format.LogicalType{Value: &format.DateType{}}, Repetition: format.Optional},
-		{Name: "ts_ms", Type: format.Int64, Logical: ms, Repetition: format.Optional},
-		{Name: "ts_utc", Type: format.Int64, Logical: us, Repetition: format.Optional},
-		{Name: "dec9", Type: format.Int32, Logical: decimal(9, 2), Repetition: format.Optional},
-		{Name: "dec18", Type: format.Int64, Logical: decimal(18, 4), Repetition: format.Optional},
-		{Name: "dec30", Type: format.FixedLenByteArray, Length: 13, Logical: decimal(30, 5), Repetition: format.Optional},
-		{Name: "s", Type: format.ByteArray, Logical: &format.LogicalType{Value: &format.StringType{}}, Repetition: format.Optional},
+		{Name: "key", Type: KindByteArray, Repetition: Required, Key: true},
+		{Name: "d", Type: KindInt32, Logical: Logical{Kind: LogicalDate}, Repetition: Optional},
+		{Name: "ts_ms", Type: KindInt64, Logical: ms, Repetition: Optional},
+		{Name: "ts_utc", Type: KindInt64, Logical: us, Repetition: Optional},
+		{Name: "dec9", Type: KindInt32, Logical: decimal(9, 2), Repetition: Optional},
+		{Name: "dec18", Type: KindInt64, Logical: decimal(18, 4), Repetition: Optional},
+		{Name: "dec30", Type: KindFixedLenByteArray, Length: 13, Logical: decimal(30, 5), Repetition: Optional},
+		{Name: "s", Type: KindByteArray, Logical: Logical{Kind: LogicalString}, Repetition: Optional},
+	}
+	strs := []string{
+		"key BYTE_ARRAY REQUIRED key",
+		"d INT32 OPTIONAL DATE",
+		"ts_ms INT64 OPTIONAL TIMESTAMP(isAdjustedToUTC=false,unit=MILLIS)",
+		"ts_utc INT64 OPTIONAL TIMESTAMP(isAdjustedToUTC=true,unit=MICROS)",
+		"dec9 INT32 OPTIONAL DECIMAL(9,2)",
+		"dec18 INT64 OPTIONAL DECIMAL(18,4)",
+		"dec30 FIXED_LEN_BYTE_ARRAY(13) OPTIONAL DECIMAL(30,5)",
+		"s BYTE_ARRAY OPTIONAL STRING",
+	}
+	for i, c := range want {
+		if c.String() != strs[i] {
+			t.Errorf("column %d: %q, want %q", i, c.String(), strs[i])
+		}
 	}
 	dir := "../conformance/datasets/annotated"
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	got, err := d.Columns(ctx, 0)
 	must(t, err)
 	if !reflect.DeepEqual(got, want) {
@@ -47,7 +62,7 @@ func TestColumnsAnnotated(t *testing.T) {
 	if !d.r.parts[0].ready.Load() {
 		t.Fatal("Columns answered without checking the part")
 	}
-	got[0].Name, got[1].Logical.Value = "changed", &format.StringType{}
+	got[0].Name, got[1].Logical.Kind = "changed", LogicalString
 	must(t, d.Verify(ctx))
 	if got, err = d.Columns(ctx, 0); err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("after Verify: %v\n got %+v\nwant %+v", err, got, want)
@@ -88,18 +103,18 @@ func TestColumnsInconsistent(t *testing.T) {
 		{Rows: []narrow{{[]byte("a"), 1}}},
 		{Rows: []wide{{[]byte("b"), 2}}},
 	}})
-	types := []format.Type{format.Int32, format.Int64}
+	types := []Kind{KindInt32, KindInt64}
 	for first := range 2 {
-		d := open(t, dir, Options{})
+		d := open(t, dir, OpenOptions{})
 		cols, err := d.Columns(ctx, first)
 		must(t, err)
 		if len(cols) != 2 || cols[1].Name != "size" || cols[1].Type != types[first] {
 			t.Fatalf("part %d: %+v", first, cols)
 		}
-		if _, err := d.Columns(ctx, 1-first); CodeOf(err) != CodeInconsistentColumn {
+		if _, err := d.Columns(ctx, 1-first); RefusalCodeOf(err) != CodeInconsistentColumn {
 			t.Fatalf("part %d after %d: %v, want inconsistent_column", 1-first, first, err)
 		}
-		if err := d.Verify(ctx); CodeOf(err) != CodeInconsistentColumn {
+		if err := d.Verify(ctx); RefusalCodeOf(err) != CodeInconsistentColumn {
 			t.Fatalf("Verify: %v, want inconsistent_column", err)
 		}
 		if again, err := d.Columns(ctx, first); err != nil || !reflect.DeepEqual(again, cols) {
@@ -110,7 +125,7 @@ func TestColumnsInconsistent(t *testing.T) {
 
 // TestColumnsConcurrent races Columns with reads on unchecked parts.
 func TestColumnsConcurrent(t *testing.T) {
-	d := open(t, write(t, lazyParts()), Options{})
+	d := open(t, write(t, lazyParts()), OpenOptions{})
 	var wg sync.WaitGroup
 	for i := range 16 {
 		part := i % len(d.r.parts)
@@ -121,7 +136,7 @@ func TestColumnsConcurrent(t *testing.T) {
 			}
 		})
 		wg.Go(func() {
-			if rows, err := d.Range(ctx, PrefixRange([]byte{"abcd"[part]}, 100)); err != nil || len(rows) != 25 {
+			if rows, err := d.Rows(ctx, Query{Selection: Selection{Span: PrefixSpan([]byte{"abcd"[part]})}, Limit: 100}, nil); err != nil || len(rows) != 25 {
 				t.Errorf("part %d: %d rows, %v", part, len(rows), err)
 			}
 		})
@@ -181,7 +196,7 @@ func TestColumnsConvertedType(t *testing.T) {
 	both := format.SchemaElement{Name: "v", Type: thrift.New(format.Int64), RepetitionType: thrift.New(format.Optional),
 		ConvertedType: thrift.New(deprecated.TimestampMicros),
 		LogicalType:   format.LogicalType{Value: &format.TimestampType{Unit: us}}}
-	if got := columnOf(&both, "key").Logical; !reflect.DeepEqual(got, &format.LogicalType{Value: &format.TimestampType{Unit: us}}) {
+	if got := columnOf(&both, "key").Logical; got != (Logical{Kind: LogicalTimestamp, Unit: Micros}) {
 		t.Errorf("both: %+v, want the logical type", got)
 	}
 }

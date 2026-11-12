@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"unsafe"
@@ -23,7 +24,9 @@ import (
 // refuses no page those limits admit: 832 MiB at their defaults, and it
 // follows them when they are set.
 func TestPageMemoryDefault(t *testing.T) {
-	if size := unsafe.Sizeof(parquet.Value{}); size != valueBytes {
+	// The estimate is a 64-bit Value's size; a 32-bit one is smaller, so the
+	// estimate is conservative there.
+	if size := unsafe.Sizeof(parquet.Value{}); size != valueBytes && (strconv.IntSize == 64 || size > valueBytes) {
 		t.Fatalf("a parquet.Value is %d bytes, the estimate counts %d", size, valueBytes)
 	}
 	if got := (Limits{}).withDefaults().PageMemory; got != 832<<20 {
@@ -89,7 +92,7 @@ func TestPageMemoryBoundsDecoding(t *testing.T) {
 			if len(values) != n || !values[0].Boolean() || !values[n-1].Boolean() {
 				t.Fatalf("%d values", len(values))
 			}
-			if used < n*valueBytes {
+			if used < n*uint64(unsafe.Sizeof(parquet.Value{})) {
 				t.Fatalf("the page decoded in %d bytes: the test does not reach the bound", used)
 			}
 		})
@@ -135,8 +138,8 @@ func TestPageMemoryOnEveryPage(t *testing.T) {
 		t.Fatalf("the fixture's pages do not isolate each kind: %v", memory)
 	}
 	read := func(limit int64, columns ...string) error {
-		d := open(t, dir, Options{Limits: Limits{PageMemory: limit}})
-		got, err := d.Range(ctx, Range{Limit: 5000, Columns: columns})
+		d := open(t, dir, OpenOptions{Limits: Limits{PageMemory: limit}})
+		got, err := d.Rows(ctx, Query{Limit: 5000, Columns: columns}, nil)
 		if err == nil && (len(got) != len(rows) || len(columns) > 0 && got[2999].Values[0].IsNull()) {
 			return fmt.Errorf("%d rows", len(got))
 		}
@@ -182,7 +185,7 @@ func TestPageMemoryOnEveryPage(t *testing.T) {
 // dictionary pages, key pages, and required and optional value pages.
 func pageMemoryByKind(t *testing.T, dir string) map[string]int64 {
 	t.Helper()
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	p, err := d.r.part(ctx, 0, new(ReadStats))
 	must(t, err)
 	out := map[string]int64{}

@@ -67,7 +67,7 @@ type ValidateOptions struct {
 	// and full run the levels they require first; digest runs alone.
 	Level Level
 	// Limits bounds what the dataset can make the validator allocate, as
-	// it bounds a reader (Options.Limits). Exceeding one leaves the level
+	// it bounds a reader (OpenOptions.Limits). Exceeding one leaves the level
 	// incomplete; it is not a fault of the data. IndexMemory does not
 	// apply: the validator keeps no page index after it checks it.
 	Limits Limits

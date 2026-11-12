@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 )
 
-// maxReadAhead bounds List.ReadAhead: larger values are read as it.
+// maxReadAhead bounds ListQuery.ReadAhead: larger values are read as it.
 const maxReadAhead = 64
 
 // readAheadPageBytes is the byte budget of each read-ahead slot: a listing
@@ -25,7 +25,7 @@ const readAheadPageBytes = 1 << 20
 // zero otherwise.
 var testListReadAhead int
 
-// readAhead is one List request's read-ahead of key pages (List.ReadAhead).
+// readAhead is one List request's read-ahead of key pages (ListQuery.ReadAhead).
 // The request's scan predicts, from the checked key page index of the row
 // group it is in, the key pages it will decode next, and readAhead reads
 // their raw bytes (header and payload, the extent their OffsetIndex entry
@@ -278,7 +278,7 @@ func (a *readAhead) close(st *ReadStats) {
 // or a row when it has none. Bounds may be shortened or overlap (RG-5,
 // RG-6), so the prediction may be wrong; it stops at the row group's end
 // and at a page beginning at or after the scan's upper bound.
-func (s *scan) readAhead(req *List, remaining int) {
+func (s *scan) readAhead(req *ListQuery, remaining int) {
 	a := s.ahead
 	if a == nil || s.kp == nil || s.synthetic || s.key == nil || s.kp.at < 0 || remaining <= 0 {
 		return

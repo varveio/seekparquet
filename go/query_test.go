@@ -21,7 +21,7 @@ import (
 func treeDataset(t testing.TB, n int) (*Dataset, []string) {
 	keys := fixtureKeys(n)
 	d := parts(testutil.Part{GroupRows: 400, PageBytes: 512, IndexSizeLimit: 8}, split(keys, 3)...)
-	return open(t, write(t, d), Options{}), keys
+	return open(t, write(t, d), OpenOptions{}), keys
 }
 
 // TestRangeMatchesOracle reads from and up to keys, the bytes around them
@@ -35,9 +35,9 @@ func TestRangeMatchesOracle(t *testing.T) {
 		every = 41
 	}
 	bounds := probes(keys, every)
-	check := func(rng Range) {
+	check := func(rng Query) {
 		t.Helper()
-		got, err := d.Range(ctx, rng)
+		got, err := d.Rows(ctx, rng, nil)
 		if err != nil {
 			t.Fatalf("%s: %v", describe(rng), err)
 		}
@@ -47,34 +47,34 @@ func TestRangeMatchesOracle(t *testing.T) {
 	}
 	for i, b := range bounds {
 		for _, exclusive := range []bool{false, true} {
-			check(Range{Start: b, StartExclusive: exclusive, Limit: 2})
+			check(Query{Selection: Selection{Span: Span{Start: b, StartExclusive: exclusive}}, Limit: 2})
 			if i%5 == 0 {
-				check(Range{Start: b, StartExclusive: exclusive, Limit: 1001})
+				check(Query{Selection: Selection{Span: Span{Start: b, StartExclusive: exclusive}}, Limit: 1001})
 			}
 		}
-		check(Range{End: b, Limit: 1})
-		check(Range{Cursor: &Cursor{Key: b}, Limit: 3})
+		check(Query{Selection: Selection{Span: Span{End: b}}, Limit: 1})
+		check(Query{Selection: Selection{Cursor: &Cursor{Key: b}}, Limit: 3})
 		for j := i; j < min(i+4, len(bounds)); j++ {
-			check(Range{Start: b, End: bounds[j], Limit: 1001})
-			check(Range{Start: b, StartExclusive: true, End: bounds[j], Limit: 3})
-			check(Range{Start: b, Cursor: &Cursor{Key: bounds[j]}, Limit: 3})
+			check(Query{Selection: Selection{Span: Span{Start: b, End: bounds[j]}}, Limit: 1001})
+			check(Query{Selection: Selection{Span: Span{Start: b, StartExclusive: true, End: bounds[j]}}, Limit: 3})
+			check(Query{Selection: Selection{Span: Span{Start: b}, Cursor: &Cursor{Key: bounds[j]}}, Limit: 3})
 		}
 	}
 	// A prefix intersected with the start and the end (RANGE-1).
 	for _, prefix := range []string{"d01/", "d01/s01/", "long/", "\xff", "zz", "nothing/"} {
 		for i := 0; i < len(bounds); i += 9 {
 			for _, exclusive := range []bool{false, true} {
-				check(Range{Prefix: []byte(prefix), Start: bounds[i], StartExclusive: exclusive, Limit: 50})
-				check(Range{Prefix: []byte(prefix), End: bounds[i], Limit: 50})
-				check(Range{Prefix: []byte(prefix), Start: bounds[i], End: bounds[min(i+30, len(bounds)-1)], Limit: 1000})
+				check(Query{Selection: Selection{Span: Span{Prefix: []byte(prefix), Start: bounds[i], StartExclusive: exclusive}}, Limit: 50})
+				check(Query{Selection: Selection{Span: Span{Prefix: []byte(prefix), End: bounds[i]}}, Limit: 50})
+				check(Query{Selection: Selection{Span: Span{Prefix: []byte(prefix), Start: bounds[i], End: bounds[min(i+30, len(bounds)-1)]}}, Limit: 1000})
 			}
 		}
-		check(PrefixRange([]byte(prefix), 1000))
+		check(Query{Selection: Selection{Span: PrefixSpan([]byte(prefix))}, Limit: 1000})
 	}
-	check(Range{Limit: math.MaxInt})
-	check(Range{Start: []byte{}, Limit: 5})                       // an empty start includes every key
-	check(Range{Start: []byte{}, StartExclusive: true, Limit: 5}) // and so does an exclusive one
-	if got, _ := d.Range(ctx, Range{End: []byte{}, Limit: 5}); len(got) != 0 {
+	check(Query{Limit: int64(math.MaxInt)})
+	check(Query{Selection: Selection{Span: Span{Start: []byte{}}}, Limit: 5})                       // an empty start includes every key
+	check(Query{Selection: Selection{Span: Span{Start: []byte{}, StartExclusive: true}}, Limit: 5}) // and so does an exclusive one
+	if got, _ := d.Rows(ctx, Query{Selection: Selection{Span: Span{End: []byte{}}}, Limit: 5}, nil); len(got) != 0 {
 		t.Fatalf("an empty end returned %d rows", len(got)) // QUERY-2
 	}
 }
@@ -86,9 +86,9 @@ func TestRangePagesToCompletion(t *testing.T) {
 	for _, limit := range []int{1, 7, 999, 1000, 1001, 5000} {
 		t.Run(fmt.Sprint("limit ", limit), func(t *testing.T) {
 			var got []string
-			rng := Range{Limit: limit, Columns: []string{"size"}}
+			rng := Query{Limit: int64(limit), Columns: []string{"size"}}
 			for range len(keys) + 1 {
-				page, err := d.Range(ctx, rng)
+				page, err := d.Rows(ctx, rng, nil)
 				if err != nil {
 					t.Fatalf("%s: %v", describe(rng), err)
 				}
@@ -99,7 +99,7 @@ func TestRangePagesToCompletion(t *testing.T) {
 					break
 				}
 				for i, row := range page {
-					if row.Offset != 0 || row.Values[0].Absent || row.Values[0].IsNull() {
+					if row.Offset != 0 || row.Values[0].Absent() || row.Values[0].IsNull() {
 						t.Fatalf("%s: row %d: offset %d, size %v", describe(rng), i, row.Offset, row.Values[0])
 					}
 				}
@@ -143,7 +143,7 @@ func TestListMatchesOracle(t *testing.T) {
 		for _, cur := range cursors {
 			for _, end := range [][]byte{nil, []byte("d05/"), []byte(prefix + "s03/")} {
 				for _, limit := range []int{1, 3, 1000} {
-					req := List{Prefix: []byte(prefix), Delimiter: '/', Cursor: cur, End: end, Limit: limit}
+					req := ListQuery{Prefix: []byte(prefix), Delimiter: '/', Cursor: cur, End: end, Limit: limit}
 					var st ReadStats
 					got, err := d.r.readList(ctx, req, &st)
 					skipped, seeks = skipped+st.GroupsSkipped, seeks+st.PageIndexSeeks
@@ -168,12 +168,12 @@ func TestListPagination(t *testing.T) {
 	d, keys := treeDataset(t, 2000)
 	for _, prefix := range []string{"", "d03/", "long/", "\xff"} {
 		for _, delim := range []byte{'/', 's', 0xff} {
-			want := listOracle(keys, List{Prefix: []byte(prefix), Delimiter: delim, Limit: math.MaxInt})
+			want := listOracle(keys, ListQuery{Prefix: []byte(prefix), Delimiter: delim, Limit: math.MaxInt})
 			for _, limit := range []int{1, 2, 5, 100} {
-				req := List{Prefix: []byte(prefix), Delimiter: delim, Limit: limit}
+				req := ListQuery{Prefix: []byte(prefix), Delimiter: delim, Limit: limit}
 				var got []string
 				for range len(keys) + 1 {
-					page, err := d.List(ctx, req)
+					page, err := d.List(ctx, req, nil)
 					if err != nil {
 						t.Fatalf("%s: %v", describe(req), err)
 					}
@@ -199,7 +199,7 @@ func TestListPagination(t *testing.T) {
 func TestDelimiterEdgeCases(t *testing.T) {
 	keys := []string{"/", "//x", "a", "a/", "a//", "a//c", "a/b", "a/b/", "a/b//", "a/b/c", "a/b/c/d", "a/c", "a\xffb", "a\xffb\xffc",
 		"b", "\xff", "\xff/", "\xff/a", "\xff\xff", "\xff\xff/x", "\xff\xff\xff"}
-	d := open(t, write(t, parts(testutil.Part{GroupRows: 3, PageBytes: 64}, split(keys, 3)...)), Options{})
+	d := open(t, write(t, parts(testutil.Part{GroupRows: 3, PageBytes: 64}, split(keys, 3)...)), OpenOptions{})
 	points := [][]byte{nil, {}, []byte("a/b"), []byte("a/b/"), []byte("a/b/c"), []byte("a/"), []byte("a//c"), []byte("\xff"), []byte("\xff\xff"), []byte("zz")}
 	prefixes := []string{"", "a", "a/", "a/b/", "\xff", "\xff\xff", "a\xff", "nothing"}
 	for _, prefix := range prefixes {
@@ -212,8 +212,8 @@ func TestDelimiterEdgeCases(t *testing.T) {
 				for _, cur := range cursors {
 					for _, end := range points {
 						for _, limit := range []int{1, 2, 100} {
-							req := List{Prefix: []byte(prefix), Delimiter: delim, Cursor: cur, End: end, Limit: limit}
-							got, err := d.List(ctx, req)
+							req := ListQuery{Prefix: []byte(prefix), Delimiter: delim, Cursor: cur, End: end, Limit: limit}
+							got, err := d.List(ctx, req, nil)
 							if err != nil {
 								t.Fatalf("%s: %v", describe(req), err)
 							}
@@ -228,17 +228,17 @@ func TestDelimiterEdgeCases(t *testing.T) {
 	}
 	// The cases named in the specification.
 	for _, c := range []struct {
-		req  List
+		req  ListQuery
 		want []string
 	}{
 		// a/ is a row; a/b/ rolls up to itself (LIST-3).
-		{List{Prefix: []byte("a/"), Delimiter: '/', Limit: 100}, []string{"r:a/", "P:a//", "r:a/b", "P:a/b/", "r:a/c"}},
+		{ListQuery{Prefix: []byte("a/"), Delimiter: '/', Limit: 100}, []string{"r:a/", "P:a//", "r:a/b", "P:a/b/", "r:a/c"}},
 		// After the common prefix a/b/, the keys after every key under it.
-		{List{Prefix: []byte("a/"), Delimiter: '/', Cursor: &Cursor{Prefix: []byte("a/b/")}, Limit: 100}, []string{"r:a/c"}},
+		{ListQuery{Prefix: []byte("a/"), Delimiter: '/', Cursor: &Cursor{Prefix: []byte("a/b/")}, Limit: 100}, []string{"r:a/c"}},
 		// After a row cursor inside a/b/, a/b/ rolls up again (LIST-5).
-		{List{Prefix: []byte("a/"), Delimiter: '/', Cursor: &Cursor{Key: []byte("a/b/c")}, Limit: 100}, []string{"p:a/b/", "r:a/c"}},
+		{ListQuery{Prefix: []byte("a/"), Delimiter: '/', Cursor: &Cursor{Key: []byte("a/b/c")}, Limit: 100}, []string{"p:a/b/", "r:a/c"}},
 	} {
-		got, err := d.List(ctx, c.req)
+		got, err := d.List(ctx, c.req, nil)
 		if err != nil || !slices.Equal(entriesOf(got), c.want) {
 			t.Fatalf("%s: %q, %v; want %q", describe(c.req), entriesOf(got), err, c.want)
 		}
@@ -251,7 +251,7 @@ func TestDelimiterEdgeCases(t *testing.T) {
 func TestListExact(t *testing.T) {
 	keys := []string{"a/", "a/1", "a/2", "a/3", "a/4", "a/5", "b/1", "b/2", "b/3", "b/4", "c", "d/", "d/1"}
 	dir := write(t, parts(testutil.Part{GroupRows: 2}, keys))
-	spell := func(entries []Entry) []string {
+	spell := func(entries []ListEntry) []string {
 		var out []string
 		for _, e := range entries {
 			switch {
@@ -266,7 +266,7 @@ func TestListExact(t *testing.T) {
 		return out
 	}
 	for _, verify := range []bool{false, true} {
-		d := open(t, dir, Options{})
+		d := open(t, dir, OpenOptions{})
 		if verify {
 			must(t, d.Verify(ctx))
 		}
@@ -283,10 +283,10 @@ func TestListExact(t *testing.T) {
 			{&Cursor{Key: []byte("c")}, []string{"p:d/=d//0=11"}},
 		} {
 			for _, limit := range []int{1, 2, 3, 100} {
-				req := List{Delimiter: '/', Cursor: c.cur, Limit: limit, Columns: []string{"size"}}
+				req := ListQuery{Delimiter: '/', Cursor: c.cur, Limit: limit, Columns: []string{"size"}}
 				var got []string
 				for range len(keys) + 1 {
-					page, err := d.List(ctx, req)
+					page, err := d.List(ctx, req, nil)
 					if err != nil {
 						t.Fatalf("%s: %v", describe(req), err)
 					}
@@ -304,9 +304,9 @@ func TestListExact(t *testing.T) {
 		// Projecting the exact rows reads their value pages and nothing
 		// else: the key-side counts are those of a keys-only listing.
 		var keysOnly, projected ReadStats
-		_, err := d.List(ctx, List{Delimiter: '/', Limit: 100, Stats: &keysOnly})
+		_, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 100}, &keysOnly)
 		must(t, err)
-		_, err = d.List(ctx, List{Delimiter: '/', Limit: 100, Columns: []string{"size"}, Stats: &projected})
+		_, err = d.List(ctx, ListQuery{Delimiter: '/', Limit: 100, Columns: []string{"size"}}, &projected)
 		must(t, err)
 		if keysOnly.ValuePagesDecoded != 0 || projected.ValuePagesDecoded == 0 || verify && keysOnly.GroupsSkipped == 0 ||
 			keysOnly.KeyPagesDecoded != projected.KeyPagesDecoded || keysOnly.KeysDecoded != projected.KeysDecoded ||
@@ -314,7 +314,7 @@ func TestListExact(t *testing.T) {
 			t.Fatalf("verified %v: keys only %+v, projected %+v", verify, keysOnly, projected)
 		}
 		var none ReadStats
-		_, err = d.List(ctx, List{Delimiter: '/', Cursor: &Cursor{Prefix: []byte("a/")}, End: []byte("c"), Limit: 100, Columns: []string{"size"}, Stats: &none})
+		_, err = d.List(ctx, ListQuery{Delimiter: '/', Cursor: &Cursor{Prefix: []byte("a/")}, End: []byte("c"), Limit: 100, Columns: []string{"size"}}, &none)
 		if err != nil || none.ValuePagesDecoded != 0 {
 			t.Fatalf("a listing without exact rows decoded %d value pages, %v", none.ValuePagesDecoded, err)
 		}
@@ -325,22 +325,22 @@ func TestListExact(t *testing.T) {
 // and [a/9] with prefix a/: no key lies in the range, so neither the scan
 // nor the group shortcut may produce an entry (LIST-7).
 func TestListNarrowUpperBound(t *testing.T) {
-	d := verified(t, write(t, parts(testutil.Part{GroupRows: 1}, []string{"a/1", "a/9"})), Options{})
+	d := verified(t, write(t, parts(testutil.Part{GroupRows: 1}, []string{"a/1", "a/9"})), OpenOptions{})
 	for _, prefix := range []string{"a/", ""} {
 		for _, cur := range []*Cursor{{Key: []byte("a/5")}, {Prefix: []byte("a/4")}} {
-			req := List{Prefix: []byte(prefix), Delimiter: '/', Cursor: cur, End: []byte("a/8"), Limit: 10}
-			if got, err := d.List(ctx, req); err != nil || len(got) != 0 {
+			req := ListQuery{Prefix: []byte(prefix), Delimiter: '/', Cursor: cur, End: []byte("a/8"), Limit: 10}
+			if got, err := d.List(ctx, req, nil); err != nil || len(got) != 0 {
 				t.Fatalf("%s: %q, %v", describe(req), entriesOf(got), err)
 			}
 		}
 	}
 	// The specification's LIST-7 example.
-	d = open(t, write(t, parts(testutil.Part{GroupRows: 1}, []string{"a/a", "a/z"})), Options{})
-	got, _ := d.List(ctx, List{Delimiter: '/', End: []byte("a/b"), Limit: 10})
+	d = open(t, write(t, parts(testutil.Part{GroupRows: 1}, []string{"a/a", "a/z"})), OpenOptions{})
+	got, _ := d.List(ctx, ListQuery{Delimiter: '/', End: []byte("a/b"), Limit: 10}, nil)
 	if want := []string{"p:a/"}; !slices.Equal(entriesOf(got), want) {
 		t.Fatalf("%q, want %q", entriesOf(got), want)
 	}
-	got, _ = d.List(ctx, List{Delimiter: '/', Cursor: &Cursor{Key: []byte("a/a")}, End: []byte("a/b"), Limit: 10})
+	got, _ = d.List(ctx, ListQuery{Delimiter: '/', Cursor: &Cursor{Key: []byte("a/a")}, End: []byte("a/b"), Limit: 10}, nil)
 	if len(got) != 0 {
 		t.Fatalf("a/z alone made %q appear", entriesOf(got))
 	}
@@ -348,8 +348,8 @@ func TestListNarrowUpperBound(t *testing.T) {
 
 // TestListMaxIntLimit lists with limit math.MaxInt.
 func TestListMaxIntLimit(t *testing.T) {
-	d := open(t, write(t, parts(testutil.Part{}, []string{"a", "b/c"})), Options{})
-	got, err := d.List(ctx, List{Delimiter: '/', Limit: math.MaxInt})
+	d := open(t, write(t, parts(testutil.Part{}, []string{"a", "b/c"})), OpenOptions{})
+	got, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: math.MaxInt}, nil)
 	if want := []string{"r:a", "p:b/"}; err != nil || !slices.Equal(entriesOf(got), want) {
 		t.Fatalf("%q, %v", entriesOf(got), err)
 	}
@@ -359,28 +359,28 @@ func TestListMaxIntLimit(t *testing.T) {
 // cursor, is an invalid request, never an empty result (QUERY-1); a range
 // takes only a row cursor.
 func TestInvalidRequests(t *testing.T) {
-	d := open(t, write(t, parts(testutil.Part{}, []string{"a"})), Options{})
-	empty := open(t, write(t, testutil.Dataset{}), Options{})
+	d := open(t, write(t, parts(testutil.Part{}, []string{"a"})), OpenOptions{})
+	empty := open(t, write(t, testutil.Dataset{}), OpenOptions{})
 	bad := []*Cursor{{}, {Key: []byte("a"), Offset: -1}, {Key: []byte("a"), Prefix: []byte("a/")}, {Prefix: []byte("a/"), Offset: 1}}
 	for name, ds := range map[string]*Dataset{"dataset": d, "empty dataset": empty} {
 		t.Run(name, func(t *testing.T) {
 			for _, limit := range []int{0, -1, math.MinInt} {
-				if _, err := ds.Range(ctx, Range{Limit: limit}); !errors.Is(err, ErrInvalidRequest) {
+				if _, err := ds.Rows(ctx, Query{Limit: int64(limit)}, nil); !errors.Is(err, ErrInvalidRequest) {
 					t.Fatalf("range limit %d: %v", limit, err)
 				}
-				if _, err := ds.List(ctx, List{Delimiter: '/', Limit: limit}); !errors.Is(err, ErrInvalidRequest) {
+				if _, err := ds.List(ctx, ListQuery{Delimiter: '/', Limit: limit}, nil); !errors.Is(err, ErrInvalidRequest) {
 					t.Fatalf("list limit %d: %v", limit, err)
 				}
 			}
 			for _, cur := range bad {
-				if _, err := ds.Range(ctx, Range{Cursor: cur, Limit: 1}); !errors.Is(err, ErrInvalidRequest) {
+				if _, err := ds.Rows(ctx, Query{Selection: Selection{Cursor: cur}, Limit: 1}, nil); !errors.Is(err, ErrInvalidRequest) {
 					t.Fatalf("range cursor %s: %v", cursorString(cur), err)
 				}
-				if _, err := ds.List(ctx, List{Cursor: cur, Limit: 1}); !errors.Is(err, ErrInvalidRequest) {
+				if _, err := ds.List(ctx, ListQuery{Cursor: cur, Limit: 1}, nil); !errors.Is(err, ErrInvalidRequest) {
 					t.Fatalf("list cursor %s: %v", cursorString(cur), err)
 				}
 			}
-			if _, err := ds.Range(ctx, Range{Cursor: &Cursor{Prefix: []byte("a/")}, Limit: 1}); !errors.Is(err, ErrInvalidRequest) {
+			if _, err := ds.Rows(ctx, Query{Selection: Selection{Cursor: &Cursor{Prefix: []byte("a/")}}, Limit: 1}, nil); !errors.Is(err, ErrInvalidRequest) {
 				t.Fatalf("range with a prefix cursor: %v", err)
 			}
 		})
@@ -396,8 +396,8 @@ func TestUniqueCursors(t *testing.T) {
 		k := []byte(keys[i])
 		want := keys[i+1 : min(i+4, len(keys))]
 		for _, offset := range []int64{0, 1, math.MaxInt64} {
-			rng := Range{Cursor: &Cursor{Key: k, Offset: offset}, Limit: 3}
-			got, err := d.Range(ctx, rng)
+			rng := Query{Selection: Selection{Cursor: &Cursor{Key: k, Offset: offset}}, Limit: 3}
+			got, err := d.Rows(ctx, rng, nil)
 			if err != nil || !slices.Equal(keysOf(got), want) {
 				t.Fatalf("%s: %q, %v; want %q", describe(rng), keysOf(got), err, want)
 			}
@@ -413,9 +413,9 @@ func TestUniqueCursors(t *testing.T) {
 // TestPrefixRange reads prefixes, including ones without a successor.
 func TestPrefixRange(t *testing.T) {
 	keys := []string{"a", "a/1", "a/2", "b", "\xff", "\xff\x00", "\xff\xff"}
-	d := open(t, write(t, parts(testutil.Part{}, keys)), Options{})
+	d := open(t, write(t, parts(testutil.Part{}, keys)), OpenOptions{})
 	for prefix, want := range map[string][]string{"a/": {"a/1", "a/2"}, "a": {"a", "a/1", "a/2"}, "\xff": {"\xff", "\xff\x00", "\xff\xff"}, "\xff\xff": {"\xff\xff"}, "": keys, "c": nil} {
-		got, err := d.Range(ctx, PrefixRange([]byte(prefix), 100))
+		got, err := d.Rows(ctx, Query{Selection: Selection{Span: PrefixSpan([]byte(prefix))}, Limit: 100}, nil)
 		if err != nil || !slices.Equal(keysOf(got), want) {
 			t.Fatalf("prefix %q: %q, %v", prefix, keysOf(got), err)
 		}
@@ -435,7 +435,7 @@ func TestEmptyGroupsAndOneRowParts(t *testing.T) {
 	if err != nil || len(meta.RowGroups) != 5 {
 		t.Fatalf("physical row groups: %v", err)
 	}
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	must(t, d.Verify(ctx))
 	if groups := len(d.r.parts[0].groups) + len(d.r.parts[1].groups); groups != 3 || d.r.rows != 3 || len(d.r.parts) != 2 {
 		t.Fatalf("%d groups, %d rows", groups, d.r.rows)
@@ -446,8 +446,8 @@ func TestEmptyGroupsAndOneRowParts(t *testing.T) {
 		for _, end := range points {
 			for _, exclusive := range []bool{false, true} {
 				for _, limit := range []int{1, 2} {
-					rng := Range{Start: start, StartExclusive: exclusive, End: end, Limit: limit}
-					got, err := d.Range(ctx, rng)
+					rng := Query{Selection: Selection{Span: Span{Start: start, StartExclusive: exclusive, End: end}}, Limit: int64(limit)}
+					got, err := d.Rows(ctx, rng, nil)
 					if err != nil || !slices.Equal(keysOf(got), rangeOracle(keys, rng)) {
 						t.Fatalf("%s: %q, %v", describe(rng), keysOf(got), err)
 					}
@@ -459,12 +459,12 @@ func TestEmptyGroupsAndOneRowParts(t *testing.T) {
 
 // TestEmptyDataset opens parts: [] and reads nothing.
 func TestEmptyDataset(t *testing.T) {
-	d := open(t, write(t, testutil.Dataset{}), Options{})
-	rows, err := d.Range(ctx, Range{Limit: 10, Columns: []string{"x"}})
+	d := open(t, write(t, testutil.Dataset{}), OpenOptions{})
+	rows, err := d.Rows(ctx, Query{Limit: 10, Columns: []string{"x"}}, nil)
 	if err != nil || len(rows) != 0 {
 		t.Fatal(rows, err)
 	}
-	entries, err := d.List(ctx, List{Delimiter: '/', Limit: 10})
+	entries, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 10}, nil)
 	if err != nil || len(entries) != 0 {
 		t.Fatal(entries, err)
 	}
@@ -481,9 +481,9 @@ func TestLongKeys(t *testing.T) {
 		keys = append(keys, fmt.Sprintf("%s/%s%04d", strings.Repeat("p", 1100), strings.Repeat("q", i%3*400), i))
 	}
 	slices.Sort(keys)
-	d := open(t, write(t, parts(testutil.Part{PageBytes: 4096, GroupRows: 100, IndexSizeLimit: 64}, split(keys, 2)...)), Options{})
+	d := open(t, write(t, parts(testutil.Part{PageBytes: 4096, GroupRows: 100, IndexSizeLimit: 64}, split(keys, 2)...)), OpenOptions{})
 	for i, k := range keys {
-		got, err := d.Range(ctx, Range{Start: []byte(k), Limit: 2})
+		got, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte(k)}}, Limit: 2}, nil)
 		if err != nil || len(got) == 0 || string(got[0].Key) != k {
 			t.Fatalf("from key %d: %d rows, %v", i, len(got), err)
 		}

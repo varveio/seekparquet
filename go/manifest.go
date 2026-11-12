@@ -60,7 +60,7 @@ func extension(raw json.RawMessage, namespace string) (json.RawMessage, bool) {
 func ParseManifest(raw []byte, lim Limits) (Manifest, error) {
 	lim = lim.withDefaults()
 	if int64(len(raw)) > lim.ManifestBytes {
-		return Manifest{}, exceeded("%s is %d bytes (Limits.ManifestBytes %d)", ManifestName, len(raw), lim.ManifestBytes)
+		return Manifest{}, exceeded(LimitManifestBytes, int64(len(raw)), lim.ManifestBytes, "%s", ManifestName)
 	}
 	m, err := parseManifest(raw, &lim)
 	if err != nil {
@@ -77,9 +77,9 @@ func parseManifest(raw []byte, lim *Limits) (*manifest.Manifest, error) {
 		var e *manifest.Error
 		switch {
 		case errors.As(err, &e):
-			return nil, refuse(Code(e.Code), "%s: %s", ManifestName, e.Detail)
+			return nil, refuse(RefusalCode(e.Code), "%s: %s", ManifestName, e.Detail)
 		case errors.Is(err, manifest.ErrTooManyParts):
-			return nil, exceeded("%s lists more than %d parts (Limits.Parts)", ManifestName, lim.Parts)
+			return nil, exceeded(LimitParts, -1, int64(lim.Parts), "%s lists more parts", ManifestName)
 		}
 		return nil, err
 	}

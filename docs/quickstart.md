@@ -31,7 +31,7 @@ page 3: prefix logs/2026/03/
 The [complete program](../go/examples/quickstart/main.go) opens a local directory
 with `OpenDir`, then:
 
-1. Uses `PrefixRange` to preview the first two January keys. This is a limited
+1. Uses `Rows` over a `PrefixSpan` to preview the first two January keys. This is a limited
    preview, not every row under that prefix. No value columns are requested.
 2. Uses `List` with prefix `logs/2026/`, delimiter `/`, and limit `1` to return
    one month per page rather than all the files below each month.

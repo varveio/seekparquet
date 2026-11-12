@@ -20,7 +20,7 @@ import (
 // missing_part. The directory stays open, so that parts can be opened when
 // a read first touches them, and each part keeps its file open, until the
 // dataset closes.
-func OpenDir(ctx context.Context, path string, opt Options) (*Dataset, error) {
+func OpenDir(ctx context.Context, path string, opt OpenOptions) (*Dataset, error) {
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return nil, err

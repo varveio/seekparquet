@@ -23,22 +23,27 @@ Versioning is described in [RELEASING.md](../RELEASING.md#go).
 
 ```go
 ctx := context.Background()
-d, err := seekparquet.OpenDir(ctx, "/data/listing", seekparquet.Options{})
+d, err := seekparquet.OpenDir(ctx, "/data/listing", seekparquet.OpenOptions{})
 if err != nil {
-	return err // seekparquet.CodeOf(err) gives the refusal code, if it is one
+	return err // seekparquet.RefusalCodeOf(err) gives the refusal code, if it is one
 }
 defer d.Close()
 
 // A range: start inclusive (StartExclusive to exclude it), end exclusive.
-rows, err := d.Range(ctx, seekparquet.Range{Start: []byte("logs/2026/"), Limit: 100, Columns: []string{"size"}})
+q := seekparquet.Query{Limit: 100, Columns: []string{"size"}}
+q.Start = []byte("logs/2026/")
+rows, err := d.Rows(ctx, q, nil)
 
 // A prefix read, which may also take a start and an end.
-rows, err = d.Range(ctx, seekparquet.PrefixRange([]byte("logs/2026/"), 100))
+rows, err = d.Rows(ctx, seekparquet.Query{Selection: seekparquet.Selection{Span: seekparquet.PrefixSpan([]byte("logs/2026/"))}, Limit: 100}, nil)
+
+// Every row stored under one key (Limits.GetRows bounds the group).
+rows, err = d.Get(ctx, []byte("logs/readme"), nil, "size")
 
 // A delimited listing, paged.
-req := seekparquet.List{Prefix: []byte("logs/"), Delimiter: '/', Limit: 1000}
+req := seekparquet.ListQuery{Prefix: []byte("logs/"), Delimiter: '/', Limit: 1000}
 for {
-	entries, err := d.List(ctx, req)
+	entries, err := d.List(ctx, req, nil)
 	if err != nil || len(entries) == 0 {
 		break
 	}
@@ -78,12 +83,14 @@ The recipe, the guarantees and what `WriteDir` does not do are in [docs/producin
 The manifest declares `key: {"column": "<name>", "unique": true|false}`; the footer stamps must match
 it, and `d.Metadata().Key` exposes it. When keys are not unique, consecutive equal keys form a group in
 producer file order; a group may span pages and row groups but never parts. Start, end and prefix select
-whole groups. `KeyRange(key, limit, columns...)` looks up one group.
+whole groups. `Get(ctx, key, stats, columns...)` returns one whole group, at most `Limits.GetRows` rows
+(default 1,000); `KeySpan(key)` selects one group for `Rows`, `Scan` and `Plan`, paged like any span.
 
 Every result pages the same way: set the request's `Cursor` to the last entry's `Cursor()` and repeat
 the request. A row cursor is the row's key and its `Row.Offset`, the zero-based position in its group
-(always zero with unique keys); a listing may also continue after a common prefix (`Entry.Cursor()` of
-a prefix entry). A range takes only a row cursor. A prefix entry carries its exact row in `Entry.Exact`
+(always zero with unique keys); a listing may also continue after a common prefix (`ListEntry.Cursor()` of
+a prefix entry). A range takes only a row cursor. `Cursor.Encode` and `ParseCursor` carry a cursor as a
+text token ([spec/cursor-token-1.md](../spec/cursor-token-1.md)). A prefix entry carries its exact row in `ListEntry.Exact`
 when its first candidate row is stored at the prefix itself (an `a/` folder object under the prefix `a/`), with
 its projected values, so a listing pairs the two without a lookup (spec LIST-8). A page may end inside a group, and resuming deep
 inside a large group costs a few pages, not the rows before the cursor.
@@ -92,7 +99,7 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Range`, `RangeBatches`, `List`, `PlanRanges`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `RangePlan` with `Count`, `ProjectedBytes`, `Scan`, `ScanBatches`, `Split` and `Stats`; the requests `Range`, `List`, `PrefixRange`, `KeyRange` and `Cursor`; the results `Row`, `Value`, `Entry`, `Batch`; `Column`, a part's column as its footer declares it; `Options` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Rows`, `Get`, `Scan`, `List`, `Plan`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `Plan` with `Count`, `ProjectedBytes`, `Columns`, `Scan` and `Split`; the requests `Span` (`KeySpan`, `PrefixSpan`), `Selection`, `Query`, `ListQuery` and `Cursor` (`RowCursor`, `PrefixCursor`, `Encode`, `ParseCursor`); the results `Row`, `Value`, `ListEntry`, `Batch` and `ColumnView`; `ReadStats`; `Column`, a part's column as its footer declares it, with `Kind`, `Repetition` and `Logical`; `OpenOptions` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
 | `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
 | `cmd/seekparquet` | the `seekparquet validate` command |
@@ -110,12 +117,15 @@ The adapter claims the `reader` target and the four validator targets, so one ru
 ## Results
 
 - Rows own their key and value bytes. `Row.Columns` is the result's own copy of the projected names.
-- A projected column a part does not have is `Value.Absent`, which is distinct from a null value (COL-2). A
+- A value is absent, null or a value: `Value.Absent()` reports a projected column the row's part does not
+  have (COL-2), and `IsNull()` only a null stored in a present column; an absent value is not null. A
   column no part has is absent in every row. Projecting a nested or repeated column is an
   `*UnsupportedError` (`unsupported_projection`), never reported as absent.
-- Values are parquet-go `Value`s of the column's physical type. This module commits to parquet-go's value
-  types rather than defining its own, so a parquet-go upgrade can change this API.
-- A limit that is not positive, or a malformed cursor, is `ErrInvalidRequest`, not an empty result.
+- Values are this module's own `Value`s of the column's physical type (`Kind`), read with typed accessors
+  (`Int64`, `Bytes`, ...); an accessor of another kind returns its zero value. No parquet-go type appears in
+  the read API. Constructors (`Int64Value`, `ByteArrayValue`, `NullValue`, `AbsentValue`, ...) build values.
+- A limit that is not positive (zero is allowed for `Scan`), or a malformed cursor, is `ErrInvalidRequest`,
+  not an empty result.
 
 ## What opening and reading check, and what they do not certify
 
@@ -127,7 +137,7 @@ A part is checked the first time a read routes to it: it exists with the manifes
 footer is readable, self-contained and unencrypted, its `seekparquet.*` stamps match, the manifest-named key
 column is valid (type, repetition, annotation, `column_orders`), its columns agree with those of every part
 already checked (COL-5), and every non-empty row group declares `sorting_columns`. A part that fails is
-refused by the `Range` or `List` that touched it, with the same codes, and by every later read that touches
+refused by the read that touched it, with the same codes, and by every later read that touches
 it; a part known from its bounds to lie outside a read is not touched. Concurrent reads wait for one check.
 
 `Dataset.Verify` checks every part now, then every non-empty row group's key page index and first key page,
@@ -188,13 +198,14 @@ are read.
 ## Untrusted input and limits
 
 Every size a file declares (manifest, footer, page index, page header, page, value count) is checked against
-`Options.Limits` before anything is allocated for it, and Thrift structures are walked with a bounded
+`OpenOptions.Limits` before anything is allocated for it, and Thrift structures are walked with a bounded
 decoder, nesting included, before they are decoded. The reader locates and decodes pages itself: every page
 it decodes is one it located, through a checked OffsetIndex entry whose header must describe exactly that
 page, or by walking the page headers. A page must decompress to exactly the size its header declares, and
 decompression stops beyond it; the value counts its encodings declare (RLE runs, delta headers) are checked
 against the header, and its decoded size against `Limits.PageBytes`, before parquet-go's decoders allocate.
-Exceeding a limit is `ErrLimitExceeded`, the caller's policy, not a refusal of the data. Defaults suit local
+Exceeding a limit is a `*LimitError` naming the limit, wrapping `ErrLimitExceeded`: the caller's policy, not a
+refusal of the data. A negative limit is `ErrInvalidRequest` when the dataset is opened; zero takes the default. Defaults suit local
 files; set them lower for untrusted remote data. A panic inside parquet-go on a hostile footer or page is
 reported as `invalid_footer` or `invalid_parquet` as a last line of defence.
 
@@ -206,10 +217,11 @@ limit is separate from the configurable allocation limits and does not make the 
 
 | Error | Meaning |
 |---|---|
-| `*RefusalError` (`CodeOf`) | the data breaks the specification; `Code` is from `spec/refusal-codes.json`, with the part, row group, row and key where known (validation reports it as a failed level) |
-| `ErrInvalidRequest` | a malformed request |
-| `*UnsupportedError` | valid data this reader does not handle: `unsupported_projection`, `unsupported_encoding`, `unsupported_encryption` |
-| anything else | the environment: storage, the context, `ErrClosed`, `ErrLimitExceeded` |
+| `*RefusalError` (`RefusalCodeOf`) | the data breaks the specification; its `RefusalCode` is from `spec/refusal-codes.json`, with the part, row group, row and key where known (validation reports it as a failed level) |
+| `ErrInvalidRequest` | a malformed request, a malformed cursor token included |
+| `*UnsupportedError` | valid data this reader does not handle; its `UnsupportedCode` is `unsupported_projection`, `unsupported_encoding` or `unsupported_encryption` |
+| `*LimitError` (wraps `ErrLimitExceeded`) | a limit of `Limits`, or the reader's row capacity, with its name, value and maximum |
+| anything else | the environment: storage, the context, `ErrClosed` |
 
 ## Sources, contexts and ownership
 
@@ -235,13 +247,13 @@ mid-call; the reader checks the context between pages.
 `OpenDataset` opens and closes only the manifest. `Dataset.Close` closes every part file the dataset opened,
 after the reads in progress end.
 
-Projected value pages reuse buffers within each `Range`, `RangeBatches`, `List`, `RangePlan.Scan`, or
-`RangePlan.ScanBatches` call, including across row groups. `Range`, `List`, and `Scan` results own
-their keys and binary values; `RangeBatches` and `ScanBatches` borrow page storage as described below. Dictionaries have separate storage
-for their chunk. `RangeBatches` and `ScanBatches` (and so `Scan`) also decode every key page into one
+Projected value pages reuse buffers within each `Rows`, `Get`, `Scan`, `List`, or `Plan.Scan` call,
+including across row groups. `Rows`, `Get` and `List` results own their keys and binary values;
+`Dataset.Scan` and `Plan.Scan` borrow page storage as described below. Dictionaries have separate storage
+for their chunk. `Dataset.Scan` and `Plan.Scan` also decode every key page into one
 buffer set of their own, each page overwriting the one before once the callbacks borrowing it have
 returned; what the call keeps of a key across pages (the first key of a group of equal keys, the decoded
-pages' bounds, a row group's cached first key) is copied first. Every other read (`Range`, `List`, routing
+pages' bounds, a row group's cached first key) is copied first. Every other read (`Rows`, `Get`, `List`, routing
 and planning probes, `Verify`, the list index) decodes each key page into storage of its own, never
 reused, and validation does not reuse page buffers. No scratch is shared between calls.
 The call retains each projection slot's largest byte and element buffers until it returns, including
@@ -250,7 +262,7 @@ header buffers can retain up to `headerBytes` (16 MiB, bounded by `MetadataMemor
 extents include both header and payload.
 `Limits.PageMemory` bounds the memory decoding one page holds, data and dictionary pages alike, key
 pages included. It is estimated from the page's header before anything is allocated for its values:
-24 bytes per value for its `parquet.Value` (64-bit platforms), twice that for an optional column (its
+24 bytes per decoded value (64-bit platforms), twice that for an optional column (its
 non-null values, then every row), plus the bytes its decoded values hold (at most `PageBytes`). A
 page over it fails with an error wrapping `ErrLimitExceeded`. Its default is the most `PageValues`
 and `PageBytes` allow, 2 × 24 × `PageValues` + `PageBytes` (832 MiB at their defaults), so the default
@@ -285,7 +297,7 @@ resumes after each common prefix at the prefix's successor, skipping the pages w
 it lands on, and the pages around a prefix's boundaries, still decode some of the keys under it.
 
 **Key page read-ahead for listings.** Each of those resumes reads one key page, one after another: over an
-object store a listing of 100 common prefixes waits for about 100 round trips. `List.ReadAhead` (default 0,
+object store a listing of 100 common prefixes waits for about 100 round trips. `ListQuery.ReadAhead` (default 0,
 off) lets a listing predict, from the row group's key page index, the pages it will decode next and read up to
 that many of them concurrently, holding at most 1 MiB per slot of pages read and not yet used (a request with
 `ReadAhead: 64` can hold 64 MiB). The pages read ahead are checked as any page read is, and the entries do not
@@ -356,63 +368,68 @@ parent directory to keep and reuse its `wide/` and `flat/` datasets (also used b
 SEEKPARQUET_LIST_BENCH_DIR=/path/to/bench go test ./local -run '^$' -bench BenchmarkListBoundary -benchtime=5x
 ```
 
-**Planned selections.** `d.PlanRanges(ctx, ranges, columns)` plans reading every row of a set of ranges
-(their bounds and cursors; rows several ranges select count once). Planning decodes the key pages at the two
-ends of each range, as a `Range` starting there would, and with columns reads the OffsetIndex of each
-projected column chunk the rows span, but no data page. `Count()` is the row count, exact once every part
-holding a selected row is checked: always with columns, and otherwise only when no part between the ends is
-still untouched. `ProjectedBytes()` is the compressed bytes `Scan` will request for the projected columns:
-the extent of each page holding a selected row and of its chunk's dictionary, once each however many ranges
-share them; it is not exact when a projected chunk has no OffsetIndex. `Scan(ctx, stats, fn)` yields the
-rows in dataset order with their values, reading each counted extent in one request, and checks every key
-page it decodes, reading a chunk's dictionary before its first page whether or not the pages use it. A page an
-OffsetIndex locates is read in one request of exactly its extent, by `Range` and `List` too; they read a
+**Planned selections.** `d.Plan(ctx, selections, columns, stats)` plans reading every row of a set of
+selections (their spans and cursors, a row cursor resuming inside a group; rows several selections select
+count once). Planning decodes the key pages at the two ends of each selection, as `Rows` starting there
+would, and with columns reads the OffsetIndex of each projected column chunk the rows span, but no data page.
+`Count()` is the row count, exact once every part holding a selected row is checked: always with columns,
+and otherwise only when no part between the ends is still untouched. `ProjectedBytes()` is the compressed
+bytes `Scan` will request for the projected columns: the extent of each page holding a selected row and of
+its chunk's dictionary, once each however many selections share them; it is not exact when a projected
+chunk has no OffsetIndex. `plan.Scan(ctx, stats, fn func(*Batch) error)` yields the rows in dataset order
+with their values as borrowed batches, reading each counted extent in one request, and checks every key page
+it decodes, reading a chunk's dictionary before its first page whether or not the pages use it. A page an
+OffsetIndex locates is read in one request of exactly its extent, by `Rows` and `List` too; they read a
 dictionary only for a page that uses it. A projected key column is read as a value column and its chunk counts
 in `ProjectedBytes`; the Java reader takes key values from its key pages and counts nothing for it (see
 [java/README.md](../java/README.md#parity-with-the-go-reader)), so the conformance planning cases never
 project the key.
 
-`ScanBatches(ctx, stats, fn func(*Batch) error)` yields the same selected rows as borrowed column
-slices, avoiding the per-row owning copies. `Batch.Len()`, `Key(i)`, and `Offset(i)` identify rows;
-`Column(c)` returns `([]parquet.Value, bool)` for projection slot `c`, in request order, including
-duplicates. `false` means the part lacks the column; a present column has `Len()` values, whose
-`IsNull()` distinguishes nulls. A projected key remains an ordinary projected column.
+**Batches.** `Batch.Len()`, `Key(i)`, and `Offset(i)` identify rows; `Column(c)` returns a `ColumnView` of
+projection slot `c`, in request order, including duplicates: a small value over the decoded page, made
+without allocating, with `Present()`, `Kind()`, `Len()`, `IsNull(i)`, `Value(i)` (a borrowed `Value`) and
+typed accessors (`Int64(i)`, `Bytes(i)`, ...) for loops over a column of a known `Kind`: they test no kind
+per value, so on a column of another kind their bits are unspecified (never a panic; `Bytes` returns no bytes), where
+`Value(i)`'s accessors return the zero value. A view that is not `Present` is a column the part lacks: its
+`Len()` values are absent. `Batch.Columns()` names the slots. A projected key remains an ordinary projected
+column.
 
 Each batch is a positive run within one row group, one key page, one page of every projected column,
-and one selected span. It never crosses a gap in the selection. Pages need not align across columns;
-batches may be small, and maximal size is not promised. **The batch object, slices, keys and value
+and one selected span, and holds at most 4,096 rows when a projected column is absent from the part (such a
+column takes no storage). It never crosses a gap in the selection. Pages need not align across columns;
+batches may be small, and maximal size is not promised. **The batch object, views, keys and value
 bytes are borrowed, read-only, and valid only until the callback returns.** Do not retain them or
-pass them to work that outlives the callback. `batch.Row(i)` and `batch.Cursor(i)` make owning copies.
-Accessors panic on out-of-range indexes. `Scan` is the owning adapter over `ScanBatches`.
+pass them to work that outlives the callback. `batch.Row(i)` and `batch.Cursor(i)` make owning copies,
+and `Value.Clone` an owning value. Accessors panic on out-of-range indexes.
 
-Both scan APIs stop at the first callback error, return it, and populate read statistics on failure.
-`ScanBatches` checks cancellation before each batch callback. `Scan` uses the same batch boundary:
-if its row callback cancels the context, the current batch's remaining rows are still delivered.
-Completed batches are delivered before a later decoding error, even if the failing projected page
-is within the same key page or the next key page fails to decode.
-Each concurrent or reentrant scan has its own scratch. Both hold a Dataset lease during callbacks:
-**the callback must not close the Dataset or wait for a goroutine that does**, since Close waits for
-the scan. Return an error or cancel the context to stop, and close after the scan returns. Requests
-started by the callback work normally until Close begins, then fail with `ErrClosed`.
+Both scans stop at the first callback error, return it, and populate read statistics on failure; a
+callback that returns `seekparquet.Stop` ends the scan with a nil error. A nil callback is
+`ErrInvalidRequest`. Cancellation is checked before each batch callback. Completed batches are delivered
+before a later decoding error, even if the failing projected page is within the same key page or the next
+key page fails to decode. Each concurrent or reentrant scan has its own scratch. Both hold a Dataset lease
+during callbacks: **the callback must not close the Dataset or wait for a goroutine that does**, since
+Close waits for the scan. Return `Stop` or an error, or cancel the context, to stop, and close after the
+scan returns. Requests started by the callback work normally until Close begins, then fail with `ErrClosed`.
 
-**Limited batch reads.** `d.RangeBatches(ctx, rng, fn func(*Batch) error)` hands `fn` the rows `Range`
-would return for the same request, as the same borrowed `Batch`es, with no plan: bounds, `Cursor`, `Columns`,
-a positive `Limit` and `Stats` mean what they mean to `Range`, and a nil `fn` is `ErrInvalidRequest`. It reads
-what `Range` reads: it opens each projected chunk when the scan reaches its row group, reads a dictionary
+**Unplanned batch reads.** `d.Scan(ctx, q, stats, fn func(*Batch) error)` hands `fn` the rows `Rows`
+would return for the same query, as the same borrowed `Batch`es, with no plan: span, `Cursor`, `Columns`
+and a positive `Limit` mean what they mean to `Rows`, and a zero `Limit` scans to the end of the span (a
+streaming extension of this library; the specification's range, and `Rows`, take a positive limit). It reads
+what `Rows` reads: it opens each projected chunk when the scan reaches its row group, reads a dictionary
 only for a page that uses it, and does not position at the upper bound or read the OffsetIndexes of the rest
-of the range, so a small limit on a long range costs what the rows it returns cost. A successful request
-whose callbacks all return nil has the `ReadStats` the same `Range` would have against the same cache state.
-A request that stops early does not: `Range` reads every key before any value, so a corrupt later key page
-fails it before it decodes a value page, while `RangeBatches` has already decoded values and run callbacks;
+of the span, so a small limit on a long span costs what the rows it returns cost. A successful request
+whose callbacks all return nil has the `ReadStats` the same `Rows` would have against the same cache state.
+A request that stops early does not: `Rows` reads every key before any value, so a corrupt later key page
+fails it before it decodes a value page, while `Scan` has already decoded values and run callbacks;
 a callback error, cancellation, or another request warming the caches meanwhile changes the counts too.
 It stops at the limit without advancing to the next row; the last batch ends at the limit or the upper bound,
-and a range with no rows never calls `fn`. The borrowing, callback-error, cancellation (also checked before
-every callback), Close and concurrency rules are those of `ScanBatches` above. It is not a planned scan:
-there is no `Count`, `ProjectedBytes` or `Split`; use `PlanRanges` for those.
+and a span with no rows never calls `fn`. It is not a planned scan: there is no `Count`, `ProjectedBytes`
+or `Split`; use `Plan` for those.
 
-`plan.Split(ctx, n)` divides a plan into at most `n` shards for a whole scan on several cores: each shard is a
-`RangePlan` over consecutive rows of the plan, and the shards' `Scan`s, run on the caller's goroutines with
-their own `ReadStats`, together yield the plan's rows, each once, shard by shard in dataset order. Boundaries
+`plan.Split(ctx, n, stats)` divides a plan into at most `n` shards for a whole scan on several cores
+(`n` below 1 is `ErrInvalidRequest`; a plan with no rows has no shard): each shard is a `Plan` over
+consecutive rows of the plan, and the shards' `Scan`s, run on the caller's goroutines with their own
+`ReadStats`, together yield the plan's rows, each once, shard by shard in dataset order. Boundaries
 fall at a selected row that begins a row group and balance `ProjectedBytes` when the plan's bytes are exact,
 else the row count; in repeated-key mode a boundary never divides a group of equal keys, and moves past a group that
 continues from the row group before, after decoding the two key pages around it (unique keys need no read).
@@ -420,9 +437,11 @@ The shards' counts and projected bytes add up to the plan's, since each row grou
 belong to one shard. Splitting is a convenience of this reader, not part of the format or the conformance
 protocol.
 
-**Read statistics.** Set `Range.Stats` or `List.Stats` to a `*ReadStats` to see what one request did: key and
-value pages decoded, keys decoded, row groups opened and key page indexes loaded, page-index seeks and prefix
-resumes, row groups a listing skipped whole, and the `Source` reads and requested bytes made on its behalf.
-The counts are exact for the request, are filled whether it succeeds or fails, and cost one integer increment
-per event. They are diagnostics of this reader's access path, not part of the format; the caller owns a
-`ReadStats` for the duration of the call and must not share it between concurrent requests.
+**Read statistics.** Pass a `*ReadStats` to any read (`Rows`, `Get`, `Scan`, `List`, `Plan`, `Split`,
+`Plan.Scan`) to see what it did: key and value pages decoded, keys decoded, row groups opened and key page
+indexes loaded, page-index seeks and prefix resumes, row groups a listing skipped whole, and the `Source`
+reads and requested bytes made on its behalf. It is reset when the operation starts; the counts are exact
+for the operation, are filled whether it succeeds or fails, and cost one integer increment per event.
+`ReadStats.Add` sums the counts of several operations. They are diagnostics of this reader's access path,
+not part of the format; the caller owns a `ReadStats` for the duration of the call and must not share it
+between concurrent requests.

@@ -1,0 +1,322 @@
+{
+ "description": "Golden vectors of the SeekParquet cursor token, version 1 (spec/cursor-token-1.md). Byte strings in 'cursor' are standard base64 with padding, as in the conformance protocol; offsets are decimal strings. Each valid token decodes to its cursor and its cursor encodes to exactly the token. Each invalid token is rejected as an invalid request. Each unencodable cursor is refused by an encoder.",
+ "specification": "spec/cursor-token-1.md",
+ "valid": [
+  {
+   "token": "spc1.r.YQ.0",
+   "cursor": {
+    "key_base64": "YQ==",
+    "offset": "0"
+   },
+   "note": "one-byte key, offset 0"
+  },
+  {
+   "token": "spc1.r..0",
+   "cursor": {
+    "key_base64": "",
+    "offset": "0"
+   },
+   "note": "empty key: an empty segment"
+  },
+  {
+   "token": "spc1.r..7",
+   "cursor": {
+    "key_base64": "",
+    "offset": "7"
+   },
+   "note": "empty key with an offset"
+  },
+  {
+   "token": "spc1.r.bG9ncy8yMDI2LzAxL2EuZ3o.3",
+   "cursor": {
+    "key_base64": "bG9ncy8yMDI2LzAxL2EuZ3o=",
+    "offset": "3"
+   },
+   "note": "text key"
+  },
+  {
+   "token": "spc1.r.AP_-gA.9223372036854775807",
+   "cursor": {
+    "key_base64": "AP/+gA==",
+    "offset": "9223372036854775807"
+   },
+   "note": "non-UTF-8 key, the largest offset (after the whole group)"
+  },
+  {
+   "token": "spc1.r.____.1",
+   "cursor": {
+    "key_base64": "////",
+    "offset": "1"
+   },
+   "note": "all-0xFF key: base64url '_' characters"
+  },
+  {
+   "token": "spc1.r.-_8.10",
+   "cursor": {
+    "key_base64": "+/8=",
+    "offset": "10"
+   },
+   "note": "bytes whose base64url uses '-' and '_'"
+  },
+  {
+   "token": "spc1.r.YWI.9223372036854775806",
+   "cursor": {
+    "key_base64": "YWI=",
+    "offset": "9223372036854775806"
+   },
+   "note": "two bytes"
+  },
+  {
+   "token": "spc1.r.YWJjZA.100",
+   "cursor": {
+    "key_base64": "YWJjZA==",
+    "offset": "100"
+   },
+   "note": "four bytes"
+  },
+  {
+   "token": "spc1.r.w6kv8J-YgA.1",
+   "cursor": {
+    "key_base64": "w6kv8J+YgA==",
+    "offset": "1"
+   },
+   "note": "UTF-8 key"
+  },
+  {
+   "token": "spc1.p.YS8",
+   "cursor": {
+    "prefix_base64": "YS8="
+   },
+   "note": "text prefix"
+  },
+  {
+   "token": "spc1.p.",
+   "cursor": {
+    "prefix_base64": ""
+   },
+   "note": "empty prefix: an empty segment, not no cursor"
+  },
+  {
+   "token": "spc1.p._w",
+   "cursor": {
+    "prefix_base64": "/w=="
+   },
+   "note": "all-0xFF prefix (no successor)"
+  },
+  {
+   "token": "spc1.p._____w",
+   "cursor": {
+    "prefix_base64": "/////w=="
+   },
+   "note": "all-0xFF prefix of four bytes"
+  },
+  {
+   "token": "spc1.p.AA",
+   "cursor": {
+    "prefix_base64": "AA=="
+   },
+   "note": "the zero byte"
+  },
+  {
+   "token": "spc1.p.wyg",
+   "cursor": {
+    "prefix_base64": "wyg="
+   },
+   "note": "invalid UTF-8 prefix"
+  }
+ ],
+ "invalid": [
+  {
+   "token": "",
+   "note": "empty token"
+  },
+  {
+   "token": "spc1",
+   "note": "version only"
+  },
+  {
+   "token": "spc1.",
+   "note": "no tag"
+  },
+  {
+   "token": "spc1.r",
+   "note": "row tag without segments"
+  },
+  {
+   "token": "spc1.r.",
+   "note": "row cursor without an offset segment"
+  },
+  {
+   "token": "spc1.r.YQ",
+   "note": "row cursor without an offset segment"
+  },
+  {
+   "token": "spc1.r.YQ.",
+   "note": "empty offset"
+  },
+  {
+   "token": "spc1.r.YQ.-1",
+   "note": "negative offset"
+  },
+  {
+   "token": "spc1.r.YQ.+1",
+   "note": "signed offset"
+  },
+  {
+   "token": "spc1.r.YQ.01",
+   "note": "leading zero"
+  },
+  {
+   "token": "spc1.r.YQ.00",
+   "note": "leading zero"
+  },
+  {
+   "token": "spc1.r.YQ.-0",
+   "note": "negative zero"
+  },
+  {
+   "token": "spc1.r.YQ.9223372036854775808",
+   "note": "offset 2^63"
+  },
+  {
+   "token": "spc1.r.YQ.18446744073709551616",
+   "note": "offset beyond 64 bits"
+  },
+  {
+   "token": "spc1.r.YQ.1e3",
+   "note": "exponent"
+  },
+  {
+   "token": "spc1.r.YQ.1.0",
+   "note": "extra segment"
+  },
+  {
+   "token": "spc1.r.YQ.0.",
+   "note": "trailing separator"
+  },
+  {
+   "token": "spc1.r.YQ. 1",
+   "note": "space in the offset"
+  },
+  {
+   "token": "spc1.r.YQ.1 ",
+   "note": "trailing space"
+  },
+  {
+   "token": "spc1.r.YQ.0x1",
+   "note": "hexadecimal offset"
+  },
+  {
+   "token": "spc1.r.YQ==.0",
+   "note": "padded base64"
+  },
+  {
+   "token": "spc1.r.YR.0",
+   "note": "non-canonical base64: nonzero trailing bits"
+  },
+  {
+   "token": "spc1.r.Y.0",
+   "note": "impossible base64 length"
+  },
+  {
+   "token": "spc1.r.YQ+/.0",
+   "note": "standard base64 alphabet"
+  },
+  {
+   "token": "spc1.r.Y\nQ.0",
+   "note": "newline inside base64"
+  },
+  {
+   "token": "spc1.r.Y Q.0",
+   "note": "space inside base64"
+  },
+  {
+   "token": "spc1.p.YS8=",
+   "note": "padded prefix"
+  },
+  {
+   "token": "spc1.p",
+   "note": "prefix tag without a segment"
+  },
+  {
+   "token": "spc1.p.YS8.0",
+   "note": "prefix cursor with an offset"
+  },
+  {
+   "token": "spc1.p.YS8.",
+   "note": "prefix cursor with a trailing separator"
+  },
+  {
+   "token": "spc1.p.Y",
+   "note": "impossible base64 length"
+  },
+  {
+   "token": "spc1.p._x",
+   "note": "non-canonical: nonzero trailing bits (0xFF is _w)"
+  },
+  {
+   "token": "spc1.x.YQ",
+   "note": "unknown tag"
+  },
+  {
+   "token": "spc1.R.YQ.0",
+   "note": "tags are lower case"
+  },
+  {
+   "token": "spc1..YQ.0",
+   "note": "empty tag"
+  },
+  {
+   "token": "spc2.r.YQ.0",
+   "note": "unknown version"
+  },
+  {
+   "token": "SPC1.r.YQ.0",
+   "note": "the version is case-sensitive"
+  },
+  {
+   "token": "spc0.r.YQ.0",
+   "note": "unknown version"
+  },
+  {
+   "token": "spc1.r.YQ.0\n",
+   "note": "trailing newline"
+  },
+  {
+   "token": " spc1.r.YQ.0",
+   "note": "leading space"
+  },
+  {
+   "token": "r1.YQ.0",
+   "note": "another scheme"
+  }
+ ],
+ "unencodable": [
+  {
+   "cursor": {},
+   "note": "neither key nor prefix"
+  },
+  {
+   "cursor": {
+    "key_base64": "YQ==",
+    "offset": "-1"
+   },
+   "note": "negative offset"
+  },
+  {
+   "cursor": {
+    "key_base64": "YQ==",
+    "prefix_base64": "YQ==",
+    "offset": "0"
+   },
+   "note": "both key and prefix"
+  },
+  {
+   "cursor": {
+    "prefix_base64": "YQ==",
+    "offset": "1"
+   },
+   "note": "a prefix cursor with an offset"
+  }
+ ]
+}

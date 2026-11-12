@@ -59,7 +59,7 @@ type sizeString struct {
 func TestOpenRefusals(t *testing.T) {
 	cases := []struct {
 		name    string
-		code    Code
+		code    RefusalCode
 		dataset testutil.Dataset
 		mutate  func(t *testing.T, dir string)
 	}{
@@ -145,7 +145,7 @@ func TestOpenRefusals(t *testing.T) {
 			if c.mutate != nil {
 				c.mutate(t, dir)
 			}
-			err := openErr(dir, Options{})
+			err := openErr(dir, OpenOptions{})
 			var refusal *RefusalError
 			if !errors.As(err, &refusal) || refusal.Code != c.code {
 				t.Fatalf("got %v, want %s", err, c.code)
@@ -153,7 +153,7 @@ func TestOpenRefusals(t *testing.T) {
 		})
 	}
 	// The unchanged dataset opens.
-	open(t, write(t, twoParts()), Options{})
+	open(t, write(t, twoParts()), OpenOptions{})
 }
 
 // TestVerify produces faults in the first and last key pages and the key
@@ -162,7 +162,7 @@ func TestOpenRefusals(t *testing.T) {
 func TestVerify(t *testing.T) {
 	cases := []struct {
 		name    string
-		code    Code
+		code    RefusalCode
 		dataset testutil.Dataset
 		mutate  func(t *testing.T, dir string)
 	}{
@@ -184,11 +184,11 @@ func TestVerify(t *testing.T) {
 			if c.mutate != nil {
 				c.mutate(t, dir)
 			}
-			if err := verifyErr(dir, Options{}); CodeOf(err) != c.code {
+			if err := verifyErr(dir, OpenOptions{}); RefusalCodeOf(err) != c.code {
 				t.Fatalf("Verify: %v, want %s", err, c.code)
 			}
-			d := open(t, dir, Options{})
-			if _, err := d.Range(ctx, Range{Limit: 100}); CodeOf(err) != c.code {
+			d := open(t, dir, OpenOptions{})
+			if _, err := d.Rows(ctx, Query{Limit: 100}, nil); RefusalCodeOf(err) != c.code {
 				t.Fatalf("read: %v, want %s", err, c.code)
 			}
 		})
@@ -219,7 +219,7 @@ func TestReadRefusals(t *testing.T) {
 	}
 	cases := []struct {
 		name    string
-		code    Code
+		code    RefusalCode
 		dataset testutil.Dataset
 		check   func(t *testing.T, err error)
 	}{
@@ -251,19 +251,19 @@ func TestReadRefusals(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			d := open(t, write(t, c.dataset), Options{})
-			_, err := d.Range(ctx, Range{Limit: 1000})
-			if CodeOf(err) != c.code {
+			d := open(t, write(t, c.dataset), OpenOptions{})
+			_, err := d.Rows(ctx, Query{Limit: 1000}, nil)
+			if RefusalCodeOf(err) != c.code {
 				t.Fatalf("range: %v, want %s", err, c.code)
 			}
 			if c.check != nil {
 				c.check(t, err)
 			}
-			if _, err = d.List(ctx, List{Delimiter: '/', Limit: 1000}); CodeOf(err) != c.code {
+			if _, err = d.List(ctx, ListQuery{Delimiter: '/', Limit: 1000}, nil); RefusalCodeOf(err) != c.code {
 				t.Fatalf("list: %v, want %s", err, c.code)
 			}
 			// A read that never reaches the fault succeeds (CHECK-4).
-			if rows, err := d.Range(ctx, Range{Limit: 3}); err != nil || len(rows) != 3 {
+			if rows, err := d.Rows(ctx, Query{Limit: 3}, nil); err != nil || len(rows) != 3 {
 				t.Fatalf("a read before the fault: %d rows, %v", len(rows), err)
 			}
 		})
@@ -290,9 +290,9 @@ func TestShortenedMaximum(t *testing.T) {
 	if meta.RowGroups[2].Columns[0].ColumnIndexLength == 0 {
 		t.Fatal("no key column index")
 	}
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	for i, k := range keys {
-		got, err := d.Range(ctx, Range{Start: []byte(k), Limit: 1})
+		got, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Start: []byte(k)}}, Limit: 1}, nil)
 		if err != nil || len(got) != 1 || string(got[0].Key) != k {
 			t.Fatalf("from key %d: %d rows, %v", i, len(got), err)
 		}
@@ -300,12 +300,12 @@ func TestShortenedMaximum(t *testing.T) {
 
 	bad := good
 	bad.Parts[0].KeepShortenedMax = true
-	d2, err := OpenDir(ctx, write(t, bad), Options{})
+	d2, err := OpenDir(ctx, write(t, bad), OpenOptions{})
 	if err == nil {
 		defer d2.Close()
-		_, err = d2.Range(ctx, Range{Limit: 1000})
+		_, err = d2.Rows(ctx, Query{Limit: 1000}, nil)
 	}
-	if CodeOf(err) != CodeInvalidPageIndex {
+	if RefusalCodeOf(err) != CodeInvalidPageIndex {
 		t.Fatalf("shortened maximum: %v", err)
 	}
 }
@@ -321,11 +321,11 @@ func TestCorruptValuePage(t *testing.T) {
 	raw, _ := os.ReadFile(partFile(dir, 0))
 	copy(raw[off:], bytes.Repeat([]byte{0xff}, 8))
 	must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
-	d := open(t, dir, Options{})
-	if rows, err := d.Range(ctx, Range{Limit: 10}); err != nil || len(rows) != 3 {
+	d := open(t, dir, OpenOptions{})
+	if rows, err := d.Rows(ctx, Query{Limit: 10}, nil); err != nil || len(rows) != 3 {
 		t.Fatalf("keys only: %d rows, %v", len(rows), err)
 	}
-	if _, err := d.Range(ctx, Range{Limit: 10, Columns: []string{"size"}}); CodeOf(err) != CodeInvalidParquet {
+	if _, err := d.Rows(ctx, Query{Limit: 10, Columns: []string{"size"}}, nil); RefusalCodeOf(err) != CodeInvalidParquet {
 		t.Fatalf("projection: %v", err)
 	}
 }
@@ -337,16 +337,16 @@ func TestUnsupported(t *testing.T) {
 	raw, _ := os.ReadFile(partFile(dir, 0))
 	copy(raw[len(raw)-4:], "PARE")
 	must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
-	err := openErr(dir, Options{})
+	err := openErr(dir, OpenOptions{})
 	var u *UnsupportedError
-	if !errors.As(err, &u) || u.Code != UnsupportedEncryption || CodeOf(err) != "" {
+	if !errors.As(err, &u) || u.Code != UnsupportedEncryption || RefusalCodeOf(err) != "" {
 		t.Fatalf("encrypted footer: %v", err)
 	}
 
 	dir = write(t, parts(testutil.Part{}, []string{"a", "b"}))
 	rewrite(t, dir, 0, func(m *format.FileMetaData) { m.RowGroups[0].Columns[1].MetaData.Codec = format.LZO })
-	d := open(t, dir, Options{})
-	_, err = d.Range(ctx, Range{Limit: 10, Columns: []string{"size"}})
+	d := open(t, dir, OpenOptions{})
+	_, err = d.Rows(ctx, Query{Limit: 10, Columns: []string{"size"}}, nil)
 	if !errors.As(err, &u) || u.Code != UnsupportedEncoding {
 		t.Fatalf("LZO column: %v", err)
 	}
@@ -392,7 +392,7 @@ func TestFailedOpenClosesParts(t *testing.T) {
 			dir := write(t, twoParts())
 			mutate(dir)
 			src := &countingSource{Source: dirOf(t, dir)}
-			d, err := OpenDataset(ctx, src, Options{})
+			d, err := OpenDataset(ctx, src, OpenOptions{})
 			must(t, err)
 			if err := d.Verify(ctx); err == nil {
 				t.Fatal("verified")
@@ -413,7 +413,7 @@ func TestFailedOpenClosesParts(t *testing.T) {
 		})
 	}
 	src := &countingSource{Source: dirOf(t, write(t, twoParts()))}
-	d, err := OpenDataset(ctx, src, Options{})
+	d, err := OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	if src.opened.Load() != 1 || src.closed.Load() != 1 {
 		t.Fatalf("after open: opened %d, closed %d (the manifest only)", src.opened.Load(), src.closed.Load())
@@ -427,7 +427,7 @@ func TestFailedOpenClosesParts(t *testing.T) {
 	if src.closed.Load() != 3 {
 		t.Fatalf("after Close: closed %d of 3", src.closed.Load())
 	}
-	if _, err := d.Range(ctx, Range{Limit: 1}); !errors.Is(err, ErrClosed) {
+	if _, err := d.Rows(ctx, Query{Limit: 1}, nil); !errors.Is(err, ErrClosed) {
 		t.Fatalf("read after Close: %v", err)
 	}
 }

@@ -26,28 +26,28 @@ import (
 
 func TestListIndexRegressionArbitraryPrefixCursor(t *testing.T) {
 	dir := write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 200}, []string{"a/x", "a/y", "b/z"}))
-	plain := open(t, dir, Options{})
-	indexed := open(t, dir, Options{})
+	plain := open(t, dir, OpenOptions{})
+	indexed := open(t, dir, OpenOptions{})
 	st, err := indexed.BuildListIndex(ctx, ListIndexOptions{})
 	must(t, err)
-	q := List{Prefix: []byte("a/"), Delimiter: '/', Limit: 100, Cursor: &Cursor{Prefix: []byte("a/x")}}
-	want, e1 := plain.List(ctx, q)
-	got, e2 := indexed.List(ctx, q)
+	q := ListQuery{Prefix: []byte("a/"), Delimiter: '/', Limit: 100, Cursor: &Cursor{Prefix: []byte("a/x")}}
+	want, e1 := plain.List(ctx, q, nil)
+	got, e2 := indexed.List(ctx, q, nil)
 	if e1 != nil || e2 != nil || !reflect.DeepEqual(want, got) {
 		t.Fatalf("build=%+v want=%v got=%v err=%v/%v", st, entriesOf(want), entriesOf(got), e1, e2)
 	}
 }
 func TestListIndexRegressionDescendingFirstKeys(t *testing.T) {
 	dir := write(t, parts(testutil.Part{GroupRows: 2, PageBytes: 200}, []string{"a/0", "a/1", "c/0", "c/1", "b/0", "d/0"}))
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	st, err := d.BuildListIndex(ctx, ListIndexOptions{Workers: 1})
 	must(t, err)
 	t.Logf("build: %+v", st)
-	plain := open(t, dir, Options{})
-	q := List{Delimiter: '/', Limit: 2}
-	want, e1 := plain.List(ctx, q)
-	got, e2 := d.List(ctx, q)
-	if CodeOf(e1) != CodeKeyOrder || CodeOf(e2) != CodeKeyOrder {
+	plain := open(t, dir, OpenOptions{})
+	q := ListQuery{Delimiter: '/', Limit: 2}
+	want, e1 := plain.List(ctx, q, nil)
+	got, e2 := d.List(ctx, q, nil)
+	if RefusalCodeOf(e1) != CodeKeyOrder || RefusalCodeOf(e2) != CodeKeyOrder {
 		t.Fatalf("plain=%v/%v indexed=%v/%v", entriesOf(want), e1, entriesOf(got), e2)
 	}
 	if st.GroupsFailed != 2 || st.GroupsIndexed != 1 {
@@ -57,7 +57,7 @@ func TestListIndexRegressionDescendingFirstKeys(t *testing.T) {
 func TestListIndexRegressionCancelledBuildPages(t *testing.T) {
 	keys := dirKeys(map[string]int{"a": 100, "b": 100}, "a", "b")
 	dir := write(t, parts(testutil.Part{GroupRows: 200, PageBytes: 200}, keys))
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	p := d.r.parts[0]
 	idx, err := p.keyIndex(ctx, 0, new(ReadStats))
@@ -76,13 +76,11 @@ func TestListIndexRegressionCancelledBuildPages(t *testing.T) {
 	}
 }
 
-func compareListIndex(t *testing.T, plain, indexed *Dataset, q List) ReadStats {
+func compareListIndex(t *testing.T, plain, indexed *Dataset, q ListQuery) ReadStats {
 	t.Helper()
-	q.Stats = nil
-	want, e1 := plain.List(ctx, q)
+	want, e1 := plain.List(ctx, q, nil)
 	var st ReadStats
-	q.Stats = &st
-	got, e2 := indexed.List(ctx, q)
+	got, e2 := indexed.List(ctx, q, &st)
 	if e1 != nil || e2 != nil || !reflect.DeepEqual(want, got) {
 		t.Fatalf("query=%+v plain=%v/%v indexed=%v/%v", q, entriesOf(want), e1, entriesOf(got), e2)
 	}
@@ -94,15 +92,15 @@ func TestListIndexRegressionCursorMatrix(t *testing.T) {
 	fixture := parts(testutil.Part{GroupRows: 3, PageBytes: 16}, keys)
 	fixture.RepeatedKeys = true
 	dir := write(t, fixture)
-	plain := open(t, dir, Options{})
-	indexed := open(t, dir, Options{})
+	plain := open(t, dir, OpenOptions{})
+	indexed := open(t, dir, OpenOptions{})
 	_, err := indexed.BuildListIndex(ctx, ListIndexOptions{Workers: 3})
 	must(t, err)
 	cursors := []*Cursor{nil}
 	for _, p := range []string{"", "a", "a/", "a/x", "a/w", "a/x/", "a/\xff", "missing/", "\xff", "\xff/", "\xff/x", "\xff\xff", "/", "//"} {
 		cursors = append(cursors, &Cursor{Prefix: []byte(p)})
 	}
-	entries, err := plain.List(ctx, List{Prefix: []byte("a"), Delimiter: '/', Limit: 10})
+	entries, err := plain.List(ctx, ListQuery{Prefix: []byte("a"), Delimiter: '/', Limit: 10}, nil)
 	must(t, err)
 	if entries[0].Exact == nil {
 		t.Fatal("missing exact-row fixture")
@@ -116,7 +114,7 @@ func TestListIndexRegressionCursorMatrix(t *testing.T) {
 		for _, c := range cursors {
 			for _, end := range [][]byte{nil, []byte("a/"), []byte("a/x"), []byte("a/x\x00"), []byte("\xff/y")} {
 				for _, limit := range []int{1, 2, 4, 1000} {
-					compareListIndex(t, plain, indexed, List{Prefix: []byte(prefix), Delimiter: '/', Cursor: c, End: end, Limit: limit, Columns: []string{"size", "name"}})
+					compareListIndex(t, plain, indexed, ListQuery{Prefix: []byte(prefix), Delimiter: '/', Cursor: c, End: end, Limit: limit, Columns: []string{"size", "name"}})
 				}
 			}
 		}
@@ -132,7 +130,7 @@ func TestListIndexRegressionBoundaryCertification(t *testing.T) {
 		dir := write(t, parts(testutil.Part{GroupRows: 2, PageBytes: 200}, keys))
 		for _, workers := range []int{1, 2, 4} {
 			for _, order := range [][]int{nil, {0, 1, 2}, {2, 1, 0}, {3, 2, 1, 0}} {
-				d := open(t, dir, Options{})
+				d := open(t, dir, OpenOptions{})
 				must(t, d.r.checkParts(ctx, new(ReadStats)))
 				for _, i := range order {
 					if i < len(d.r.parts[0].groups) {
@@ -149,8 +147,8 @@ func TestListIndexRegressionBoundaryCertification(t *testing.T) {
 				if len(x.groups) != 1 || x.groups[0].g != (groupRef{0, 0}) {
 					t.Fatal("certified a disordered neighbor")
 				}
-				_, err = d.List(ctx, List{Delimiter: '/', Limit: 2})
-				if CodeOf(err) != CodeKeyOrder {
+				_, err = d.List(ctx, ListQuery{Delimiter: '/', Limit: 2}, nil)
+				if RefusalCodeOf(err) != CodeKeyOrder {
 					t.Fatalf("suppressed refusal: %v", err)
 				}
 			}
@@ -182,8 +180,8 @@ func TestListIndexRegressionSparseDenseSparse(t *testing.T) {
 		}
 	}
 	dir := write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 40}, keys))
-	plain := open(t, dir, Options{})
-	indexed := open(t, dir, Options{})
+	plain := open(t, dir, OpenOptions{})
+	indexed := open(t, dir, OpenOptions{})
 	_, err := indexed.BuildListIndex(ctx, ListIndexOptions{MaxChangesPerPage: 1})
 	must(t, err)
 	g := indexed.r.listIndex.Load().group(groupRef{0, 0})
@@ -200,13 +198,13 @@ func TestListIndexRegressionSparseDenseSparse(t *testing.T) {
 		t.Fatalf("missing coverage-resumption anchor: %+v", g.runs)
 	}
 	var projected ReadStats
-	entries, err := indexed.List(ctx, List{Delimiter: '/', Limit: 100, Columns: []string{"size"}, Stats: &projected})
+	entries, err := indexed.List(ctx, ListQuery{Delimiter: '/', Limit: 100, Columns: []string{"size"}}, &projected)
 	must(t, err)
 	if len(entries) != 8 || string(entries[6].CommonPrefix) != "g/" || entries[6].Exact == nil {
 		t.Fatalf("missing exact folder after dense transition: %+v", entries)
 	}
 	exact := entries[6].Exact
-	if string(exact.Key) != "g/" || exact.Offset != 0 || len(exact.Values) != 1 || exact.Values[0].Absent || exact.Values[0].IsNull() || exact.Values[0].Int64() != 20 {
+	if string(exact.Key) != "g/" || exact.Offset != 0 || len(exact.Values) != 1 || exact.Values[0].Absent() || exact.Values[0].IsNull() || exact.Values[0].Int64() != 20 {
 		t.Fatalf("wrong projected folder: %+v", exact)
 	}
 	if projected.ListIndexSkips < 3 || projected.ListIndexDensePage == 0 || projected.ValuePagesDecoded == 0 {
@@ -214,7 +212,7 @@ func TestListIndexRegressionSparseDenseSparse(t *testing.T) {
 	}
 	for _, cursor := range []*Cursor{nil, {Prefix: []byte("b/")}, {Prefix: []byte("f/0000")}, {Key: []byte("f/0001"), Offset: 0}} {
 		for _, end := range [][]byte{nil, []byte("c/0002"), []byte("f/0003")} {
-			st := compareListIndex(t, plain, indexed, List{Delimiter: '/', Limit: 100, Cursor: cursor, End: end, Columns: []string{"size", "name"}})
+			st := compareListIndex(t, plain, indexed, ListQuery{Delimiter: '/', Limit: 100, Cursor: cursor, End: end, Columns: []string{"size", "name"}})
 			if cursor == nil && end == nil && (st.ListIndexSkips < 3 || st.ListIndexDensePage == 0) {
 				t.Fatalf("did not exercise hit/fallback/resumption: %+v", st)
 			}
@@ -227,8 +225,8 @@ func TestListIndexRegressionFlatFirstGroupBudget(t *testing.T) {
 	for _, pageBytes := range []int{20000, 4000} {
 		t.Run(fmt.Sprint(pageBytes), func(t *testing.T) {
 			dir := write(t, parts(testutil.Part{GroupRows: 2, PageBytes: pageBytes}, []string{flat + "0", flat + "1", "b/x", "b/y"}))
-			plain := open(t, dir, Options{})
-			d := open(t, dir, Options{})
+			plain := open(t, dir, OpenOptions{})
+			d := open(t, dir, OpenOptions{})
 			st, err := d.BuildListIndex(ctx, ListIndexOptions{MaxBytes: 600})
 			must(t, err)
 			pages := int64(2)
@@ -241,12 +239,12 @@ func TestListIndexRegressionFlatFirstGroupBudget(t *testing.T) {
 			if x := d.r.listIndex.Load(); len(x.groups) != 1 || x.groups[0].g != (groupRef{0, 1}) {
 				t.Fatal("expected only the following slash group")
 			}
-			compareListIndex(t, plain, d, List{Delimiter: '/', Limit: 100, Columns: []string{"size"}})
+			compareListIndex(t, plain, d, ListQuery{Delimiter: '/', Limit: 100, Columns: []string{"size"}})
 		})
 	}
 	// A flat first page does not establish that the complete group is flat.
 	dir := write(t, parts(testutil.Part{GroupRows: 2, PageBytes: 4000}, []string{flat + "0", flat + "1/x", "b/x", "b/y"}))
-	d := open(t, dir, Options{})
+	d := open(t, dir, OpenOptions{})
 	st, err := d.BuildListIndex(ctx, ListIndexOptions{MaxBytes: 600})
 	must(t, err)
 	if st.GroupsIndexed != 0 || !st.BudgetExhausted || st.Pages != 2 {
@@ -257,12 +255,12 @@ func TestListIndexRegressionFlatFirstGroupBudget(t *testing.T) {
 func TestListIndexRegressionMultiPart(t *testing.T) {
 	layout := [][]string{{"/", "//", "//a", "//b"}, {"//c", "a/", "a//x", "a/a"}, {"a/b", "a/c", "b/", "b/x"}, {"\xff/", "\xff/a", "\xff/b", "\xff\xff/x"}}
 	dir := write(t, parts(testutil.Part{GroupRows: 4, PageBytes: 30}, layout...))
-	plain := open(t, dir, Options{})
-	full := open(t, dir, Options{})
+	plain := open(t, dir, OpenOptions{})
+	full := open(t, dir, OpenOptions{})
 	_, err := full.BuildListIndex(ctx, ListIndexOptions{})
 	must(t, err)
 	firstCost := int64(256) + full.r.listIndex.Load().groups[0].memoryBytes()
-	partial := open(t, dir, Options{})
+	partial := open(t, dir, OpenOptions{})
 	st, err := partial.BuildListIndex(ctx, ListIndexOptions{MaxBytes: firstCost, Workers: 4})
 	must(t, err)
 	if !st.BudgetExhausted || st.GroupsIndexed != 1 {
@@ -271,37 +269,37 @@ func TestListIndexRegressionMultiPart(t *testing.T) {
 	for _, d := range []*Dataset{full, partial} {
 		for _, prefix := range []string{"", "/", "//", "a", "a/", "\xff"} {
 			for _, cursor := range []*Cursor{nil, {Prefix: []byte("//")}, {Prefix: []byte("a/x")}, {Prefix: []byte("\xff")}} {
-				compareListIndex(t, plain, d, List{Prefix: []byte(prefix), Delimiter: '/', Limit: 100, Cursor: cursor, Columns: []string{"size", "name"}})
+				compareListIndex(t, plain, d, ListQuery{Prefix: []byte(prefix), Delimiter: '/', Limit: 100, Cursor: cursor, Columns: []string{"size", "name"}})
 			}
 		}
 	}
 	// A missing middle part remains a touch-time refusal, while a later part is usable.
 	bad := write(t, parts(testutil.Part{GroupRows: 2}, []string{"a/0", "a/1"}, []string{"a/2", "b/0"}, []string{"c/0", "c/1"}))
 	must(t, os.Remove(filepath.Join(bad, testutil.PartPath(1))))
-	before := open(t, bad, Options{})
-	after := open(t, bad, Options{})
+	before := open(t, bad, OpenOptions{})
+	after := open(t, bad, OpenOptions{})
 	st, err = after.BuildListIndex(ctx, ListIndexOptions{})
 	must(t, err)
 	if st.PartsFailed != 1 {
 		t.Fatalf("%+v", st)
 	}
 	for _, d := range []*Dataset{before, after} {
-		_, e := d.List(ctx, List{Delimiter: '/', Limit: 100})
-		if CodeOf(e) != CodeMissingPart {
+		_, e := d.List(ctx, ListQuery{Delimiter: '/', Limit: 100}, nil)
+		if RefusalCodeOf(e) != CodeMissingPart {
 			t.Fatal(e)
 		}
 	}
-	compareListIndex(t, before, after, List{Prefix: []byte("c/"), Delimiter: '/', Limit: 100, Columns: []string{"size"}})
+	compareListIndex(t, before, after, ListQuery{Prefix: []byte("c/"), Delimiter: '/', Limit: 100, Columns: []string{"size"}})
 	// A flat middle part is deliberately unindexed, not a read failure.
 	flat := write(t, parts(testutil.Part{GroupRows: 2}, []string{"a/0", "a/1"}, []string{"b", "b0"}, []string{"c/0", "c/1"}))
-	before = open(t, flat, Options{})
-	after = open(t, flat, Options{})
+	before = open(t, flat, OpenOptions{})
+	after = open(t, flat, OpenOptions{})
 	st, err = after.BuildListIndex(ctx, ListIndexOptions{})
 	must(t, err)
 	if st.GroupsIndexed != 2 || st.GroupsSkipped != 1 || st.GroupsFailed != 0 {
 		t.Fatalf("flat middle part: %+v", st)
 	}
-	read := compareListIndex(t, before, after, List{Delimiter: '/', Limit: 100, Columns: []string{"size", "name"}})
+	read := compareListIndex(t, before, after, ListQuery{Delimiter: '/', Limit: 100, Columns: []string{"size", "name"}})
 	if read.ListIndexMissingGroup == 0 {
 		t.Fatal("did not exercise missing-group fallback")
 	}
@@ -339,7 +337,7 @@ func TestListIndexRegressionWorkerBoundaryOrder(t *testing.T) {
 	dir := write(t, parts(testutil.Part{GroupRows: 2, PageBytes: 8}, []string{"a/0", "a/1", "c/0", "c/1", "b/0", "d/0"}))
 	for _, order := range [][]int{{0, 1, 2}, {2, 1, 0}, {1, 0, 2}} {
 		t.Run(fmt.Sprint(order), func(t *testing.T) {
-			d := open(t, dir, Options{})
+			d := open(t, dir, OpenOptions{})
 			must(t, d.r.checkParts(ctx, new(ReadStats)))
 			p := d.r.parts[0]
 			original := p.file
@@ -385,13 +383,13 @@ func TestListIndexRegressionBudgetAccounting(t *testing.T) {
 		keys = append(keys, fmt.Sprintf("d%02d/%s", i, string(bytes.Repeat([]byte{'x'}, i+1))))
 	}
 	dir := write(t, parts(testutil.Part{GroupRows: 10, PageBytes: 200}, keys))
-	full := open(t, dir, Options{})
+	full := open(t, dir, OpenOptions{})
 	all, err := full.BuildListIndex(ctx, ListIndexOptions{MaxChangesPerPage: 100})
 	must(t, err)
 	x := full.r.listIndex.Load()
 	first := int64(256) + x.groups[0].memoryBytes()
 	for _, budget := range []int64{1, first - 1, first, first + 1, all.Bytes - 1, all.Bytes, all.Bytes + 1} {
-		d := open(t, dir, Options{})
+		d := open(t, dir, OpenOptions{})
 		st, e := d.BuildListIndex(ctx, ListIndexOptions{MaxBytes: budget, Workers: 3, MaxChangesPerPage: 100})
 		must(t, e)
 		if st.Bytes > budget {
@@ -495,7 +493,7 @@ func TestListIndexRegressionLifecycle(t *testing.T) {
 	for _, action := range []string{"publish", "cancel", "close"} {
 		t.Run(action, func(t *testing.T) {
 			dir := write(t, parts(testutil.Part{GroupRows: 4}, []string{"a/0", "a/1", "b/0", "b/1"}))
-			d := open(t, dir, Options{})
+			d := open(t, dir, OpenOptions{})
 			must(t, d.r.checkParts(ctx, new(ReadStats)))
 			p := d.r.parts[0]
 			original := p.file
@@ -539,7 +537,7 @@ func TestListIndexRegressionLifecycle(t *testing.T) {
 				}()
 			}
 
-			got, e := d.List(ctx, List{Delimiter: '/', Limit: 100})
+			got, e := d.List(ctx, ListQuery{Delimiter: '/', Limit: 100}, nil)
 			must(t, e)
 			if len(got) != 2 {
 				t.Fatal(got)

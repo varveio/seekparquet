@@ -65,7 +65,7 @@ type reader struct {
 	// progress, and idle is signalled when it drops to zero; closed is set
 	// as close begins, so that no request starts after it, and close then
 	// waits for active. A request never waits on mu for another's lease,
-	// so a request started inside another (a Range in a Scan callback)
+	// so a request started inside another (a Rows in a Scan callback)
 	// while close waits fails with ErrClosed instead of waiting for ever.
 	mu        sync.Mutex
 	idle      sync.Cond
@@ -177,7 +177,7 @@ type partInput struct {
 //
 // openParts takes ownership of every file that implements io.Closer: when
 // it fails it closes them all, and on success reader.close closes them.
-func openParts(ctx context.Context, inputs []partInput, key Key, opt Options) (_ *reader, err error) {
+func openParts(ctx context.Context, inputs []partInput, key Key, opt OpenOptions) (_ *reader, err error) {
 	r := &reader{key: key, limits: opt.Limits.withDefaults(), bounded: true, columns: map[string]column{}}
 	r.closing, r.closeNow = context.WithCancelCause(context.Background())
 	defer func() {
@@ -212,7 +212,7 @@ func openParts(ctx context.Context, inputs []partInput, key Key, opt Options) (_
 			// Row-group positions and cursor arithmetic use signed dataset
 			// ordinals. Per-part counts do not bound this cross-part sum.
 			if p.rows > math.MaxInt64-r.rows {
-				return nil, exceeded("dataset row count exceeds %d at part %s", int64(math.MaxInt64), p.name)
+				return nil, exceeded(LimitDatasetRows, -1, math.MaxInt64, "the dataset row count overflows at part %s", p.name)
 			}
 			p.start = r.rows
 			r.rows += p.rows
@@ -284,7 +284,7 @@ func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) 
 	case p.ready.Load():
 		return p, nil
 	case p.err != nil:
-		return nil, p.err
+		return nil, detach(p.err)
 	}
 	if err := r.checkPart(ctx, i, st); err != nil {
 		if ctx.Err() != nil { // a check cut short is not an outcome: the part stays unchecked
@@ -292,8 +292,11 @@ func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) 
 		}
 		var refusal *RefusalError
 		var unsupported *UnsupportedError
-		if errors.As(err, &refusal) || errors.As(err, &unsupported) {
-			p.err = err
+		switch {
+		case errors.As(err, &refusal):
+			p.err = detach(refusal)
+		case errors.As(err, &unsupported):
+			p.err = detach(unsupported)
 		}
 		return nil, err
 	}
@@ -336,7 +339,7 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 	switch {
 	case rows == 0: // a part given without its row count, checked when the reader opens
 		if footer.NumRows() > math.MaxInt64-p.start {
-			return exceeded("dataset row count exceeds %d at part %s", int64(math.MaxInt64), p.name)
+			return exceeded(LimitDatasetRows, -1, math.MaxInt64, "the dataset row count overflows at part %s", p.name)
 		}
 		rows = footer.NumRows()
 	case footer.NumRows() != rows:
@@ -542,7 +545,7 @@ func (r *reader) adjacent(g groupRef, step int) (groupRef, bool) {
 func (r *reader) reserveIndex(size int64) error {
 	used := r.indexMemory.Load()
 	if size > r.limits.IndexMemory-used {
-		return exceeded("key page indexes and first keys need more than %d bytes (Limits.IndexMemory)", r.limits.IndexMemory)
+		return exceeded(LimitIndexMemory, used+size, r.limits.IndexMemory, "key page indexes and first keys")
 	}
 	r.indexMemory.Store(used + size)
 	return nil

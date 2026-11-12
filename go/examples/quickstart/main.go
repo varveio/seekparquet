@@ -25,14 +25,14 @@ func main() {
 }
 
 func run(ctx context.Context, dir string, out io.Writer) error {
-	d, err := seekparquet.OpenDir(ctx, dir, seekparquet.Options{})
+	d, err := seekparquet.OpenDir(ctx, dir, seekparquet.OpenOptions{})
 	if err != nil {
 		return err
 	}
 	defer d.Close()
 
 	// Preview the first two keys under January, without reading value columns.
-	rows, err := d.Range(ctx, seekparquet.PrefixRange([]byte("logs/2026/01/"), 2))
+	rows, err := d.Rows(ctx, seekparquet.Query{Selection: seekparquet.Selection{Span: seekparquet.PrefixSpan([]byte("logs/2026/01/"))}, Limit: 2}, nil)
 	if err != nil {
 		return err
 	}
@@ -43,10 +43,10 @@ func run(ctx context.Context, dir string, out io.Writer) error {
 	}
 
 	// List the months, one common prefix per page. Keep the same query and
-	// dataset when resuming; Entry.Cursor handles both rows and prefixes.
-	req := seekparquet.List{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 1}
+	// dataset when resuming; ListEntry.Cursor handles both rows and prefixes.
+	req := seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 1}
 	for page := 1; ; page++ {
-		entries, err := d.List(ctx, req)
+		entries, err := d.List(ctx, req, nil)
 		if err != nil {
 			return err
 		}

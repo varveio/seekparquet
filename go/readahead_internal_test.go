@@ -85,7 +85,7 @@ func TestListReadAheadSameResults(t *testing.T) {
 			modes := []int{0, 1, 3, 16}
 			ds := make([]*Dataset, len(modes))
 			for i := range modes {
-				ds[i] = open(t, fx.dir, Options{})
+				ds[i] = open(t, fx.dir, OpenOptions{})
 			}
 			bounds := probes(fx.keys, 37)
 			prefixes := [][]byte{nil}
@@ -94,7 +94,7 @@ func TestListReadAheadSameResults(t *testing.T) {
 					prefixes = append(prefixes, b[:i+1])
 				}
 			}
-			var reqs []List
+			var reqs []ListQuery
 			for _, prefix := range prefixes {
 				for i, b := range bounds {
 					var cur *Cursor
@@ -108,11 +108,11 @@ func TestListReadAheadSameResults(t *testing.T) {
 						continue
 					}
 					for _, limit := range []int{1, 4, 1000} {
-						reqs = append(reqs, List{Prefix: prefix, Delimiter: '/', Cursor: cur, Limit: limit})
+						reqs = append(reqs, ListQuery{Prefix: prefix, Delimiter: '/', Cursor: cur, Limit: limit})
 					}
 					if i%11 == 0 {
-						reqs = append(reqs, List{Prefix: prefix, Delimiter: '/', Cursor: cur, End: b, Limit: 1000},
-							List{Prefix: prefix, Delimiter: 's', Cursor: cur, Limit: 50})
+						reqs = append(reqs, ListQuery{Prefix: prefix, Delimiter: '/', Cursor: cur, End: b, Limit: 1000},
+							ListQuery{Prefix: prefix, Delimiter: 's', Cursor: cur, Limit: 50})
 					}
 				}
 			}
@@ -132,7 +132,7 @@ func TestListReadAheadSameResults(t *testing.T) {
 					if fmt.Sprint(err) != fmt.Sprint(wantErr) {
 						t.Fatalf("%s, ReadAhead %d: %v, without %v", describe(req), n, err, wantErr)
 					}
-					if !slices.Equal(entriesOf(got), entriesOf(want)) || !slices.EqualFunc(got, want, func(a, b Entry) bool {
+					if !slices.Equal(entriesOf(got), entriesOf(want)) || !slices.EqualFunc(got, want, func(a, b ListEntry) bool {
 						return a.Row == nil && b.Row == nil || a.Row != nil && b.Row != nil && a.Row.Offset == b.Row.Offset
 					}) {
 						t.Fatalf("%s, ReadAhead %d:\n got %q\nwant %q", describe(req), n, entriesOf(got), entriesOf(want))
@@ -179,9 +179,9 @@ func TestListReadAheadRefusals(t *testing.T) {
 		dir := write(t, parts(testutil.Part{PageBytes: 128}, keys))
 		var errs []string
 		for _, n := range []int{0, 2, 16} {
-			d := open(t, dir, Options{})
-			_, err := d.List(ctx, List{Delimiter: '/', Limit: 1000, ReadAhead: n})
-			if CodeOf(err) == "" {
+			d := open(t, dir, OpenOptions{})
+			_, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 1000, ReadAhead: n}, nil)
+			if RefusalCodeOf(err) == "" {
 				t.Fatalf("%s, ReadAhead %d: %v, want a refusal", flaw.name, n, err)
 			}
 			errs = append(errs, err.Error())
@@ -205,15 +205,15 @@ func TestListReadAheadListIndex(t *testing.T) {
 	var counts [2]ReadStats
 	var entries [2][]string
 	for mode, n := range []int{0, 8} {
-		d := open(t, dir, Options{})
+		d := open(t, dir, OpenOptions{})
 		if _, err := d.BuildListIndex(ctx, ListIndexOptions{}); err != nil {
 			t.Fatal(err)
 		}
-		got, err := d.List(ctx, List{Delimiter: '/', Limit: 1000, ReadAhead: n, Stats: &counts[mode]})
+		got, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 1000, ReadAhead: n}, &counts[mode])
 		must(t, err)
 		entries[mode] = entriesOf(got)
 		var st ReadStats
-		_, err = d.List(ctx, List{Prefix: []byte("seg001/"), Delimiter: 'k', Limit: 1000, ReadAhead: n, Stats: &st})
+		_, err = d.List(ctx, ListQuery{Prefix: []byte("seg001/"), Delimiter: 'k', Limit: 1000, ReadAhead: n}, &st)
 		must(t, err)
 		if n > 0 && st.ReadAheadReads == 0 {
 			t.Errorf("a 'k' listing with the index built read nothing ahead: %+v", st)
@@ -243,12 +243,12 @@ func TestListReadAheadManyPages(t *testing.T) {
 	var stats [2]ReadStats
 	var entries [2][]string
 	for mode, n := range []int{0, 64} {
-		d := open(t, dir, Options{})
+		d := open(t, dir, OpenOptions{})
 		// Warm the Dataset's caches (footer, indexes) so the comparison is the scan's.
-		_, err := d.List(ctx, List{Delimiter: '/', Limit: 1, ReadAhead: n})
+		_, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 1, ReadAhead: n}, nil)
 		must(t, err)
 		start := time.Now()
-		got, err := d.List(ctx, List{Delimiter: '/', Limit: 100000, ReadAhead: n, Stats: &stats[mode]})
+		got, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 100000, ReadAhead: n}, &stats[mode])
 		took[mode] = time.Since(start)
 		must(t, err)
 		entries[mode] = entriesOf(got)
@@ -298,10 +298,10 @@ func TestListReadAheadByteFlips(t *testing.T) {
 		for _, n := range []int{0, 3, 40} {
 			var st ReadStats
 			text, entries := "", ""
-			d, err := OpenDir(ctx, dir, Options{})
+			d, err := OpenDir(ctx, dir, OpenOptions{})
 			if err == nil {
-				var out []Entry
-				out, err = d.List(ctx, List{Delimiter: '/', Limit: 1000, ReadAhead: n, Stats: &st})
+				var out []ListEntry
+				out, err = d.List(ctx, ListQuery{Delimiter: '/', Limit: 1000, ReadAhead: n}, &st)
 				entries = fmt.Sprint(entriesOf(out))
 				_ = d.Close()
 			}
@@ -375,13 +375,13 @@ func TestListReadAheadSourcePanic(t *testing.T) {
 	}
 	dir := write(t, parts(testutil.Part{PageBytes: 128}, keys))
 	src := &panicSource{Source: dirOf(t, dir), seen: map[int64]bool{}}
-	d, err := OpenDataset(ctx, src, Options{})
+	d, err := OpenDataset(ctx, src, OpenOptions{})
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
-	want, err := open(t, dir, Options{}).List(ctx, List{Delimiter: '/', Limit: 1000})
+	want, err := open(t, dir, OpenOptions{}).List(ctx, ListQuery{Delimiter: '/', Limit: 1000}, nil)
 	must(t, err)
 	var st ReadStats
-	got, err := d.List(ctx, List{Delimiter: '/', Limit: 1000, ReadAhead: 4, Stats: &st})
+	got, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 1000, ReadAhead: 4}, &st)
 	must(t, err)
 	if !slices.Equal(entriesOf(got), entriesOf(want)) {
 		t.Fatalf("entries %q, want %q", entriesOf(got), entriesOf(want))

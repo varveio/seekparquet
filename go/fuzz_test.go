@@ -55,7 +55,7 @@ func seedParts(f *testing.F) [][]byte {
 // the limits is not.
 func exercise(raw []byte) {
 	r, err := openParts(ctx, []partInput{{name: "fuzz", file: bytes.NewReader(raw), size: int64(len(raw))}}, unique,
-		Options{Limits: fuzzLimits})
+		OpenOptions{Limits: fuzzLimits})
 	if err != nil {
 		return
 	}
@@ -67,9 +67,9 @@ func exercise(raw []byte) {
 	for name := range r.parts[0].leaves {
 		columns = append(columns, name)
 	}
-	_, _ = r.readRange(ctx, Range{Limit: 1000, Columns: columns}, nil)
-	_, _ = r.readRange(ctx, Range{Cursor: &Cursor{Key: []byte("b"), Offset: 1}, Limit: 3, Columns: columns}, nil)
-	_, _ = r.readList(ctx, List{Delimiter: '/', Limit: 1000, Columns: columns}, nil)
+	_, _ = r.readRange(ctx, Query{Limit: 1000, Columns: columns}, nil)
+	_, _ = r.readRange(ctx, Query{Selection: Selection{Cursor: &Cursor{Key: []byte("b"), Offset: 1}}, Limit: 3, Columns: columns}, nil)
+	_, _ = r.readList(ctx, ListQuery{Delimiter: '/', Limit: 1000, Columns: columns}, nil)
 }
 
 // FuzzPart mutates whole part files.

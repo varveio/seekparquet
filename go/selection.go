@@ -11,20 +11,19 @@ import (
 	"sort"
 )
 
-// RangePlan is a selection planned before it is read: every row of a set
-// of ranges, its row count, and the compressed bytes that reading the
+// Plan is a set of selections planned before they are read: every row of
+// the selections, its row count, and the compressed bytes that reading the
 // projected columns of those rows will request. A plan is bound to the
 // Dataset that made it, and its scans fail with ErrClosed once the Dataset
 // is closed. It is immutable and safe for concurrent use.
 //
 // A plan certifies what it decoded: the key pages at the two ends of each
-// range, checked as a Range checks them (CHECK-2). Its count is derived
+// selection, checked as Dataset.Rows checks them (CHECK-2). Its count is derived
 // from structure, not from decoding the rows between the ends (CHECK-4):
 // the positions the ends decode, the row counts of the row groups, from
 // footers a part check verified (CHECK-1), and the OffsetIndex row
-// positions. Scan and ScanBatches decode every row and check every key page
-// they read.
-type RangePlan struct {
+// positions. Scan decodes every row and checks every key page it reads.
+type Plan struct {
 	r       *reader
 	columns []string
 	// spans are the selected rows: disjoint, ascending and not adjacent.
@@ -38,7 +37,6 @@ type RangePlan struct {
 	// groups are the projected bytes counted in each row group holding a
 	// row of the plan, in dataset order.
 	groups []groupBytes
-	stats  ReadStats
 }
 
 // groupBytes is the projected bytes a plan counts in one row group: its
@@ -62,23 +60,22 @@ type span struct {
 	start, end int64
 }
 
-// PlanRanges plans reading the rows of ranges, with the values of columns
-// (as Range.Columns). It reads each range's bounds and Cursor: a range
-// with a Limit, Columns or Stats is ErrInvalidRequest, so build a Range
-// literal such as Range{Prefix: prefix} rather than use PrefixRange or
-// KeyRange, which set a Limit. Rows that several ranges select are one row
-// of the plan.
+// Plan plans reading the rows of selections, with the values of columns
+// (as Query.Columns). Each selection's Cursor, a row cursor, starts it
+// after that row, inside a group of equal keys too. Rows that several
+// selections select are one row of the plan.
 //
-// Planning decodes what a Range starting at each end would: the key pages
-// that locate the first row of the range and the first row after it,
+// Planning decodes what Rows starting at each end would: the key pages
+// that locate the first row of the selection and the first row after it,
 // through the routing and the key page index, and no part known from the
-// manifest bounds to begin after the range. With columns, it also checks
-// every part holding a selected row and reads the OffsetIndex of each
-// projected column chunk the rows span, unless an earlier request kept its
-// page locations (Limits.OffsetIndexMemory), but no data page. Errors are
-// those of Range.
-func (d *Dataset) PlanRanges(ctx context.Context, ranges []Range, columns []string) (*RangePlan, error) {
-	return d.r.planRanges(ctx, ranges, columns)
+// manifest bounds to begin after the selection. With columns, it also
+// checks every part holding a selected row and reads the OffsetIndex of
+// each projected column chunk the rows span, unless an earlier request
+// kept its page locations (Limits.OffsetIndexMemory), but no data page.
+// Errors are those of Rows. st, when not nil, is reset and receives the
+// reads of planning, whether it succeeds or fails.
+func (d *Dataset) Plan(ctx context.Context, selections []Selection, columns []string, st *ReadStats) (*Plan, error) {
+	return d.r.plan(ctx, selections, columns, st)
 }
 
 // Count returns the number of rows Scan yields. It is exact when every
@@ -87,7 +84,7 @@ func (d *Dataset) PlanRanges(ctx context.Context, ranges []Range, columns []stri
 // for a plan with columns, which checks those parts. Otherwise n relies on
 // the manifest's row count of a part no read has touched yet, and exact is
 // false.
-func (plan *RangePlan) Count() (n int64, exact bool) { return plan.rows, plan.exact }
+func (plan *Plan) Count() (n int64, exact bool) { return plan.rows, plan.exact }
 
 // ProjectedBytes returns the compressed bytes Scan requests from the
 // Source for the projected columns: for each column chunk the rows span,
@@ -97,46 +94,19 @@ func (plan *RangePlan) Count() (n int64, exact bool) { return plan.rows, plan.ex
 // counted. Scan reads each counted extent in one request and no other
 // byte of those chunks. exact is false when a projected chunk has no
 // OffsetIndex (COL-4): Scan walks its page headers, and n omits it.
-func (plan *RangePlan) ProjectedBytes() (n int64, exact bool) { return plan.bytes, !plan.partial }
+func (plan *Plan) ProjectedBytes() (n int64, exact bool) { return plan.bytes, !plan.partial }
 
-// Stats returns the read statistics of planning, or of a shard Split
-// made, the reads that placed its end.
-func (plan *RangePlan) Stats() ReadStats { return plan.stats }
+// Columns returns the plan's projected column names, in order, as a copy
+// the caller owns.
+func (plan *Plan) Columns() []string { return slices.Clone(plan.columns) }
 
-// Scan hands fn every row of the plan, with its projected values, in
-// dataset order, and stops at the first error fn returns, returning it.
-// It positions at each range as Range does and decodes each key page and
-// projected page holding the plan's rows once, checking every key page it
-// decodes (CHECK-2). st, when not nil, receives the scan's read
-// statistics, as Range.Stats. Rows own their keys and values; Scan adapts
-// ScanBatches by copying each row with Batch.Row.
-//
-// The scan holds the Dataset open while fn runs: Close waits for it to
-// return. To stop early, return an error from fn (or cancel ctx), and close
-// the Dataset after Scan has returned. fn must not call Close, nor wait for
-// a goroutine that does: Close would wait for the scan, and the scan for fn,
-// for ever. A request fn starts on the Dataset (a Range, a List, another
-// Scan or ScanBatches) runs as any other; once Close has begun it fails with ErrClosed.
-func (plan *RangePlan) Scan(ctx context.Context, st *ReadStats, fn func(Row) error) error {
-	return plan.ScanBatches(ctx, st, func(batch *Batch) error {
-		for i := 0; i < batch.Len(); i++ {
-			if err := fn(batch.Row(i)); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-// planRanges plans ranges; see Dataset.PlanRanges. One scan positions at
-// every end, so that the key pages planning decodes are checked against
-// each other (CHECK-2).
-func (r *reader) planRanges(ctx context.Context, ranges []Range, columns []string) (_ *RangePlan, err error) {
-	for i := range ranges {
-		if rng := &ranges[i]; rng.Limit != 0 || rng.Columns != nil || rng.Stats != nil {
-			return nil, invalidRequest("a planned range takes no Limit, Columns or Stats")
-		}
-		if err := ranges[i].Cursor.check(false); err != nil {
+// plan plans selections; see Dataset.Plan. One scan positions at every
+// end, so that the key pages planning decodes are checked against each
+// other (CHECK-2).
+func (r *reader) plan(ctx context.Context, selections []Selection, columns []string, st *ReadStats) (_ *Plan, err error) {
+	st = resetStats(st)
+	for i := range selections {
+		if err := selections[i].Cursor.check(false); err != nil {
 			return nil, err
 		}
 	}
@@ -151,23 +121,23 @@ func (r *reader) planRanges(ctx context.Context, ranges []Range, columns []strin
 		err = finish(ctx, rctx, err)
 		end()
 	}()
-	plan := &RangePlan{r: r, columns: slices.Clone(columns)}
-	s := r.newScan(rctx, nil, &plan.stats)
+	plan := &Plan{r: r, columns: slices.Clone(columns)}
+	s := r.newScan(rctx, nil, st)
 	var spans []span
-	for _, rng := range ranges {
-		from, exclusive, upper := rng.bounds()
+	for _, sel := range selections {
+		from, exclusive, upper := sel.bounds()
 		if r.rows == 0 || upper != nil && from != nil && bytes.Compare(from, upper) >= 0 {
 			continue
 		}
 		s.end = upper
-		if err := s.start(from, exclusive, rng.Cursor); err != nil {
+		if err := s.start(from, exclusive, sel.Cursor); err != nil {
 			return nil, err
 		}
 		if s.key == nil {
 			continue
 		}
 		sp := span{from: bytes.Clone(from), exclusive: exclusive, start: s.ordinal(), end: r.rows}
-		if c := rng.Cursor; c != nil {
+		if c := sel.Cursor; c != nil {
 			sp.cursor = &Cursor{Key: bytes.Clone(c.Key), Offset: c.Offset}
 		}
 		if upper != nil {
@@ -192,7 +162,7 @@ func (r *reader) planRanges(ctx context.Context, ranges []Range, columns []strin
 		plan.rows += sp.end - sp.start
 	}
 	if len(columns) > 0 {
-		if err := plan.planColumns(rctx); err != nil {
+		if err := plan.planColumns(rctx, st); err != nil {
 			return nil, err
 		}
 	}
@@ -206,8 +176,8 @@ func (r *reader) planRanges(ctx context.Context, ranges []Range, columns []strin
 // the OffsetIndexes of one row group's chunks at a time; the Dataset may
 // keep their page locations across groups and requests
 // (Limits.OffsetIndexMemory).
-func (plan *RangePlan) planColumns(ctx context.Context) error {
-	r, st := plan.r, &plan.stats
+func (plan *Plan) planColumns(ctx context.Context, st *ReadStats) error {
+	r := plan.r
 	type planned struct {
 		cp   *columnPages
 		last int // the last page counted, -1 for none
@@ -267,7 +237,7 @@ func (plan *RangePlan) planColumns(ctx context.Context) error {
 
 // checked reports whether every part holding a row of the plan is
 // checked.
-func (plan *RangePlan) checked() bool {
+func (plan *Plan) checked() bool {
 	r := plan.r
 	for _, sp := range plan.spans {
 		for i := r.partAt(sp.start); i < len(r.parts) && r.parts[i].start < sp.end; i++ {

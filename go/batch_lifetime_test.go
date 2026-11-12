@@ -52,11 +52,11 @@ func TestScanBatchesPoisonRetiredStorage(t *testing.T) {
 				{Rows: records[1024:], GroupRows: 512, PageBytes: 512, DictionaryMaxBytes: 1024, Compression: parquet.Compression(&zstd.Codec{})},
 			}})
 			src := &retiringSource{Source: dirOf(t, dir)}
-			d, err := OpenDataset(ctx, src, Options{})
+			d, err := OpenDataset(ctx, src, OpenOptions{})
 			must(t, err)
 			defer d.Close()
 			columns := []string{"dict", "plain", "null", "number", "key", "missing"}
-			plan, err := d.PlanRanges(ctx, []Range{{}}, columns)
+			plan, err := d.Plan(ctx, []Selection{{}}, columns, nil)
 			must(t, err)
 			type address struct {
 				path string
@@ -122,9 +122,9 @@ func TestScanBatchesPoisonRetiredStorage(t *testing.T) {
 				}
 				start := len(kept)
 				if !owning {
-					must(t, plan.ScanBatches(ctx, nil, func(b *Batch) error {
+					must(t, plan.Scan(ctx, nil, func(b *Batch) error {
 						for c := range 4 {
-							v, _ := b.Column(c)
+							v, _ := rawColumn(b, c)
 							borrowed[c] = append(borrowed[c], v)
 							if c == 0 {
 								for _, value := range v {
@@ -144,7 +144,7 @@ func TestScanBatchesPoisonRetiredStorage(t *testing.T) {
 					// The Scan adapter also retains every owning row across natural
 					// page, dictionary, group and part reuse in its independent scan.
 					src.before = nil
-					must(t, plan.Scan(ctx, nil, func(row Row) error { kept = append(kept, row); cursors = append(cursors, row.Cursor()); return nil }))
+					must(t, scanRows(ctx, plan, nil, func(row Row) error { kept = append(kept, row); cursors = append(cursors, row.Cursor()); return nil }))
 				}
 				src.before = nil
 				for c := range 4 {
@@ -156,14 +156,14 @@ func TestScanBatchesPoisonRetiredStorage(t *testing.T) {
 				}
 				for i, row := range kept[start:] {
 					w := records[i]
-					if !bytes.Equal(row.Key, w.Key) || row.Offset != 0 || string(row.Values[1].ByteArray()) != w.Plain || !row.Values[2].IsNull() || row.Values[3].Int64() != w.Number || !bytes.Equal(row.Values[4].ByteArray(), w.Key) || !row.Values[5].Absent {
+					if !bytes.Equal(row.Key, w.Key) || row.Offset != 0 || string(row.Values[1].Bytes()) != w.Plain || !row.Values[2].IsNull() || row.Values[3].Int64() != w.Number || !bytes.Equal(row.Values[4].Bytes(), w.Key) || !row.Values[5].Absent() {
 						t.Fatal("poisoned owning row", i)
 					}
 					if w.Dict == nil {
 						if !row.Values[0].IsNull() {
 							t.Fatal("null", i)
 						}
-					} else if string(row.Values[0].ByteArray()) != *w.Dict {
+					} else if string(row.Values[0].Bytes()) != *w.Dict {
 						t.Fatal("poisoned dictionary", i)
 					}
 				}

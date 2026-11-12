@@ -6,22 +6,11 @@ package seekparquet
 import (
 	"bytes"
 	"context"
+	"math"
 	"slices"
 
 	"github.com/parquet-go/parquet-go"
 )
-
-// Value is one projected value of a row. Values are parquet-go values
-// (parquet.Value): this package commits to parquet-go's value types rather
-// than inventing its own, so a value's Kind is its column's physical type
-// in the row's part.
-type Value struct {
-	// Absent reports that the row's part has no such column (COL-2). An
-	// absent value is also null (IsNull is true), so check Absent first
-	// where the two must be told apart.
-	Absent bool
-	parquet.Value
-}
 
 // Row is one row of a result: its key, its offset in its equal-key group,
 // and the values of the projected columns, in request order. A Row owns
@@ -53,12 +42,24 @@ func (row *Row) Value(name string) (Value, bool) {
 // its Offset is zero. A cursor applies to the query that produced it, on
 // the same dataset (PAGE-1, PAGE-2): repeating the query with the cursor
 // of each page's last entry returns every result exactly once. An Offset
-// beyond the end of its group continues at the next key.
+// beyond the end of its group continues at the next key, so math.MaxInt64
+// means after the whole group; a nonzero Offset on a dataset of unique keys
+// means after the key. Encode and ParseCursor carry a cursor as text.
 type Cursor struct {
 	Key    []byte
 	Offset int64
 	Prefix []byte
 }
+
+// RowCursor returns the row cursor after the row of key at offset in its
+// group, owning a copy of key; a nil key is the empty key.
+func RowCursor(key []byte, offset int64) *Cursor {
+	return &Cursor{Key: append([]byte{}, key...), Offset: offset}
+}
+
+// PrefixCursor returns the prefix cursor after a common prefix, owning a
+// copy of prefix; a nil prefix is the empty prefix.
+func PrefixCursor(prefix []byte) *Cursor { return &Cursor{Prefix: append([]byte{}, prefix...)} }
 
 // Cursor returns the cursor after this row, owning its key bytes.
 func (row *Row) Cursor() *Cursor { return &Cursor{Key: bytes.Clone(row.Key), Offset: row.Offset} }
@@ -78,14 +79,12 @@ func (c *Cursor) check(prefixes bool) error {
 	return nil
 }
 
-// Range is a range request (spec §6.2): the rows whose keys begin with
-// Prefix, are at or after Start (after it, when StartExclusive) and are
-// before End, in ascending unsigned byte order of their keys, equal keys
-// in file order, at most Limit of them, after Cursor when it is set.
-// Bounds select whole groups of equal keys; Limit may end a page inside
-// one.
-type Range struct {
-	// Prefix, when not empty, confines the range to the keys that begin
+// Span bounds a range (spec §6.2): the keys that begin with Prefix, are at
+// or after Start (after it, when StartExclusive) and are before End, in
+// ascending unsigned byte order. Bounds select whole groups of equal keys.
+// The zero Span is every key.
+type Span struct {
+	// Prefix, when not empty, confines the span to the keys that begin
 	// with it: it is intersected with Start and End, so the read never
 	// leaves the keys that begin with it.
 	Prefix []byte
@@ -97,64 +96,69 @@ type Range struct {
 	// End is the exclusive upper bound; nil is unbounded above. A non-nil
 	// empty End selects nothing, since every key is non-empty.
 	End []byte
-	// Cursor, when set, continues the range after a row it returned
-	// (Row.Cursor): a row cursor, never a prefix cursor.
+}
+
+// KeySpan returns the span of exactly key's group of equal keys: [key,
+// key+0x00), owning copies of key. A limit may split the group; continue
+// with the last row's Cursor as with any span. Dataset.Get reads one whole
+// group.
+func KeySpan(key []byte) Span {
+	return Span{Start: bytes.Clone(key), End: append(bytes.Clone(key), 0)}
+}
+
+// PrefixSpan returns the span of the keys that begin with prefix, with no
+// other bounds, owning a copy of prefix.
+func PrefixSpan(prefix []byte) Span { return Span{Prefix: bytes.Clone(prefix)} }
+
+// Selection is a span to read, from its start or, when Cursor is set, after
+// a row a read of the same selection returned (Row.Cursor): a row cursor,
+// never a prefix cursor.
+type Selection struct {
+	Span
 	Cursor *Cursor
-	// Limit is the most rows returned. It must be positive (QUERY-1).
-	Limit int
+}
+
+// Query is a range request (spec §6.2): the rows of a Selection, in
+// ascending key order, equal keys in file order, at most Limit of them, with
+// the values of Columns.
+type Query struct {
+	Selection
+	// Limit is the most rows returned. Dataset.Rows requires it positive
+	// (QUERY-1). Dataset.Scan also takes zero, for every row to the end of
+	// the span: a streaming extension of this library, not a query of the
+	// specification. A negative limit is an invalid request.
+	Limit int64
 	// Columns names the columns to project for each row, in order: their
 	// values, null, or absent. No other column's pages are read. Empty
 	// reads keys only.
 	Columns []string
-	// Stats, when not nil, receives the request's read statistics: it is
-	// reset when the request starts and filled as it runs, so it is set
-	// whether the request succeeds or fails. The caller owns it for the
-	// duration of the call and must not share it between concurrent
-	// requests.
-	Stats *ReadStats
 }
 
-// PrefixRange returns a prefix read: the range of the keys that begin with
-// prefix, with no other bounds. Dataset.PlanRanges refuses a range with a
-// Limit, so to plan a prefix build the literal Range{Prefix: prefix}.
-func PrefixRange(prefix []byte, limit int, columns ...string) Range {
-	return Range{Prefix: bytes.Clone(prefix), Limit: limit, Columns: columns}
-}
-
-// KeyRange returns a lookup of exactly key's group of equal keys: the
-// range [key, key+0x00). Its limit may split the group; continue with the
-// last row's Cursor as with any range. Dataset.PlanRanges refuses a range
-// with a Limit, so to plan one key's group build the literal
-// Range{Start: key, End: append(bytes.Clone(key), 0)}.
-func KeyRange(key []byte, limit int, columns ...string) Range {
-	return Range{Start: bytes.Clone(key), End: append(bytes.Clone(key), 0), Limit: limit, Columns: columns}
-}
-
-// bounds returns the range's effective lower bound (inclusive unless
+// bounds returns the span's effective lower bound (inclusive unless
 // exclusive) and upper bound: Start and End intersected with the keys
 // that begin with Prefix.
-func (rng *Range) bounds() (start []byte, exclusive bool, end []byte) {
-	start, exclusive, end = rng.Start, rng.StartExclusive, rng.End
-	if len(rng.Prefix) == 0 {
+func (sp *Span) bounds() (start []byte, exclusive bool, end []byte) {
+	start, exclusive, end = sp.Start, sp.StartExclusive, sp.End
+	if len(sp.Prefix) == 0 {
 		return start, exclusive, end
 	}
-	if start == nil || bytes.Compare(start, rng.Prefix) < 0 {
-		start, exclusive = rng.Prefix, false
+	if start == nil || bytes.Compare(start, sp.Prefix) < 0 {
+		start, exclusive = sp.Prefix, false
 	}
-	if upper, ok := successor(rng.Prefix); ok && (end == nil || bytes.Compare(upper, end) < 0) {
+	if upper, ok := successor(sp.Prefix); ok && (end == nil || bytes.Compare(upper, end) < 0) {
 		end = upper
 	}
 	return start, exclusive, end
 }
 
-// List is a delimited listing request (spec §6.3). The candidate keys are
+// ListQuery is a delimited listing request (spec §6.3). The candidate keys are
 // those that begin with Prefix and are below End when it is set, after
 // Cursor when it is set. A candidate whose bytes after Prefix contain
 // Delimiter yields the common prefix up to and including that delimiter;
 // any other candidate yields its row. Common prefixes are distinct; rows
 // of equal keys are each an entry, in file order. Entries are in
 // non-decreasing byte order, at most Limit of them.
-type List struct {
+type ListQuery struct {
 	// Prefix scopes the listing; empty lists every key.
 	Prefix []byte
 	// Delimiter is the single delimiter byte (LIST-1).
@@ -162,16 +166,14 @@ type List struct {
 	// End, when non-nil, excludes keys at or above it.
 	End []byte
 	// Cursor, when set, continues the listing after an entry it returned
-	// (Entry.Cursor): after a row, the rows after it; after a common
+	// (ListEntry.Cursor): after a row, the rows after it; after a common
 	// prefix, the keys after every key that rolls up to it (LIST-6).
 	Cursor *Cursor
 	// Limit is the most entries returned. It must be positive (QUERY-1).
 	Limit int
 	// Columns names the columns projected for each row entry and each
-	// exact row (Entry.Exact), as Range.Columns.
+	// exact row (ListEntry.Exact), as Query.Columns.
 	Columns []string
-	// Stats receives the request's read statistics, as Range.Stats.
-	Stats *ReadStats
 	// ReadAhead, when positive, is the number of key pages the listing may
 	// read ahead concurrently (at most 64): within the row group it is
 	// in, it predicts from the key page index the pages it will decode
@@ -196,8 +198,8 @@ type List struct {
 	ReadAhead int
 }
 
-// Entry is one listing entry: exactly one of CommonPrefix and Row is set.
-type Entry struct {
+// ListEntry is one listing entry: exactly one of CommonPrefix and Row is set.
+type ListEntry struct {
 	CommonPrefix []byte
 	Row          *Row
 	// Exact is, for a common prefix, its exact row (LIST-8): the first
@@ -212,11 +214,11 @@ type Entry struct {
 }
 
 // IsPrefix reports whether the entry is a common prefix.
-func (e Entry) IsPrefix() bool { return e.Row == nil }
+func (e ListEntry) IsPrefix() bool { return e.Row == nil }
 
 // Bytes returns the entry's bytes, by which entries are ordered: the
 // common prefix, or the row's key. To continue a listing, use Cursor.
-func (e Entry) Bytes() []byte {
+func (e ListEntry) Bytes() []byte {
 	if e.Row != nil {
 		return e.Row.Key
 	}
@@ -224,7 +226,7 @@ func (e Entry) Bytes() []byte {
 }
 
 // Cursor returns the cursor after this entry, owning its bytes.
-func (e Entry) Cursor() *Cursor {
+func (e ListEntry) Cursor() *Cursor {
 	if e.Row != nil {
 		return e.Row.Cursor()
 	}
@@ -233,11 +235,12 @@ func (e Entry) Cursor() *Cursor {
 
 // request checks what every request shares and takes a read lease. done
 // releases it and maps an error of a request ended by Close to ErrClosed.
-func (r *reader) request(ctx context.Context, cur *Cursor, prefixes bool, limit int, columns []string) (context.Context, func(*error), error) {
+// A limit of zero is accepted only when unlimited is set (Dataset.Scan).
+func (r *reader) request(ctx context.Context, cur *Cursor, prefixes bool, limit int64, unlimited bool, columns []string) (context.Context, func(*error), error) {
 	if err := cur.check(prefixes); err != nil {
 		return nil, nil, err
 	}
-	if limit <= 0 {
+	if limit < 0 || limit == 0 && !unlimited {
 		return nil, nil, invalidRequest("limit %d is not positive", limit)
 	}
 	if err := r.checkProjection(columns); err != nil {
@@ -279,48 +282,89 @@ func (p *part) checkProjection(columns []string) error {
 	return nil
 }
 
-// readRange returns the rows of rng; see Dataset.Range.
-func (r *reader) readRange(ctx context.Context, rng Range, st *ReadStats) (_ []Row, err error) {
+// readRange returns the rows of q; see Dataset.Rows. It discovers every
+// selected key before projecting any value, and returns no rows on error.
+func (r *reader) readRange(ctx context.Context, q Query, st *ReadStats) (_ []Row, err error) {
 	st = resetStats(st)
-	ctx, done, err := r.request(ctx, rng.Cursor, false, rng.Limit, rng.Columns)
+	if q.Limit > int64(math.MaxInt) {
+		return nil, invalidRequest("limit %d is beyond a slice's length", q.Limit)
+	}
+	ctx, done, err := r.request(ctx, q.Cursor, false, q.Limit, false, q.Columns)
 	if err != nil {
 		return nil, err
 	}
 	defer done(&err)
-	from, exclusive, end := rng.bounds()
+	rows, _, err := r.collect(ctx, q.Selection, int(q.Limit), false, q.Columns, st)
+	return rows, err
+}
+
+// readGet returns the group of key; see Dataset.Get.
+func (r *reader) readGet(ctx context.Context, key []byte, st *ReadStats, columns []string) (_ []Row, err error) {
+	st = resetStats(st)
+	ctx, done, err := r.request(ctx, nil, false, 1, false, columns)
+	if err != nil {
+		return nil, err
+	}
+	defer done(&err)
+	limit := r.limits.GetRows
+	rows, more, err := r.collect(ctx, Selection{Span: KeySpan(key)}, limit, true, columns, st)
+	if more {
+		return nil, exceeded(LimitGetRows, -1, int64(limit),
+			"the group of key %.64q has more rows than Limits.GetRows: read it in pages of Rows over KeySpan(key), continuing after each page's last row", key)
+	}
+	return rows, err
+}
+
+// collect returns the first rows of sel, at most limit of them, with the
+// values of columns, or no rows on error. It finds every row's key before
+// it projects any value. With probe, once it has limit rows it decodes the
+// next key and, when the selection has another row, returns none and more
+// set, having read no value page; without, it stops on the last row it
+// returns, as Rows does.
+func (r *reader) collect(ctx context.Context, sel Selection, limit int, probe bool, columns []string, st *ReadStats) (_ []Row, more bool, err error) {
+	from, exclusive, end := sel.bounds()
 	if r.rows == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 	s := r.newScan(ctx, end, st)
-	if err := s.start(from, exclusive, rng.Cursor); err != nil {
-		return nil, err
+	if err := s.start(from, exclusive, sel.Cursor); err != nil {
+		return nil, false, err
 	}
 	var rows []Row
 	var at []position
 	for s.key != nil {
+		if len(rows) == limit {
+			return nil, true, nil // probe found one more
+		}
 		rows = append(rows, Row{Key: bytes.Clone(s.key), Offset: s.offset()})
 		at = append(at, s.at())
-		if len(rows) == rng.Limit {
+		if len(rows) == limit && !probe {
 			break
 		}
 		if err := s.next(); err != nil {
-			return nil, err
+			return nil, false, err
 		}
+	}
+	if len(rows) == 0 {
+		return nil, false, nil
 	}
 	out := make([]*Row, len(rows))
 	for i := range rows {
 		out[i] = &rows[i]
 	}
-	return rows, r.project(ctx, out, at, slices.Clone(rng.Columns), st)
+	if err := r.project(ctx, out, at, slices.Clone(columns), st); err != nil {
+		return nil, false, err
+	}
+	return rows, false, nil
 }
 
 // readList returns the entries of req; see Dataset.List.
-func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Entry, err error) {
+func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ []ListEntry, err error) {
 	st = resetStats(st)
 	if req.ReadAhead < 0 {
 		return nil, invalidRequest("read-ahead %d is negative", req.ReadAhead)
 	}
-	ctx, done, err := r.request(ctx, req.Cursor, true, req.Limit, req.Columns)
+	ctx, done, err := r.request(ctx, req.Cursor, true, int64(req.Limit), false, req.Columns)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +436,7 @@ func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Ent
 			}
 			continue
 		}
-		l.out = append(l.out, Entry{Row: l.row(s.key, s.offset(), s.at())})
+		l.out = append(l.out, ListEntry{Row: l.row(s.key, s.offset(), s.at())})
 		if len(l.out) == req.Limit {
 			break
 		}
@@ -414,7 +458,7 @@ func (r *reader) readList(ctx context.Context, req List, st *ReadStats) (_ []Ent
 // listing collects a listing's entries, and the rows to project with the
 // positions a scan found them at, in dataset order.
 type listing struct {
-	out  []Entry
+	out  []ListEntry
 	rows []*Row
 	at   []position
 }
@@ -429,7 +473,7 @@ func (l *listing) row(key []byte, offset int64, at position) *Row {
 // prefix adds the common prefix entry of a first candidate row at at, with
 // that row as its exact row when exact (its key is the prefix).
 func (l *listing) prefix(prefix []byte, exact bool, offset int64, at position) {
-	e := Entry{CommonPrefix: prefix}
+	e := ListEntry{CommonPrefix: prefix}
 	if exact {
 		e.Exact = l.row(prefix, offset, at)
 	}
@@ -439,7 +483,7 @@ func (l *listing) prefix(prefix []byte, exact bool, offset int64, at position) {
 // seekList seeks to from for a listing, first adding to l the common
 // prefix of each row group the seek would land in that holds only keys
 // rolling up to it (scan.shortcut), and moving past it.
-func (s *scan) seekList(from []byte, req List, l *listing) error {
+func (s *scan) seekList(from []byte, req ListQuery, l *listing) error {
 	for len(l.out) < req.Limit {
 		whole, g, err := s.shortcut(from, req.Prefix, req.Delimiter)
 		if err != nil {
@@ -506,11 +550,11 @@ func (r *reader) project(ctx context.Context, rows []*Row, at []position, column
 func projectColumn(rows []*Row, at []position, c int, cp *columnPages) error {
 	if cp == nil {
 		for _, row := range rows {
-			row.Values[c] = Value{Absent: true}
+			row.Values[c] = Value{absent: true}
 		}
 		return nil
 	}
 	return cp.read(at, func(k int, v parquet.Value) {
-		rows[k].Values[c] = Value{Value: v.Clone()}
+		rows[k].Values[c] = valueOf(&v, false).Clone()
 	})
 }

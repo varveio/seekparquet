@@ -9,12 +9,14 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/format"
 
 	"github.com/varveio/seekparquet/go/internal/testutil"
@@ -42,7 +44,7 @@ func write(t testing.TB, d testutil.Dataset) string {
 }
 
 // open opens the dataset at dir, closed when the test ends.
-func open(t testing.TB, dir string, opt Options) *Dataset {
+func open(t testing.TB, dir string, opt OpenOptions) *Dataset {
 	t.Helper()
 	d, err := OpenDir(ctx, dir, opt)
 	must(t, err)
@@ -62,7 +64,7 @@ func dirOf(t testing.TB, dir string) Source {
 // openErr opens the dataset at dir, checks every part as the first read
 // to touch it would (CHECK-1), and returns the first error, closing the
 // dataset.
-func openErr(dir string, opt Options) error {
+func openErr(dir string, opt OpenOptions) error {
 	d, err := OpenDir(ctx, dir, opt)
 	if err != nil {
 		return err
@@ -73,7 +75,7 @@ func openErr(dir string, opt Options) error {
 
 // verifyErr opens the dataset at dir, verifies it (Dataset.Verify) and
 // returns the first error, closing the dataset.
-func verifyErr(dir string, opt Options) error {
+func verifyErr(dir string, opt OpenOptions) error {
 	d, err := OpenDir(ctx, dir, opt)
 	if err != nil {
 		return err
@@ -83,7 +85,7 @@ func verifyErr(dir string, opt Options) error {
 }
 
 // verified opens the dataset at dir and verifies it.
-func verified(t testing.TB, dir string, opt Options) *Dataset {
+func verified(t testing.TB, dir string, opt OpenOptions) *Dataset {
 	t.Helper()
 	d := open(t, dir, opt)
 	must(t, d.Verify(ctx))
@@ -92,11 +94,11 @@ func verified(t testing.TB, dir string, opt Options) *Dataset {
 
 // openPartsOf opens the n parts of dir directly, without their manifest,
 // with their manifest bounds when bounded.
-func openPartsOf(t testing.TB, dir string, n int, key Key, bounded bool, opt Options) (*reader, error) {
+func openPartsOf(t testing.TB, dir string, n int, key Key, bounded bool, opt OpenOptions) (*reader, error) {
 	t.Helper()
 	var bounds []PartInfo
 	if bounded {
-		d := open(t, dir, Options{})
+		d := open(t, dir, OpenOptions{})
 		bounds = d.Metadata().Parts
 	}
 	var inputs []partInput
@@ -199,7 +201,7 @@ func afterCursor(cur *Cursor, key []byte, offset int64) bool {
 
 // rangeOracle answers a range request over sorted distinct keys by the
 // definition (RANGE-1).
-func rangeOracle(keys []string, rng Range) []string {
+func rangeOracle(keys []string, rng Query) []string {
 	var out []string
 	for _, k := range keys {
 		key := []byte(k)
@@ -212,7 +214,7 @@ func rangeOracle(keys []string, rng Range) []string {
 				continue
 			}
 		}
-		if rng.End != nil && bytes.Compare(key, rng.End) >= 0 || len(out) == rng.Limit {
+		if rng.End != nil && bytes.Compare(key, rng.End) >= 0 || int64(len(out)) == rng.Limit {
 			break
 		}
 		out = append(out, k)
@@ -224,7 +226,7 @@ func rangeOracle(keys []string, rng Range) []string {
 // definition of §6.3: candidates, their entries, distinct, ascending, at
 // most limit. Rows are spelled "r:" and prefixes "p:", or "P:" when the
 // prefix's first candidate key is the prefix itself (its exact row, LIST-8).
-func listOracle(keys []string, req List) []string {
+func listOracle(keys []string, req ListQuery) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, k := range keys {
@@ -251,7 +253,7 @@ func listOracle(keys []string, req List) []string {
 	return out
 }
 
-func entriesOf(entries []Entry) []string {
+func entriesOf(entries []ListEntry) []string {
 	out := make([]string, len(entries))
 	for i, e := range entries {
 		switch {
@@ -315,12 +317,70 @@ func cursorString(c *Cursor) string {
 // describe names a request in failure messages.
 func describe(req any) string {
 	switch r := req.(type) {
-	case Range:
-		return fmt.Sprintf("Range{prefix %s start %s exclusive %v end %s cursor %s limit %d columns %q}",
+	case Query:
+		return fmt.Sprintf("Query{prefix %s start %s exclusive %v end %s cursor %s limit %d columns %q}",
 			short(r.Prefix), short(r.Start), r.StartExclusive, short(r.End), cursorString(r.Cursor), r.Limit, r.Columns)
-	case List:
-		return fmt.Sprintf("List{prefix %s delimiter %q end %s cursor %s limit %d columns %q}",
+	case Selection:
+		return fmt.Sprintf("Selection{prefix %s start %s exclusive %v end %s cursor %s}",
+			short(r.Prefix), short(r.Start), r.StartExclusive, short(r.End), cursorString(r.Cursor))
+	case ListQuery:
+		return fmt.Sprintf("ListQuery{prefix %s delimiter %q end %s cursor %s limit %d columns %q}",
 			short(r.Prefix), r.Delimiter, short(r.End), cursorString(r.Cursor), r.Limit, r.Columns)
 	}
 	return fmt.Sprint(req)
+}
+
+// rawColumn returns projection slot c's borrowed parquet-go values, as the
+// batch holds them, and whether the part has the column: for tests that
+// inspect or poison the decoded storage itself. An absent column's values
+// are nil: it has no storage.
+func rawColumn(b *Batch, c int) ([]parquet.Value, bool) {
+	return b.values[c], b.Column(c).Present()
+}
+
+// equalValue reports whether two values are equal: kind, absence and
+// value, floats by their bits.
+func equalValue(a, b Value) bool {
+	if a.Absent() != b.Absent() || a.Kind() != b.Kind() || a.IsNull() != b.IsNull() {
+		return false
+	}
+	switch a.Kind() {
+	case KindFloat:
+		return math.Float32bits(a.Float()) == math.Float32bits(b.Float())
+	case KindDouble:
+		return math.Float64bits(a.Double()) == math.Float64bits(b.Double())
+	case KindByteArray, KindFixedLenByteArray:
+		return bytes.Equal(a.Bytes(), b.Bytes())
+	case KindInt96:
+		return a.Int96() == b.Int96()
+	}
+	return a.Boolean() == b.Boolean() && a.Int32() == b.Int32() && a.Int64() == b.Int64()
+}
+
+// scanRows scans plan, handing fn an owning copy of each row (Batch.Row):
+// what the removed row-callback Plan.Scan did.
+func scanRows(ctx context.Context, plan *Plan, st *ReadStats, fn func(Row) error) error {
+	if fn == nil {
+		return plan.Scan(ctx, st, nil)
+	}
+	return plan.Scan(ctx, st, func(b *Batch) error {
+		for i := range b.Len() {
+			if err := fn(b.Row(i)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// selectionOf returns the selection of a query, for planning it.
+func selectionOf(q Query) Selection { return q.Selection }
+
+// selectionsOf returns the selections of queries, for planning them.
+func selectionsOf(qs []Query) []Selection {
+	out := make([]Selection, len(qs))
+	for i, q := range qs {
+		out[i] = q.Selection
+	}
+	return out
 }

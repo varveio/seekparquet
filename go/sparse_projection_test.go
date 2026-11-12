@@ -25,9 +25,9 @@ func TestSparseListingDecodesValuePageOnce(t *testing.T) {
 			if !indexed {
 				dropValueOffsets(t, dir)
 			}
-			d := open(t, dir, Options{})
+			d := open(t, dir, OpenOptions{})
 			var st ReadStats
-			entries, err := d.r.readList(ctx, List{Delimiter: '/', Limit: 1000, Columns: []string{"size"}}, &st)
+			entries, err := d.r.readList(ctx, ListQuery{Delimiter: '/', Limit: 1000, Columns: []string{"size"}}, &st)
 			must(t, err)
 			if len(entries) != 200 {
 				t.Fatalf("got %d entries, want 200", len(entries))
@@ -81,7 +81,7 @@ func TestSparseProjectionSkipsPages(t *testing.T) {
 	for _, indexed := range []bool{true, false} {
 		t.Run(fmt.Sprint("indexed=", indexed), func(t *testing.T) {
 			dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: records, GroupRows: 200, PageBytes: 64}}})
-			original := verified(t, dir, Options{})
+			original := verified(t, dir, OpenOptions{})
 			p := original.r.parts[0]
 			g0, g1 := groupRef{0, 0}, groupRef{0, 1}
 			selected := []position{{g: g0, row: 0}, {g: g0, row: 2}, {g: g0, row: 198}, {g: g0, row: 199}, {g: g1, row: 0}, {g: g1, row: 2}, {g: g1, row: 198}, {g: g1, row: 199}}
@@ -112,7 +112,7 @@ func TestSparseProjectionSkipsPages(t *testing.T) {
 			if !indexed {
 				dropValueOffsets(t, dir)
 			}
-			d := open(t, dir, Options{})
+			d := open(t, dir, OpenOptions{})
 			must(t, d.r.checkParts(ctx, new(ReadStats)))
 			out := make([]*Row, len(selected))
 			for i := range out {
@@ -126,23 +126,23 @@ func TestSparseProjectionSkipsPages(t *testing.T) {
 			for i, at := range selected {
 				source := records[at.g.index*200+int(at.row)]
 				values := out[i].Values
-				if values[1].Int64() != source.Size || !values[2].Absent {
+				if values[1].Int64() != source.Size || !values[2].Absent() {
 					t.Fatalf("row %d values: %v", i, values)
 				}
 				if source.Name == nil {
 					if !values[0].IsNull() {
 						t.Fatalf("row %d: want null", i)
 					}
-				} else if string(values[0].ByteArray()) != *source.Name {
+				} else if string(values[0].Bytes()) != *source.Name {
 					t.Fatalf("row %d: wrong name", i)
 				}
 			}
 			// A caller can mutate returned bytes without changing the dictionary
 			// or another result, and the next request gets independent values.
-			out[0].Values[0].ByteArray()[0] = 'X'
+			out[0].Values[0].Bytes()[0] = 'X'
 			again := []*Row{{}}
 			must(t, d.r.project(ctx, again, selected[:1], columns, &ReadStats{}))
-			if string(again[0].Values[0].ByteArray()) != *records[0].Name {
+			if string(again[0].Values[0].Bytes()) != *records[0].Name {
 				t.Fatal("projected bytes alias retained dictionary data")
 			}
 		})
