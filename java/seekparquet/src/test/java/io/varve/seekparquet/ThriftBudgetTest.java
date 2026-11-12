@@ -211,7 +211,7 @@ class ThriftBudgetTest {
         for (byte[] extra : List.of(
                 new Bytes8().b(0xB9, 0xF5).varint(1L << 32).bytes(),        // 15: list<i32> of 2^32
                 new Bytes8().b(0xBA, 0xF5).varint(1L << 32).bytes(),        // 15: set<i32> of 2^32
-                new Bytes8().b(0xBB).varint(1L << 32).b(0x55).bytes(),      // 15: map<i32, i32> of 2^32
+                new Bytes8().b(0xBB).varint(1L << 32).bytes(),               // 15: map of 2^32, nothing after
                 new Bytes8().b(0xB9, 0xF5).b(0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00).bytes())) { // 11-byte count
             assertThrows(DataException.class, () -> Thrift.columnIndex(withUnknown(index, extra), Long.MAX_VALUE));
         }
