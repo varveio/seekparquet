@@ -144,6 +144,21 @@ class Int96PageTest {
         for (int i = 0, j = 0; i < present.length; i++) {
             assertEquals(present[i] ? entries.get(ids[j++]) : Value.Null.INSTANCE, owned.get(i), "kept row " + i);
         }
+        // The same indexes as PLAIN_DICTIONARY (data page v1) and in a data page v2 (levels apart, unprefixed).
+        PageHeader legacy = new PageHeader(PageType.DATA_PAGE, body.length, body.length)
+                .setData_page_header(new DataPageHeader(present.length, Encoding.PLAIN_DICTIONARY, Encoding.RLE, Encoding.RLE));
+        ColumnPage plainDictionary = PageDecoder.decodeData(legacy, ByteBuffer.wrap(body), OPTIONAL, CompressionCodec.UNCOMPRESSED, () -> dict,
+                Limits.DEFAULT, "test", new PageScratch(), new Codecs.State());
+        byte[] v2body = ByteBuffer.allocate(lv.length + idx.length).put(lv).put(idx).array();
+        DataPageHeaderV2 v2 = new DataPageHeaderV2(present.length, 2, present.length, Encoding.RLE_DICTIONARY, lv.length, 0).setIs_compressed(false);
+        PageHeader v2h = new PageHeader(PageType.DATA_PAGE_V2, v2body.length, v2body.length).setData_page_header_v2(v2);
+        ColumnPage v2page = PageDecoder.decodeData(v2h, ByteBuffer.wrap(v2body), OPTIONAL, CompressionCodec.UNCOMPRESSED, () -> dict,
+                Limits.DEFAULT, "test", scratch, new Codecs.State());
+        for (int i = 0, j = 0; i < present.length; i++) {
+            Value want = present[i] ? entries.get(ids[j++]) : Value.Null.INSTANCE;
+            assertEquals(want, plainDictionary.value(i), "PLAIN_DICTIONARY row " + i);
+            assertEquals(want, v2page.value(i), "v2 row " + i);
+        }
         // A DELTA_BYTE_ARRAY page of an INT96 column is malformed.
         PageHeader delta = new PageHeader(PageType.DATA_PAGE, 4, 4)
                 .setData_page_header(new DataPageHeader(1, Encoding.DELTA_BYTE_ARRAY, Encoding.RLE, Encoding.RLE));

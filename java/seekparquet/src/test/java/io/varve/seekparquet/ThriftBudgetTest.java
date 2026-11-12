@@ -184,6 +184,81 @@ class ThriftBudgetTest {
         }
     }
 
+    /**
+     * Sizes beyond 32 bits, or encoded wider than 5 bytes, are refused rather than wrapped, in otherwise valid
+     * structures: a binary length of 2^32 + 1 over one byte (which wraps to 1), of 2^32 over nothing (which
+     * wraps to 0), a 6-byte varint, and list, set and map counts of 2^32 (which wrap to an empty container),
+     * one in an 11-byte varint.
+     */
+    @Test
+    void sizesBeyond32BitsAreRefusedNotWrapped() throws Exception {
+        byte[] index = columnIndex();
+        java.util.function.Function<int[], byte[]> minValues = length -> new Bytes8()
+                .b(0x19, 0x12, 0x02)
+                .b(0x19, 0x18).b(length)               // 2: min_values, one binary of the given length bytes
+                .b(0x19, 0x18).binary(1)
+                .b(0x15, 0x00).b(0x00).bytes();
+        // The well-formed control: a length of 1, over one byte.
+        assertEquals(1, Thrift.columnIndex(minValues.apply(new int[] {0x01, 0x07}), Long.MAX_VALUE).getMin_values().getFirst().remaining());
+        for (int[] length : List.of(
+                new int[] {0x81, 0x80, 0x80, 0x80, 0x10, 0x07}, // 2^32 + 1, then the one byte
+                new int[] {0x80, 0x80, 0x80, 0x80, 0x10},       // 2^32, then nothing
+                new int[] {0x81, 0x80, 0x80, 0x80, 0x80, 0x00, 0x07}, // 1, encoded in 6 bytes
+                new int[] {0x81, 0x80, 0x80, 0x80, 0x70, 0x07})) {    // 1 with bits beyond 32 set
+            byte[] raw = minValues.apply(length);
+            assertThrows(DataException.class, () -> Thrift.columnIndex(raw, Long.MAX_VALUE), Arrays.toString(length));
+        }
+        for (byte[] extra : List.of(
+                new Bytes8().b(0xB9, 0xF5).varint(1L << 32).bytes(),        // 15: list<i32> of 2^32
+                new Bytes8().b(0xBA, 0xF5).varint(1L << 32).bytes(),        // 15: set<i32> of 2^32
+                new Bytes8().b(0xBB).varint(1L << 32).b(0x55).bytes(),      // 15: map<i32, i32> of 2^32
+                new Bytes8().b(0xB9, 0xF5).b(0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00).bytes())) { // 11-byte count
+            assertThrows(DataException.class, () -> Thrift.columnIndex(withUnknown(index, extra), Long.MAX_VALUE));
+        }
+        // An empty container is still well-formed.
+        assertEquals(Thrift.columnIndex(index, Long.MAX_VALUE),
+                Thrift.columnIndex(withUnknown(index, new Bytes8().b(0xB9, 0x05).b(0xBB, 0x00).bytes()), Long.MAX_VALUE));
+    }
+
+    /**
+     * A container's elements must fit in the bytes actually left, checked before the decoder preallocates
+     * for them: an OffsetIndex whose 8 MiB unknown binary precedes a list declaring 8,388,608 locations with
+     * one byte left is malformed without allocating for the list.
+     */
+    @Test
+    void containerSizesAreCheckedAgainstTheBytesLeft() {
+        byte[] raw = new Bytes8()
+                .b(0xF8).binary(PAYLOAD)            // 15: an unknown 8 MiB binary, skipped
+                .b(0x09, 0x02)                      // 1: page_locations, a list (long-form field header)
+                .b(0xFC).varint(PAYLOAD)            // of 8,388,608 structs
+                .b(0x00).bytes();                   // one byte left
+        assertThrows(DataException.class, () -> Thrift.offsetIndex(raw, Long.MAX_VALUE));
+        long bytes = allocated(() -> Thrift.offsetIndex(raw, Long.MAX_VALUE));
+        // Skipping the binary reads its 8 MiB; preallocating the list would add tens of MiB.
+        assertTrue(bytes < PAYLOAD + (4 << 20), "allocated " + bytes);
+    }
+
+    /** UUID map keys and values are refused as the runtime refuses them; an empty map is not. */
+    @Test
+    void uuidMapsAreRefused() throws Exception {
+        byte[] index = columnIndex();
+        ColumnIndex plain = Thrift.columnIndex(index, Long.MAX_VALUE);
+        for (byte[] extra : List.of(
+                new Bytes8().b(0xBB).varint(1).b(0xD5).b(new int[16]).b(0x02).bytes(),   // map<uuid, i32>
+                new Bytes8().b(0xBB).varint(1).b(0x5D).b(0x02).b(new int[16]).bytes(),   // map<i32, uuid>
+                new Bytes8().b(0xBB).varint(1).b(0xDD).b(new int[32]).bytes())) {       // map<uuid, uuid>
+            assertThrows(DataException.class, () -> Thrift.columnIndex(withUnknown(index, extra), Long.MAX_VALUE));
+        }
+        assertEquals(plain, Thrift.columnIndex(withUnknown(index, new Bytes8().b(0xBB, 0x00).bytes()), Long.MAX_VALUE));
+    }
+
+    private static byte[] offsetIndex() throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Util.writeOffsetIndex(new org.apache.parquet.format.OffsetIndex(List.of(new org.apache.parquet.format.PageLocation(4, 30, 0),
+                new org.apache.parquet.format.PageLocation(34, 30, 5))), out);
+        return out.toByteArray();
+    }
+
     private static byte[] pageHeader() throws Exception {
         DataPageHeader dph = new DataPageHeader(3, Encoding.PLAIN, Encoding.RLE, Encoding.RLE);
         dph.setStatistics(new Statistics().setMax_value(new byte[] {9, 9}).setMin_value(new byte[] {1}).setNull_count(0));
@@ -200,7 +275,8 @@ class ThriftBudgetTest {
             switch (kind) {
                 case 0 -> Thrift.columnIndex(raw, budget);
                 case 1 -> Thrift.pageHeader(raw, 0, raw.length, budget);
-                default -> Thrift.fileMetaData(raw, budget);
+                case 2 -> Thrift.fileMetaData(raw, budget);
+                default -> Thrift.offsetIndex(raw, budget);
             }
             return Outcome.DECODED;
         } catch (DataException e) {
@@ -212,8 +288,8 @@ class ThriftBudgetTest {
     }
 
     /**
-     * Seeded mutations (byte flips, truncation, inserted nested unknown fields, large declared lengths) of a
-     * ColumnIndex, a page header and a footer: decoding fails only as malformed or over budget, never otherwise;
+     * Seeded mutations (byte flips, truncation, inserted nested unknown fields, large declared lengths and
+     * counts, UUID maps) of a ColumnIndex, a page header, a footer and an OffsetIndex: decoding fails only as malformed or over budget, never otherwise;
      * the budget is monotone (what decodes within a budget decodes within a larger one, and an over-budget input
      * either decodes or is malformed without a budget); and no input makes the decoder allocate far beyond its
      * own size.
@@ -223,18 +299,21 @@ class ThriftBudgetTest {
         byte[] part = TestDatasets.part(new TestDatasets.Spec(), List.of(TestDatasets.TestRow.of("a", 1), TestDatasets.TestRow.of("b", 2)));
         int length = java.nio.ByteBuffer.wrap(part, part.length - 8, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt();
         byte[] footer = Arrays.copyOfRange(part, part.length - 8 - length, part.length - 8);
-        List<byte[]> seeds = List.of(columnIndex(), pageHeader(), footer);
+        List<byte[]> seeds = List.of(columnIndex(), pageHeader(), footer, offsetIndex());
         List<byte[]> inserts = List.of(
                 new Bytes8().b(0xBD).b(new int[16]).bytes(),
                 new Bytes8().b(0xB9, 0x1D).b(new int[16]).bytes(),
                 new Bytes8().b(0xB9, 0x19, 0x18).binary(3).bytes(),
                 new Bytes8().b(0xBB).varint(1).b(0x88).binary(2).binary(1).bytes(),
                 new Bytes8().b(0xBC, 0x18).binary(4).b(0x00).bytes(),
-                new Bytes8().b(0xB8).varint(1 << 20).bytes());
+                new Bytes8().b(0xB8).varint(1 << 20).bytes(),
+                new Bytes8().b(0xB8).b(0x80, 0x80, 0x80, 0x80, 0x10).bytes(),
+                new Bytes8().b(0xB9, 0xFC).varint(1 << 22).b(0x00).bytes(),
+                new Bytes8().b(0xBB).varint(1).b(0xD5).b(new int[16]).b(0x02).bytes());
         Random random = new Random(20261112);
         int decoded = 0;
-        for (int i = 0; i < 3000; i++) {
-            int kind = i % 3;
+        for (int i = 0; i < 4000; i++) {
+            int kind = i % 4;
             byte[] seed = seeds.get(kind);
             byte[] raw = switch (random.nextInt(4)) {
                 case 0 -> {

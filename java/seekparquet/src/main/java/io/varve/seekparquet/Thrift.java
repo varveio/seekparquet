@@ -20,6 +20,7 @@ import shaded.parquet.org.apache.thrift.protocol.TSet;
 import shaded.parquet.org.apache.thrift.protocol.TStruct;
 import shaded.parquet.org.apache.thrift.transport.TIOStreamTransport;
 import shaded.parquet.org.apache.thrift.transport.TTransport;
+import shaded.parquet.org.apache.thrift.transport.TTransportException;
 
 /**
  * Decodes parquet-format's Thrift structures (from parquet-java's {@code parquet-format-structures},
@@ -153,24 +154,91 @@ final class Thrift {
          * writes it) and checks it against the bytes that remain, before anything is allocated for it.
          */
         private int length() throws TException {
-            int n = 0;
-            for (int shift = 0; ; shift += 7) {
-                if (shift > 28) {
-                    throw new TProtocolException(TProtocolException.INVALID_DATA, "a length varint is longer than 5 bytes");
-                }
-                byte b = readByte();
-                n |= (b & 0x7F) << shift;
-                if ((b & 0x80) == 0) {
-                    break;
-                }
-            }
-            if (n < 0) {
-                throw new TProtocolException(TProtocolException.NEGATIVE_SIZE, "a negative length: " + n);
-            }
+            int n = size32("a length");
             if (n > in.available()) {
                 throw new TProtocolException(TProtocolException.SIZE_LIMIT, "a length of " + n + " beyond the " + in.available() + " bytes left");
             }
             return n;
+        }
+
+        /**
+         * Reads an unsigned varint size of at most 5 bytes into a {@code long}, and {@return it}, refusing an
+         * encoding wider than 5 bytes and a value above {@link Integer#MAX_VALUE} rather than wrapping it.
+         */
+        private int size32(String what) throws TException {
+            long n = 0;
+            for (int i = 0; ; i++) {
+                if (i == 5) {
+                    throw new TProtocolException(TProtocolException.INVALID_DATA, what + " varint is wider than 5 bytes");
+                }
+                int b = readByte() & 0xFF;
+                n |= (long) (b & 0x7F) << (7 * i);
+                if ((b & 0x80) == 0) {
+                    break;
+                }
+            }
+            if (n > Integer.MAX_VALUE) {
+                throw new TProtocolException(TProtocolException.SIZE_LIMIT, what + " of " + n + " is beyond 2^31-1");
+            }
+            return (int) n;
+        }
+
+        /** {@return the Thrift type of a compact-protocol type code}, as the runtime maps it */
+        private static byte type(int compact) throws TProtocolException {
+            return switch (compact) {
+                case 0 -> 0;          // STOP
+                case 1, 2 -> 2;       // BOOL
+                case 3 -> 3;          // BYTE
+                case 4 -> 6;          // I16
+                case 5 -> 8;          // I32
+                case 6 -> 10;         // I64
+                case 7 -> 4;          // DOUBLE
+                case 8 -> 11;         // STRING
+                case 9 -> 15;         // LIST
+                case 10 -> 14;        // SET
+                case 11 -> 13;        // MAP
+                case 12 -> 12;        // STRUCT
+                case 13 -> 16;        // UUID
+                default -> throw new TProtocolException(TProtocolException.INVALID_DATA, "don't know what type: " + compact);
+            };
+        }
+
+        /**
+         * {@return the fewest bytes one element of Thrift type {@code type} takes}, as the runtime's {@code
+         * getMinSerializedSize}, which has no UUID case: a container of UUIDs is refused, as the runtime
+         * refuses it.
+         */
+        private static int minBytes(byte type) throws TTransportException {
+            return switch (type) {
+                case 4 -> 8;          // DOUBLE
+                case 16 -> throw new TTransportException("unrecognized type code");
+                default -> 1;
+            };
+        }
+
+        /** Refuses a container of {@code count} elements of {@code min} bytes each that the bytes left cannot hold. */
+        private void fits(long count, long min, String what) throws TProtocolException {
+            if (count * min > in.available()) {
+                throw new TProtocolException(TProtocolException.SIZE_LIMIT,
+                        what + " of " + count + " elements beyond the " + in.available() + " bytes left");
+            }
+        }
+
+        /**
+         * Reads a list or set header itself, as the runtime's {@code readListBegin} does but with its size
+         * checked by {@link #size32} and against the bytes actually left in the input (the runtime checks the
+         * transport's message allowance, which this transport never decrements), before the generated reader
+         * preallocates for it.
+         */
+        private TList listHeader(String what) throws TException {
+            int h = readByte() & 0xFF;
+            int size = (h >> 4) & 0x0F;
+            byte elem = type(h & 0x0F);
+            if (size == 15) {
+                size = size32(what + " size");
+            }
+            fits(size, minBytes(elem), what);
+            return new TList(elem, size);
         }
 
         private byte[] payload(int n) throws TException {
@@ -249,7 +317,7 @@ final class Thrift {
         @Override
         public TList readListBegin() throws TException {
             enter();
-            TList list = super.readListBegin();
+            TList list = listHeader("a list");
             elements(list.size);
             charge((long) ELEMENT_BYTES * list.size);
             return list;
@@ -264,8 +332,8 @@ final class Thrift {
         @Override
         public TSet readSetBegin() throws TException {
             enter();
-            // TCompactProtocol reads a set header as a list header; super's, so that it counts once.
-            TSet set = new TSet(super.readListBegin());
+            // The compact protocol writes a set header as a list header.
+            TSet set = new TSet(listHeader("a set"));
             elements(set.size);
             charge((long) ELEMENT_BYTES * set.size);
             return set;
@@ -280,7 +348,14 @@ final class Thrift {
         @Override
         public TMap readMapBegin() throws TException {
             enter();
-            TMap map = super.readMapBegin();
+            int size = size32("a map size");
+            int kv = size == 0 ? 0 : readByte() & 0xFF;
+            byte key = type(kv >> 4);
+            byte value = type(kv & 0x0F);
+            if (size > 0) {
+                fits(size, (long) minBytes(key) + minBytes(value), "a map");
+            }
+            TMap map = new TMap(key, value, size);
             elements(map.size);
             charge(2L * ELEMENT_BYTES * map.size);
             return map;
