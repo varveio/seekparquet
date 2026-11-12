@@ -47,25 +47,37 @@ for _, entry := range entries {
 }
 
 // Load projection metadata once for the listed rows, then select the
-// first two entries without I/O. RowSpans preserves the input order.
+// first two entries without I/O. InputRowSpans preserves the input order.
 all, err := d.PlanRows(ctx, spans, []string{"size"}, nil)
 if err != nil {
 	log.Fatal(err)
 }
-selected, err := all.SelectRows(all.RowSpans()[:2])
+inputs := all.InputRowSpans()[:2]
+selected, err := all.SelectRows(inputs)
 if err != nil {
 	log.Fatal(err)
 }
-var sum int64
+sums := make([]int64, len(inputs))
 var scan seekparquet.ReadStats
 err = selected.ScanValues(ctx, &scan, func(b *seekparquet.ValueBatch) error {
 	column := b.Column(0)
 	if !column.Present() || column.Kind() != seekparquet.KindInt64 {
 		return fmt.Errorf("size must be an INT64 column")
 	}
+	start, _ := b.Start().Ordinal()
 	for i := range b.Len() {
-		if !column.IsNull(i) {
-			sum += column.Int64(i)
+		if column.IsNull(i) {
+			continue
+		}
+		// Union normalization may join adjacent inputs into one batch.
+		// Distribute each row by ordinal, including to overlapping inputs.
+		ordinal := start + int64(i)
+		for j, span := range inputs {
+			lo, _ := span.Start.Ordinal()
+			hi, _ := span.End.Ordinal()
+			if lo <= ordinal && ordinal < hi {
+				sums[j] += column.Int64(i)
+			}
 		}
 	}
 	return nil
@@ -73,12 +85,12 @@ err = selected.ScanValues(ctx, &scan, func(b *seekparquet.ValueBatch) error {
 if err != nil {
 	log.Fatal(err)
 }
-fmt.Printf("selected size sum: %d; key pages decoded: %d\n", sum, scan.KeyPagesDecoded)
+fmt.Printf("size sums per input: %v; key pages decoded: %d\n", sums, scan.KeyPagesDecoded)
 // Output:
 // logs/2026/01/: 30 rows, exact=true, reads=0
 // logs/2026/02/: 40 rows, exact=true, reads=0
 // logs/2026/03/: 30 rows, exact=true, reads=0
-// selected size sum: 74822517816; key pages decoded: 0
+// size sums per input: [31543127898 43279389918]; key pages decoded: 0
 ```
 <!-- /snippet -->
 
@@ -87,23 +99,37 @@ fmt.Printf("selected size sum: %d; key pages decoded: %d\n", sum, scan.KeyPagesD
 Run the compiled examples from the repository root with `go -C go test -run '^Example_count' .`.
 The fixture has three common prefixes under `logs/2026/`; a result limit of four lets traversal establish their ends.
 This is fixture-specific: a full page ending on a common prefix can leave that entry's end unknown.
+A listing `End` inside a common prefix's keys can also leave its end unknown, even without a full result page.
+Cursor-clipped starts identify the first remaining candidate row; they do not include earlier rows under the prefix.
+Both row cursors and prefix cursors can clip a start inside a common prefix, and the current reader establishes that start.
+Unknown boundaries must never be treated as empty spans or zero counts; use the [key-range fallback](#resolve-unknown-rows).
 The listing itself reads storage; only the subsequent column-free `PlanRows` and `Count` calls cost zero reads.
+There is no promise of an exact zero-request count for every listing entry.
 
 `PlanRows` unions overlapping spans, counting each row once in dataset order.
 `Count` returns both the number and its exactness; do not present a provisional count as exact.
-With no columns, unchecked contributing parts can leave the count provisional.
+Even with known positions, a column-free plan's count is inexact if any contributing part was unchecked at plan construction.
+This includes a span crossing an unopened part between the listing's established boundaries.
+Count exactness is a snapshot; checking more parts later does not update an existing plan's result.
 Planning with columns checks those parts and loads projection metadata, so the resulting count is exact.
 Count exactness does not certify unread keys or values.
 
-`RowSpans()` returns one span per input, in input order, before the plan unions overlaps.
+`InputRowSpans()` returns the caller's original spans, including overlaps and empties, in input order, rather than the normalized union.
+For a key plan, these are the resolved input selections; a `Split` shard has one input per span of the plan's rows in it.
 `SelectRows` uses the parent plan's projection and performs no I/O.
 Its spans must have known boundaries from the same dataset; each nonempty span must fit within the parent's selected rows.
 Unknown or foreign boundaries and reversed spans return `ErrInvalidRequest`, as do nonempty spans outside the parent's selected rows.
 
-`ScanValues` yields borrowed, read-only batches in dataset order; each batch stays within a row group, projected pages, and a selected span.
-`ValueBatch.Start()` supplies the first row's owned position, and `Len()` supplies the row count.
+`ScanValues` yields borrowed, read-only batches in dataset order; each batch stays within a row group, projected pages, and a normalized selected span.
+A batch may cross adjacent input-span boundaries after union normalization.
+For per-input aggregation, distribute each row by ordinal as the example does; overlapping inputs each receive their matching rows.
+Only scan-produced batches carry data; a zero `ValueBatch` is empty.
+`ValueBatch.Start()` supplies the first row's independently owned position, and `Len()` supplies the row count.
+Ordinals and counts are `int64`; batch indexes and lengths are `int` on both 32-bit and 64-bit systems.
+Compute `start + int64(i)`; converting a dataset ordinal to `int` can truncate it on 32-bit systems.
 `Column(c)` uses the projection order returned by `Plan.Columns()`.
-Copy retained values with `Column(c).Value(i).Clone()` before the callback returns.
+Copying a `ValueBatch` or `ColumnView` does not retain values.
+Use `Column(c).Value(i).Clone()` before the callback returns to retain an owning value.
 The scan does not decode key pages unless the key column is explicitly projected.
 
 ## Resolve unknown rows
@@ -141,7 +167,7 @@ if err != nil {
 }
 n, exact := p.Count()
 fmt.Printf("%s: %d rows, exact=%t\n", entry.Bytes(), n, exact)
-fmt.Println("resolved spans:", len(p.RowSpans()))
+fmt.Println("resolved spans:", len(p.InputRowSpans()))
 // Output:
 // end known: false
 // logs/2026/01/: 30 rows, exact=true
@@ -153,13 +179,18 @@ For a common prefix, use `PrefixSpan(entry.CommonPrefix)` as shown.
 For a row entry, `Rows` is already known and selects that single row, including with repeated keys.
 `KeySpan(entry.Row.Key)` would select its entire key group instead.
 When reproducing a restricted listing's candidates, intersect the prefix span with `ListQuery.End` and preserve any row cursor in the selection.
-A prefix cursor excludes whole prefixes; it cannot be passed as a `Selection.Cursor`.
+For a prefix cursor, also raise the span's inclusive `Start` to the byte successor of the cursor's prefix if greater.
+If there is no successor, no candidates remain.
+This excludes every key beginning with the cursor's prefix, which may clip a returned common prefix when the cursor is arbitrary.
+A prefix cursor cannot be passed as a `Selection.Cursor`.
 The fallback may read key pages to establish boundaries, so it has no zero-read promise.
-Its `RowSpans()` can then be reused with `PlanRows` on the same dataset handle.
+Check its count exactness too: resolving boundaries can still leave contributing parts unchecked.
+For an exact count, plan with a projected column, or call `Verify` and rebuild the column-free plan.
+Its `InputRowSpans()` can then be reused with `PlanRows` on the same dataset handle.
 
 ## Estimate the work
 
-Count-only row planning needs no storage requests or rounds once the positions are available.
+Count-only row planning needs no storage requests or rounds once both positions are known, but its count may still be inexact.
 Planning with columns checks selected parts and loads projected OffsetIndexes that the reader has not retained.
 It does not re-resolve row positions through keys or read projected data pages.
 `SelectRows` reuses the parent plan's retained projection metadata without storage I/O.
@@ -186,9 +217,11 @@ Choose a mode with `WithCacheMode`; permitted caching does not promise a cache h
 
 ## Respect the dataset lifetime
 
-Keep the dataset open while planning or scanning with its positions.
+Keep the dataset open for `Dataset.PlanRows`, scans, and `Plan.Split`.
+`Split` can read key pages for repeated keys and requires the open Dataset even when it needs no reads.
 Positions belong to that handle and cannot be transferred to another handle opened on the same Source.
-After `Close`, `Count`, `ProjectedBytes`, `Columns`, `RowSpans`, and `SelectRows` remain usable as in-memory plan operations.
+Positions remain inspectable after `Close`.
+`Count`, `ProjectedBytes`, `Columns`, `InputRowSpans`, and `SelectRows` remain usable as in-memory plan operations after close.
 Their results do not reopen storage; scanning a plan or calling `Dataset.PlanRows` then fails with `ErrClosed` for valid arguments.
 
 `ScanValues` follows `Plan.Scan` for cancellation, callback errors, and `Stop`.

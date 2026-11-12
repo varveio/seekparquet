@@ -58,13 +58,20 @@ Runnable examples are in [example_test.go](example_test.go).
 
 Use row positions to count and aggregate rows under sorted hierarchical keys, independently of their application meaning.
 `RowPosition` is a boundary in one dataset handle's row order; its zero value is unknown.
-`RowSpan` selects `[Start, End)`. `ListEntry.Rows` describes candidate rows, restricted by the listing's prefix, end, and cursor.
+`RowSpan` selects `[Start, End)`; equal known boundaries are empty, while its zero value is incomplete and invalid as input.
+This differs from the key-based `Span`, whose zero value selects every key.
+`ListEntry.Rows` describes candidate rows, restricted by the listing's prefix, end, and cursor; unknown boundaries are legitimate output.
 Check both boundaries with `Ordinal()`; a listing does not read extra bytes to complete them.
-In particular, a common prefix at the result limit can have an unknown end.
+A common prefix at the result limit or clipped by `End` can have an unknown end.
+Cursor-clipped starts are known and identify the first remaining candidate row, even inside a common prefix or row group.
+Unknown must never be treated as empty or zero; use `Dataset.Plan` over the corresponding key selection, which may read storage.
+There is no promise of an exact zero-request count for every listing entry.
 
 `Dataset.PlanRows` without columns performs no storage I/O. `Count()` costs no I/O and reports whether the count is exact.
-Unchecked contributing parts make a count provisional; planning with columns checks those parts and locates projected pages.
-`Plan.RowSpans()` returns the inputs before union normalization.
+Even with known positions, a count is inexact if any contributing part was unchecked at plan construction.
+Planning with columns checks those parts and locates projected pages.
+`Plan.InputRowSpans()` returns the original inputs, including overlaps and empties, rather than the normalized union.
+A `Split` shard has one input per span of the plan's rows in it.
 `Plan.SelectRows` selects contained spans with the parent's projection, without I/O, counting overlapping rows once.
 
 <!-- snippet: go/example_docs_test.go#Example_countAndAggregatePrefix -->
@@ -102,25 +109,37 @@ for _, entry := range entries {
 }
 
 // Load projection metadata once for the listed rows, then select the
-// first two entries without I/O. RowSpans preserves the input order.
+// first two entries without I/O. InputRowSpans preserves the input order.
 all, err := d.PlanRows(ctx, spans, []string{"size"}, nil)
 if err != nil {
 	log.Fatal(err)
 }
-selected, err := all.SelectRows(all.RowSpans()[:2])
+inputs := all.InputRowSpans()[:2]
+selected, err := all.SelectRows(inputs)
 if err != nil {
 	log.Fatal(err)
 }
-var sum int64
+sums := make([]int64, len(inputs))
 var scan seekparquet.ReadStats
 err = selected.ScanValues(ctx, &scan, func(b *seekparquet.ValueBatch) error {
 	column := b.Column(0)
 	if !column.Present() || column.Kind() != seekparquet.KindInt64 {
 		return fmt.Errorf("size must be an INT64 column")
 	}
+	start, _ := b.Start().Ordinal()
 	for i := range b.Len() {
-		if !column.IsNull(i) {
-			sum += column.Int64(i)
+		if column.IsNull(i) {
+			continue
+		}
+		// Union normalization may join adjacent inputs into one batch.
+		// Distribute each row by ordinal, including to overlapping inputs.
+		ordinal := start + int64(i)
+		for j, span := range inputs {
+			lo, _ := span.Start.Ordinal()
+			hi, _ := span.End.Ordinal()
+			if lo <= ordinal && ordinal < hi {
+				sums[j] += column.Int64(i)
+			}
 		}
 	}
 	return nil
@@ -128,27 +147,32 @@ err = selected.ScanValues(ctx, &scan, func(b *seekparquet.ValueBatch) error {
 if err != nil {
 	log.Fatal(err)
 }
-fmt.Printf("selected size sum: %d; key pages decoded: %d\n", sum, scan.KeyPagesDecoded)
+fmt.Printf("size sums per input: %v; key pages decoded: %d\n", sums, scan.KeyPagesDecoded)
 // Output:
 // logs/2026/01/: 30 rows, exact=true, reads=0
 // logs/2026/02/: 40 rows, exact=true, reads=0
 // logs/2026/03/: 30 rows, exact=true, reads=0
-// selected size sum: 74822517816; key pages decoded: 0
+// size sums per input: [31543127898 43279389918]; key pages decoded: 0
 ```
 <!-- /snippet -->
 
 The [counting guide](../docs/guides/counting.md) covers unknown boundaries, key-range fallback, request costs, and byte estimates.
 `Plan.ScanValues` reads projected columns by row position without implicit key decoding or equal-key offsets.
 `ValueBatch.Start()` identifies its first row; `Len()` and `Column(c)` expose its rows and projection slots.
-The batch, views, and value bytes are borrowed until the callback returns; clone retained values.
-Batches stay within row groups, projected pages, and selected spans.
+The batch, views, and value bytes are borrowed until the callback returns.
+Copying a `ValueBatch` or `ColumnView` does not retain values; `Value(i).Clone()` does, and `Start()` is independently owned.
+Only scan-produced batches carry data; a zero `ValueBatch` is empty.
+Batches stay within row groups, projected pages, and normalized selected spans, and may cross adjacent input-span boundaries.
+For per-input aggregation, distribute rows by ordinal as the example does.
+Ordinals and counts are `int64`; batch indexes and lengths are `int`. Compute `start + int64(i)` on 32-bit and 64-bit systems.
 Success does not certify unread key pages; an explicitly projected key column is read as a value column.
 
 `ScanValues` honors `CacheDefault`, permitting Source-cache lookup and admission under storage policy.
 `Plan.Scan` uses `CacheBypass` for that mode. Use `WithCacheMode` to choose a mode explicitly.
-`Count`, `ProjectedBytes`, `Columns`, `RowSpans`, and `SelectRows` remain usable after `Dataset.Close`.
+`Count`, `ProjectedBytes`, `Columns`, `InputRowSpans`, and `SelectRows` remain usable after `Dataset.Close`.
 Scanning or calling `Dataset.PlanRows` then fails with `ErrClosed` for valid arguments.
-Positions cannot be transferred to another dataset handle.
+Positions remain inspectable after close and cannot be transferred to another dataset handle.
+`Plan.Split` requires the open Dataset, since it may read key pages for repeated keys.
 
 ## Writing
 
@@ -196,7 +220,7 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Rows`, `Get`, `Scan`, `List`, `Plan`, `PlanRows`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `Plan` with `Count`, `ProjectedBytes`, `Columns`, `RowSpans`, `SelectRows`, `Scan`, `ScanValues` and `Split`; `RowPosition` and `RowSpan`; the requests `Span` (`KeySpan`, `PrefixSpan`), `Selection`, `Query`, `ListQuery` and `Cursor` (`RowCursor`, `PrefixCursor`, `Encode`, `ParseCursor`); the results `Row`, `Value`, `ListEntry`, `Batch`, `ValueBatch` and `ColumnView`; `ReadStats`; `Column`, a part's column as its footer declares it, with `Kind`, `Repetition` and `Logical`; `OpenOptions` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Rows`, `Get`, `Scan`, `List`, `Plan`, `PlanRows`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `Plan` with `Count`, `ProjectedBytes`, `Columns`, `InputRowSpans`, `SelectRows`, `Scan`, `ScanValues` and `Split`; `RowPosition` and `RowSpan`; the requests `Span` (`KeySpan`, `PrefixSpan`), `Selection`, `Query`, `ListQuery` and `Cursor` (`RowCursor`, `PrefixCursor`, `Encode`, `ParseCursor`); the results `Row`, `Value`, `ListEntry`, `Batch`, `ValueBatch` and `ColumnView`; `ReadStats`; `Column`, a part's column as its footer declares it, with `Kind`, `Repetition` and `Logical`; `OpenOptions` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
 | `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
 | `cmd/seekparquet` | the `seekparquet validate` command |
@@ -243,12 +267,14 @@ first and last keys must equal its manifest bounds. That suits a long-lived read
 caller that wants every part's fault before its first query; it costs reads across the whole dataset.
 Without it the same checks happen when a read reaches those parts and pages.
 
-Every read checks each row group's key page index before it uses the group, and each key page it decodes
+Reads through keys check each key page index they use, and each key page they decode
 (CHECK-2): the page header matches its OffsetIndex entry, one non-empty key per row, valid UTF-8 for a
 `STRING` key, non-decreasing (strictly ascending when `key.unique` is true), inside the page's bounds and the
 part's manifest bounds, and in dataset order with every other page the request decoded. Page bounds are used
 as Parquet defines them, as bounds whatever their length; overlapping bounds and `boundary_order` are never
 relied on.
+`PlanRows` without columns performs no storage I/O; `ScanValues` reads projected values without implicit key-index access or key decoding.
+Explicitly projecting the key column requests its values.
 
 What is **not** certified: rows a request does not decode (a query that succeeds says nothing about the pages
 it skipped), values beyond decoding them, `sha256` digests, and that files are unchanged after opening. Full

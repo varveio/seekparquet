@@ -51,7 +51,7 @@ func TestPlanColumnsReservesBeforeRetaining(t *testing.T) {
 	if _, exact := p.ProjectedBytes(); !exact {
 		t.Fatal("transient locations should price the original plan exactly")
 	}
-	s, err := p.SelectRows(p.RowSpans())
+	s, err := p.SelectRows(p.InputRowSpans())
 	must(t, err)
 	if _, exact := s.ProjectedBytes(); exact {
 		t.Fatal("unretained locations should make selected pricing inexact")

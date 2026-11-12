@@ -24,7 +24,8 @@ import (
 // metadata proves (or the row positions PlanRows is given), the row
 // counts of the row groups, from footers a part check verified (CHECK-1),
 // and the OffsetIndex row positions. Scan decodes every row and checks
-// every key page it reads; ScanValues reads no key page.
+// every key page it reads; ScanValues reads key values only when explicitly
+// projected.
 //
 // A plan with columns shares the checked page locations the Dataset keeps
 // within Limits.OffsetIndexMemory, read-only, to price SelectRows. Other
@@ -35,7 +36,7 @@ type Plan struct {
 	// spans are the selected rows: disjoint, ascending and not adjacent.
 	spans []span
 	// inputs are the rows of each input selection or row span, in input
-	// order, before the union (RowSpans).
+	// order, before the union (InputRowSpans).
 	inputs []rowRange
 	rows   int64
 	exact  bool

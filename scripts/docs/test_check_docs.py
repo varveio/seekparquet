@@ -172,5 +172,78 @@ class DocumentationContracts(unittest.TestCase):
         self.assertIn('macOS CI runs selectively by changed paths', page)
 
 
+    def test_input_row_spans_contract(self):
+        source = self.read('go/rows.go')
+        for text in ("caller's original input row spans", 'including overlaps and',
+                     "plan's normalized union", 'A shard of Plan.Split'):
+            self.assertIn(text, source)
+        parity = self.read('docs/data/parity.json')
+        self.assertIn('"go": "Plan.InputRowSpans", "java": "Plan.inputRowSpans"', parity)
+        self.assertNotIn('func (plan *Plan) RowSpans()', source)
+
+    def test_counting_requires_boundary_and_part_evidence(self):
+        for name in ('go/README.md', 'docs/concepts.md', 'docs/guides/counting.md', 'go/CHANGELOG.md'):
+            with self.subTest(page=name):
+                page = self.read(name)
+                for text in ('exact zero-request count for every listing entry',
+                             'unchecked at plan construction', 'Dataset.Plan', 'zero'):
+                    self.assertIn(text, page)
+        guide = self.read('docs/guides/counting.md')
+        for text in ('Cursor-clipped starts identify the first remaining candidate row',
+                     'A listing `End` inside a common prefix', 'byte successor',
+                     'Unknown boundaries must never be treated as empty spans or zero counts'):
+            self.assertIn(text, guide)
+
+    def test_row_positions_remain_inspectable_after_close(self):
+        source = self.read('go/rows.go')
+        self.assertIn('after Dataset.Close', source)
+        self.assertNotIn('until their Dataset closes', source)
+        guide = self.read('docs/guides/counting.md')
+        self.assertIn('Positions remain inspectable after `Close`', guide)
+        self.assertIn('`SelectRows` remain usable as in-memory plan operations after close', guide)
+        self.assertIn('`Split` can read key pages for repeated keys', guide)
+
+    def test_row_span_zero_is_invalid_input(self):
+        source = self.read('go/rows.go')
+        for text in ('Equal known boundaries', 'zero value is incomplete and invalid as input',
+                     'Unknown boundaries are legitimate listing output',
+                     'Span, whose zero value selects every key'):
+            self.assertIn(text, source)
+
+    def test_value_batch_ownership_and_grouping(self):
+        source = self.read('go/valuescan.go')
+        for text in ('Copying a ValueBatch or', 'does not retain values',
+                     'independently owned position', 'cross adjacent input-span boundaries',
+                     'Only batches produced by ScanValues carry data'):
+            self.assertIn(text, source)
+        guide = self.read('docs/guides/counting.md')
+        for text in ('Copying a `ValueBatch` or `ColumnView` does not retain values',
+                     'distribute each row by ordinal', 'start + int64(i)',
+                     'sums[j] += column.Int64(i)'):
+            self.assertIn(text, guide)
+
+    def test_row_ordinals_are_not_batch_indexes(self):
+        source = self.read('go/valuescan.go')
+        for text in ('ordinals and counts are int64', 'indexes and lengths are int',
+                     'start + int64(i)', 'without converting start to int'):
+            self.assertIn(text, source)
+        self.assertIn('32-bit and 64-bit systems', self.read('docs/guides/counting.md'))
+
+    def test_shared_scan_docs_include_value_scans(self):
+        self.assertIn('Plan.ScanValues early with a nil error', self.read('go/batch.go'))
+        source = self.read('go/value.go')
+        self.assertIn('projection slot of a Batch or', source)
+        self.assertIn('Scan or ScanValues callback', source)
+        self.assertIn('List, Plan, PlanRows, BuildListIndex or Verify', self.read('go/stats.go'))
+        self.assertIn('A read through keys is routed', self.read('go/doc.go'))
+        self.assertIn('Explicitly projecting the key column requests its values', self.read('go/stats.go'))
+
+    def test_listing_comments_describe_generic_keys(self):
+        source = self.read('go/query.go').split('// ListQuery is', 1)[1].split('// IsPrefix reports', 1)[0]
+        self.assertNotIn('S3', source)
+        self.assertNotIn('folder object', source)
+        self.assertIn("row's key is the prefix itself", source)
+
+
 if __name__ == '__main__':
     unittest.main()

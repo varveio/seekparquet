@@ -60,7 +60,7 @@ func Example_readme() {
 	// page 2: logs/2026/03/
 }
 
-// Count listed entries without reading storage, then aggregate selected rows.
+// Count known listing spans without storage reads, then aggregate per input span.
 func Example_countAndAggregatePrefix() {
 	ctx := context.Background()
 	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
@@ -95,25 +95,37 @@ func Example_countAndAggregatePrefix() {
 	}
 
 	// Load projection metadata once for the listed rows, then select the
-	// first two entries without I/O. RowSpans preserves the input order.
+	// first two entries without I/O. InputRowSpans preserves the input order.
 	all, err := d.PlanRows(ctx, spans, []string{"size"}, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	selected, err := all.SelectRows(all.RowSpans()[:2])
+	inputs := all.InputRowSpans()[:2]
+	selected, err := all.SelectRows(inputs)
 	if err != nil {
 		log.Fatal(err)
 	}
-	var sum int64
+	sums := make([]int64, len(inputs))
 	var scan seekparquet.ReadStats
 	err = selected.ScanValues(ctx, &scan, func(b *seekparquet.ValueBatch) error {
 		column := b.Column(0)
 		if !column.Present() || column.Kind() != seekparquet.KindInt64 {
 			return fmt.Errorf("size must be an INT64 column")
 		}
+		start, _ := b.Start().Ordinal()
 		for i := range b.Len() {
-			if !column.IsNull(i) {
-				sum += column.Int64(i)
+			if column.IsNull(i) {
+				continue
+			}
+			// Union normalization may join adjacent inputs into one batch.
+			// Distribute each row by ordinal, including to overlapping inputs.
+			ordinal := start + int64(i)
+			for j, span := range inputs {
+				lo, _ := span.Start.Ordinal()
+				hi, _ := span.End.Ordinal()
+				if lo <= ordinal && ordinal < hi {
+					sums[j] += column.Int64(i)
+				}
 			}
 		}
 		return nil
@@ -121,12 +133,12 @@ func Example_countAndAggregatePrefix() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("selected size sum: %d; key pages decoded: %d\n", sum, scan.KeyPagesDecoded)
+	fmt.Printf("size sums per input: %v; key pages decoded: %d\n", sums, scan.KeyPagesDecoded)
 	// Output:
 	// logs/2026/01/: 30 rows, exact=true, reads=0
 	// logs/2026/02/: 40 rows, exact=true, reads=0
 	// logs/2026/03/: 30 rows, exact=true, reads=0
-	// selected size sum: 74822517816; key pages decoded: 0
+	// size sums per input: [31543127898 43279389918]; key pages decoded: 0
 }
 
 // Resolve an unknown listing boundary with a key-range plan.
@@ -158,7 +170,7 @@ func Example_countPrefixUnknownRows() {
 	}
 	n, exact := p.Count()
 	fmt.Printf("%s: %d rows, exact=%t\n", entry.Bytes(), n, exact)
-	fmt.Println("resolved spans:", len(p.RowSpans()))
+	fmt.Println("resolved spans:", len(p.InputRowSpans()))
 	// Output:
 	// end known: false
 	// logs/2026/01/: 30 rows, exact=true

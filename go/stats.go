@@ -5,9 +5,10 @@ package seekparquet
 
 import "sync"
 
-// ReadStats counts the work of one operation: Dataset.Rows, Get, Scan or
-// List, Dataset.Plan, Plan.Split or Plan.Scan. Pass a *ReadStats as the
-// operation's statistics argument to receive it: it is reset when the
+// ReadStats counts the work of one operation: Dataset.Rows, Get, Scan,
+// List, Plan, PlanRows, BuildListIndex or Verify; or Plan.Split, Scan or
+// ScanValues. Pass a *ReadStats as the operation's statistics argument to
+// receive it: it is reset when the
 // operation starts and filled as it runs. The counts are exact for the
 // operation and are filled whether it succeeds or fails, up to the point it
 // stopped. Add sums the counts of several operations.
@@ -24,7 +25,9 @@ import "sync"
 // page index loaded by an earlier request is reused, not loaded, a
 // projected column chunk's OffsetIndex kept by an earlier request
 // (Limits.OffsetIndexMemory) is not read again, and a decoded first key is
-// reused without decoding.
+// reused without decoding. PlanRows without columns does no storage I/O;
+// ScanValues accesses projected values without implicit key-index reads or
+// key decoding. Explicitly projecting the key column requests its values.
 type ReadStats struct {
 	// ListIndexSkips counts skips answered by the optional slash index.
 	ListIndexSkips int64

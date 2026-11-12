@@ -6,12 +6,23 @@ versioning; while it is v0, minor versions may change the API.
 ## Unreleased
 
 - Added the row-position API: `RowPosition`, `RowSpan`, `ListEntry.Rows`,
-  `Dataset.PlanRows`, `Plan.RowSpans`, `Plan.SelectRows`, `ValueBatch`, and
+  `Dataset.PlanRows`, `Plan.InputRowSpans`, `Plan.SelectRows`, `ValueBatch`, and
   `Plan.ScanValues`. Listings expose candidate-row boundaries without additional I/O;
-  boundaries not established remain unknown. Column-free row planning and contained
-  selection perform no I/O. Value-only scans execute row positions without implicit
+  boundaries not established remain unknown, never empty or zero rows. A common prefix
+  at the result limit or clipped by `End` can lack an end; cursor-clipped starts identify
+  the first remaining candidate row. Resolve unknowns with `Dataset.Plan` over the
+  corresponding key selection, preserving listing restrictions; this may read storage.
+  Column-free row planning and contained selection perform no I/O. Even with known
+  positions, counts are inexact if any contributing part was unchecked at plan construction.
+  There is no promise of an exact zero-request count for every listing entry.
+  Value-only scans execute row positions without implicit
   key decoding and allow Source caching under `CacheDefault`, while `Plan.Scan`
   defaults to bypass. Counts and projected bytes report their exactness. No format change.
+- Renamed `Plan.RowSpans` to `Plan.InputRowSpans` (pending Java name
+  `inputRowSpans`) to identify original inputs, including overlaps and empties,
+  rather than the normalized union. This is a breaking change to an API merged
+  hours ago with no release; callers rename the method. Positions remain inspectable
+  after close, and `SelectRows` remains allowed; scans and `Split` require the open Dataset.
 - Scans, listings, and projected reads fetch bounded windows through `RangeReader`
   when available, with scalar `ReadAt` fallback. Windows hold up to 64 MiB of fetched,
   undecoded bytes per operation, not per dataset. Listing read-ahead is adaptive for a

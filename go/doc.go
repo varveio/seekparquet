@@ -6,8 +6,8 @@
 // into key-disjoint parts and committed by a manifest.json (SeekParquet
 // format 1, draft revision 1, stamped format_version 0).
 //
-// A read is routed to a part by its manifest bounds and to a row group by
-// the decoded first keys of the row groups; the key column's ColumnIndex
+// A read through keys is routed to a part by its manifest bounds and to a
+// row group by the decoded first keys of the row groups; the key column's ColumnIndex
 // and OffsetIndex locate the page that can hold the start; only that page
 // onward is decoded, in unsigned byte order of the keys. Keys are bytes;
 // nothing assumes UTF-8 unless the key column is annotated STRING.
@@ -80,17 +80,22 @@
 // decodes. A count certifies only the rows at the ends it decoded
 // (CHECK-4).
 //
-// Dataset.PlanRows plans RowSpans from reader-produced RowPositions,
+// Dataset.PlanRows plans RowSpan values from reader-produced RowPositions,
 // including ListEntry.Rows when both boundaries are known. With no
 // columns it performs no storage I/O; Count still reports whether the
-// contributing parts have been checked. Plan.RowSpans preserves the input
+// contributing parts were checked at plan construction, even with known
+// positions. Unknown listing boundaries are not empty: use Dataset.Plan on
+// the corresponding key selection to resolve them, possibly reading storage.
+// Plan.InputRowSpans preserves overlaps and empties in the original input
 // spans before union normalization. Plan.SelectRows selects contained
 // spans with the same projection without I/O, including after Close.
 // Plan.ScanValues reads projected columns by row position as borrowed
 // ValueBatch batches, without implicit key decoding or equal-key offsets.
 // It permits Source-cache lookup and admission under CacheDefault;
 // Plan.Scan uses CacheBypass for that mode. Scans fail with ErrClosed
-// after the Dataset closes; in-memory plan inspection remains usable.
+// after the Dataset closes; positions remain inspectable and in-memory plan
+// inspection and SelectRows remain usable. Split requires the open Dataset:
+// it can read key pages to keep groups of equal keys whole.
 //
 // Plan.Split divides a plan into shards along row-group boundaries,
 // never inside a group of equal keys, balanced by projected bytes (or rows
@@ -132,8 +137,8 @@
 // A projected Value is one of three states: absent, when the row's part
 // lacks the column (COL-2); a null stored in the column; or a physical
 // Parquet value of a Kind, read with typed accessors. Absent is not null.
-// A ColumnView reads one projected column of a batch in place. Schema
-// descriptions (Column) use this package's Kind, Repetition and Logical.
+// A ColumnView reads one projected column of a Batch or ValueBatch in place.
+// Schema descriptions (Column) use this package's Kind, Repetition and Logical.
 // No parquet-go type appears in the read API; package write takes a
 // parquet-go schema.
 //

@@ -77,7 +77,7 @@ A dash means the language has no counterpart. Names are checked against the code
 | Split a plan into shards | `Plan.Split` | `Plan.split` |  |
 | Scan a plan | `Plan.Scan` | `Plan.scan` |  |
 | Plan a union of row intervals | `Dataset.PlanRows` | `Dataset.planRows` | Java pending on planned: Java browse API. |
-| Input row intervals before union normalization | `Plan.RowSpans` | `Plan.rowSpans` | Java pending on planned: Java browse API. |
+| Input row intervals before union normalization | `Plan.InputRowSpans` | `Plan.inputRowSpans` | Java pending on planned: Java browse API. |
 | Select contained rows without I/O | `Plan.SelectRows` | `Plan.selectRows` | Java pending on planned: Java browse API. |
 | Scan projected values by row position | `Plan.ScanValues` | `Plan.scanValues` | Java pending on planned: Java browse API. |
 | Borrowed projected values | `ValueBatch` | `ValueBatch` | Java pending on planned: Java browse API. |

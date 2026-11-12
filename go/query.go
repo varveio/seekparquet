@@ -196,8 +196,8 @@ type ListEntry struct {
 	// otherwise, and always nil for a row entry. Without a cursor, or after
 	// a prefix cursor, it is the first row stored at the prefix's exact key
 	// whenever one is a candidate, so a listing pairs a prefix with the row
-	// at its exact key (an S3-style "a/" folder object) without another
-	// request. Its values cost the value pages a row entry's would.
+	// at its exact key without another request. Its values cost the value
+	// pages a row entry's would.
 	Exact *Row
 	// Rows identifies the candidate rows represented by this entry.
 	// For a row entry it covers exactly that row. For a common prefix it
@@ -211,10 +211,15 @@ type ListEntry struct {
 	// Rows. A boundary it cannot establish is the zero RowPosition.
 	// The positions are owned values, independent of result byte slices.
 	//
-	// A common prefix's End is unknown when the listing stops at Limit on
-	// it, and when End falls inside the prefix's keys. Its Start identifies
-	// the first candidate row, including when a cursor resumes inside a
-	// row group.
+	// A common prefix's End can be unknown when the listing stops at Limit
+	// on it, and when End falls inside the prefix's keys. Its Start identifies
+	// the first remaining candidate row, including when a row or prefix
+	// cursor clips the start inside a common prefix or row group.
+	// Unknown does not mean empty or zero rows. Check both Ordinals before
+	// PlanRows; otherwise use Dataset.Plan with the corresponding key
+	// selection (preserving End and cursor restrictions), which may read
+	// storage. Even known boundaries do not guarantee an exact Plan.Count:
+	// contributing parts must have been checked when the plan was built.
 	Rows RowSpan
 }
 
