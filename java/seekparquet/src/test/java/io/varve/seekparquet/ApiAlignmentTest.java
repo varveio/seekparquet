@@ -294,6 +294,11 @@ class ApiAlignmentTest {
         assertEquals(set.get("PageValues"), (long) l.pageValues());
         assertEquals(set.get("IndexMemory"), l.indexMemory());
         assertEquals(set.get("OffsetIndexMemory"), l.offsetIndexMemory());
+        // Go-only until Java batched reads land: Java retains no raw page-index bytes from a part's end, so it has
+        // no counterpart of Go's PageIndexCacheMemory. Each name must still be a default of go/limits.go.
+        for (String goOnly : List.of("PageIndexCacheMemory")) {
+            assertTrue(set.remove(goOnly) != null, "a Go-only default is no longer in go/limits.go: " + goOnly);
+        }
         assertEquals(8, set.size(), "every shifted default of go/limits.go is compared: " + set);
         assertEquals(Long.parseLong(group(src, "l\\.Parts = ([0-9_]+)").replace("_", "")), l.parts());
         assertEquals(Long.parseLong(group(src, "l\\.GetRows = (\\d+)")), l.getRows());
@@ -309,7 +314,7 @@ class ApiAlignmentTest {
         // The schema nesting bound of go/footer.go's checkSchema.
         String footer = Files.readString(go.resolve("footer.go"), StandardCharsets.UTF_8);
         assertEquals(Long.parseLong(group(footer, "if depth > (\\d+) \\{\\s*return errors.New\\(\"the schema is nested too deeply\"\\)")), PartSchema.MAX_NESTING);
-        assertEquals(1, OpenOptions.DEFAULT.verifyConcurrency(), "Go verifies one part at a time");
+        assertEquals(1, OpenOptions.DEFAULT.verifyConcurrency(), "Java verifies one part at a time by default");
         assertEquals(ReadOptions.DEFAULT.cancellation(), Cancellation.none());
     }
 
