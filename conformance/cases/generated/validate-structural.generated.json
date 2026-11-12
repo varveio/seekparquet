@@ -6,7 +6,8 @@
   "description": "Validation at the structural level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code. An open-stage refusal makes structural failed with its refusal code; an unsupported feature makes structural incomplete with its unsupported code and a non-empty reason. Dependent levels are incomplete.",
   "families": {
     "validate-structural/valid-dataset": "every valid dataset completes this level and its prerequisites",
-    "validate-structural/fault-at-lowest-level": "each fault at the lowest validation level that detects it (validation_level in generators/faults.json)"
+    "validate-structural/fault-at-lowest-level": "each fault at the lowest validation level that detects it (validation_level in generators/faults.json)",
+    "validate-structural/0001": "Proposal 0001 part B validation classifications"
   },
   "cases": [
     {
@@ -3954,6 +3955,58 @@
           "structural": {
             "result": "failed",
             "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/annotation-decimal-int64-p19-unprojected",
+      "family": "validate-structural/0001",
+      "fault_id": "annotation-decimal-int64-p19-unprojected",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/annotation-decimal-int64-p19-unprojected",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/annotation-timestamp-empty-unit",
+      "family": "validate-structural/0001",
+      "fault_id": "annotation-timestamp-empty-unit",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/annotation-timestamp-empty-unit",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
           }
         }
       }

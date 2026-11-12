@@ -43,7 +43,8 @@
     "cases/generated/validate-structural.generated.json",
     "cases/generated/validate-profile.generated.json",
     "cases/generated/validate-full.generated.json",
-    "cases/generated/validate-digest.generated.json"
+    "cases/generated/validate-digest.generated.json",
+    "cases/generated/rulings.generated.json"
   ],
   "subsets": [
     "subsets/smoke.json"
@@ -74,14 +75,15 @@
     "cases/generated/requests.generated.json": 8,
     "cases/generated/refusals-open.generated.json": 64,
     "cases/generated/refusals-read.generated.json": 21,
-    "cases/generated/validate-structural.generated.json": 145,
+    "cases/generated/validate-structural.generated.json": 147,
     "cases/generated/validate-profile.generated.json": 48,
-    "cases/generated/validate-full.generated.json": 38,
-    "cases/generated/validate-digest.generated.json": 2
+    "cases/generated/validate-full.generated.json": 41,
+    "cases/generated/validate-digest.generated.json": 2,
+    "cases/generated/rulings.generated.json": 16
   },
   "totals": {
     "core": 185,
-    "generated": 1628
+    "generated": 1649
   },
   "renamed_datasets": {
     "datasets/truncated-bounds": "datasets/binary-bounds-truncated-16-byte",
@@ -185,5 +187,5 @@
       "reason": "tested the removed continuation member"
     }
   ],
-  "content_sha256": "d40a65b658b3bcfc2a0c39965e1189de364b5483321349f8ceef15b6c6ed86bf"
+  "content_sha256": "ee7d2228a9b3bce1c7efb9914460ad6fa124d7dabe9e12770ebd972093dabbaf"
 }

@@ -24,7 +24,10 @@ fault with a justification. Refusal and validation cases are built from that fil
 from codes. Validation is one case per fault at its lowest detecting level, plus prerequisite cases
 (six structural faults with distinct entry paths requested at profile and full, three profile faults
 requested at full, and three unsupported parts requested at profile and full) and six distinct digest
-behaviors.
+behaviors. Proposal [0001](../spec/proposals/0001-prerelease-compatibility-pass.md) part B admits its
+exact 16-reader/five-validator matrix in `rulings_group`: three unsupported-data full validations and two
+structural annotation validations. Its other reader faults remain declared in `faults.json`; this admission
+exception does not add validation cases for them. `test_case_generation.py` checks that matrix explicitly.
 
 Every valid dataset is generated from a rows document in [generators/rows/](generators/rows/): keys in
 base64 and column values typed as in the protocol. [oracle.py](oracle.py) computes each expected entry

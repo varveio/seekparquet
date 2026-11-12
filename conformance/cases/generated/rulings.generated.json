@@ -1,0 +1,596 @@
+{
+  "group": "rulings",
+  "target": "reader",
+  "generated": true,
+  "generator": "generators/make_cases.py",
+  "description": "Proposal 0001 part B classification and physical fallback controls.",
+  "families": {
+    "rulings/0001": "ENC-1, RG-6, STAMP-2 and CHECK-1/CHECK-5 classification rulings"
+  },
+  "cases": [
+    {
+      "id": "rulings/unknown-key-encoding-99-v1",
+      "description": "Column 0 first V1 data-page value encoding is 99; column encodings also includes 99.",
+      "family": "rulings/0001",
+      "fault_id": "unknown-key-encoding-99-v1",
+      "requirements": [
+        "ENC-1"
+      ],
+      "dataset": "datasets/invalid/unknown-key-encoding-99-v1",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encoding"
+      }
+    },
+    {
+      "id": "rulings/unknown-value-encoding-99-projected",
+      "description": "Column 1 first V1 data-page value encoding is 99; column encodings also includes 99.",
+      "family": "rulings/0001",
+      "fault_id": "unknown-value-encoding-99",
+      "requirements": [
+        "ENC-1"
+      ],
+      "dataset": "datasets/invalid/unknown-value-encoding-99",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "value"
+        ]
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encoding"
+      }
+    },
+    {
+      "id": "rulings/unknown-value-encoding-99-unprojected",
+      "description": "Column 1 first V1 data-page value encoding is 99; column encodings also includes 99.",
+      "family": "rulings/0001",
+      "requirements": [
+        "ENC-1",
+        "RG-6"
+      ],
+      "dataset": "datasets/invalid/unknown-value-encoding-99",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yw==",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "rulings/unknown-codec-99-projected",
+      "description": "Optional value column CompressionCodec is 99; key codec is unchanged.",
+      "family": "rulings/0001",
+      "fault_id": "unknown-codec-99",
+      "requirements": [
+        "ENC-1"
+      ],
+      "dataset": "datasets/invalid/unknown-codec-99",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "value"
+        ]
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encoding"
+      }
+    },
+    {
+      "id": "rulings/unknown-codec-99-unprojected",
+      "description": "Optional value column CompressionCodec is 99; key codec is unchanged.",
+      "family": "rulings/0001",
+      "requirements": [
+        "ENC-1",
+        "RG-6"
+      ],
+      "dataset": "datasets/invalid/unknown-codec-99",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yw==",
+            "offset": 0,
+            "values": []
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "rulings/annotation-decimal-int64-p19-unprojected",
+      "description": "Optional INT64 value leaf is DECIMAL(19,0), exceeding INT64 precision ceiling 18; query does not project it.",
+      "family": "rulings/0001",
+      "fault_id": "annotation-decimal-int64-p19-unprojected",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/annotation-decimal-int64-p19-unprojected",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "rulings/annotation-physical-fallback-controls",
+      "description": "Legal DECIMAL INT32(9), INT64(18), FLBA(1)(2); TIMESTAMP(MICROS) FLBA(12); unknown logical 99, converted 99 and timestamp unit 99 retain physical values.",
+      "family": "rulings/0001",
+      "requirements": [
+        "CHECK-1",
+        "COL-3"
+      ],
+      "dataset": "datasets/annotation-physical-fallback-controls",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "value",
+          "decimal_i32",
+          "decimal_i64",
+          "decimal_flba1",
+          "timestamp_flba12",
+          "future_logical",
+          "future_converted",
+          "future_time"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "bytes_base64": "AQ=="
+              },
+              {
+                "bytes_base64": "AQAAAAAAAAAAAAAA"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "int": "1"
+              },
+              {
+                "int": "1"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              },
+              {
+                "int": "2"
+              },
+              {
+                "int": "2"
+              },
+              {
+                "bytes_base64": "Ag=="
+              },
+              {
+                "bytes_base64": "AgAAAAAAAAAAAAAA"
+              },
+              {
+                "int": "2"
+              },
+              {
+                "int": "2"
+              },
+              {
+                "int": "2"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              },
+              {
+                "int": "3"
+              },
+              {
+                "int": "3"
+              },
+              {
+                "bytes_base64": "Aw=="
+              },
+              {
+                "bytes_base64": "AwAAAAAAAAAAAAAA"
+              },
+              {
+                "int": "3"
+              },
+              {
+                "int": "3"
+              },
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "4"
+              },
+              {
+                "int": "4"
+              },
+              {
+                "int": "4"
+              },
+              {
+                "bytes_base64": "BA=="
+              },
+              {
+                "bytes_base64": "BAAAAAAAAAAAAAAA"
+              },
+              {
+                "int": "4"
+              },
+              {
+                "int": "4"
+              },
+              {
+                "int": "4"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rulings/annotation-timestamp-empty-unit",
+      "description": "Optional INT64 value leaf TIMESTAMP has an empty required TimeUnit union.",
+      "family": "rulings/0001",
+      "fault_id": "annotation-timestamp-empty-unit",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/annotation-timestamp-empty-unit",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "rulings/ignored-enums-99",
+      "description": "Key boundary_order and every non-repeated key/value repetition_level_encoding are 99.",
+      "family": "rulings/0001",
+      "requirements": [
+        "ENC-1",
+        "RG-6"
+      ],
+      "dataset": "datasets/ignored-enums-99",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "value"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rulings/key-header-negative-num-values-v1",
+      "description": "First indexed key V1 header num_values is -5; index row interval unchanged.",
+      "family": "rulings/0001",
+      "fault_id": "key-header-negative-num-values-v1",
+      "requirements": [
+        "CHECK-5",
+        "RG-7"
+      ],
+      "dataset": "datasets/invalid/key-header-negative-num-values-v1",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_parquet"
+      }
+    },
+    {
+      "id": "rulings/key-index-undecodable-header",
+      "description": "First indexed key header replaced with an empty Thrift struct (STOP); required fields absent.",
+      "family": "rulings/0001",
+      "fault_id": "key-index-undecodable-header",
+      "requirements": [
+        "CHECK-5",
+        "RG-7"
+      ],
+      "dataset": "datasets/invalid/key-index-undecodable-header",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "rulings/key-index-valid-row-count-mismatch",
+      "description": "First indexed key V1 header num_values is positive 3; index still declares 2 rows.",
+      "family": "rulings/0001",
+      "fault_id": "key-index-valid-row-count-mismatch",
+      "requirements": [
+        "CHECK-5",
+        "RG-7"
+      ],
+      "dataset": "datasets/invalid/key-index-valid-row-count-mismatch",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "rulings/metadata-no-value",
+      "description": "Append valueless metadata entries: ordinary, ordinary, seekparquet.future, seekparquet.future.",
+      "family": "rulings/0001",
+      "requirements": [
+        "STAMP-2"
+      ],
+      "dataset": "datasets/metadata-no-value",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "value"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YQ==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "1"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yg==",
+            "offset": 0,
+            "values": [
+              {
+                "null": true
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "Yw==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "ZA==",
+            "offset": 0,
+            "values": [
+              {
+                "int": "4"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rulings/missing-boundary-order",
+      "description": "Required boundary_order absent from the key ColumnIndex.",
+      "family": "rulings/0001",
+      "fault_id": "missing-boundary-order",
+      "requirements": [
+        "RG-6"
+      ],
+      "dataset": "datasets/invalid/missing-boundary-order",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_page_index"
+      }
+    },
+    {
+      "id": "rulings/missing-repetition-encoding-value",
+      "description": "Required repetition_level_encoding absent from projected optional value column first V1 page.",
+      "family": "rulings/0001",
+      "fault_id": "missing-repetition-encoding-value",
+      "requirements": [
+        "ENC-1",
+        "CHECK-5"
+      ],
+      "dataset": "datasets/invalid/missing-repetition-encoding-value",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "value"
+        ]
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_parquet"
+      }
+    },
+    {
+      "id": "rulings/stamp-duplicate-one-valueless",
+      "description": "Append valueless metadata entries: seekparquet.schema_id.",
+      "family": "rulings/0001",
+      "fault_id": "stamp-duplicate-one-valueless",
+      "requirements": [
+        "STAMP-2"
+      ],
+      "dataset": "datasets/invalid/stamp-duplicate-one-valueless",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "stamp_mismatch"
+      }
+    }
+  ]
+}

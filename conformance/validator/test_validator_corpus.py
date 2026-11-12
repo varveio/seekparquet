@@ -32,9 +32,9 @@ class CorpusTest(unittest.TestCase):
                     report = validate_dataset(path)
                     self.assertTrue(all(x['result'] == 'complete' for x in report.values()), report)
     def test_every_invalid_dataset(self):
-        # A fault with outcome unsupported (an encrypted part) is not invalid data: validation is incomplete.
+        # Unsupported features make their declared detecting level incomplete; lower levels still complete.
         faults = json.loads((CONF / 'generators' / 'faults.json').read_text(encoding='utf-8'))['faults']
-        unsupported = {f['id']: f['codes'][0] for f in faults if f.get('outcome') == 'unsupported'}
+        unsupported = {f['id']: f for f in faults if f.get('outcome') == 'unsupported'}
         for path in sorted((CONF / 'datasets' / 'invalid').iterdir()):
             if not path.is_dir():
                 continue
@@ -42,8 +42,18 @@ class CorpusTest(unittest.TestCase):
                 report = validate_dataset(path)
                 digest = validate_dataset(path, 'digest')
                 if path.name in unsupported:
-                    self.assertEqual(report['structural']['result'], 'incomplete', report)
-                    self.assertTrue(report['structural']['reason'].startswith(unsupported[path.name]), report)
+                    fault = unsupported[path.name]
+                    low = fault['validation_level']
+                    self.assertEqual(report[low]['result'], 'incomplete', report)
+                    self.assertEqual(report[low]['code'], fault['codes'][0], report)
+                    self.assertTrue(report[low]['reason'], report)
+                    if low == 'structural':
+                        self.assertTrue(report[low]['reason'].startswith(fault['codes'][0]), report)
+                    levels = ('structural', 'profile', 'full')
+                    for level in levels[:levels.index(low)]:
+                        self.assertEqual(report[level]['result'], 'complete', report)
+                    for level in levels[levels.index(low) + 1:]:
+                        self.assertEqual(report[level]['result'], 'incomplete', report)
                     continue
                 self.assertTrue(any(x['result'] == 'failed' for x in [*report.values(), *digest.values()]),
                                 (report, digest))

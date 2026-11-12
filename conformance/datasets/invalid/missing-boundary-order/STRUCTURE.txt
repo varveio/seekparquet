@@ -1,0 +1,28 @@
+# missing-boundary-order
+
+valid: no
+description: Required boundary_order absent from the key ColumnIndex.
+provenance: mutated
+producer: pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)
+source rows: generators/rows/rulings.json
+fault (generators/faults.json): missing-boundary-order: invalid_page_index; reader detects on read; lowest validation level structural (RG-6); location: key ColumnIndex
+changes:
+  - Required boundary_order absent from the key ColumnIndex.
+  - Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed.
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 4, bytes 1394, keys 'a' .. 'd'
+
+file data/part-00000.parquet: 1394 bytes, footer 1141 bytes
+  num_rows 4, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/rulings/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column value: INT64 OPTIONAL def=1 rep=0
+  row_group 0: rows 4, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order None, null_pages none
+      min lengths [1, 1]
+      max lengths [1, 1]

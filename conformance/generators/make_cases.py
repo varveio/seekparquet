@@ -29,6 +29,8 @@ import oracle  # noqa: E402
 from common import b64d, b64e, dumps, load_rows, write_text  # noqa: E402
 
 SUITE_REVISION = "0.1.0-draft.5"
+from rulings import NAMES as RULING_DATASETS
+
 GENERATOR = "generators/make_cases.py"
 # Datasets renamed for clarity: old label (kept in case ids, which are stable) -> dataset directory.
 RENAMED = {"truncated-bounds": "binary-bounds-truncated-16-byte",
@@ -36,7 +38,7 @@ RENAMED = {"truncated-bounds": "binary-bounds-truncated-16-byte",
 # Valid datasets with nested or repeated columns (projection fixtures): a validator that does not support
 # such columns reports the full level incomplete (VAL-1), so full validation accepts complete or incomplete.
 NESTED_COLUMNS = {"projection": "meta (struct) and tags (list)", "key-legacy-utf8": "meta (struct) and tags (list)"}
-GROUP_ORDER = ["open", "range", "prefix", "list", "pagination", "projection", "planning", "requests", "refusals-open",
+GROUP_ORDER = ["rulings", "open", "range", "prefix", "list", "pagination", "projection", "planning", "requests", "refusals-open",
                "refusals-read", "validate-structural", "validate-profile", "validate-full", "validate-digest"]
 # Datasets that use optional features (outside ENC-1): a reader may support them or answer unsupported, but only
 # for a request that needs them.
@@ -206,7 +208,7 @@ def open_group(lock):
                                 "unusual but valid layouts.")
     g.fam("valid-dataset", "open each valid dataset; it must succeed")
     for d in lock["datasets"]:
-        if d["valid"]:
+        if d["valid"] and d["name"] not in RULING_DATASETS:
             reqs = ["CHECK-1", "LAYOUT-1", "MAN-1", "MAN-3"]
             if d["name"] == "multipart":
                 reqs += ["LAYOUT-3", "EXT-1", "ENC-1", "PART-5"]
@@ -917,7 +919,7 @@ def refusal_groups(lock):
     for lvl in LEVELS:
         gv[lvl].fam("valid-dataset", "every valid dataset completes this level and its prerequisites")
     for d in lock["datasets"]:
-        if not d["valid"]:
+        if not d["valid"] or d["name"] in RULING_DATASETS:
             continue
         label = {v: k for k, v in RENAMED.items()}.get(d["name"], d["name"])
         for lvl in LEVELS:
@@ -938,6 +940,8 @@ def refusal_groups(lock):
         gv[lvl].fam("fault-at-lowest-level", "each fault at the lowest validation level that detects it "
                                              "(validation_level in generators/faults.json)")
     for fid, f in faults.items():
+        if fid in RULING_DATASETS:
+            continue  # exact proposal 0001 part-B matrix is admitted by rulings_group
         codes = accepted(f)
         ddir = f["dataset"]
         desc = next(d["description"] for d in lock["datasets"] if d["dir"] == ddir)
@@ -1093,9 +1097,60 @@ def check_core_case(c, candidate):
     raise SystemExit(f"core case {c['id']} has no generated counterpart and cannot be checked by the oracle")
 
 
+def rulings_group(lock, validators):
+    """The exact part-B matrix in proposal 0001; no implementation supplies expectations."""
+    g = Group("rulings", "reader", "Proposal 0001 part B classification and physical fallback controls.")
+    g.fam("0001", "ENC-1, RG-6, STAMP-2 and CHECK-1/CHECK-5 classification rulings")
+    faults = load_faults()
+    byname = {d["name"]: d for d in lock["datasets"]}
+    cases = [
+        ("unknown-key-encoding-99-v1", "unknown-key-encoding-99-v1", []),
+        ("unknown-value-encoding-99-projected", "unknown-value-encoding-99", ["value"]),
+        ("unknown-value-encoding-99-unprojected", "unknown-value-encoding-99", []),
+        ("unknown-codec-99-projected", "unknown-codec-99", ["value"]),
+        ("unknown-codec-99-unprojected", "unknown-codec-99", []),
+    ] + [(n, n, (["value"] if n in ("ignored-enums-99", "metadata-no-value", "missing-repetition-encoding-value")
+                   else [c["name"] for c in load_rows("rulings-controls")["columns"]]
+                   if n == "annotation-physical-fallback-controls" else []))
+         for n in sorted(RULING_DATASETS - {"unknown-key-encoding-99-v1", "unknown-value-encoding-99", "unknown-codec-99"})]
+    for cid, name, columns in cases:
+        d = byname[name]
+        f = faults.get(name)
+        request = rq_range(columns=columns)
+        unprojected = cid in ("unknown-value-encoding-99-unprojected", "unknown-codec-99-unprojected")
+        if f and not unprojected:
+            expected = ({"status": "unsupported", "code": f["codes"][0]} if f.get("outcome") == "unsupported"
+                        else expect_refusal(f["codes"]))
+            requirements = f["requirements"]
+            meta = {"fault_id": name}
+            detect = f["reader_detect"]
+        else:
+            expected = run(oracle.Dataset.load("rulings-controls" if name == "annotation-physical-fallback-controls" else "rulings"), request)
+            requirements = ["STAMP-2"] if name == "metadata-no-value" else ["CHECK-1", "COL-3"] if name == "annotation-physical-fallback-controls" else ["ENC-1", "RG-6"]
+            meta, detect = None, None
+        g.add(cid, requirements, d["dir"], expected, request=request, desc=d["description"], meta=meta, detect=detect)
+    # Only the five validator cases requested by 0001: all prerequisites are explicit.
+    for name in ("unknown-key-encoding-99-v1", "unknown-value-encoding-99", "unknown-codec-99",
+                 "annotation-decimal-int64-p19-unprojected", "annotation-timestamp-empty-unit"):
+        f = faults[name]
+        target = "full" if f.get("outcome") == "unsupported" else "structural"
+        group = next(v for v in validators if v.name == "validate-" + target)
+        group.fam("0001", "Proposal 0001 part B validation classifications")
+        low = f["validation_level"]
+        levels = {x: {"result": "complete"} for x in LEVELS[:LEVELS.index(low)]}
+        levels[low] = {"result": "incomplete" if f.get("outcome") == "unsupported" else "failed", "code": f["codes"][0]}
+        for higher in LEVELS[LEVELS.index(low) + 1:LEVELS.index(target) + 1]:
+            levels[higher] = {"result": "incomplete"}
+        group.add(name + ("-projected" if name in ("unknown-value-encoding-99", "unknown-codec-99") else ""),
+                  f["requirements"] + ["VAL-1"], f["dataset"], {"status": "ok", "levels": levels},
+                  request={"op": "validate", "level": target}, requires=["validate:" + target], meta={"fault_id": name})
+    return g
+
+
 def build_all(lock):
     groups = [repeated_group(), open_group(lock), range_group(), prefix_group(), list_group(), pagination_group(),
               projection_group(), planning_group(), requests_group()] + refusal_groups(lock)
+    groups.append(rulings_group(lock, groups))
     core, core_files = load_core()
     cand = {c["id"]: c for g in groups for c in g.cases}
     for cid, (_doc, c) in core.items():

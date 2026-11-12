@@ -951,7 +951,8 @@ def build():
                     "below the page's keys (the all-0xFF truncation fault RG-5 forbids).",
                     None, parts={P1: set_bound(rg, pg, "max", lambda b: b"\xff" * TRUNC,
                                                          "16 bytes of 0xFF: below the page's last key")}))
-    return R
+    import rulings
+    return R + rulings.build()
 
 
 def _ff_footer(d):
