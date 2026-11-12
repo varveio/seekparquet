@@ -352,7 +352,15 @@ func TestEncryptedErrorsDetached(t *testing.T) {
 // however long its batches, and its view and values allocate nothing.
 func TestAbsentProjectionAllocatesNothing(t *testing.T) {
 	const n = 100_000
-	keys := make([]keyOnlyRecord, n)
+	// PLAIN keys: the default DELTA_LENGTH_BYTE_ARRAY decodes a page's
+	// lengths into parquet-go's pooled int32 buffer (encoding/delta), here
+	// ~400 KB. Whether a scan reuses it depends on the P it runs on, GC
+	// and, under -race, sync.Pool dropping a quarter of Puts at random,
+	// so each scan below would count 0, 1 or 2 such buffers on its own.
+	type plainKeyRecord struct {
+		Key []byte `parquet:"key,plain"`
+	}
+	keys := make([]plainKeyRecord, n)
 	for i := range keys {
 		keys[i].Key = fmt.Appendf(nil, "k%07d", i)
 	}
