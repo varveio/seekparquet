@@ -141,9 +141,6 @@ type chunk struct {
 	walk  bool
 	stats *ReadStats
 	pages *int64 // the counter of the data pages decoded: key or value pages
-	// ahead, when set, holds key pages a listing read ahead: located takes
-	// a page's bytes from it instead of reading them (readAhead).
-	ahead *readAhead
 	// memo, when set, holds the key pages the request read (pageMemo).
 	memo *pageMemo
 }
@@ -189,19 +186,14 @@ func (c *chunk) located(off, size, rows int64) (*format.PageHeader, int64, []byt
 		return c.header(off)
 	}
 	var pre []byte
-	if c.ahead != nil {
-		pre, _ = c.ahead.take(c.p, off, size)
-	}
-	if pre == nil {
-		if kept := c.memo.get(c.p, off, size); kept != nil {
-			c.stats.RequestMemoHitBytes += size
-			pre = kept
-			// A scan decodes into its scratch, which its next page
-			// overwrites: it decodes a copy, as if it had read the page.
-			if c.scratch != nil {
-				pre = c.scratch.readBuffer(int(size))
-				copy(pre, kept)
-			}
+	if kept := c.memo.get(c.p, off, size); kept != nil {
+		c.stats.RequestMemoHitBytes += size
+		pre = kept
+		// A scan decodes into its scratch, which its next page overwrites:
+		// it decodes a copy, as if it had read the page.
+		if c.scratch != nil {
+			pre = c.scratch.readBuffer(int(size))
+			copy(pre, kept)
 		}
 	}
 	h, n, raw, err := c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, rows, c.end, c.stats, c.scratch, pre)
@@ -226,7 +218,7 @@ func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte,
 		data = raw[n : n+size : n+size]
 	} else {
 		data = c.scratch.readBuffer(int(size))
-		if err := c.p.at(c.ctx, c.stats).readFull(data, off+n); err != nil {
+		if err := c.p.read(c.ctx, c.stats, data, off+n); err != nil {
 			return nil, c.corrupt(err)
 		}
 	}
@@ -251,7 +243,7 @@ type crcField struct {
 func (c *chunk) hasCRC(off, n int64, raw []byte) bool {
 	if int64(len(raw)) < n {
 		raw = make([]byte, n)
-		if err := c.p.at(c.ctx, c.stats).readFull(raw, off); err != nil {
+		if err := c.p.read(c.ctx, c.stats, raw, off); err != nil {
 			return false // the header was read before; a failing reread is not the page's
 		}
 	}
@@ -1168,7 +1160,7 @@ func (p *part) pageHeaderInto(ctx context.Context, physical, column int, off, en
 // header as pageHeader does, in a column chunk ending at end; rows is the
 // rows its OffsetIndex entry gives, or -1 (decodeHeader). The caller
 // bounds size (chunk.located). pre, when not nil, holds those size bytes,
-// read ahead (readAhead): they are checked exactly as bytes it reads.
+// already (the request's memo): they are checked exactly as bytes it reads.
 func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, rows, end int64, st *ReadStats, scratch *pageScratch, pre []byte) (*format.PageHeader, int64, []byte, error) {
 	bad := p.badPage(physical, column, off)
 	if off < 0 || off >= end || size > end-off {
@@ -1192,10 +1184,22 @@ func (p *part) badPage(physical, column int, off int64) func(string, ...any) err
 	}
 }
 
+// read fills buf with the bytes at off of the part's file: from the
+// windows of the operation ctx runs under when they hold all of them
+// (windows.copy), otherwise from storage.
+func (p *part) read(ctx context.Context, st *ReadStats, buf []byte, off int64) error {
+	if w := windowsOf(ctx); w != nil {
+		if ok, err := w.copy(p, buf, off); ok || err != nil {
+			return err
+		}
+	}
+	return p.at(ctx, st).readFull(buf, off)
+}
+
 // readPage reads n bytes of a column chunk at off.
 func (p *part) readPage(ctx context.Context, off, n int64, st *ReadStats, bad func(string, ...any) error, scratch *pageScratch) ([]byte, error) {
 	raw := scratch.readBuffer(int(n))
-	if err := p.at(ctx, st).readFull(raw, off); err != nil {
+	if err := p.read(ctx, st, raw, off); err != nil {
 		var refusal *RefusalError
 		if isEnvironment(ctx, err) || errors.As(err, &refusal) { // the source's own, or a part it found missing or resized
 			return nil, err
@@ -1314,7 +1318,7 @@ func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, leng
 	// only its missing beginning is read.
 	if n, kept := p.retainedSuffix(off, int64(length)); n > 0 {
 		missing := int64(length) - n
-		if err := p.at(ctx, st).readFull(raw[:missing], off); err != nil {
+		if err := p.read(ctx, st, raw[:missing], off); err != nil {
 			return nil, err
 		}
 		copy(raw[missing:], kept)
@@ -1323,7 +1327,7 @@ func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, leng
 		}
 		return raw, nil
 	}
-	if err := p.at(ctx, st).readFull(raw, off); err != nil {
+	if err := p.read(ctx, st, raw, off); err != nil {
 		return nil, err
 	}
 	return raw, nil

@@ -115,7 +115,8 @@ func TestReadRangesFallback(t *testing.T) {
 }
 
 // TestReadRangesBatched: through RangeReader, ranges go in calls of at
-// most Concurrency ranges; a *BatchError keeps positions, another error
+// most MaxReadRanges ranges, irrespective of Concurrency. A *BatchError
+// keeps positions, another error
 // fails every range of its call, a short range is ErrUnexpectedEOF.
 func TestReadRangesBatched(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
@@ -123,9 +124,9 @@ func TestReadRangesBatched(t *testing.T) {
 		f := &batchTestFile{rangeTestFile: &rangeTestFile{data: data, fail: map[int64]error{70: errors.New("boom")}}}
 		var st ReadStats
 		ranges := testRanges(10, 10)
-		observed := newOperation(context.Background(), 64) // a reporting file observed by an operation
+		observed := newOperation(context.Background(), 2) // a reporting file observed by an operation
 		errs := readRanges(observed, rangeFile{file: f, name: "p", reports: true, concurrency: 4}, ranges, &st)
-		if fmt.Sprint(f.sizes) != "[4 4 2]" || st.SourceBatches != 3 || st.SourceReads != 10 || st.UnreportedIOCalls != 0 || st.ScalarFallbackReads != 0 {
+		if fmt.Sprint(f.sizes) != "[10]" || st.SourceBatches != 1 || st.SourceReads != 10 || st.UnreportedIOCalls != 0 || st.ScalarFallbackReads != 0 {
 			t.Fatalf("calls %v, %+v", f.sizes, st)
 		}
 		for i, err := range errs {
@@ -313,14 +314,12 @@ func (*panicBatchFile) ReadRanges(context.Context, []ReadRange) error { panic("s
 // operation's slots back.
 func TestBatchPanicReleasesSlots(t *testing.T) {
 	op := newOperation(context.Background(), 4)
-	func() {
-		defer func() {
-			if recover() == nil {
-				t.Fatal("no panic")
-			}
-		}()
-		readRanges(op, rangeFile{file: &panicBatchFile{}, name: "p", concurrency: 4}, testRanges(3, 10), nil)
-	}()
+	errs := readRanges(op, rangeFile{file: &panicBatchFile{}, name: "p", concurrency: 4}, testRanges(3, 10), nil)
+	for _, err := range errs {
+		if !errors.Is(err, errSourcePanic) || !isEnvironment(ctx, err) || RefusalCodeOf(err) != "" {
+			t.Fatal(err)
+		}
+	}
 	if op.limit.free != 4 {
 		t.Fatalf("%d of 4 slots free after the panic", op.limit.free)
 	}
@@ -347,5 +346,32 @@ func TestOnlyEOFBounded(t *testing.T) {
 	}
 	if !onlyEOF(errors.Join(wide[:4]...)) || !onlyEOF(fmt.Errorf("read: %w", io.EOF)) {
 		t.Fatal("io.EOF's own causes refused")
+	}
+}
+
+// A source error can unwrap to itself. Exercise the actual ReadAt boundary:
+// onlyEOF rejecting it must not hand it to another unbounded classifier.
+type cyclicSourceError struct{}
+
+func (*cyclicSourceError) Error() string   { return "cyclic source failure" }
+func (e *cyclicSourceError) Unwrap() error { return e }
+
+type errorReader struct{ err error }
+
+func (r errorReader) ReadAt(p []byte, off int64) (int, error) { return len(p), r.err }
+func TestStorageReaderCyclicError(t *testing.T) {
+	cycle := new(cyclicSourceError)
+	for _, err := range []error{
+		cycle,
+		errors.Join(io.EOF, cycle),
+		errors.Join(&SizeMismatchError{Expected: 1, Actual: 2}, cycle, ErrObjectChanged),
+	} {
+		var st ReadStats
+		_, got := (storageReader{r: errorReader{err}, st: &st, name: "p"}).ReadAt(make([]byte, 3), 0)
+		source, ok := got.(*storageError)
+		// Avoid errors.Is/As on the returned cyclic cause in the assertion too.
+		if !ok || source.err != err || st.SourceReads != 1 || st.SourceBytes != 3 {
+			t.Fatalf("classification %T, counts %+v", got, st)
+		}
 	}
 }

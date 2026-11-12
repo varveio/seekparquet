@@ -11,7 +11,9 @@ import (
 	"io"
 	"math"
 	"os"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -490,7 +492,7 @@ func (r *reader) checkParts(ctx context.Context, st *ReadStats) error {
 // last page it checked once is not checked again.
 func (r *reader) verify(ctx context.Context, st *ReadStats) error {
 	log := pageLog{unique: r.key.Unique}
-	if err := r.verifyParts(ctx, log.pageMemo(), st); err != nil {
+	if err := r.verifyParts(ctx, log.pageMemo(), st, probeVerify); err != nil {
 		return err
 	}
 	for i, p := range r.parts {
@@ -547,8 +549,14 @@ func (pre *fetchedPart) close() {
 // before it), and keeping its verdict, runs in manifest order as its fetch
 // completes, and the fetch is released then: the window bounds the tails
 // and pages held. The first failure stops it.
-func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats) error {
-	n := len(r.parts)
+func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats, want probeSet) error {
+	return r.verifyPartRange(ctx, memo, st, want, 0, len(r.parts))
+}
+
+// verifyPartRange checks only [first, last), retaining verifyParts' bounded
+// concurrency and manifest order. Builds use it for budgeted lookahead.
+func (r *reader) verifyPartRange(ctx context.Context, memo *pageMemo, st *ReadStats, want probeSet, first, last int) error {
+	n := last - first
 	window := max(1, r.policy.Concurrency)
 	fetched := make([]*fetchedPart, n)
 	done := make([]chan struct{}, n)
@@ -567,9 +575,9 @@ func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats)
 		}
 	}()
 	launch := func(i int) {
-		p := r.parts[i]
+		p := r.parts[first+i]
 		check := r.fetch != nil && !p.ready.Load() && p.flags.Load()&partRefused == 0
-		probes := !r.local && p.ready.Load() && r.wantsProbes(p)
+		probes := want != probeNone && !r.local && p.ready.Load() && r.wantsProbes(p)
 		if !check && !probes {
 			return
 		}
@@ -578,9 +586,9 @@ func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats)
 		wg.Go(func() {
 			defer close(done[i])
 			if check {
-				r.prefetchPart(wctx, i, pre)
+				r.prefetchPart(wctx, first+i, pre, want)
 			} else { // a checked part's pages go to the request's memo
-				_, _ = r.fetchProbes(wctx, p, p.file, p.size, p.footer, p.retainedBytes, false, memo, &pre.st)
+				_, _ = r.fetchProbes(wctx, p, p.file, p.size, p.footer, p.retainedBytes, false, want, memo, &pre.st)
 			}
 		})
 	}
@@ -602,7 +610,7 @@ func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats)
 			pre.close()
 			return err
 		}
-		_, err := r.partWith(ctx, i, st, pre)
+		_, err := r.partWith(ctx, first+i, st, pre)
 		if pre != nil && pre.adopted {
 			memo.adopt(&pre.memo)
 		}
@@ -617,7 +625,7 @@ func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats)
 // its manifest entry, then reads its head with the key pages Verify will
 // decode (fetchProbes) and judges the head as readFooter would have,
 // filling pre. A local read keeps nothing of the part's end.
-func (r *reader) prefetchPart(ctx context.Context, i int, pre *fetchedPart) {
+func (r *reader) prefetchPart(ctx context.Context, i int, pre *fetchedPart, want probeSet) {
 	p := r.parts[i]
 	in, err := r.fetch(ctx, i, &pre.st, !r.local)
 	if err != nil {
@@ -636,7 +644,7 @@ func (r *reader) prefetchPart(ctx context.Context, i int, pre *fetchedPart) {
 		}
 		return tail.data[off-tail.off : off-tail.off+length]
 	}
-	head, headErr := r.fetchProbes(ctx, p, in.file, in.size, in.footer, lookup, tail.headDeferred, &pre.memo, &pre.st)
+	head, headErr := r.fetchProbes(ctx, p, in.file, in.size, in.footer, lookup, tail.headDeferred, want, &pre.memo, &pre.st)
 	if tail.headDeferred && headErr == nil {
 		at := storageReader{r: bind(ctx, in.file), op: operationOf(ctx), st: &pre.st, name: in.name, unreported: unreported(ctx, reportsIO(in.file))}
 		headErr = headVerdict(ctx, in.name, at, in.size, head, tail, nil)
@@ -663,6 +671,18 @@ func (r *reader) wantsProbes(p *part) bool {
 	return false
 }
 
+// probeSet is the key pages fetchProbes reads with a part's head.
+type probeSet uint8
+
+const (
+	// probeNone reads the head alone.
+	probeNone probeSet = iota
+	// probeVerify reads the pages Verify decodes: every row group's first
+	// key page not yet known and, when the part has bounds not yet checked,
+	// its last.
+	probeVerify
+)
+
 // headMergeGap is how far into a part its first key page may begin for
 // Verify to read the head with it in one range.
 const headMergeGap = 64 << 10
@@ -680,7 +700,7 @@ const headMergeGap = 64 << 10
 // an allocation of its own. A page that fails is not kept, and fails when
 // Verify reads it; a failed merged range is followed by an exact 4-byte
 // head read, so that only a failure of the head itself is returned.
-func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, size int64, footer *parquet.File, lookup func(off, length int64) []byte, wantHead bool, memo *pageMemo, st *ReadStats) (head []byte, err error) {
+func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, size int64, footer *parquet.File, lookup func(off, length int64) []byte, wantHead bool, want probeSet, memo *pageMemo, st *ReadStats) (head []byte, err error) {
 	type probe struct{ off, size int64 }
 	var probes []probe
 	leaf, ok := footer.Schema().Lookup(r.key.Column)
@@ -730,14 +750,14 @@ func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, siz
 		return true
 	}
 	for g := range groups {
-		if groups[g].NumRows == 0 || known(g) {
+		if want == probeNone || groups[g].NumRows == 0 || known(g) {
 			continue
 		}
 		if pr, ok := located(g, false); ok {
 			probes = append(probes, pr)
 		}
 	}
-	if p.maxKey != nil && p.flags.Load()&partLastChecked == 0 && lastGroup >= 0 {
+	if want == probeVerify && p.maxKey != nil && p.flags.Load()&partLastChecked == 0 && lastGroup >= 0 {
 		if pr, ok := located(lastGroup, true); ok {
 			probes = append(probes, pr)
 		}
@@ -949,6 +969,7 @@ func (r *reader) groupFor(ctx context.Context, from []byte, inclusive bool, log 
 	// holds the first row the read can return, or precedes it.
 	a, b := 1, hi
 	for a < b {
+		r.routeWindows(ctx, at, a, b)
 		mid := int(uint(a+b) >> 1)
 		key, err := r.first(ctx, at(mid), log, st)
 		if err != nil {
@@ -961,6 +982,60 @@ func (r *reader) groupFor(ctx context.Context, from []byte, inclusive bool, log 
 		}
 	}
 	return at(a - 1), nil
+}
+
+// routeWindows fetches at most three levels (seven candidates) of the
+// routing search together. Only adopted handles and resident location hints
+// are used; probes are decoded and checked later, in routing order.
+func (r *reader) routeWindows(ctx context.Context, at func(int) groupRef, a, b int) {
+	if r.local || r.policy.DisableSpeculation {
+		return
+	}
+	o := operationOf(ctx)
+	if o == nil {
+		return
+	}
+	root := at(int(uint(a+b) >> 1))
+	if !r.parts[root.part].ready.Load() || r.group(root).first.Load() != nil {
+		return
+	}
+	if _, ok := r.parts[root.part].file.(RangeReader); !ok {
+		return
+	}
+	if index := r.listIndex.Load(); index != nil && index.group(root) != nil {
+		return
+	}
+	w := o.windows()
+	var exts []extent
+	var visit func(int, int, int)
+	visit = func(a, b, depth int) {
+		if a >= b || depth == 0 {
+			return
+		}
+		mid := int(uint(a+b) >> 1)
+		g := at(mid)
+		p := r.parts[g.part]
+		if p.ready.Load() && r.group(g).first.Load() == nil {
+			grp := p.groups[g.index]
+			meta := &p.footer.Metadata().RowGroups[grp.physical].Columns[p.key.index].MetaData
+			if start, end, ok := chunkRange(meta); ok && end <= p.size {
+				if locs := p.planLocs(grp.physical, p.key, start, end); len(locs) > 0 {
+					// Key dictionaries precede the first data page.
+					size := locs[0].offset + locs[0].size - start
+					if size <= r.limits.PageBytes {
+						exts = append(exts, extent{p, start, size, grp.start + grp.rows})
+					}
+				}
+			}
+		}
+		visit(a, mid, depth-1)
+		visit(mid+1, b, depth-1)
+	}
+	visit(a, b, 3)
+	// Group candidates by handle so one call exposes every run to storage.
+	slices.SortStableFunc(exts, func(a, b extent) int { return strings.Compare(a.p.name, b.p.name) })
+	sortExtents(exts)
+	w.fetch(exts, true)
 }
 
 // partAt returns the part holding the dataset row ordinal, or the number
@@ -1060,6 +1135,7 @@ func (r *reader) begin(ctx context.Context) (*operation, error) {
 // end ends an operation begun by reader.begin, adding the physical
 // requests it observed to st, and releases its lease.
 func (o *operation) end(st *ReadStats) {
+	o.win.Load().close(st)
 	o.stop()
 	o.cancel(nil)
 	if c := o.c.Load(); c != nil {
