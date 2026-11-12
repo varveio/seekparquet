@@ -259,7 +259,7 @@ func readManifest(ctx context.Context, src Source, limit int64, reports bool, st
 		return nil, "", fmt.Errorf("read %s: the source gives a negative size %d", ManifestName, size)
 	}
 	raw := make([]byte, size)
-	at := storageReader{r: bind(ctx, f), st: st, name: ManifestName, unreported: !reportsIO(f)}
+	at := storageReader{r: bind(ctx, f), st: st, src: &sourceInfo{name: ManifestName, unreported: !reportsIO(f)}}
 	if err := readFull(at, raw, 0); err != nil {
 		return nil, "", fmt.Errorf("read %s: %w", ManifestName, err)
 	}
@@ -311,10 +311,11 @@ func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entr
 	if in.size != entry.Bytes {
 		return partInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the file is %d bytes, its manifest entry %d", in.size, entry.Bytes)
 	}
-	footer, err := readFooter(ctx, entry.Path, f, in.size, &r.limits, st, footerWindow)
+	footer, tail, err := readFooter(ctx, entry.Path, f, in.size, &r.limits, st, r.policy.tailWindow(), r.policy.Concurrency)
 	if err != nil {
 		return partInput{}, err
 	}
+	in.tail = tail
 	if err := checkStamps(entry.Path, footer, m); err != nil {
 		return partInput{}, err
 	}

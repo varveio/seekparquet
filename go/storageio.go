@@ -48,12 +48,20 @@ func sourceError(name string, err error) error {
 // and counts its calls in st. io.EOF is left unmarked: every location the
 // reader follows is first checked to lie inside the file, so reading past
 // its end means the data lied.
+//
+// It stays three words, so that wrapping a read costs no more than before
+// it classified errors: what it knows of the file is behind src.
 type storageReader struct {
-	r    io.ReaderAt
-	st   *ReadStats // counts the reads of a request, nil for none
-	name string
-	// unreported is set when the file does not report its physical
-	// requests (IOReporter): each call counts in UnreportedIOCalls.
+	r   io.ReaderAt
+	st  *ReadStats // counts the reads of a request, nil for none
+	src *sourceInfo
+}
+
+// sourceInfo is what classifying a file's reads needs: its name for
+// errors, and whether it leaves its physical requests unreported
+// (IOReporter), each call then counting in UnreportedIOCalls.
+type sourceInfo struct {
+	name       string
 	unreported bool
 }
 
@@ -61,13 +69,13 @@ func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
 	if s.st != nil {
 		s.st.SourceReads++
 		s.st.SourceBytes += int64(len(p))
-		if s.unreported {
+		if s.src.unreported {
 			s.st.UnreportedIOCalls++
 		}
 	}
 	n, err := s.r.ReadAt(p, off)
 	if err != nil && !errors.Is(err, io.EOF) {
-		err = sourceError(s.name, err)
+		err = sourceError(s.src.name, err)
 	}
 	return n, err
 }
@@ -288,6 +296,7 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 	errs := make([]error, len(ranges))
 	failed := atomic.Bool{}
 	at := bind(ctx, rf.file)
+	src := &sourceInfo{name: rf.name}
 	read := func(i int) {
 		if limit != nil {
 			if err := limit.acquire(ctx, 1); err != nil {
@@ -302,7 +311,7 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 			failed.Store(true)
 			return
 		}
-		if err := readFull(storageReader{r: at, name: rf.name}, ranges[i].Buf, ranges[i].Off); err != nil {
+		if err := readFull(storageReader{r: at, src: src}, ranges[i].Buf, ranges[i].Off); err != nil {
 			errs[i] = err
 			failed.Store(true)
 		}
@@ -417,4 +426,70 @@ func batchError(ctx context.Context, name string, err error) error {
 		return io.ErrUnexpectedEOF
 	}
 	return sourceError(name, err)
+}
+
+// retained is the raw page-index bytes of a part's end, kept from its
+// check: data holds the file's bytes from off.
+type retained struct {
+	off  int64
+	data []byte
+}
+
+// retainTail keeps, from the end of part p's file that its check read,
+// the bytes of its page-index region: from the first ColumnIndex or
+// OffsetIndex the footer locates within the tail, to the footer. They are
+// copied, so that the rest of the tail is not pinned, and charged to
+// Limits.MetadataCacheMemory, evicting the parts used least recently, or
+// not kept when they cannot fit. Nothing is decoded or checked here: an
+// index is decoded when a request first needs it, so an index no request
+// uses never causes a refusal. With DisableSpeculation nothing is kept.
+func (r *reader) retainTail(p *part, tail footerTail) {
+	if r.policy.DisableSpeculation || len(tail.data) == 0 || tail.footerStart <= tail.off {
+		return
+	}
+	start := tail.footerStart
+	for _, rg := range p.footer.Metadata().RowGroups {
+		for _, c := range rg.Columns {
+			for _, off := range [2]int64{c.ColumnIndexOffset, c.OffsetIndexOffset} {
+				if off >= tail.off && off < start {
+					start = off
+				}
+			}
+		}
+	}
+	size := tail.footerStart - start
+	if size <= 0 || size > r.limits.MetadataCacheMemory {
+		return
+	}
+	kept := &retained{off: start, data: ownCopy(tail.data[start-tail.off : tail.footerStart-tail.off])}
+	r.metaMu.Lock()
+	defer r.metaMu.Unlock()
+	for r.metaMemory+size > r.limits.MetadataCacheMemory {
+		lru := 0
+		for i, q := range r.metaParts {
+			if q.metaUsed.Load() < r.metaParts[lru].metaUsed.Load() {
+				lru = i
+			}
+		}
+		q := r.metaParts[lru]
+		r.metaMemory -= int64(len(q.meta.Load().data))
+		q.meta.Store(nil)
+		r.metaParts = append(r.metaParts[:lru], r.metaParts[lru+1:]...)
+	}
+	r.metaMemory += size
+	p.metaUsed.Store(r.metaClock.Add(1))
+	p.meta.Store(kept)
+	r.metaParts = append(r.metaParts, p)
+}
+
+// retainedBytes returns the length bytes at off from the part's retained
+// metadata, or nil when they are not all kept. The bytes are shared and
+// read-only.
+func (p *part) retainedBytes(off, length int64) []byte {
+	m := p.meta.Load()
+	if m == nil || off < m.off || length > int64(len(m.data)) || off-m.off > int64(len(m.data))-length {
+		return nil
+	}
+	p.metaUsed.Store(p.r.metaClock.Add(1))
+	return m.data[off-m.off : off-m.off+length : off-m.off+length]
 }

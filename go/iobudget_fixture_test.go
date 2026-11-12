@@ -4,7 +4,9 @@
 package seekparquet_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -71,6 +73,9 @@ type ioFixture struct {
 	first, mid, last, other []byte // keys of that part: first, middle, last, and in an earlier row group
 	twenty                  [][]byte
 	listPrefix              []byte
+	// indexRegion is each part's page-index region: from its first
+	// ColumnIndex or OffsetIndex to its footer.
+	indexRegion map[string][2]int64
 }
 
 var ioSchema = parquet.NewSchema("object", parquet.Group{
@@ -218,10 +223,24 @@ func writeIOFixture(t testing.TB, parent string, spec ioFixtureSpec) *ioFixture 
 	must(t, err)
 
 	f.objects = map[string]fakestore.Object{}
+	f.indexRegion = map[string][2]int64{}
 	for _, name := range append([]string{seekparquet.ManifestName}, partPaths(infos)...) {
 		data, err := os.ReadFile(filepath.Join(f.dir, filepath.FromSlash(name)))
 		must(t, err)
 		f.objects[name] = fakestore.Object{Data: data}
+		if name == seekparquet.ManifestName {
+			continue
+		}
+		pf, err := parquet.OpenFile(bytes.NewReader(data), int64(len(data)), parquet.SkipPageIndex(true))
+		must(t, err)
+		footerLen := int64(binary.LittleEndian.Uint32(data[len(data)-8:]))
+		region := [2]int64{int64(len(data)) - 8 - footerLen, int64(len(data)) - 8 - footerLen}
+		for _, rg := range pf.Metadata().RowGroups {
+			for _, c := range rg.Columns {
+				region[0] = min(region[0], c.ColumnIndexOffset, c.OffsetIndexOffset)
+			}
+		}
+		f.indexRegion[name] = region
 	}
 
 	// The keys the operations use, chosen as the audit chose them.

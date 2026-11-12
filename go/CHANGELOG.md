@@ -16,6 +16,11 @@ versioning; while it is v0, minor versions may change the API.
   `PeakPhysicalRequests`; `Add` keeps the larger peak) and in `OpenOptions.OpenStats` for the open. Cache
   control: `CacheMode` with `WithCacheMode` and `CacheModeFromContext`. `OpenOptions.Read` is a
   `ReadPolicy` (`Concurrency`, default 64).
+- A part's first check reads its end in one `ReadPolicy.MetadataPrefetchBytes` window (default 2 MiB;
+  `OpenDir` 64 KiB), together with its 4-byte head, and keeps the page-index bytes it holds, within the new
+  `Limits.MetadataCacheMemory` (default 128 MiB, least recently used parts evicted, never a failure): later
+  ColumnIndex and OffsetIndex loads of the part read nothing. `ReadPolicy.DisableSpeculation` restores the
+  64 KiB window and keeps only the footer; answers are the same either way.
 
 - **Breaking: the read API is redesigned** before any stability promise (no deprecated aliases):
   - Requests: `Range`, `KeyRange` and `PrefixRange` are replaced by `Span` (`KeySpan`, exactly

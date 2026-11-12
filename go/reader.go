@@ -55,6 +55,14 @@ type reader struct {
 	listIndex atomic.Pointer[listIndex]
 	listBuild sync.Mutex
 
+	// metaMu guards metaParts, the parts that hold retained metadata, and
+	// metaMemory, their bytes within Limits.MetadataCacheMemory; metaClock
+	// orders their uses for eviction.
+	metaMu     sync.Mutex
+	metaParts  []*part
+	metaMemory int64
+	metaClock  atomic.Int64
+
 	indexMemory atomic.Int64
 	// indexMu serializes retained-index admission and publication, including
 	// first keys. No file I/O or page decoding runs under this lock.
@@ -109,8 +117,10 @@ type part struct {
 	file   io.ReaderAt
 	size   int64
 	footer *parquet.File
-	// reports is set when file reports its physical requests.
+	// reports is set when file reports its physical requests, and src
+	// classifies its reads (storageReader).
 	reports bool
+	src     sourceInfo
 	key     leaf
 	// groups are the part's non-empty row groups.
 	groups []*group
@@ -126,6 +136,11 @@ type part struct {
 	// chunks, by physical row group and column, published on first use
 	// within Limits.OffsetIndexMemory (openColumn, reader.keepLocations).
 	locs [][]atomic.Pointer[[]pageLoc]
+	// meta holds the page-index bytes of the part's end that its check
+	// read, nil when none are kept (reader.retainTail); metaUsed is when a
+	// load last used them, on the reader's metaClock.
+	meta     atomic.Pointer[retained]
+	metaUsed atomic.Int64
 }
 
 // group is one non-empty row group.
@@ -173,6 +188,8 @@ type partInput struct {
 	minKey, maxKey []byte
 	// rows, when positive, is the part's exact row count.
 	rows int64
+	// tail is the end of the file readFooter read, when it did.
+	tail footerTail
 }
 
 // openParts opens parts in key order: OpenDataset after it has read the
@@ -337,7 +354,7 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 	footer := in.footer
 	if footer == nil {
 		var err error
-		if footer, err = readFooter(ctx, in.name, in.file, in.size, &r.limits, st, footerWindow); err != nil {
+		if footer, in.tail, err = readFooter(ctx, in.name, in.file, in.size, &r.limits, st, r.policy.tailWindow(), r.policy.Concurrency); err != nil {
 			return err
 		}
 	}
@@ -415,6 +432,8 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 		p.rows = rows
 	}
 	p.file, p.size, p.groups, p.reports = in.file, in.size, groups, reportsIO(in.file)
+	p.src = sourceInfo{name: p.name, unreported: !p.reports}
+	r.retainTail(p, in.tail)
 	return nil
 }
 
@@ -686,7 +705,7 @@ func bind(ctx context.Context, file io.ReaderAt) io.ReaderAt {
 // at returns the part's file for reads under ctx, its errors marked as
 // the source's own, its calls counted in st.
 func (p *part) at(ctx context.Context, st *ReadStats) io.ReaderAt {
-	return storageReader{r: bind(ctx, p.file), st: st, name: p.name, unreported: !p.reports}
+	return storageReader{r: bind(ctx, p.file), st: st, src: &p.src}
 }
 
 // begin takes a read lease that close waits for, and returns the request's

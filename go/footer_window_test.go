@@ -65,12 +65,12 @@ func TestFooterWindowReads(t *testing.T) {
 		{"exact read of a large footer", huge, lim, 0, 3, 4 + 8 + hugeFooter},
 	} {
 		var st ReadStats
-		f, err := readFooter(ctx, "p", bytes.NewReader(tc.raw), int64(len(tc.raw)), &tc.lim, &st, tc.window)
+		f, _, err := readFooter(ctx, "p", bytes.NewReader(tc.raw), int64(len(tc.raw)), &tc.lim, &st, tc.window, 64)
 		must(t, err)
 		if st.SourceReads != tc.reads || st.SourceBytes != tc.bytes {
 			t.Errorf("%s: %d reads of %d bytes, want %d of %d", tc.name, st.SourceReads, st.SourceBytes, tc.reads, tc.bytes)
 		}
-		exact, err := readFooter(ctx, "p", bytes.NewReader(tc.raw), int64(len(tc.raw)), &lim, nil, 0)
+		exact, _, err := readFooter(ctx, "p", bytes.NewReader(tc.raw), int64(len(tc.raw)), &lim, nil, 0, 64)
 		must(t, err)
 		if !reflect.DeepEqual(f.Metadata(), exact.Metadata()) {
 			t.Errorf("%s: the footer differs from an exact read's", tc.name)
@@ -112,7 +112,7 @@ func TestFooterWindowRefusals(t *testing.T) {
 			{"length over FooterBytes", raw, tight, limited},
 		} {
 			var st ReadStats
-			_, err := readFooter(ctx, "p", bytes.NewReader(tc.raw), int64(len(tc.raw)), &tc.lim, &st, footerWindow)
+			_, _, err := readFooter(ctx, "p", bytes.NewReader(tc.raw), int64(len(tc.raw)), &tc.lim, &st, footerWindow, 64)
 			if !tc.want(err) {
 				t.Errorf("%s, %s: %v", name, tc.what, err)
 			}
@@ -171,7 +171,7 @@ func TestFooterWindowEdgeRefusals(t *testing.T) {
 			if tc.at != nil {
 				at = tc.at(tc.raw)
 			}
-			_, err := readFooter(ctx, "p", at, int64(len(tc.raw)), &lim, nil, window)
+			_, _, err := readFooter(ctx, "p", at, int64(len(tc.raw)), &lim, nil, window, 64)
 			if !tc.want(err) {
 				t.Errorf("%s, window %d: %v", tc.name, window, err)
 			}
@@ -198,7 +198,7 @@ func TestFooterWindowNotRetained(t *testing.T) {
 		var got []prefetched
 		var window []byte
 		testFooterRetained = func(p prefetched, win []byte) { got, window = append(got, p), win }
-		_, err := readFooter(ctx, "p", bytes.NewReader(tc.raw), int64(len(tc.raw)), &lim, nil, footerWindow)
+		_, _, err := readFooter(ctx, "p", bytes.NewReader(tc.raw), int64(len(tc.raw)), &lim, nil, footerWindow, 64)
 		testFooterRetained = nil
 		must(t, err)
 		if len(got) != 1 {

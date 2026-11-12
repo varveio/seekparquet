@@ -130,7 +130,10 @@
 // no metadata request (SizedSource), batched range reads on its files
 // (RangeReader), and reports of its physical requests to the context's
 // IOObserver (IOReporter), which ReadStats counts. A Source with none is
-// read through Open and ReadAt.
+// read through Open and ReadAt. A part's first check reads its end in one
+// window (ReadPolicy.MetadataPrefetchBytes) and keeps the page-index bytes
+// it holds (Limits.MetadataCacheMemory), so that later index loads of the
+// part read nothing.
 //
 // # Read statistics
 //

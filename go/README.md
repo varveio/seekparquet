@@ -291,10 +291,15 @@ return of memory to the OS.
 
 Opening reads the manifest: one read, whatever the number of parts. A read is routed to a part by its
 manifest bounds; the first read to touch a part opens it and reads its footer (counted in
-`ReadStats.PartsOpened` and `SourceReads`: the last 64 KiB of the part in one read, the whole part when it is
-smaller, plus a 4-byte read of its head when it is larger, and one more read when the footer is larger than
-that window), so a cold query costs the manifest plus one footer per part it
-touches, independent of the part count. Within the part, a read is routed by a binary search over its row groups' first
+`ReadStats.PartsOpened` and `SourceReads`: the last `ReadPolicy.MetadataPrefetchBytes` of the part in one read
+(2 MiB, or 64 KiB through `OpenDir`), the whole part when it is smaller, together with a 4-byte read of its
+head when it is larger, and one more read of exactly the missing bytes when the footer is larger than that
+window), so a cold query costs the manifest plus one footer per part it
+touches, independent of the part count. The page-index bytes that read holds (a part's ColumnIndexes and
+OffsetIndexes sit between its data and its footer) are kept, within `Limits.MetadataCacheMemory` (128 MiB,
+least recently used parts evicted first), and serve the part's later index loads without a read
+(`ReadStats.MetadataHitBytes`); an index is still decoded and checked only when a request needs it.
+`ReadPolicy.DisableSpeculation` reads a 64 KiB window and keeps only the footer. Within the part, a read is routed by a binary search over its row groups' first
 keys; the first time a row group is needed, its key page index is loaded and its first key page decoded, and
 both are kept (`Limits.IndexMemory` accounts for key-page entries, their bound bytes,
 and decoded row-group first-key bytes). This budget does not include allocator overhead,

@@ -25,7 +25,10 @@ import (
 func statsFixture(t *testing.T, keys []string, pageRows int) (*Dataset, *accessSource) {
 	t.Helper()
 	src := &accessSource{Source: dirOf(t, write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 200}, keys)))}
-	d, err := OpenDataset(ctx, src, OpenOptions{})
+	// The counts below are of the reads without retained metadata
+	// (TestReadStatsRetainedMetadata counts them with it).
+	opt := OpenOptions{Read: ReadPolicy{DisableSpeculation: true}}
+	d, err := OpenDataset(ctx, src, opt)
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	probe := new(ReadStats)
@@ -41,7 +44,7 @@ func statsFixture(t *testing.T, keys []string, pageRows int) (*Dataset, *accessS
 		}
 	}
 	// Forget what the geometry check loaded.
-	d, err = OpenDataset(ctx, src, OpenOptions{})
+	d, err = OpenDataset(ctx, src, opt)
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	must(t, d.r.checkParts(ctx, probe))
@@ -327,7 +330,7 @@ func TestReadStatsFailedDecodeNotCounted(t *testing.T) {
 // RowGroupsOpened-IndexLoads, the reuses, is never negative.
 func TestReadStatsIndexRefused(t *testing.T) {
 	dir := write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 200}, dirKeys(map[string]int{"k": 100}, "k")))
-	d := open(t, dir, OpenOptions{Limits: Limits{IndexMemory: 1}})
+	d := open(t, dir, OpenOptions{Limits: Limits{IndexMemory: 1}, Read: ReadPolicy{DisableSpeculation: true}})
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	var st ReadStats
 	_, err := d.Rows(ctx, Query{Limit: 5}, &st)

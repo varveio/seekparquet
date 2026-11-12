@@ -88,48 +88,48 @@ var none = ioTarget{-1, -1}
 var ioBudgets = []ioBudget{
 	{"open/cold", ioMetrics{2, 2, 1591, 0, 1}, ioTarget{1, 1}, current},
 	{"open/again", ioMetrics{2, 2, 1591, 0, 1}, ioTarget{1, 1}, current},
-	{"rows-key/first/cold", ioMetrics{10, 10, 82784, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-key/first/cold", ioMetrics{6, 5, 2111161, 0, 2}, ioTarget{8, 4}, current},
 	{"rows-key/first/warm", ioMetrics{3, 3, 14005, 0, 1}, ioTarget{3, 1}, current},
-	{"rows-key/mid/cold", ioMetrics{14, 14, 95166, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-key/mid/cold", ioMetrics{8, 7, 2121071, 0, 2}, ioTarget{8, 4}, current},
 	{"rows-key/mid/warm", ioMetrics{3, 3, 16685, 0, 1}, ioTarget{3, 1}, current},
-	{"rows-key/other-group/warm", ioMetrics{7, 7, 17963, 0, 1}, ioTarget{3, 1}, current},
-	{"rows-key/last/cold", ioMetrics{14, 14, 77386, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-key/other-group/warm", ioMetrics{3, 3, 14724, 0, 1}, ioTarget{3, 1}, current},
+	{"rows-key/last/cold", ioMetrics{8, 7, 2103930, 0, 2}, ioTarget{8, 4}, current},
 	{"rows-key/last/warm", ioMetrics{3, 3, 5467, 0, 1}, ioTarget{3, 1}, current},
-	{"get/first/cold", ioMetrics{10, 10, 82784, 0, 1}, ioTarget{8, 5}, current},
+	{"get/first/cold", ioMetrics{6, 5, 2111161, 0, 2}, ioTarget{8, 5}, atTarget},
 	{"get/first/warm", ioMetrics{3, 3, 14005, 0, 1}, ioTarget{3, 2}, current},
-	{"get/mid/cold", ioMetrics{14, 14, 95166, 0, 1}, ioTarget{8, 5}, current},
+	{"get/mid/cold", ioMetrics{8, 7, 2121071, 0, 2}, ioTarget{8, 5}, current},
 	{"get/mid/warm", ioMetrics{3, 3, 16685, 0, 1}, ioTarget{3, 2}, current},
-	{"get/other-group/warm", ioMetrics{7, 7, 17963, 0, 1}, ioTarget{3, 2}, current},
-	{"get/last/cold", ioMetrics{14, 14, 77386, 0, 1}, ioTarget{8, 5}, current},
+	{"get/other-group/warm", ioMetrics{3, 3, 14724, 0, 1}, ioTarget{3, 2}, current},
+	{"get/last/cold", ioMetrics{8, 7, 2103930, 0, 2}, ioTarget{8, 5}, current},
 	{"get/last/warm", ioMetrics{3, 3, 5467, 0, 1}, ioTarget{3, 2}, current},
-	{"rows-100/2-cols/cold", ioMetrics{14, 14, 95166, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-100/2-cols/cold", ioMetrics{8, 7, 2121071, 0, 2}, ioTarget{8, 4}, current},
 	{"rows-100/2-cols/warm", ioMetrics{3, 3, 16685, 0, 1}, ioTarget{3, 1}, current},
-	{"rows-100/keys/cold", ioMetrics{10, 10, 85190, 0, 1}, none, current},
+	{"rows-100/keys/cold", ioMetrics{6, 5, 2111735, 0, 2}, none, current},
 	{"rows-100/keys/warm", ioMetrics{1, 1, 7349, 0, 1}, none, current},
-	{"list-ra0/page1-cold", ioMetrics{92, 92, 205244, 3, 1}, ioTarget{25, 8}, current},
-	{"list-ra0/page2", ioMetrics{38, 38, 34411, 1, 1}, ioTarget{4, 2}, current},
+	{"list-ra0/page1-cold", ioMetrics{80, 78, 4253892, 3, 2}, ioTarget{25, 8}, current},
+	{"list-ra0/page2", ioMetrics{36, 36, 31927, 1, 1}, ioTarget{4, 2}, current},
 	{"list-ra0/page1-warm", ioMetrics{68, 68, 49712, 0, 1}, ioTarget{4, 2}, current},
-	{"list-ra8/page1-cold", ioMetrics{98, 37, 209031, 3, 8}, ioTarget{25, 8}, current},
-	{"list-ra8/page2", ioMetrics{38, 12, 34411, 1, 8}, ioTarget{4, 2}, current},
+	{"list-ra8/page1-cold", ioMetrics{86, 23, 4257679, 3, 8}, ioTarget{25, 8}, current},
+	{"list-ra8/page2", ioMetrics{36, 10, 31927, 1, 8}, ioTarget{4, 2}, current},
 	{"list-ra8/page1-warm", ioMetrics{74, 13, 53499, 0, 8}, ioTarget{4, 2}, current},
-	{"build-list-index", ioMetrics{436, 436, 2303934, 0, 1}, ioTarget{40, 10}, current},
-	{"list-indexed-ra0/page1-cold", ioMetrics{76, 76, 59242, 0, 1}, ioTarget{25, 8}, current},
-	{"list-indexed-ra0/page2", ioMetrics{39, 39, 30164, 1, 1}, ioTarget{4, 2}, current},
+	{"build-list-index", ioMetrics{404, 400, 10389655, 0, 2}, ioTarget{40, 10}, current},
+	{"list-indexed-ra0/page1-cold", ioMetrics{68, 68, 49712, 0, 1}, ioTarget{25, 8}, current},
+	{"list-indexed-ra0/page2", ioMetrics{35, 35, 25110, 1, 1}, ioTarget{4, 2}, current},
 	{"list-indexed-ra0/page1-warm", ioMetrics{68, 68, 49712, 0, 1}, ioTarget{4, 2}, current},
-	{"scan-part/cold", ioMetrics{211, 211, 743236, 0, 1}, ioTarget{20, 5}, current},
+	{"scan-part/cold", ioMetrics{199, 198, 2763754, 0, 2}, ioTarget{20, 5}, current},
 	{"scan-part/warm", ioMetrics{196, 196, 666598, 0, 1}, ioTarget{20, 5}, current},
-	{"plan-part/plan-cold", ioMetrics{10, 10, 74142, 0, 1}, none, current},
-	{"plan-part/scan-cold", ioMetrics{202, 202, 673818, 0, 1}, ioTarget{20, 5}, current},
+	{"plan-part/plan-cold", ioMetrics{4, 3, 2101880, 0, 2}, none, current},
+	{"plan-part/scan-cold", ioMetrics{196, 196, 666598, 0, 1}, ioTarget{20, 5}, current},
 	{"plan-part/plan-warm", ioMetrics{1, 1, 4724, 0, 1}, none, current},
 	{"plan-part/scan-warm", ioMetrics{196, 196, 666598, 0, 1}, ioTarget{20, 5}, current},
-	{"plan-20/plan-cold", ioMetrics{108, 108, 474836, 0, 1}, ioTarget{32, 4}, current},
+	{"plan-20/plan-cold", ioMetrics{44, 40, 8550725, 0, 2}, ioTarget{32, 4}, current},
 	{"plan-20/scan-cold", ioMetrics{60, 60, 289574, 0, 1}, ioTarget{60, 2}, current},
 	{"plan-20/plan-warm", ioMetrics{20, 20, 103002, 0, 1}, none, current},
 	{"plan-20/scan-warm", ioMetrics{60, 60, 289574, 0, 1}, ioTarget{60, 2}, current},
-	{"split/plan", ioMetrics{10, 10, 74142, 0, 1}, none, current},
+	{"split/plan", ioMetrics{4, 3, 2101880, 0, 2}, none, current},
 	{"split/split4", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
-	{"split/shards-concurrent", ioMetrics{202, 52, 673818, 0, 4}, ioTarget{20, 5}, current},
-	{"verify/cold", ioMetrics{64, 64, 391382, 0, 1}, ioTarget{24, 3}, current},
+	{"split/shards-concurrent", ioMetrics{196, 50, 666598, 0, 4}, ioTarget{20, 5}, current},
+	{"verify/cold", ioMetrics{32, 28, 8477103, 0, 2}, ioTarget{24, 3}, current},
 	{"verify/warm", ioMetrics{4, 4, 9216, 0, 1}, ioTarget{0, 0}, current},
 }
 
@@ -137,48 +137,48 @@ var ioBudgets = []ioBudget{
 var ioCapableBudgets = []ioBudget{
 	{"open/cold", ioMetrics{1, 1, 1591, 0, 1}, ioTarget{1, 1}, atTarget},
 	{"open/again", ioMetrics{1, 1, 1591, 0, 1}, ioTarget{1, 1}, atTarget},
-	{"rows-key/first/cold", ioMetrics{9, 9, 82784, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-key/first/cold", ioMetrics{5, 4, 2111161, 0, 2}, ioTarget{8, 4}, atTarget},
 	{"rows-key/first/warm", ioMetrics{3, 3, 14005, 0, 1}, ioTarget{3, 1}, current},
-	{"rows-key/mid/cold", ioMetrics{13, 13, 95166, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-key/mid/cold", ioMetrics{7, 6, 2121071, 0, 2}, ioTarget{8, 4}, current},
 	{"rows-key/mid/warm", ioMetrics{3, 3, 16685, 0, 1}, ioTarget{3, 1}, current},
-	{"rows-key/other-group/warm", ioMetrics{7, 7, 17963, 0, 1}, ioTarget{3, 1}, current},
-	{"rows-key/last/cold", ioMetrics{13, 13, 77386, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-key/other-group/warm", ioMetrics{3, 3, 14724, 0, 1}, ioTarget{3, 1}, current},
+	{"rows-key/last/cold", ioMetrics{7, 6, 2103930, 0, 2}, ioTarget{8, 4}, current},
 	{"rows-key/last/warm", ioMetrics{3, 3, 5467, 0, 1}, ioTarget{3, 1}, current},
-	{"get/first/cold", ioMetrics{9, 9, 82784, 0, 1}, ioTarget{8, 5}, current},
+	{"get/first/cold", ioMetrics{5, 4, 2111161, 0, 2}, ioTarget{8, 5}, atTarget},
 	{"get/first/warm", ioMetrics{3, 3, 14005, 0, 1}, ioTarget{3, 2}, current},
-	{"get/mid/cold", ioMetrics{13, 13, 95166, 0, 1}, ioTarget{8, 5}, current},
+	{"get/mid/cold", ioMetrics{7, 6, 2121071, 0, 2}, ioTarget{8, 5}, current},
 	{"get/mid/warm", ioMetrics{3, 3, 16685, 0, 1}, ioTarget{3, 2}, current},
-	{"get/other-group/warm", ioMetrics{7, 7, 17963, 0, 1}, ioTarget{3, 2}, current},
-	{"get/last/cold", ioMetrics{13, 13, 77386, 0, 1}, ioTarget{8, 5}, current},
+	{"get/other-group/warm", ioMetrics{3, 3, 14724, 0, 1}, ioTarget{3, 2}, current},
+	{"get/last/cold", ioMetrics{7, 6, 2103930, 0, 2}, ioTarget{8, 5}, current},
 	{"get/last/warm", ioMetrics{3, 3, 5467, 0, 1}, ioTarget{3, 2}, current},
-	{"rows-100/2-cols/cold", ioMetrics{13, 13, 95166, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-100/2-cols/cold", ioMetrics{7, 6, 2121071, 0, 2}, ioTarget{8, 4}, current},
 	{"rows-100/2-cols/warm", ioMetrics{3, 3, 16685, 0, 1}, ioTarget{3, 1}, current},
-	{"rows-100/keys/cold", ioMetrics{9, 9, 85190, 0, 1}, none, current},
+	{"rows-100/keys/cold", ioMetrics{5, 4, 2111735, 0, 2}, none, current},
 	{"rows-100/keys/warm", ioMetrics{1, 1, 7349, 0, 1}, none, current},
-	{"list-ra0/page1-cold", ioMetrics{90, 90, 205244, 3, 1}, ioTarget{25, 8}, current},
-	{"list-ra0/page2", ioMetrics{38, 38, 34411, 1, 1}, ioTarget{4, 2}, current},
+	{"list-ra0/page1-cold", ioMetrics{78, 76, 4253892, 3, 2}, ioTarget{25, 8}, current},
+	{"list-ra0/page2", ioMetrics{36, 36, 31927, 1, 1}, ioTarget{4, 2}, current},
 	{"list-ra0/page1-warm", ioMetrics{68, 68, 49712, 0, 1}, ioTarget{4, 2}, current},
-	{"list-ra8/page1-cold", ioMetrics{96, 35, 209031, 3, 8}, ioTarget{25, 8}, current},
-	{"list-ra8/page2", ioMetrics{38, 12, 34411, 1, 8}, ioTarget{4, 2}, current},
+	{"list-ra8/page1-cold", ioMetrics{84, 21, 4257679, 3, 8}, ioTarget{25, 8}, current},
+	{"list-ra8/page2", ioMetrics{36, 10, 31927, 1, 8}, ioTarget{4, 2}, current},
 	{"list-ra8/page1-warm", ioMetrics{74, 13, 53499, 0, 8}, ioTarget{4, 2}, current},
-	{"build-list-index", ioMetrics{432, 432, 2303934, 0, 1}, ioTarget{40, 10}, current},
-	{"list-indexed-ra0/page1-cold", ioMetrics{76, 76, 59242, 0, 1}, ioTarget{25, 8}, current},
-	{"list-indexed-ra0/page2", ioMetrics{39, 39, 30164, 1, 1}, ioTarget{4, 2}, current},
+	{"build-list-index", ioMetrics{400, 396, 10389655, 0, 2}, ioTarget{40, 10}, current},
+	{"list-indexed-ra0/page1-cold", ioMetrics{68, 68, 49712, 0, 1}, ioTarget{25, 8}, current},
+	{"list-indexed-ra0/page2", ioMetrics{35, 35, 25110, 1, 1}, ioTarget{4, 2}, current},
 	{"list-indexed-ra0/page1-warm", ioMetrics{68, 68, 49712, 0, 1}, ioTarget{4, 2}, current},
-	{"scan-part/cold", ioMetrics{210, 210, 743236, 0, 1}, ioTarget{20, 5}, current},
+	{"scan-part/cold", ioMetrics{198, 197, 2763754, 0, 2}, ioTarget{20, 5}, current},
 	{"scan-part/warm", ioMetrics{196, 196, 666598, 0, 1}, ioTarget{20, 5}, current},
-	{"plan-part/plan-cold", ioMetrics{9, 9, 74142, 0, 1}, none, current},
-	{"plan-part/scan-cold", ioMetrics{202, 202, 673818, 0, 1}, ioTarget{20, 5}, current},
+	{"plan-part/plan-cold", ioMetrics{3, 2, 2101880, 0, 2}, none, current},
+	{"plan-part/scan-cold", ioMetrics{196, 196, 666598, 0, 1}, ioTarget{20, 5}, current},
 	{"plan-part/plan-warm", ioMetrics{1, 1, 4724, 0, 1}, none, current},
 	{"plan-part/scan-warm", ioMetrics{196, 196, 666598, 0, 1}, ioTarget{20, 5}, current},
-	{"plan-20/plan-cold", ioMetrics{104, 104, 474836, 0, 1}, ioTarget{32, 4}, current},
+	{"plan-20/plan-cold", ioMetrics{40, 36, 8550725, 0, 2}, ioTarget{32, 4}, current},
 	{"plan-20/scan-cold", ioMetrics{60, 60, 289574, 0, 1}, ioTarget{60, 2}, current},
 	{"plan-20/plan-warm", ioMetrics{20, 20, 103002, 0, 1}, none, current},
 	{"plan-20/scan-warm", ioMetrics{60, 60, 289574, 0, 1}, ioTarget{60, 2}, current},
-	{"split/plan", ioMetrics{9, 9, 74142, 0, 1}, none, current},
+	{"split/plan", ioMetrics{3, 2, 2101880, 0, 2}, none, current},
 	{"split/split4", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
-	{"split/shards-concurrent", ioMetrics{202, 52, 673818, 0, 4}, ioTarget{20, 5}, current},
-	{"verify/cold", ioMetrics{60, 60, 391382, 0, 1}, ioTarget{24, 3}, current},
+	{"split/shards-concurrent", ioMetrics{196, 50, 666598, 0, 4}, ioTarget{20, 5}, current},
+	{"verify/cold", ioMetrics{28, 24, 8477103, 0, 2}, ioTarget{24, 3}, current},
 	{"verify/warm", ioMetrics{4, 4, 9216, 0, 1}, ioTarget{0, 0}, current},
 }
 
@@ -187,24 +187,24 @@ var ioCapableBudgets = []ioBudget{
 var ioRepeatedBudgets = []ioBudget{
 	{"open/cold", ioMetrics{1, 1, 1592, 0, 1}, ioTarget{1, 1}, atTarget},
 	{"open/again", ioMetrics{1, 1, 1592, 0, 1}, ioTarget{1, 1}, atTarget},
-	{"rows-key/mid/cold", ioMetrics{13, 13, 91589, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-key/mid/cold", ioMetrics{7, 6, 2117564, 0, 2}, ioTarget{8, 4}, current},
 	{"rows-key/mid/warm", ioMetrics{3, 3, 13555, 0, 1}, ioTarget{3, 1}, current},
-	{"rows-key/other-group/warm", ioMetrics{7, 7, 16241, 0, 1}, ioTarget{3, 1}, current},
-	{"get/first/cold", ioMetrics{9, 9, 81632, 0, 1}, ioTarget{8, 5}, current},
+	{"rows-key/other-group/warm", ioMetrics{3, 3, 13015, 0, 1}, ioTarget{3, 1}, current},
+	{"get/first/cold", ioMetrics{5, 4, 2110022, 0, 2}, ioTarget{8, 5}, atTarget},
 	{"get/first/warm", ioMetrics{3, 3, 12866, 0, 1}, ioTarget{3, 2}, current},
-	{"get/mid/cold", ioMetrics{13, 13, 91589, 0, 1}, ioTarget{8, 5}, current},
+	{"get/mid/cold", ioMetrics{7, 6, 2117564, 0, 2}, ioTarget{8, 5}, current},
 	{"get/mid/warm", ioMetrics{3, 3, 13555, 0, 1}, ioTarget{3, 2}, current},
-	{"get/other-group/warm", ioMetrics{7, 7, 16241, 0, 1}, ioTarget{3, 2}, current},
-	{"get/last/cold", ioMetrics{13, 13, 80431, 0, 1}, ioTarget{8, 5}, current},
+	{"get/other-group/warm", ioMetrics{3, 3, 13015, 0, 1}, ioTarget{3, 2}, current},
+	{"get/last/cold", ioMetrics{7, 6, 2106975, 0, 2}, ioTarget{8, 5}, current},
 	{"get/last/warm", ioMetrics{3, 3, 6903, 0, 1}, ioTarget{3, 2}, current},
-	{"rows-100/2-cols/cold", ioMetrics{13, 13, 91589, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-100/2-cols/cold", ioMetrics{7, 6, 2117564, 0, 2}, ioTarget{8, 4}, current},
 	{"rows-100/2-cols/warm", ioMetrics{3, 3, 13555, 0, 1}, ioTarget{3, 1}, current},
-	{"list-ra0/page1-cold", ioMetrics{52, 52, 204744, 2, 1}, ioTarget{25, 8}, current},
-	{"list-ra0/page2", ioMetrics{41, 41, 58033, 0, 1}, ioTarget{4, 2}, current},
+	{"list-ra0/page1-cold", ioMetrics{44, 42, 4258636, 2, 2}, ioTarget{25, 8}, current},
+	{"list-ra0/page2", ioMetrics{37, 37, 53022, 0, 1}, ioTarget{4, 2}, current},
 	{"list-ra0/page1-warm", ioMetrics{36, 36, 54592, 0, 1}, ioTarget{4, 2}, current},
-	{"scan-part/cold", ioMetrics{210, 210, 677265, 0, 1}, ioTarget{20, 5}, current},
+	{"scan-part/cold", ioMetrics{198, 197, 2697866, 0, 2}, ioTarget{20, 5}, current},
 	{"scan-part/warm", ioMetrics{196, 196, 600710, 0, 1}, ioTarget{20, 5}, current},
-	{"verify/cold", ioMetrics{60, 60, 370182, 0, 1}, ioTarget{24, 3}, current},
+	{"verify/cold", ioMetrics{28, 24, 8456109, 0, 2}, ioTarget{24, 3}, current},
 	{"verify/warm", ioMetrics{4, 4, 8391, 0, 1}, ioTarget{0, 0}, current},
 }
 
@@ -546,8 +546,12 @@ var (
 	// capableStore offers every optional capability: sized opens (no
 	// metadata request), a whole-manifest read and batched ranges.
 	capableStore = ioStore{name: "capable", wrap: func(s *fakestore.Source) seekparquet.Source { return capableSource{fakeSource{s}} }}
+	// noSpeculationStore is capableStore with ReadPolicy.DisableSpeculation:
+	// no metadata retained. It has no budgets: it is a differential.
+	noSpeculationStore = ioStore{name: "capable, no speculation", wrap: capableStore.wrap,
+		opt: seekparquet.OpenOptions{Read: seekparquet.ReadPolicy{DisableSpeculation: true}}}
 	// ioStores are the stores every scenario runs through.
-	ioStores = []ioStore{plainStore, capableStore}
+	ioStores = []ioStore{plainStore, capableStore, noSpeculationStore}
 )
 
 // runIOScenarios runs every scenario through each store, each in its own
@@ -677,6 +681,18 @@ func TestReadBudgets(t *testing.T) {
 	reports := runIOScenarios(t, fx, ioScenarios(fx), ioStores)
 	checkBudgets(t, "plain", ioBudgets, reports["plain"])
 	checkBudgets(t, "capable", ioCapableBudgets, reports["capable"])
+	// The part's end read when it is checked holds its whole page-index
+	// region (fixture: about 28 KB, within 2 MiB): no request reads in it
+	// again.
+	for _, store := range []string{"plain", "capable"} {
+		for op, r := range reports[store] {
+			for _, q := range r.Requests {
+				if region, ok := fx.indexRegion[q.Object]; ok && q.Kind == fakestore.Range && q.Off >= region[0] && q.Off+q.Len <= region[1] {
+					t.Errorf("%s %s: request %d+%d of %s reads the page-index region again", store, op, q.Off, q.Len, q.Object)
+				}
+			}
+		}
+	}
 
 	rfx := ioFixtureOf(t, ioRepeated)
 	t.Logf("repeated fixture: %s", describeFixture(rfx))

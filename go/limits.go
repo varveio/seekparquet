@@ -12,8 +12,9 @@ import (
 // Every limit is checked against what the files declare before anything
 // is allocated for it, and exceeding one fails the operation with an error
 // wrapping ErrLimitExceeded: a policy of the caller, not a refusal of the
-// data, reported as a *LimitError. OffsetIndexMemory is the exception: it
-// bounds a cache, and exceeding it never fails an operation. A zero field
+// data, reported as a *LimitError. OffsetIndexMemory and
+// MetadataCacheMemory are the exceptions: they bound caches, and exceeding
+// them never fails an operation. A zero field
 // takes its default; a negative field is an invalid request when the
 // dataset is opened. Within a page, the counts and
 // lengths its encodings declare are checked against the page header before
@@ -88,6 +89,15 @@ type Limits struct {
 	// budget and even if no request projects a value column. Default
 	// 256 MiB.
 	OffsetIndexMemory int64
+	// MetadataCacheMemory bounds the part metadata one Dataset retains
+	// from the ends of parts it read (ReadPolicy.MetadataPrefetchBytes):
+	// the raw page-index bytes kept to serve later index loads. It is a
+	// cache: past it, the part used least recently gives up its bytes, or
+	// a part's are not kept, and later loads read the indexes from the
+	// Source; it never fails an operation. It does not count footers,
+	// which every checked part keeps, or decoded indexes (IndexMemory,
+	// OffsetIndexMemory). Default 128 MiB.
+	MetadataCacheMemory int64
 	// GetRows bounds the rows Dataset.Get returns: a group of more rows
 	// fails with a *LimitError naming GetRows, and is read by paging
 	// KeySpan(key) with Rows instead. It bounds a convenience call's row
@@ -106,7 +116,7 @@ func (l *Limits) check() error {
 		{LimitManifestBytes, l.ManifestBytes}, {LimitParts, int64(l.Parts)}, {LimitFooterBytes, l.FooterBytes},
 		{LimitPageIndexBytes, l.PageIndexBytes}, {LimitMetadataMemory, l.MetadataMemory}, {LimitPageBytes, l.PageBytes},
 		{LimitPageValues, l.PageValues}, {LimitPageMemory, l.PageMemory}, {LimitIndexMemory, l.IndexMemory},
-		{LimitOffsetIndexMemory, l.OffsetIndexMemory}, {LimitGetRows, int64(l.GetRows)},
+		{LimitOffsetIndexMemory, l.OffsetIndexMemory}, {LimitGetRows, int64(l.GetRows)}, {LimitMetadataCacheMemory, l.MetadataCacheMemory},
 	} {
 		if f.value < 0 {
 			return invalidRequest("Limits.%s is negative (%d)", f.name, f.value)
@@ -131,6 +141,7 @@ func (l Limits) withDefaults() Limits {
 	set(&l.PageMemory, worstPageMemory(l.PageValues, l.PageBytes))
 	set(&l.IndexMemory, 1<<30)
 	set(&l.OffsetIndexMemory, 256<<20)
+	set(&l.MetadataCacheMemory, 128<<20)
 	if l.Parts <= 0 {
 		l.Parts = 1_000_000
 	}
@@ -157,6 +168,8 @@ const (
 	LimitIndexMemory       LimitName = "IndexMemory"
 	LimitOffsetIndexMemory LimitName = "OffsetIndexMemory"
 	LimitGetRows           LimitName = "GetRows"
+	// LimitMetadataCacheMemory names a cache: no operation fails on it.
+	LimitMetadataCacheMemory LimitName = "MetadataCacheMemory"
 	// LimitDatasetRows is the reader's capacity of signed 64-bit dataset
 	// ordinals: a total row count above 2^63-1.
 	LimitDatasetRows LimitName = "DatasetRows"

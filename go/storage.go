@@ -294,6 +294,21 @@ type ReadPolicy struct {
 	// RangeReader or, without one, through concurrent ReadAt calls on a
 	// ContextBinder view. Default 64.
 	Concurrency int
+	// MetadataPrefetchBytes is the speculative read of a part's end when
+	// the part is first checked: the footer and, when they fit, its page
+	// indexes in one read, at the same time as the part's 4-byte head. The
+	// page-index bytes it holds are kept (Limits.MetadataCacheMemory) and
+	// serve later loads of the part's ColumnIndexes and OffsetIndexes,
+	// decoded and checked only when a request needs them. It is clipped to
+	// the part's size; a footer larger than it costs one more read of
+	// exactly the missing bytes. Default 2 MiB; OpenDir's default is 64 KiB,
+	// since a local read costs little.
+	MetadataPrefetchBytes int64
+	// DisableSpeculation turns off optional extra fetching: a part's end
+	// is read in a window of 64 KiB at most and only its footer is kept;
+	// reads the reader issues together are still issued together.
+	// Results, refusals and their order are the same.
+	DisableSpeculation bool
 }
 
 // check rejects a negative field.
@@ -301,13 +316,27 @@ func (p ReadPolicy) check() error {
 	if p.Concurrency < 0 {
 		return invalidRequest("ReadPolicy.Concurrency is negative (%d)", p.Concurrency)
 	}
+	if p.MetadataPrefetchBytes < 0 {
+		return invalidRequest("ReadPolicy.MetadataPrefetchBytes is negative (%d)", p.MetadataPrefetchBytes)
+	}
 	return nil
+}
+
+// tailWindow is the most bytes of a part's end its first check reads.
+func (p ReadPolicy) tailWindow() int64 {
+	if p.DisableSpeculation {
+		return min(p.MetadataPrefetchBytes, footerWindow)
+	}
+	return p.MetadataPrefetchBytes
 }
 
 // withDefaults returns p with its zero fields set to their defaults.
 func (p ReadPolicy) withDefaults() ReadPolicy {
 	if p.Concurrency == 0 {
 		p.Concurrency = 64
+	}
+	if p.MetadataPrefetchBytes == 0 {
+		p.MetadataPrefetchBytes = 2 << 20
 	}
 	return p
 }

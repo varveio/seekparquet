@@ -1269,6 +1269,12 @@ func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, leng
 	if int64(length) > p.r.limits.PageIndexBytes {
 		return nil, exceeded(LimitPageIndexBytes, int64(length), p.r.limits.PageIndexBytes, "part %s: a page index", p.name)
 	}
+	if raw := p.retainedBytes(off, int64(length)); raw != nil {
+		if st != nil {
+			st.MetadataHitBytes += int64(length)
+		}
+		return raw, nil
+	}
 	raw := make([]byte, length)
 	if err := readFull(p.at(ctx, st), raw, off); err != nil {
 		return nil, err

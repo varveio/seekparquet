@@ -259,7 +259,8 @@ func TestOpenReads(t *testing.T) {
 	dir := write(t, parts(testutil.Part{GroupRows: 100, PageBytes: 512}, split(keys, 4)...))
 	reads := func(verify bool) (int64, *Dataset) {
 		src := &readCounter{Source: dirOf(t, dir)}
-		d, err := OpenDataset(ctx, src, OpenOptions{})
+		// The count below is of the reads without retained metadata.
+		d, err := OpenDataset(ctx, src, OpenOptions{Read: ReadPolicy{DisableSpeculation: true}})
 		must(t, err)
 		t.Cleanup(func() { _ = d.Close() })
 		if verify {
