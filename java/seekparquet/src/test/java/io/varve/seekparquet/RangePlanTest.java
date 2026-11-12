@@ -35,7 +35,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * Selection planning against an oracle: every valid conformance dataset (but optional-codecs and brotli-key,
  * whose BROTLI this reader lacks) read whole by a range read on a separate handle, with the byte extents of the
  * projected column's chunks from its footers. A plan must count the rows its ranges select, scan exactly
- * those rows with their values, and ask storage for exactly {@link RangePlan#projectedBytes()} bytes of
+ * those rows with their values, and ask storage for exactly {@link Plan#projectedBytes()} bytes of
  * the column's chunks, each read within one chunk.
  */
 class RangePlanTest {
@@ -94,7 +94,7 @@ class RangePlanTest {
         static Oracle of(Path root, String column) {
             try (Dataset d = Dataset.open(root)) {
                 d.verify();
-                List<Row> rows = d.range(RangeQuery.builder().limit(1_000_000).columns(column).build());
+                List<Row> rows = d.rows(Reads.builder().limit(1_000_000).columns(column).build());
                 List<Extent> extents = new ArrayList<>();
                 ReadContext ctx = new ReadContext(Cancellation.none(), Limits.DEFAULT);
                 for (int i = 0; i < d.parts().size(); i++) {
@@ -137,7 +137,8 @@ class RangePlanTest {
     }
 
     /** {@return whether the range's bounds select key, by the definition} */
-    static boolean selects(RangeQuery q, Bytes key) {
+    static boolean selects(Query query, Bytes key) {
+        Span q = query.span();
         if (!key.startsWith(q.prefix())) {
             return false;
         }
@@ -151,7 +152,7 @@ class RangePlanTest {
     }
 
     /** Every pair of a sample of bounds, an empty end, prefixes of several lengths and lookups. */
-    static List<RangeQuery> ranges(List<Row> rows) {
+    static List<Query> ranges(List<Row> rows) {
         List<Bytes> distinct = rows.stream().map(Row::key).distinct().toList();
         List<Bytes> bounds = new ArrayList<>();
         bounds.add(null);
@@ -169,11 +170,11 @@ class RangePlanTest {
             above[last.length] = (byte) 0xff;
             bounds.add(Bytes.wrap(above));
         }
-        List<RangeQuery> out = new ArrayList<>();
+        List<Query> out = new ArrayList<>();
         for (Bytes a : bounds) {
             for (Bytes b : bounds) {
-                RangeQuery.Builder in = RangeQuery.builder().limit(1);
-                RangeQuery.Builder ex = RangeQuery.builder().limit(1);
+                Reads.Builder in = Reads.builder().limit(1);
+                Reads.Builder ex = Reads.builder().limit(1);
                 if (a != null) {
                     in.start(a);
                     ex.startAfter(a);
@@ -186,42 +187,43 @@ class RangePlanTest {
                 out.add(ex.build());
             }
         }
-        out.add(RangeQuery.builder().end(Bytes.empty()).limit(1).build());
+        out.add(Reads.builder().end(Bytes.empty()).limit(1).build());
         for (int i = 0; i < distinct.size(); i += step) {
             byte[] k = distinct.get(i).toByteArray();
             for (int n : new int[] {1, (k.length + 1) / 2, k.length}) {
                 Bytes prefix = Bytes.wrap(Arrays.copyOf(k, n));
                 byte[] end = Arrays.copyOf(k, k.length + 1);
                 end[k.length] = 1;
-                out.add(RangeQuery.prefix(prefix, 1));
-                out.add(RangeQuery.builder().prefix(prefix).start(Bytes.wrap(k)).end(Bytes.wrap(end)).limit(1).build());
+                out.add(Reads.prefix(prefix, 1));
+                out.add(Reads.builder().prefix(prefix).start(Bytes.wrap(k)).end(Bytes.wrap(end)).limit(1).build());
             }
-            out.add(RangeQuery.lookup(Bytes.wrap(k), 1));
+            out.add(Reads.lookup(Bytes.wrap(k), 1));
         }
         return out;
     }
 
-    static void checkPlan(Dataset d, RecordingStorage storage, Oracle oracle, String column, List<RangeQuery> ranges) {
+    static void checkPlan(Dataset d, RecordingStorage storage, Oracle oracle, String column, List<Query> ranges) {
         String name = column + " over " + ranges;
         List<Row> want = oracle.rows().stream().filter(r -> ranges.stream().anyMatch(q -> selects(q, r.key()))).toList();
         storage.take();
-        RangePlan plan = d.planRanges(ranges, List.of(column));
-        assertEquals(want.size(), plan.count(), name);
-        assertTrue(plan.countExact(), name);
-        assertEquals(0, plan.stats().valuePagesDecoded(), name);
+        AtomicReference<ReadStats> planned = new AtomicReference<>();
+        Plan plan = d.plan(Reads.selections(ranges), List.of(column), ReadOptions.of(planned::set));
+        assertEquals(want.size(), plan.count().value(), name);
+        assertTrue(plan.count().exact(), name);
+        assertEquals(0, planned.get().valuePagesDecoded(), name);
         assertEquals(0, oracle.bytes(name, storage.take()), name + ": planning read value pages");
         List<Row> got = new ArrayList<>();
         AtomicReference<ReadStats> stats = new AtomicReference<>();
-        plan.scan(Cancellation.none(), stats::set, got::add);
+        Reads.scan(plan, Cancellation.none(), stats::set, got::add);
         long served = oracle.bytes(name, storage.take());
         assertEquals(want, got, name);
         assertEquals(got.isEmpty() ? 0 : 1, Math.min(1, stats.get().keyPagesDecoded()), name);
-        if (plan.projectedBytesExact()) {
-            assertEquals(served, plan.projectedBytes(), name + ": projected bytes against the bytes the scan asked for");
+        if (plan.projectedBytes().exact()) {
+            assertEquals(served, plan.projectedBytes().value(), name + ": projected bytes against the bytes the scan asked for");
         } else {
-            assertEquals(0, plan.projectedBytes(), name + ": bytes of a chunk without an OffsetIndex");
+            assertEquals(0, plan.projectedBytes().value(), name + ": bytes of a chunk without an OffsetIndex");
         }
-        assertEquals(want.size(), d.planRanges(ranges, List.of()).count(), name + " without columns");
+        assertEquals(want.size(), Reads.plan(d, ranges, List.of()).count().value(), name + " without columns");
     }
 
     static Stream<String> validDatasets() throws IOException {
@@ -247,13 +249,13 @@ class RangePlanTest {
         Oracle oracle = Oracle.of(root, column);
         RecordingStorage storage = new RecordingStorage(root);
         try (Dataset d = Dataset.open(storage)) {
-            List<RangeQuery> ranges = ranges(oracle.rows());
-            for (RangeQuery q : ranges) {
+            List<Query> ranges = ranges(oracle.rows());
+            for (Query q : ranges) {
                 checkPlan(d, storage, oracle, column, List.of(q));
             }
             Random random = new Random(oracle.rows().size());
             for (int i = 0; i < 40; i++) {
-                List<RangeQuery> set = new ArrayList<>();
+                List<Query> set = new ArrayList<>();
                 for (int n = 2 + random.nextInt(3); n > 0; n--) {
                     set.add(ranges.get(random.nextInt(ranges.size())));
                 }
@@ -278,11 +280,11 @@ class RangePlanTest {
             assertTrue(md.isSetDictionary_page_offset(), "the fixture's i64 chunk has no dictionary");
             long dictionary = md.getData_page_offset() - md.getDictionary_page_offset();
             java.util.function.Function<List<String>, Long> cost = keys -> {
-                List<RangeQuery> ranges = keys.stream().map(k -> RangeQuery.lookup(Bytes.utf8(k), 1)).toList();
+                List<Query> ranges = keys.stream().map(k -> Reads.lookup(Bytes.utf8(k), 1)).toList();
                 checkPlan(d, storage, oracle, "i64", ranges);
-                RangePlan plan = d.planRanges(ranges, List.of("i64"));
-                assertTrue(plan.projectedBytesExact());
-                return plan.projectedBytes();
+                Plan plan = Reads.plan(d, ranges, List.of("i64"));
+                assertTrue(plan.projectedBytes().exact());
+                return plan.projectedBytes().value();
             };
             long a = cost.apply(List.of("enc/000"));
             long b = cost.apply(List.of("enc/004"));
@@ -324,24 +326,24 @@ class RangePlanTest {
         try (Dataset d = Dataset.open(storage)) {
             for (int i = 0; i < 240; i++) {
                 Bytes k = Bytes.utf8(key(i));
-                for (RangeQuery q : List.of(
-                        RangeQuery.builder().end(k).limit(1).build(),
-                        RangeQuery.builder().start(k).limit(1).build(),
-                        RangeQuery.builder().startAfter(k).limit(1).build(),
-                        RangeQuery.lookup(k, 1),
-                        RangeQuery.builder().start(k).end(Bytes.utf8(key(Math.min(i + 7, 239)))).limit(1).build())) {
+                for (Query q : List.of(
+                        Reads.builder().end(k).limit(1).build(),
+                        Reads.builder().start(k).limit(1).build(),
+                        Reads.builder().startAfter(k).limit(1).build(),
+                        Reads.lookup(k, 1),
+                        Reads.builder().start(k).end(Bytes.utf8(key(Math.min(i + 7, 239)))).limit(1).build())) {
                     checkPlan(d, storage, oracle, "size", List.of(q));
                 }
             }
-            for (RangeQuery q : List.of(
-                    RangeQuery.builder().start(Bytes.utf8(key(9))).end(Bytes.utf8(key(9))).limit(1).build(),
-                    RangeQuery.builder().start(Bytes.utf8(key(90))).end(Bytes.utf8(key(10))).limit(1).build(),
-                    RangeQuery.prefix(Bytes.utf8("nothing"), 1),
-                    RangeQuery.builder().startAfter(Bytes.utf8(key(239))).limit(1).build())) {
-                RangePlan plan = d.planRanges(List.of(q), List.of("size"));
-                assertEquals(0, plan.count(), q.toString());
-                assertTrue(plan.countExact());
-                assertEquals(0, plan.projectedBytes());
+            for (Query q : List.of(
+                    Reads.builder().start(Bytes.utf8(key(9))).end(Bytes.utf8(key(9))).limit(1).build(),
+                    Reads.builder().start(Bytes.utf8(key(90))).end(Bytes.utf8(key(10))).limit(1).build(),
+                    Reads.prefix(Bytes.utf8("nothing"), 1),
+                    Reads.builder().startAfter(Bytes.utf8(key(239))).limit(1).build())) {
+                Plan plan = Reads.plan(d, List.of(q), List.of("size"));
+                assertEquals(0, plan.count().value(), q.toString());
+                assertTrue(plan.count().exact());
+                assertEquals(0, plan.projectedBytes().value());
             }
         }
     }
@@ -356,10 +358,10 @@ class RangePlanTest {
     void closeInsideScanFails() throws IOException {
         TestDatasets.Spec spec = new TestDatasets.Spec();
         Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(30, 2)));
-        RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size"));
+        Plan plan = Reads.plan(d, List.of(Reads.all(1)), List.of("size"));
         AtomicReference<RuntimeException> inside = new AtomicReference<>();
         RuntimeException stop = new RuntimeException("stop");
-        RuntimeException thrown = assertThrows(RuntimeException.class, () -> plan.scan(row -> {
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> Reads.scan(plan, row -> {
             try {
                 d.close();
             } catch (RuntimeException e) {
@@ -370,9 +372,9 @@ class RangePlanTest {
         assertSame(stop, thrown);
         assertTrue(inside.get() instanceof IllegalStateException, "close inside the scan: " + inside.get());
         // The failed close changed nothing: the dataset is open, and closes once the scan has returned.
-        assertEquals(30, d.planRanges(List.of(RangeQuery.all(1)), List.of()).count());
+        assertEquals(30, Reads.plan(d, List.of(Reads.all(1)), List.of()).count().value());
         d.close();
-        assertThrows(IllegalStateException.class, () -> plan.scan(row -> {}));
+        assertThrows(IllegalStateException.class, () -> Reads.scan(plan, row -> {}));
     }
 
     /**
@@ -383,11 +385,11 @@ class RangePlanTest {
     @org.junit.jupiter.api.Timeout(value = 20, threadMode = org.junit.jupiter.api.Timeout.ThreadMode.SEPARATE_THREAD)
     void requestInsideScanWhileClosing() throws Exception {
         Dataset d = Dataset.open(TestDatasets.write(tmp, new TestDatasets.Spec(), split(30, 2)));
-        RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size"));
+        Plan plan = Reads.plan(d, List.of(Reads.all(1)), List.of("size"));
         AtomicReference<Throwable> nested = new AtomicReference<>();
         AtomicReference<Thread> closer = new AtomicReference<>();
         RuntimeException stop = new RuntimeException("stop");
-        RuntimeException thrown = assertThrows(RuntimeException.class, () -> plan.scan(row -> {
+        RuntimeException thrown = assertThrows(RuntimeException.class, () -> Reads.scan(plan, row -> {
             Thread c = Thread.ofPlatform().start(d::close);
             closer.set(c);
             while (c.getState() != Thread.State.WAITING) { // the close waits for this scan
@@ -395,7 +397,7 @@ class RangePlanTest {
             }
             Thread request = Thread.ofPlatform().start(() -> {
                 try {
-                    d.range(RangeQuery.all(1));
+                    d.rows(Reads.all(1));
                 } catch (Throwable e) {
                     nested.set(e);
                 }
@@ -411,7 +413,7 @@ class RangePlanTest {
         assertTrue(nested.get() instanceof IllegalStateException || nested.get() instanceof java.util.concurrent.CancellationException,
                 "the nested request: " + nested.get());
         closer.get().join();
-        assertThrows(IllegalStateException.class, () -> plan.scan(row -> {}));
+        assertThrows(IllegalStateException.class, () -> Reads.scan(plan, row -> {}));
     }
 
     /**
@@ -424,27 +426,28 @@ class RangePlanTest {
         TestDatasets.Spec spec = new TestDatasets.Spec();
         spec.rowsPerGroup = 25;
         spec.rowsPerPage = 5;
+        AtomicReference<ReadStats> planned = new AtomicReference<>();
         try (Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(300, 3)))) {
-            RangeQuery span = RangeQuery.builder().start(Bytes.utf8(key(50))).end(Bytes.utf8(key(250))).limit(1).build();
-            RangePlan plan = d.planRanges(List.of(span), List.of());
-            assertEquals(200, plan.count());
-            assertFalse(plan.countExact());
-            assertEquals(2, plan.stats().partsOpened());
-            plan = d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8(key(10))).end(Bytes.utf8(key(200))).limit(1).build()), List.of());
-            assertEquals(190, plan.count());
-            assertFalse(plan.countExact());
-            assertEquals(0, plan.stats().partsOpened());
-            plan = d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8(key(210))).end(Bytes.utf8(key(290))).limit(1).build()), List.of());
-            assertEquals(80, plan.count());
-            assertTrue(plan.countExact());
-            plan = d.planRanges(List.of(span), List.of("size"));
-            assertEquals(200, plan.count());
-            assertTrue(plan.countExact());
-            assertEquals(1, plan.stats().partsOpened());
-            assertEquals(0, plan.stats().valuePagesDecoded());
-            plan = d.planRanges(List.of(span), List.of());
-            assertTrue(plan.countExact());
-            assertEquals(0, plan.stats().partsOpened());
+            Query span = Reads.builder().start(Bytes.utf8(key(50))).end(Bytes.utf8(key(250))).limit(1).build();
+            Plan plan = d.plan(Reads.selections(List.of(span)), List.of(), ReadOptions.of(planned::set));
+            assertEquals(200, plan.count().value());
+            assertFalse(plan.count().exact());
+            assertEquals(2, planned.get().partsOpened());
+            plan = d.plan(Reads.selections(List.of(Reads.builder().start(Bytes.utf8(key(10))).end(Bytes.utf8(key(200))).limit(1).build())), List.of(), ReadOptions.of(planned::set));
+            assertEquals(190, plan.count().value());
+            assertFalse(plan.count().exact());
+            assertEquals(0, planned.get().partsOpened());
+            plan = d.plan(Reads.selections(List.of(Reads.builder().start(Bytes.utf8(key(210))).end(Bytes.utf8(key(290))).limit(1).build())), List.of(), ReadOptions.of(planned::set));
+            assertEquals(80, plan.count().value());
+            assertTrue(plan.count().exact());
+            plan = d.plan(Reads.selections(List.of(span)), List.of("size"), ReadOptions.of(planned::set));
+            assertEquals(200, plan.count().value());
+            assertTrue(plan.count().exact());
+            assertEquals(1, planned.get().partsOpened());
+            assertEquals(0, planned.get().valuePagesDecoded());
+            plan = d.plan(Reads.selections(List.of(span)), List.of(), ReadOptions.of(planned::set));
+            assertTrue(plan.count().exact());
+            assertEquals(0, planned.get().partsOpened());
         }
     }
 
@@ -454,17 +457,15 @@ class RangePlanTest {
         TestDatasets.Spec spec = new TestDatasets.Spec();
         spec.rowsPerGroup = 20;
         Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(60, 2)));
-        assertThrows(IllegalArgumentException.class,
-                () -> d.planRanges(List.of(RangeQuery.builder().limit(1).columns("size").build()), List.of()));
-        List<Row> all = d.range(RangeQuery.all(100).toBuilder().columns("size").build());
+        List<Row> all = d.rows(Reads.all(100).toBuilder().columns("size").build());
         // A limit is not applied, and a cursor resumes after its row.
-        RangePlan plan = d.planRanges(List.of(RangeQuery.all(1).next(all.get(29))), List.of("size"));
+        Plan plan = Reads.plan(d, List.of(Reads.all(1).next(all.get(29))), List.of("size"));
         List<Row> got = new ArrayList<>();
-        plan.scan(got::add);
+        Reads.scan(plan, got::add);
         assertEquals(all.subList(30, 60), got);
         RuntimeException stop = new RuntimeException("stop");
         List<Row> some = new ArrayList<>();
-        assertSame(stop, assertThrows(RuntimeException.class, () -> plan.scan(row -> {
+        assertSame(stop, assertThrows(RuntimeException.class, () -> Reads.scan(plan, row -> {
             some.add(row);
             if (some.size() == 3) {
                 throw stop;
@@ -472,8 +473,8 @@ class RangePlanTest {
         })));
         assertEquals(all.subList(30, 33), some);
         d.close();
-        assertThrows(IllegalStateException.class, () -> plan.scan(row -> fail("scanned a closed dataset")));
-        assertThrows(IllegalStateException.class, () -> d.planRanges(List.of(RangeQuery.all(1)), List.of()));
+        assertThrows(IllegalStateException.class, () -> Reads.scan(plan, row -> fail("scanned a closed dataset")));
+        assertThrows(IllegalStateException.class, () -> Reads.plan(d, List.of(Reads.all(1)), List.of()));
     }
 
     /** A cursor inside a group of equal keys that crosses pages and row groups. */
@@ -481,13 +482,13 @@ class RangePlanTest {
     void cursorInEqualKeys() {
         Path root = ConformanceFixturesTest.fixture("datasets/repeated-keys");
         try (Dataset d = Dataset.open(root)) {
-            List<Row> all = d.range(RangeQuery.builder().limit(1_000_000).columns("size").build());
+            List<Row> all = d.rows(Reads.builder().limit(1_000_000).columns("size").build());
             for (int i = 0; i < all.size(); i++) {
-                RangePlan plan = d.planRanges(List.of(RangeQuery.all(1).next(all.get(i))), List.of("size"));
+                Plan plan = Reads.plan(d, List.of(Reads.all(1).next(all.get(i))), List.of("size"));
                 List<Row> got = new ArrayList<>();
-                plan.scan(got::add);
+                Reads.scan(plan, got::add);
                 assertEquals(all.subList(i + 1, all.size()), got, "after row " + i);
-                assertEquals(all.size() - i - 1, plan.count());
+                assertEquals(all.size() - i - 1, plan.count().value());
             }
         }
     }
@@ -501,8 +502,7 @@ class RangePlanTest {
         RecordingStorage storage = new RecordingStorage(TestDatasets.write(tmp, spec, split(60, 2)));
         try (Dataset d = Dataset.open(storage)) {
             AtomicReference<ReadStats> stats = new AtomicReference<>();
-            List<Row> rows = d.range(RangeQuery.builder().start(Bytes.utf8(key(33))).limit(4).columns("size").build(),
-                    Cancellation.none(), stats::set);
+            List<Row> rows = Reads.range(d, Reads.builder().start(Bytes.utf8(key(33))).limit(4).columns("size").build(), Cancellation.none(), stats::set);
             assertEquals(4, rows.size());
             List<RecordingStorage.Read> reads = storage.take();
             ReadStats s = stats.get();
@@ -515,11 +515,11 @@ class RangePlanTest {
             assertEquals(2, s.valuePagesDecoded(), "rows 33 and 34, then 35 and 36");
             assertEquals(0, s.groupsSkipped());
             // A warm repeat reads no footer and loads no index.
-            d.range(RangeQuery.builder().start(Bytes.utf8(key(33))).limit(4).columns("size").build(), Cancellation.none(), stats::set);
+            Reads.range(d, Reads.builder().start(Bytes.utf8(key(33))).limit(4).columns("size").build(), Cancellation.none(), stats::set);
             assertEquals(0, stats.get().partsOpened());
             assertEquals(0, stats.get().indexLoads());
             // A listing that rolls keys up skips to each prefix's successor.
-            d.list(ListQuery.builder((byte) '0').limit(10).build(), Cancellation.none(), stats::set);
+            Reads.list(d, ListQuery.builder((byte) '0').limit(10).build(), Cancellation.none(), stats::set);
             assertTrue(stats.get().prefixSkips() > 0);
         }
     }
@@ -532,9 +532,9 @@ class RangePlanTest {
     void statsOfARequestThatFailsToStart() throws IOException {
         TestDatasets.Spec spec = new TestDatasets.Spec();
         Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(8, 1)));
-        RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size"));
-        ReadStats earlier = d.planRanges(List.of(RangeQuery.all(1)), List.of("size")).stats();
-        ReadStats zero = new ReadStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        Plan plan = Reads.plan(d, List.of(Reads.all(1)), List.of("size"));
+        ReadStats earlier = Reads.planStats(d, List.of(Reads.all(1)), List.of("size"));
+        ReadStats zero = ReadStats.NONE;
         Cancellation cancelled = Cancellation.create();
         cancelled.cancel();
         for (boolean closed : new boolean[] {false, true}) {
@@ -544,14 +544,29 @@ class RangePlanTest {
             Cancellation c = closed ? Cancellation.none() : cancelled;
             Class<? extends RuntimeException> failure = closed ? IllegalStateException.class : java.util.concurrent.CancellationException.class;
             AtomicReference<ReadStats> stats = new AtomicReference<>(earlier);
-            assertThrows(failure, () -> d.range(RangeQuery.all(10), c, stats::set));
+            assertThrows(failure, () -> Reads.range(d, Reads.all(10), c, stats::set));
             assertEquals(zero, stats.get(), "range, closed " + closed);
             stats.set(earlier);
-            assertThrows(failure, () -> d.list(ListQuery.builder((byte) '/').limit(10).build(), c, stats::set));
+            assertThrows(failure, () -> Reads.list(d, ListQuery.builder((byte) '/').limit(10).build(), c, stats::set));
             assertEquals(zero, stats.get(), "list, closed " + closed);
             stats.set(earlier);
-            assertThrows(failure, () -> plan.scan(c, stats::set, row -> {}));
+            assertThrows(failure, () -> Reads.scan(plan, c, stats::set, row -> {}));
             assertEquals(zero, stats.get(), "scan, closed " + closed);
+            stats.set(earlier);
+            assertThrows(failure, () -> d.plan(List.of(Selection.of(Span.all())), List.of("size"), new ReadOptions(c, stats::set)));
+            assertEquals(zero, stats.get(), "plan, closed " + closed);
+            stats.set(earlier);
+            assertThrows(failure, () -> plan.split(2, new ReadOptions(c, stats::set)));
+            assertEquals(zero, stats.get(), "split, closed " + closed);
+            stats.set(earlier);
+            assertThrows(failure, () -> d.get(Bytes.utf8(key(1)), List.of("size"), new ReadOptions(c, stats::set)));
+            assertEquals(zero, stats.get(), "get, closed " + closed);
+            stats.set(earlier);
+            assertThrows(failure, () -> d.scan(Query.builder().build(), new ReadOptions(c, stats::set), batch -> true));
+            assertEquals(zero, stats.get(), "dataset scan, closed " + closed);
+            stats.set(earlier);
+            assertThrows(failure, () -> d.verify(new ReadOptions(c, stats::set)));
+            assertEquals(zero, stats.get(), "verify, closed " + closed);
         }
     }
 
@@ -562,7 +577,7 @@ class RangePlanTest {
         spec.swapFirstKeys = true;
         try (Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(8, 1)))) {
             AtomicReference<ReadStats> stats = new AtomicReference<>();
-            assertThrows(RefusalException.class, () -> d.range(RangeQuery.all(10), Cancellation.none(), stats::set));
+            assertThrows(RefusalException.class, () -> Reads.range(d, Reads.all(10), Cancellation.none(), stats::set));
             assertEquals(1, stats.get().partsOpened());
             assertEquals(1, stats.get().keyPagesDecoded());
         }

@@ -50,20 +50,30 @@ public record Manifest(FormatVersion version, String schemaId, KeyDefinition key
      * determined first (MAN-7), so that a manifest of another version is refused as unsupported
      * rather than invalid.
      *
+     * <p>It is bounded by {@code limits}, as opening is: a manifest above {@link Limits#manifestBytes()}
+     * is refused before it is parsed, one nested deeper than 512 objects and arrays while it is parsed
+     * ({@link LimitName#MANIFEST_NESTING}), and one listing more than {@link Limits#parts()} parts before
+     * any part entry is built ({@link LimitName#PARTS}). The Go reader's {@code ParseManifest}.
      * @param json the manifest's bytes
+     * @param limits the limits
      * @return the manifest
      * @throws RefusalException with {@link RefusalCode#INVALID_MANIFEST} or {@link
      *     RefusalCode#UNSUPPORTED_VERSION}
+     * @throws LimitExceededException if the manifest is beyond the limits
      */
-    public static Manifest parse(byte[] json) {
-        return ManifestParser.parse(json);
+    public static Manifest parse(byte[] json, Limits limits) {
+        if (json.length > limits.manifestBytes()) {
+            throw new LimitExceededException(LimitName.MANIFEST_BYTES, json.length, limits.manifestBytes(), "manifest.json");
+        }
+        return ManifestParser.parse(json, limits.parts());
     }
 
     /**
      * Returns the total number of rows as a signed 64-bit integer.
      *
      * <p>The format does not cap the sum at this range. Use {@link #rowsExact()} for larger
-     * totals. Overflow here does not make the manifest invalid or prevent opening or querying it.
+     * totals. Overflow here does not make the manifest invalid, but {@link Dataset#open} refuses such a
+     * dataset as beyond this reader's capacity ({@link LimitName#DATASET_ROWS}).
      *
      * @return the total number of rows in the parts
      * @throws ArithmeticException if the total exceeds {@link Long#MAX_VALUE}

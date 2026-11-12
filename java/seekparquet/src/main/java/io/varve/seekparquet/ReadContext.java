@@ -20,8 +20,8 @@ final class ReadContext {
     /** What the request has read so far (shared by the contexts of one request). */
     final ReadStats.Counter stats;
     /**
-     * Whether value pages are read for a {@link RangePlan} scan: a chunk's dictionary is read before its
-     * first page, in the one read {@link RangePlan#projectedBytes()} counted.
+     * Whether value pages are read for a {@link Plan} scan: a chunk's dictionary is read before its
+     * first page, in the one read {@link Plan#projectedBytes()} counted.
      */
     final boolean planned;
     // Logical column names remain stable when a part changes its physical leaf order.
@@ -49,7 +49,7 @@ final class ReadContext {
     }
 
     private final Map<ChunkKey, Dictionary> dictionaries = new HashMap<>();
-    /** Checked OffsetIndexes the dataset could not keep within maxOffsetIndexMemoryBytes, for this request alone. */
+    /** Checked OffsetIndexes the dataset could not keep within offsetIndexMemory, for this request alone. */
     private final Map<ChunkKey, ValueIndex> valueIndexes = new HashMap<>();
     private final Map<ChunkKey, DecodedPage> valuePages = new HashMap<>();
     private final Map<ChunkKey, long[]> sequential = new HashMap<>();

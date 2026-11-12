@@ -43,18 +43,4 @@ public record ManifestPart(String path, long rows, long bytes, Bytes minKey, Byt
         Objects.requireNonNull(sha256, "sha256");
         extensions = Collections.unmodifiableMap(new LinkedHashMap<>(extensions));
     }
-
-    /**
-     * Creates a part entry without extensions.
-     *
-     * @param path the path
-     * @param rows the row count
-     * @param bytes the size
-     * @param minKey the first key
-     * @param maxKey the last key
-     * @param sha256 the digest
-     */
-    public ManifestPart(String path, long rows, long bytes, Bytes minKey, Bytes maxKey, Optional<String> sha256) {
-        this(path, rows, bytes, minKey, maxKey, sha256, Map.of());
-    }
 }

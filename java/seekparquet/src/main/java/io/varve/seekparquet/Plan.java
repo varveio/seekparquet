@@ -8,14 +8,13 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
-import java.util.function.Consumer;
 
 /**
- * A selection planned before it is read: every row of a set of ranges, its row count, and the
+ * A set of selections planned before they are read: every row of the selections, its row count, and the
  * compressed bytes that reading the projected columns of those rows will request. Made by {@link
- * Dataset#planRanges}. A plan is bound to the dataset that made it, and its {@link #scan scan} fails
- * with {@link IllegalStateException} once the dataset is closed. It is immutable and safe for
- * concurrent use.
+ * Dataset#plan}. A plan is bound to the dataset that made it, and its {@link #scan scan} and {@link
+ * #split split} fail with {@link IllegalStateException} once the dataset is closed; it has no close of
+ * its own. It is immutable and safe for concurrent use. The Go reader's {@code Plan}.
  *
  * <p>A plan certifies what it decoded: the key pages at the two ends of each range, checked as a range
  * read checks them (CHECK-2). Its count is derived from structure, not from decoding the rows between
@@ -23,14 +22,14 @@ import java.util.function.Consumer;
  * part check verified (CHECK-1), and the OffsetIndex row positions. A scan decodes every row and checks
  * every key page it reads.
  */
-public final class RangePlan {
+public final class Plan {
 
     /**
      * The selected dataset rows {@code [start, end)}, and where a scan finds {@code start}: the first row
      * within {@code bounds}' start and cursor; or, when {@code bounds} is null, {@code start} itself, the
      * first row of its group of equal keys (a shard boundary).
      */
-    private record Span(Queries.Bounds bounds, long start, long end) {}
+    private record Interval(Queries.Bounds bounds, long start, long end) {}
 
     /**
      * The projected bytes a plan counts in one row group holding a row of it: its pages holding the plan's
@@ -43,17 +42,15 @@ public final class RangePlan {
     private final Dataset dataset;
     private final List<String> columns;
     /** Disjoint, ascending and not adjacent. */
-    private final List<Span> spans;
+    private final List<Interval> spans;
     private final long rows;
     private final boolean exact;
     private final long bytes;
     private final boolean partial;
     /** The projected bytes of each row group holding a row of the plan, in dataset order. */
     private final List<GroupBytes> groups;
-    private final ReadStats stats;
 
-    private RangePlan(Dataset dataset, List<String> columns, List<Span> spans, long rows, boolean exact, List<GroupBytes> groups,
-            ReadStats stats) {
+    private Plan(Dataset dataset, List<String> columns, List<Interval> spans, long rows, boolean exact, List<GroupBytes> groups) {
         this.dataset = dataset;
         this.columns = columns;
         this.spans = spans;
@@ -68,40 +65,30 @@ public final class RangePlan {
         }
         this.bytes = b;
         this.partial = p;
-        this.stats = stats;
     }
 
     /**
-     * {@return the number of rows a scan yields} It is exact when every part holding one of them is
-     * checked (CHECK-1), so that the row counts it adds up are the parts' footers', verified against the
-     * manifest: always for a plan with columns, which checks those parts. Otherwise it relies on the
-     * manifest's row count of a part no read has touched yet, and {@link #countExact()} is false.
+     * {@return the number of rows a scan yields, and whether it is exact} It is exact when every part
+     * holding one of them is checked (CHECK-1), so that the row counts it adds up are the parts' footers',
+     * verified against the manifest: always for a plan with columns, which checks those parts. Otherwise it
+     * relies on the manifest's row count of a part no read has touched yet, and is not exact.
      */
-    public long count() {
-        return rows;
-    }
-
-    /** {@return whether {@link #count()} is exact: every part holding a row of the plan was checked} */
-    public boolean countExact() {
-        return exact;
+    public Estimate count() {
+        return new Estimate(rows, exact);
     }
 
     /**
-     * {@return the compressed bytes a scan requests from storage for the projected columns} For each
-     * column chunk the rows span, the extents its OffsetIndex gives the pages holding them and, when the
-     * chunk has a dictionary page, the dictionary's (the bytes before the first data page), each counted
-     * once however many ranges share it. Footers, page indexes and key pages are not counted, nor is the
-     * key column when projected: its values come from the key pages. A scan reads each counted extent in
-     * one request and no other byte of those chunks. A chunk without an OffsetIndex (COL-4) is walked
-     * through its page headers by a scan and omitted here; {@link #projectedBytesExact()} is then false.
+     * {@return the compressed bytes a scan requests from storage for the projected columns, and whether the
+     * count is exact} For each column chunk the rows span, the extents its OffsetIndex gives the pages
+     * holding them and, when the chunk has a dictionary page, the dictionary's (the bytes before the first
+     * data page), each counted once however many selections share it. Footers, page indexes and key pages
+     * are not counted, nor is the key column when projected: its values come from the key pages. A scan
+     * reads each counted extent in one request and no other byte of those chunks. A chunk without an
+     * OffsetIndex (COL-4) is walked through its page headers by a scan and omitted here; the count is then
+     * not exact, and is incomplete accounting rather than a bound.
      */
-    public long projectedBytes() {
-        return bytes;
-    }
-
-    /** {@return whether {@link #projectedBytes()} is exact: every projected chunk the rows span has an OffsetIndex} */
-    public boolean projectedBytesExact() {
-        return !partial;
+    public Estimate projectedBytes() {
+        return new Estimate(bytes, !partial);
     }
 
     /** {@return the projected columns, in order} */
@@ -109,169 +96,86 @@ public final class RangePlan {
         return columns;
     }
 
-    /** {@return the read statistics of planning, or of a shard {@link #split} made, the reads that placed its end} */
-    public ReadStats stats() {
-        return stats;
-    }
-
     /**
-     * Hands {@code action} every row of the plan, with its projected values, in dataset order; see {@link
-     * #scan(Cancellation, Consumer, Consumer)}.
+     * Hands {@code visitor} the plan's rows as borrowed batches, with default options; see {@link
+     * #scan(ReadOptions, BatchVisitor)}.
      *
-     * @param action receives each row
+     * @param <E> the checked exception the visitor may throw
+     * @param visitor receives each batch, borrowed until it returns
+     * @throws E when the visitor throws it
      * @throws IllegalStateException if the dataset is closed
      */
-    public void scan(Consumer<? super Row> action) {
-        scan(Cancellation.none(), stats -> {}, action);
+    public <E extends Exception> void scan(BatchVisitor<E> visitor) throws E {
+        scan(ReadOptions.DEFAULT, visitor);
     }
 
     /**
-     * Hands {@code action} every row of the plan, ending early when {@code cancellation} is cancelled;
-     * see {@link #scan(Cancellation, Consumer, Consumer)}.
-     *
-     * @param cancellation the scan's cancellation
-     * @param action receives each row
-     * @throws IllegalStateException if the dataset is closed
-     */
-    public void scan(Cancellation cancellation, Consumer<? super Row> action) {
-        scan(cancellation, stats -> {}, action);
-    }
-
-    /**
-     * Hands {@code action} every row of the plan, with its projected values, in dataset order. An
-     * exception {@code action} throws ends the scan and propagates. The scan positions at each range as a
-     * range read does and decodes each key page and projected page holding the plan's rows once,
-     * checking every key page it decodes (CHECK-2).
-     *
-     * <p>The scan holds the dataset open while {@code action} runs: {@link Dataset#close()} waits for it.
-     * To stop early, throw from {@code action} (or cancel); close the dataset after the scan returns.
-     * Closing it from inside {@code action} fails with {@link IllegalStateException}, and {@code action}
-     * must not wait for another thread that is closing it. A request {@code action} starts on the dataset,
-     * on any thread, runs as any other; once the dataset is closing it fails at once.
-     *
-     * @param cancellation the scan's cancellation
-     * @param stats receives the scan's read statistics when it ends, whether it succeeds or fails (zero
-     *     counts when it fails to start)
-     * @param action receives each row
-     * @throws RefusalException if data the scan decodes breaks the specification
-     * @throws UnsupportedFeatureException if a page uses a codec or encoding this reader does not implement
-     * @throws LimitExceededException if a page declares a size above the configured limits
-     * @throws StorageException if reading storage fails
-     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
-     * @throws IllegalStateException if the dataset is closed
-     */
-    public void scan(Cancellation cancellation, Consumer<? super ReadStats> stats, Consumer<? super Row> action) {
-        try (Dataset.Request request = dataset.begin(cancellation, stats)) {
-            ReadContext ctx = request.ctx;
-            try {
-                ReadContext values = ctx.forPlannedValues();
-                KeyCursor cursor = new KeyCursor(dataset.parts(), null, ctx);
-                for (Span span : spans) {
-                    boolean ok = span.bounds() == null ? cursor.seekOrdinal(span.start()) : span.bounds().position(cursor);
-                    for (long o = span.start(); ok && o < span.end(); o++) {
-                        values.enterGroup(cursor.partFile().ordinal, cursor.physical());
-                        action.accept(Queries.row(cursor, columns, values));
-                        if (o + 1 < span.end()) {
-                            ok = cursor.next();
-                        }
-                    }
-                }
-            } finally {
-                stats.accept(ctx.stats.snapshot());
-            }
-        }
-    }
-
-    /**
-     * Hands {@code action} the plan's rows as borrowed batches; see {@link #scanBatches(Cancellation,
-     * Consumer, Consumer)}.
-     *
-     * @param action receives each batch, borrowed until it returns
-     * @throws IllegalStateException if the dataset is closed
-     */
-    public void scanBatches(Consumer<? super Batch> action) {
-        scanBatches(Cancellation.none(), stats -> {}, action);
-    }
-
-    /**
-     * Hands {@code action} the plan's rows as borrowed batches, ending early when {@code cancellation} is
-     * cancelled; see {@link #scanBatches(Cancellation, Consumer, Consumer)}.
-     *
-     * @param cancellation the scan's cancellation
-     * @param action receives each batch, borrowed until it returns
-     * @throws IllegalStateException if the dataset is closed
-     */
-    public void scanBatches(Cancellation cancellation, Consumer<? super Batch> action) {
-        scanBatches(cancellation, stats -> {}, action);
-    }
-
-    /**
-     * Hands {@code action}, in serial calls on this thread, the rows {@link #scan(Cancellation, Consumer,
-     * Consumer)} yields, in dataset order, as borrowed {@link Batch}es instead of {@link Row}s: the same
-     * rows, offsets and values, with the plan's {@link #columns()} as the batches' projection slots. It reads
-     * what {@code scan} reads, each counted extent of {@link #projectedBytes()} in one request, a chunk's
-     * dictionary before its first page, and checks every key page it decodes (CHECK-2).
+     * Hands {@code visitor}, in serial calls on this thread, every row of the plan, in dataset order, as
+     * borrowed {@link Batch}es, with the plan's {@link #columns()} as the batches' projection slots: the rows,
+     * offsets and values {@link Dataset#rows} would return. It positions at each selection as a range read
+     * does, reads each counted extent of {@link #projectedBytes()} in one request and a chunk's dictionary
+     * before its first page, and decodes each key page and projected page holding the plan's rows once,
+     * checking every key page it decodes (CHECK-2). Use {@link Batch#row} or {@link Batch#cursor} to keep an
+     * owning result.
      *
      * <p>{@link Batch} sets out the boundaries (never crossing a row group, a key page, a projected page, or
-     * a gap between the plan's ranges) and the lifetime: a batch is read-only and borrowed until {@code
-     * action} returns, and {@link Batch#row} makes the owning row {@code scan} yields. An exception {@code
-     * action} throws ends the scan and propagates; batches already handed over stand, as they do before a
-     * read error or a refusal. Cancellation is checked as {@code scan} checks it, and also before every call
-     * of {@code action}. {@code stats} receives the scan's read statistics when it ends, whether it succeeds
-     * or fails (zero counts when it fails to start).
+     * a gap between the plan's selections) and the lifetime. The visitor returning {@code false} stops the
+     * scan successfully; an exception it throws ends the scan and propagates unchanged, and batches already
+     * handed over stand, as they do before a read error or a refusal. Cancellation is checked as a range
+     * read checks it, and also before every visit. The statistics go to {@code options} once, on every exit.
      *
-     * <p>The scan holds the dataset open while {@code action} runs: {@link Dataset#close()} cancels it and
-     * waits for it. Closing the dataset from inside {@code action} fails with {@link IllegalStateException},
-     * and {@code action} must not wait for another thread that is closing it. Concurrent scans, of one plan
-     * or of its shards, and scans nested in an action have storage of their own.
+     * <p>The scan holds the dataset open while the visitor runs: {@link Dataset#close()} cancels it and
+     * waits for it. Closing the dataset from inside the visitor fails with {@link IllegalStateException},
+     * and the visitor must not wait for another thread that is closing it. Concurrent scans, of one plan or
+     * of its shards, and scans nested in a visitor have storage of their own.
      *
-     * @param cancellation the scan's cancellation
-     * @param stats receives the scan's read statistics
-     * @param action receives each batch, borrowed until it returns
+     * @param <E> the checked exception the visitor may throw
+     * @param options the scan's cancellation and statistics
+     * @param visitor receives each batch, borrowed until it returns
+     * @throws E when the visitor throws it
      * @throws RefusalException if data the scan decodes breaks the specification
      * @throws UnsupportedFeatureException if a page uses a codec or encoding this reader does not implement
      * @throws LimitExceededException if a page declares a size above the configured limits
      * @throws StorageException if reading storage fails
-     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
+     * @throws java.util.concurrent.CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
      * @throws IllegalStateException if the dataset is closed
      */
-    public void scanBatches(Cancellation cancellation, Consumer<? super ReadStats> stats, Consumer<? super Batch> action) {
-        java.util.Objects.requireNonNull(action, "action");
-        try (Dataset.Request request = dataset.begin(cancellation, stats)) {
-            ReadContext ctx = request.ctx;
-            try {
-                BatchScan batches = new BatchScan(columns, ctx, ctx.forPlannedValues());
-                KeyCursor cursor = new KeyCursor(dataset.parts(), null, ctx);
-                for (Span span : spans) {
-                    boolean ok = span.bounds() == null ? cursor.seekOrdinal(span.start()) : span.bounds().position(cursor);
-                    if (ok) {
-                        batches.walk(cursor, span.end() - span.start(), null, null, action);
-                    }
+    public <E extends Exception> void scan(ReadOptions options, BatchVisitor<E> visitor) throws E {
+        java.util.Objects.requireNonNull(visitor, "visitor");
+        dataset.run(options, () -> {}, ctx -> {
+            BatchScan batches = new BatchScan(columns, ctx, ctx.forPlannedValues());
+            KeyCursor cursor = new KeyCursor(dataset.parts(), null, ctx);
+            for (Interval span : spans) {
+                boolean ok = span.bounds() == null ? cursor.seekOrdinal(span.start()) : span.bounds().position(cursor);
+                if (ok && !batches.walk(cursor, span.end() - span.start(), null, null, visitor)) {
+                    break;
                 }
-            } finally {
-                stats.accept(ctx.stats.snapshot());
             }
-        }
+            return null;
+        });
     }
 
     /**
-     * Divides the plan into at most {@code n} shards; see {@link #split(int, Cancellation)}.
+     * Divides the plan into at most {@code n} shards, with default options; see {@link #split(int,
+     * ReadOptions)}.
      *
-     * @param n the most shards
+     * @param n the most shards, at least 1
      * @return the shards, in dataset order
+     * @throws IllegalArgumentException if {@code n} is below 1
      * @throws RefusalException if a key page decoded at a boundary breaks the specification
      * @throws IllegalStateException if the dataset is closed
      */
-    public List<RangePlan> split(int n) {
-        return split(n, Cancellation.none());
+    public List<Plan> split(int n) {
+        return split(n, ReadOptions.DEFAULT);
     }
 
     /**
      * Divides the plan into at most {@code n} shards, for scans run concurrently: plans over consecutive
      * sub-ranges of its rows, bound to the same dataset, in dataset order. Scanning every shard yields
      * exactly the rows of the plan, each once, with the same offsets and values; within a shard in dataset
-     * order, and across shards by shard index. A plan with no rows, or {@code n} below 1, has no shard; a
-     * plan with fewer row groups than {@code n} has fewer shards. The library starts no thread: the caller
+     * order, and across shards by shard index. {@code n} below 1 is an invalid request; a plan with no rows
+     * has no shard; a plan with fewer row groups than {@code n} has fewer shards. Each shard's columns are
+     * the plan's. The library starts no thread: the caller
      * scans the shards as it chooses.
      *
      * <p>A boundary between two shards is a selected row that is the first row of a row group (or of a part
@@ -289,12 +193,14 @@ public final class RangePlan {
      *
      * <p>Splitting reads nothing when keys are unique. When they are not, it decodes the two key pages
      * around each boundary inside a part, checking them as a range read does (CHECK-2), to keep groups
-     * whole; a shard's {@link #stats()} are the reads that placed its end. Splitting is a convenience of
-     * this reader, not a rule of the format.
+     * whole. The statistics of those reads go to {@code options} once, on every exit, failure included. A
+     * cancelled split, or one on a closed dataset, fails whether or not it reads. Splitting is a
+     * convenience of this reader, not a rule of the format.
      *
-     * @param n the most shards
-     * @param cancellation the split's cancellation
+     * @param n the most shards, at least 1
+     * @param options the split's cancellation and statistics
      * @return the shards, in dataset order
+     * @throws IllegalArgumentException if {@code n} is below 1
      * @throws RefusalException if a key page decoded at a boundary breaks the specification
      * @throws UnsupportedFeatureException if such a page uses a codec or encoding this reader does not implement
      * @throws LimitExceededException if such a page declares a size above the configured limits
@@ -302,40 +208,42 @@ public final class RangePlan {
      * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
      * @throws IllegalStateException if the dataset is closed
      */
-    public List<RangePlan> split(int n, Cancellation cancellation) {
-        try (Dataset.Request request = dataset.begin(cancellation)) {
+    public List<Plan> split(int n, ReadOptions options) {
+        return dataset.run(options, () -> {
+            if (n < 1) {
+                throw new IllegalArgumentException("split into " + n + " shards");
+            }
+        }, ctx -> {
             // A cancelled split, or one on a closed dataset, fails even when it has nothing to divide.
-            request.ctx.checkCancelled();
-            if (n < 1 || spans.isEmpty()) {
-                return List.of();
+            ctx.checkCancelled();
+            if (spans.isEmpty()) {
+                return List.<Plan>of();
             }
             Parts parts = dataset.parts();
-            List<Long> cuts = new ArrayList<>();
-            List<ReadStats> stats = new ArrayList<>();
-            cuts(parts, request.ctx, n, cuts, stats);
-            List<RangePlan> shards = new ArrayList<>(cuts.size() + 1);
+            List<Long> cuts = cuts(parts, ctx, n);
+            List<Plan> shards = new ArrayList<>(cuts.size() + 1);
             long lo = 0;
             for (int i = 0; i <= cuts.size(); i++) {
-                request.ctx.checkCancelled();
+                ctx.checkCancelled();
                 long hi = i < cuts.size() ? cuts.get(i) : parts.start(parts.size());
-                shards.add(shard(parts, lo, hi, stats.get(i)));
+                shards.add(shard(parts, lo, hi));
                 lo = hi;
             }
             return List.copyOf(shards);
-        }
+        });
     }
 
     /**
-     * Finds at most {@code n - 1} shard boundaries, ascending dataset ordinals each with rows of the plan on
-     * both sides, into {@code cuts}, and the read statistics of the shards they divide the plan into, into
-     * {@code stats}.
+     * {@return at most {@code n - 1} shard boundaries, ascending dataset ordinals each with rows of the plan
+     * on both sides}
      */
-    private void cuts(Parts parts, ReadContext ctx, int n, List<Long> cuts, List<ReadStats> stats) {
+    private List<Long> cuts(Parts parts, ReadContext ctx, int n) {
+        List<Long> cuts = new ArrayList<>();
         long first = spans.getFirst().start();
         // The candidates are the selected rows that begin a row group, or a part no read has checked, after
         // the plan's first row.
         List<Long> found = new ArrayList<>();
-        for (Span span : spans) {
+        for (Interval span : spans) {
             for (int i = parts.partAt(span.start()); i < parts.size() && parts.start(i) < span.end(); i++) {
                 ctx.checkCancelled();
                 PartFile p = parts.checked(i);
@@ -400,10 +308,8 @@ public final class RangePlan {
             chosen.add(j);
         }
         // Each boundary inside a group of equal keys moves to the next candidate that is not, before the
-        // next boundary, or is dropped. The reads of placing a boundary are the stats of the shard it ends:
-        // one cursor counts them all, and each accepted boundary takes the reads since the one before.
+        // next boundary, or is dropped.
         KeyCursor cursor = new KeyCursor(parts, null, ctx);
-        ReadStats mark = ctx.stats.snapshot();
         for (int i = 0; i < chosen.size(); i++) {
             ctx.checkCancelled();
             int next = i + 1 < chosen.size() ? chosen.get(i + 1) : m;
@@ -413,12 +319,9 @@ public final class RangePlan {
             }
             if (before(j, next, m, rowsBefore)) {
                 cuts.add(candidates[j]);
-                ReadStats all = ctx.stats.snapshot();
-                stats.add(all.minus(mark));
-                mark = all;
             }
         }
-        stats.add(ctx.stats.snapshot().minus(mark));
+        return cuts;
     }
 
     /** {@return the index in {@code p.groups} of the first row group starting at or after dataset row {@code from}} */
@@ -512,16 +415,16 @@ public final class RangePlan {
      * The plan's spans and row groups are ascending and disjoint, so it visits only those in {@code [lo,
      * hi)}, after a binary search: many shards cost no more than few.
      */
-    private RangePlan shard(Parts parts, long lo, long hi, ReadStats stats) {
-        List<Span> in = new ArrayList<>();
+    private Plan shard(Parts parts, long lo, long hi) {
+        List<Interval> in = new ArrayList<>();
         long count = 0;
         for (int k = firstSpanEndingAfter(lo); k < spans.size(); k++) {
-            Span span = spans.get(k);
+            Interval span = spans.get(k);
             if (span.start() >= hi) {
                 break;
             }
-            Span s = span.start() < lo ? new Span(null, lo, span.end()) : span;
-            s = new Span(s.bounds(), s.start(), Math.min(s.end(), hi));
+            Interval s = span.start() < lo ? new Interval(null, lo, span.end()) : span;
+            s = new Interval(s.bounds(), s.start(), Math.min(s.end(), hi));
             in.add(s);
             count += s.end() - s.start();
         }
@@ -529,16 +432,16 @@ public final class RangePlan {
         for (int g = firstGroupFrom(lo); g < groups.size() && groups.get(g).start() < hi; g++) {
             held.add(groups.get(g));
         }
-        return new RangePlan(dataset, columns, List.copyOf(in), count, checked(parts, in), List.copyOf(held), stats);
+        return new Plan(dataset, columns, List.copyOf(in), count, checked(parts, in), List.copyOf(held));
     }
 
     /**
-     * Plans {@code ranges}; see {@link Dataset#planRanges}. Each range's ends are found by one cursor, and
+     * Plans {@code selections}; see {@link Dataset#plan}. Each selection's ends are found by one cursor, and
      * every key page planning decodes is checked against the others through the request's context.
      */
-    static RangePlan plan(Dataset dataset, Parts parts, List<RangeQuery> ranges, List<String> columns, ReadContext ctx) {
-        List<Span> found = new ArrayList<>();
-        for (RangeQuery q : ranges) {
+    static Plan plan(Dataset dataset, Parts parts, List<Selection> selections, List<String> columns, ReadContext ctx) {
+        List<Interval> found = new ArrayList<>();
+        for (Selection q : selections) {
             Queries.Bounds b = Queries.Bounds.of(q);
             if (parts.size() == 0 || b.empty()) {
                 continue;
@@ -556,25 +459,25 @@ public final class RangePlan {
                 // The first row at or after the upper bound, or where the cursor stopped short of it.
                 end = cursor.seek(b.end(), false) ? cursor.ordinal() : cursor.bound();
             }
-            found.add(new Span(b, start, end));
+            found.add(new Interval(b, start, end));
         }
-        found.sort(Comparator.comparingLong(Span::start));
-        List<Span> spans = new ArrayList<>();
-        for (Span s : found) {
+        found.sort(Comparator.comparingLong(Interval::start));
+        List<Interval> spans = new ArrayList<>();
+        for (Interval s : found) {
             int n = spans.size();
             if (n > 0 && s.start() <= spans.get(n - 1).end()) {
-                Span last = spans.get(n - 1);
-                spans.set(n - 1, new Span(last.bounds(), last.start(), Math.max(last.end(), s.end())));
+                Interval last = spans.get(n - 1);
+                spans.set(n - 1, new Interval(last.bounds(), last.start(), Math.max(last.end(), s.end())));
             } else {
                 spans.add(s);
             }
         }
         long rows = 0;
-        for (Span s : spans) {
+        for (Interval s : spans) {
             rows += s.end() - s.start();
         }
         List<GroupBytes> groups = columns.isEmpty() ? List.of() : planColumns(parts, spans, columns, ctx);
-        return new RangePlan(dataset, columns, List.copyOf(spans), rows, checked(parts, spans), groups, ctx.stats.snapshot());
+        return new Plan(dataset, columns, List.copyOf(spans), rows, checked(parts, spans), groups);
     }
 
     /** A projected column chunk being counted: its OffsetIndex (null without one) and the last page counted. */
@@ -592,7 +495,7 @@ public final class RangePlan {
      * a row}: per column chunk, its dictionary's extent and the extents of the pages holding the plan's rows,
      * each page once. It keeps the OffsetIndexes of one row group's chunks at a time.
      */
-    private static List<GroupBytes> planColumns(Parts parts, List<Span> spans, List<String> columns, ReadContext ctx) {
+    private static List<GroupBytes> planColumns(Parts parts, List<Interval> spans, List<String> columns, ReadContext ctx) {
         List<GroupBytes> groups = new ArrayList<>();
         int currentPart = -1;
         int currentGroup = -1;
@@ -600,7 +503,7 @@ public final class RangePlan {
         long total = 0;
         boolean partial = false;
         List<Chunk> chunks = List.of();
-        for (Span span : spans) {
+        for (Interval span : spans) {
             for (int i = parts.partAt(span.start()); i < parts.size() && parts.start(i) < span.end(); i++) {
                 PartFile p = parts.get(i, ctx);
                 p.checkProjection(columns);
@@ -677,8 +580,8 @@ public final class RangePlan {
     }
 
     /** {@return whether every part holding a row of the plan is checked} */
-    private static boolean checked(Parts parts, List<Span> spans) {
-        for (Span span : spans) {
+    private static boolean checked(Parts parts, List<Interval> spans) {
+        for (Interval span : spans) {
             for (int i = parts.partAt(span.start()); i < parts.size() && parts.start(i) < span.end(); i++) {
                 if (parts.checked(i) == null) {
                     return false;

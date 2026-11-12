@@ -120,7 +120,7 @@ final class Json {
 
     private void checkDepth(int depth) {
         if (depth > MAX_DEPTH) {
-            throw new LimitExceededException("manifestNesting", depth, MAX_DEPTH, "manifest.json");
+            throw new LimitExceededException(LimitName.MANIFEST_NESTING, depth, MAX_DEPTH, "manifest.json");
         }
     }
 

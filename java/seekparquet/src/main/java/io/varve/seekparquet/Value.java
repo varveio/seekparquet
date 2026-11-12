@@ -29,13 +29,13 @@ public sealed interface Value {
 
     /** The row's part has no such column (COL-2). */
     record Absent() implements Value {
-        /** The single instance. */
+        /** A shared instance; every instance is equal to it, so compare with {@code equals} or a pattern, not {@code ==}. */
         public static final Absent INSTANCE = new Absent();
     }
 
     /** The part has the column; this row holds no value. */
     record Null() implements Value {
-        /** The single instance. */
+        /** A shared instance; every instance is equal to it, so compare with {@code equals} or a pattern, not {@code ==}. */
         public static final Null INSTANCE = new Null();
     }
 

@@ -60,12 +60,12 @@ class SeekCostTest {
                 storage.reads.set(0);
                 storage.bytes.set(0);
                 Bytes target = Bytes.wrap(rows.getLast().key());
-                assertEquals(target, ds.lookup(target, 1).getFirst().key());
+                assertEquals(target, ds.get(target, List.of()).getFirst().key());
                 int logarithm = 32 - Integer.numberOfLeadingZeros(groups);
                 assertTrue(storage.reads.get() <= 3 * logarithm + 4, "reads=" + storage.reads.get());
                 assertTrue(storage.bytes.get() < 1000L * logarithm, "bytes=" + storage.bytes.get());
                 storage.reads.set(0);
-                ds.lookup(target, 1);
+                ds.get(target, List.of());
                 assertEquals(1, storage.reads.get(), "checked first keys and indexes are retained");
             }
         }
@@ -93,7 +93,7 @@ class SeekCostTest {
                 for (boolean warm : new boolean[] {false, true}) {
                     storage.reads.set(0);
                     storage.bytes.set(0);
-                    List<Row> got = ds.range(RangeQuery.builder()
+                    List<Row> got = ds.rows(Reads.builder()
                             .start(Bytes.wrap(parts.get(14).get(240).key())).limit(n).columns("size").build());
                     assertEquals(n, got.size());
                     for (int i = 0; i < n; i++) {
@@ -159,10 +159,10 @@ class SeekCostTest {
             spec.rowsPerPage = 10;
             spec.omitValueOffsetIndexes = !indexed;
             Path root = TestDatasets.write(tmp.resolve("sparse-" + indexed), spec, List.of(rows));
-            Manifest manifest = Manifest.parse(Files.readAllBytes(root.resolve("manifest.json")));
+            Manifest manifest = Manifest.parse(Files.readAllBytes(root.resolve("manifest.json")), Limits.DEFAULT);
             byte[] raw = Files.readAllBytes(root.resolve(manifest.parts().getFirst().path()));
             int footerLength = ByteBuffer.wrap(raw, raw.length - 8, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
-            FileMetaData meta = Thrift.fileMetaData(Arrays.copyOfRange(raw, raw.length - 8 - footerLength, raw.length - 8));
+            FileMetaData meta = Thrift.fileMetaData(Arrays.copyOfRange(raw, raw.length - 8 - footerLength, raw.length - 8), Limits.DEFAULT.metadataMemory());
             List<PhysicalValuePage> pages = new ArrayList<>();
             long groupStart = 0;
             for (var group : meta.getRow_groups()) {
@@ -173,7 +173,7 @@ class SeekCostTest {
                 long end = md.getData_page_offset() + md.getTotal_compressed_size();
                 for (long at = md.getData_page_offset(); at < end;) {
                     int offset = Math.toIntExact(at);
-                    var header = Thrift.pageHeader(raw, offset, Math.toIntExact(end - at));
+                    var header = Thrift.pageHeader(raw, offset, Math.toIntExact(end - at), Limits.DEFAULT.metadataMemory());
                     assertEquals(PageType.DATA_PAGE, header.value().getType());
                     int body = header.value().getCompressed_page_size();
                     long count = header.value().getData_page_header().getNum_values();
@@ -249,7 +249,7 @@ class SeekCostTest {
             try (Dataset ds = Dataset.open(storage)) {
                 storage.reads.set(0);
                 storage.bytes.set(0);
-                RangeQuery range = RangeQuery.lookup(Bytes.utf8("same"), 100);
+                Query range = Reads.lookup(Bytes.utf8("same"), 100);
                 ListQuery list = ListQuery.builder((byte) '/').limit(100).build();
                 for (int page = 0; page < 100; page++) {
                     int before = storage.reads.get();
@@ -259,7 +259,7 @@ class SeekCostTest {
                         got = entries.stream().map(e -> ((ListEntry.RowEntry) e).row()).toList();
                         list = list.next(entries.getLast());
                     } else {
-                        got = ds.range(range);
+                        got = ds.rows(range);
                         range = range.next(got.getLast());
                     }
                     assertEquals(100, got.size());
@@ -287,18 +287,18 @@ class SeekCostTest {
                 long offset = i < 3 ? i : i < 206 ? i - 3 : i - 206;
                 expected.add(new Row(Bytes.utf8(key), offset, List.of("size"), List.of(new Value.Int64(i))));
             }
-            RangeQuery query = RangeQuery.all(11).toBuilder().columns("size").build();
+            Query query = Reads.all(11).toBuilder().columns("size").build();
             List<Row> actual = new ArrayList<>();
             while (true) {
-                List<Row> page = ds.range(query);
+                List<Row> page = ds.rows(query);
                 if (page.isEmpty()) break;
                 actual.addAll(page);
                 query = query.next(page.getLast());
             }
             assertEquals(expected, actual);
             for (long offset : new long[] {202, 203, 220, 1000, Long.MAX_VALUE}) {
-                List<Row> resumed = ds.range(RangeQuery.all(1000).toBuilder().columns("size")
-                        .after(new Cursor.RowPosition(Bytes.utf8("b"), offset)).build());
+                List<Row> resumed = ds.rows(Reads.all(1000).toBuilder().columns("size")
+                        .cursor(new Cursor.RowPosition(Bytes.utf8("b"), offset)).build());
                 assertEquals(expected.stream().filter(r -> r.key().equals(Bytes.utf8("c"))).toList(), resumed);
             }
         }
@@ -314,7 +314,7 @@ class SeekCostTest {
         rows.set(750, TestRow.of("a", 750));
         try (Dataset ds = Dataset.open(TestDatasets.write(tmp, spec, List.of(rows)))) {
             assertEquals(RefusalCode.KEY_ORDER,
-                    assertThrows(RefusalException.class, () -> ds.lookup(Bytes.utf8("k00000999"), 1)).code());
+                    assertThrows(RefusalException.class, () -> ds.get(Bytes.utf8("k00000999"), List.of())).code());
         }
     }
     @Test
@@ -329,13 +329,13 @@ class SeekCostTest {
             rows.add(TestRow.of(i < 498 ? "k0" : i < 802 ? "k1" : "k2", i));
         }
         try (Dataset ds = Dataset.open(TestDatasets.write(tmp, spec, List.of(rows)))) {
-            List<Row> group = ds.lookup(Bytes.utf8("k1"), 1000, "size");
+            List<Row> group = ds.get(Bytes.utf8("k1"), List.of("size"));
             assertEquals(304, group.size());
             assertEquals(0, group.getFirst().offset());
             assertEquals(303, group.getLast().offset());
             assertEquals(new Value.Int64(498), group.getFirst().values().getFirst());
             assertEquals(new Value.Int64(801), group.getLast().values().getFirst());
-            assertEquals(Bytes.utf8("k2"), ds.range(RangeQuery.builder().startAfter(Bytes.utf8("k1"))
+            assertEquals(Bytes.utf8("k2"), ds.rows(Reads.builder().startAfter(Bytes.utf8("k1"))
                     .limit(1).build()).getFirst().key());
         }
     }
@@ -344,7 +344,7 @@ class SeekCostTest {
     void retainedExactFirstKeysAreChargedOnceBeforePublication() throws Exception {
         TestDatasets.Spec spec = new TestDatasets.Spec();
         Path root = TestDatasets.write(tmp, spec, List.of(List.of(TestRow.of("long-key".repeat(100), 1))));
-        Manifest manifest = Manifest.parse(Files.readAllBytes(root.resolve("manifest.json")));
+        Manifest manifest = Manifest.parse(Files.readAllBytes(root.resolve("manifest.json")), Limits.DEFAULT);
         ReadContext ctx = new ReadContext(Cancellation.none(), Limits.DEFAULT);
         long indexBytes;
         try (PartFile part = PartFile.open(LocalStorage.of(root), manifest, 0, ctx, new IndexMemory(Long.MAX_VALUE), new OffsetIndexMemory(Long.MAX_VALUE))) {
@@ -355,7 +355,7 @@ class SeekCostTest {
             try (PartFile part = PartFile.open(LocalStorage.of(root), manifest, 0, ctx, new IndexMemory(budget), new OffsetIndexMemory(Long.MAX_VALUE))) {
                 part.keyIndex(0, ctx);
                 if (budget == indexBytes) {
-                    assertEquals("maxIndexMemoryBytes", assertThrows(LimitExceededException.class,
+                    assertEquals(LimitName.INDEX_MEMORY, assertThrows(LimitExceededException.class,
                             () -> part.firstKey(0, ctx)).limit());
                 } else {
                     assertEquals(manifest.parts().getFirst().minKey(), Bytes.wrap(part.firstKey(0, ctx)));
@@ -376,8 +376,8 @@ class SeekCostTest {
                 List.of(TestRow.of("x", 4), TestRow.of("y", 5), TestRow.of("z", 6))));
         try (Dataset ds = Dataset.open(root)) {
             for (long offset : new long[] {2, 3, 4, 5, 6, Long.MAX_VALUE}) {
-                List<Row> got = ds.range(RangeQuery.all(10).toBuilder().columns("size")
-                        .after(new Cursor.RowPosition(Bytes.utf8("b"), offset)).build());
+                List<Row> got = ds.rows(Reads.all(10).toBuilder().columns("size")
+                        .cursor(new Cursor.RowPosition(Bytes.utf8("b"), offset)).build());
                 assertEquals(List.of("c", "x", "y", "z").stream().map(Bytes::utf8).toList(),
                         got.stream().map(Row::key).toList());
                 assertEquals(List.of(3L, 4L, 5L, 6L), got.stream()
@@ -396,7 +396,7 @@ class SeekCostTest {
         try (Dataset ds = Dataset.open(TestDatasets.write(tmp, spec, List.of(rows)))) {
             // Populate exact first keys out of order before the multi-seek listing request.
             for (int d : new int[] {90, 30, 60, 10}) {
-                assertEquals(1, ds.lookup(Bytes.utf8(String.format("d%03d/f00", d)), 1).size());
+                assertEquals(1, ds.get(Bytes.utf8(String.format("d%03d/f00", d)), List.of()).size());
             }
             for (int repeat = 0; repeat < 2; repeat++) {
                 List<ListEntry> entries = ds.list(ListQuery.builder((byte) '/').limit(1000).build());
@@ -412,7 +412,7 @@ class SeekCostTest {
     void competingFirstKeyLoadsChargeOnlyThePublishedCopy() throws Exception {
         Path root = TestDatasets.write(tmp, new TestDatasets.Spec(), List.of(List.of(TestRow.of("key", 1))));
         LocalStorage local = LocalStorage.of(root);
-        Manifest manifest = Manifest.parse(Files.readAllBytes(root.resolve("manifest.json")));
+        Manifest manifest = Manifest.parse(Files.readAllBytes(root.resolve("manifest.json")), Limits.DEFAULT);
         ReadContext ctx = new ReadContext(Cancellation.none(), Limits.DEFAULT);
         long budget;
         try (PartFile part = PartFile.open(local, manifest, 0, ctx, new IndexMemory(Long.MAX_VALUE), new OffsetIndexMemory(Long.MAX_VALUE))) {

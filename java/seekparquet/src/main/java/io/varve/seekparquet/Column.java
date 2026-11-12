@@ -7,7 +7,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * A top-level column of a dataset, as its parts declare it. COL-5 makes the physical declaration (type,
+ * A top-level column of one part, as its footer declares it ({@link Dataset#columns(int)}); the Go
+ * reader's {@code Column}. COL-5 makes the physical declaration (type,
  * type length, repetition, nesting) the same in every part that has the column; logical annotations are
  * not compared, so they may differ between parts.
  *
@@ -18,9 +19,8 @@ import java.util.Optional;
  *     {@code converted_type} normalized into one (INTERVAL has none); always empty for a group
  * @param repetition the field's repetition
  * @param key whether it is the dataset's key column
- * @param parts how many of the parts described have the column: 1 from {@link Dataset#columns(int)}
  */
-public record Column(String name, Type type, int typeLength, Optional<LogicalType> logicalType, Repetition repetition, boolean key, int parts) {
+public record Column(String name, Type type, int typeLength, Optional<LogicalType> logicalType, Repetition repetition, boolean key) {
 
     /**
      * Creates a column description.
@@ -31,7 +31,6 @@ public record Column(String name, Type type, int typeLength, Optional<LogicalTyp
      * @param logicalType the logical type
      * @param repetition the repetition
      * @param key whether it is the key column
-     * @param parts the number of parts with the column
      */
     public Column {
         Objects.requireNonNull(name, "name");
@@ -42,7 +41,9 @@ public record Column(String name, Type type, int typeLength, Optional<LogicalTyp
 
     /**
      * {@return whether this reader can project the column (COL-3)} It can when the column is not
-     * nested, not repeated, and of a baseline physical type.
+     * nested, not repeated, and not {@code INT96}. The Go reader also projects {@code INT96} columns, as
+     * raw bits; this reader refuses them ({@link UnsupportedCode#PROJECTION}), a deliberate capability
+     * difference.
      */
     public boolean projectable() {
         return type != Type.GROUP && type != Type.INT96 && repetition != Repetition.REPEATED;
@@ -56,7 +57,7 @@ public record Column(String name, Type type, int typeLength, Optional<LogicalTyp
         INT32,
         /** {@code INT64}. */
         INT64,
-        /** {@code INT96}, which this reader does not project. */
+        /** {@code INT96}, a legacy timestamp representation, which this reader does not project. */
         INT96,
         /** {@code FLOAT}. */
         FLOAT,

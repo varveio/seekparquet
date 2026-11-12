@@ -4,11 +4,12 @@
 package io.varve.seekparquet;
 
 /**
- * The work of one range or list request, one {@link Dataset#planRanges planning} ({@link
- * RangePlan#stats()}), the placing of one shard's end by {@link RangePlan#split split}, or one {@link
- * RangePlan#scan scan}. Pass a consumer to the request to receive
- * it: the counts are exact for the request and are delivered whether it succeeds or fails, up to the
- * point it stopped.
+ * The work of one operation: a {@link Dataset#rows rows}, {@link Dataset#scan scan}, {@link Dataset#get
+ * get}, {@link Dataset#list list}, {@link Dataset#plan plan}, {@link Plan#scan plan scan}, {@link Plan#split
+ * split}, {@link Dataset#verify verify} or {@link Dataset#columns(int, ReadOptions) columns} call, delivered
+ * once to the {@link ReadOptions#statistics() statistics consumer} the operation was given. The counts are
+ * exact for the operation and are delivered whether it succeeds or fails, up to the point it stopped. An
+ * immutable value; {@link #plus} sums two, as the Go reader's {@code ReadStats.Add} does.
  *
  * <p>They are diagnostics of this reader's access path, not part of the SeekParquet format contract:
  * another reader, or a later version of this one, may do the same read with different counts. The
@@ -19,7 +20,7 @@ package io.varve.seekparquet;
  * is counted only where a component says so: a part checked by an earlier request, or by {@link
  * Dataset#verify()}, is not checked again, a key page index loaded by an earlier request is reused,
  * not loaded, a projected column chunk's OffsetIndex kept by an earlier request ({@link
- * Limits#maxOffsetIndexMemoryBytes()}) is not read again, and a decoded first key is reused without
+ * Limits#offsetIndexMemory()}) is not read again, and a decoded first key is reused without
  * decoding.
  *
  * @param partsOpened the parts the request was the first to touch and opened from storage to check
@@ -36,7 +37,7 @@ package io.varve.seekparquet;
  *     one, had loaded
  * @param indexLoads how many of those read the key page index from storage, including successful build-only transient loads; {@code
  *     rowGroupsOpened - indexLoads} were reuses, including an index a concurrent request published
- *     first; an index read but refused by {@link Limits#maxIndexMemoryBytes()} is in neither count
+ *     first; an index read but refused by {@link Limits#indexMemory()} is in neither count
  * @param pageIndexSeeks the moves within a row group's key pages, through its ColumnIndex or
  *     OffsetIndex, that skipped at least one page
  * @param prefixSkips the times a listing, having emitted a common prefix, resumed at the prefix's
@@ -78,68 +79,25 @@ public record ReadStats(
         long readAheadUnused,
         long readAheadUnusedBytes) {
 
-    /**
-     * Constructs counts without read-ahead counts.
-     * @param partsOpened parts opened
-     * @param keyPagesDecoded key pages decoded
-     * @param valuePagesDecoded value pages decoded
-     * @param keysDecoded keys decoded
-     * @param rowGroupsOpened row groups opened
-     * @param indexLoads indexes loaded
-     * @param pageIndexSeeks page index seeks
-     * @param prefixSkips prefix skips
-     * @param groupsSkipped groups skipped
-     * @param sourceReads source reads
-     * @param sourceBytes source bytes
-     * @param listIndexSkips list index skips
-     * @param listIndexDelimiter list index delimiter declines
-     * @param listIndexMissingGroup list index missing-group declines
-     * @param listIndexDensePage list index dense-page declines
-     * @param listIndexUnsafeRun list index unsafe-run declines
-     */
-    public ReadStats(long partsOpened, long keyPagesDecoded, long valuePagesDecoded, long keysDecoded,
-            long rowGroupsOpened, long indexLoads, long pageIndexSeeks, long prefixSkips,
-            long groupsSkipped, long sourceReads, long sourceBytes, long listIndexSkips, long listIndexDelimiter,
-            long listIndexMissingGroup, long listIndexDensePage, long listIndexUnsafeRun) {
-        this(partsOpened, keyPagesDecoded, valuePagesDecoded, keysDecoded, rowGroupsOpened, indexLoads,
-                pageIndexSeeks, prefixSkips, groupsSkipped, sourceReads, sourceBytes, listIndexSkips, listIndexDelimiter,
-                listIndexMissingGroup, listIndexDensePage, listIndexUnsafeRun, 0, 0, 0);
-    }
-
-    /**
-     * Constructs counts from the original access paths, with zero optional-index counts.
-     * @param partsOpened parts opened
-     * @param keyPagesDecoded key pages decoded
-     * @param valuePagesDecoded value pages decoded
-     * @param keysDecoded keys decoded
-     * @param rowGroupsOpened row groups opened
-     * @param indexLoads indexes loaded
-     * @param pageIndexSeeks page index seeks
-     * @param prefixSkips prefix skips
-     * @param groupsSkipped groups skipped
-     * @param sourceReads source reads
-     * @param sourceBytes source bytes
-     */
-    public ReadStats(long partsOpened, long keyPagesDecoded, long valuePagesDecoded, long keysDecoded,
-            long rowGroupsOpened, long indexLoads, long pageIndexSeeks, long prefixSkips,
-            long groupsSkipped, long sourceReads, long sourceBytes) {
-        this(partsOpened, keyPagesDecoded, valuePagesDecoded, keysDecoded, rowGroupsOpened, indexLoads,
-                pageIndexSeeks, prefixSkips, groupsSkipped, sourceReads, sourceBytes, 0, 0, 0, 0, 0);
-    }
-
     /** Zero counts: a request that failed before it read. */
-    static final ReadStats NONE = new ReadStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    static final ReadStats NONE = new ReadStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
-    /** {@return the counts beyond {@code o}, for a request that reports the reads of its steps apart} */
-    ReadStats minus(ReadStats o) {
-        return new ReadStats(partsOpened - o.partsOpened, keyPagesDecoded - o.keyPagesDecoded, valuePagesDecoded - o.valuePagesDecoded,
-                keysDecoded - o.keysDecoded, rowGroupsOpened - o.rowGroupsOpened, indexLoads - o.indexLoads,
-                pageIndexSeeks - o.pageIndexSeeks, prefixSkips - o.prefixSkips, groupsSkipped - o.groupsSkipped,
-                sourceReads - o.sourceReads, sourceBytes - o.sourceBytes, listIndexSkips - o.listIndexSkips,
-                listIndexDelimiter - o.listIndexDelimiter, listIndexMissingGroup - o.listIndexMissingGroup,
-                listIndexDensePage - o.listIndexDensePage, listIndexUnsafeRun - o.listIndexUnsafeRun,
-                readAheadReads - o.readAheadReads, readAheadUnused - o.readAheadUnused,
-                readAheadUnusedBytes - o.readAheadUnusedBytes);
+    /**
+     * Returns the sum of these counts and {@code o}'s, component by component: the statistics of several
+     * operations together, a plan's and its scans', say.
+     *
+     * @param o the counts to add
+     * @return the sum
+     */
+    public ReadStats plus(ReadStats o) {
+        return new ReadStats(partsOpened + o.partsOpened, keyPagesDecoded + o.keyPagesDecoded, valuePagesDecoded + o.valuePagesDecoded,
+                keysDecoded + o.keysDecoded, rowGroupsOpened + o.rowGroupsOpened, indexLoads + o.indexLoads,
+                pageIndexSeeks + o.pageIndexSeeks, prefixSkips + o.prefixSkips, groupsSkipped + o.groupsSkipped,
+                sourceReads + o.sourceReads, sourceBytes + o.sourceBytes, listIndexSkips + o.listIndexSkips,
+                listIndexDelimiter + o.listIndexDelimiter, listIndexMissingGroup + o.listIndexMissingGroup,
+                listIndexDensePage + o.listIndexDensePage, listIndexUnsafeRun + o.listIndexUnsafeRun,
+                readAheadReads + o.readAheadReads, readAheadUnused + o.readAheadUnused,
+                readAheadUnusedBytes + o.readAheadUnusedBytes);
     }
 
     /** The counts of a request in progress. Confined to the request's thread. */
@@ -156,6 +114,28 @@ public record ReadStats(
         long sourceReads;
         long sourceBytes;
         long readAheadReads, readAheadUnused, readAheadUnusedBytes;
+
+        /** Adds {@code o}'s counts, of work done on this request's behalf on another thread. */
+        void add(Counter o) {
+            listIndexSkips += o.listIndexSkips;
+            listIndexDelimiter += o.listIndexDelimiter;
+            listIndexMissingGroup += o.listIndexMissingGroup;
+            listIndexDensePage += o.listIndexDensePage;
+            listIndexUnsafeRun += o.listIndexUnsafeRun;
+            partsOpened += o.partsOpened;
+            keyPagesDecoded += o.keyPagesDecoded;
+            valuePagesDecoded += o.valuePagesDecoded;
+            keysDecoded += o.keysDecoded;
+            rowGroupsOpened += o.rowGroupsOpened;
+            indexLoads += o.indexLoads;
+            pageIndexSeeks += o.pageIndexSeeks;
+            prefixSkips += o.prefixSkips;
+            sourceReads += o.sourceReads;
+            sourceBytes += o.sourceBytes;
+            readAheadReads += o.readAheadReads;
+            readAheadUnused += o.readAheadUnused;
+            readAheadUnusedBytes += o.readAheadUnusedBytes;
+        }
 
         ReadStats snapshot() {
             return new ReadStats(partsOpened, keyPagesDecoded, valuePagesDecoded, keysDecoded, rowGroupsOpened, indexLoads,

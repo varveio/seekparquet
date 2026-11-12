@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * A delimited listing (spec §6.3). The candidate keys begin with {@code prefix}, come after
+ * A delimited listing (spec §6.3); the Go reader's {@code ListQuery}. The candidate keys begin with {@code prefix}, come after
  * {@code cursor} when it is given, and are less than {@code end} when it is given. A candidate whose
  * remainder after the prefix contains the delimiter yields the common prefix up to and including the
  * first such delimiter; any other candidate yields its row. Common prefixes are distinct; repeated rows retain file order. Entries are in ascending byte
@@ -73,21 +73,6 @@ public record ListQuery(
     }
 
     /**
-     * Creates a listing query that reads no key page ahead.
-     *
-     * @param prefix the prefix
-     * @param delimiter the delimiter byte
-     * @param end the exclusive upper bound
-     * @param limit the limit
-     * @param columns the projected columns
-     * @param cursor the cursor
-     * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1)
-     */
-    public ListQuery(Bytes prefix, byte delimiter, Optional<Bytes> end, int limit, List<String> columns, Optional<Cursor> cursor) {
-        this(prefix, delimiter, end, limit, columns, cursor, 0);
-    }
-
-    /**
      * Returns a builder for a listing with {@code delimiter} and no prefix, bounds, columns or limit.
      *
      * @param delimiter the delimiter byte
@@ -116,7 +101,7 @@ public record ListQuery(
      * @return the next query
      */
     public ListQuery next(ListEntry last) {
-        return toBuilder().after(last.cursor()).build();
+        return toBuilder().cursor(last.cursor()).build();
     }
 
     /** Builds a {@link ListQuery}. Not thread-safe. */
@@ -187,12 +172,22 @@ public record ListQuery(
             return this;
         }
 
-        /** Sets the tagged position after the last returned entry.
-         * @param cursor the cursor
+        /**
+         * Sets the cursor to continue after: an entry's {@link ListEntry#cursor()}.
+         * @param cursor the cursor, a row or a prefix cursor
          * @return this builder
          */
-        public Builder after(Cursor cursor) {
+        public Builder cursor(Cursor cursor) {
             this.cursor = Optional.of(cursor);
+            return this;
+        }
+
+        /**
+         * Clears the cursor: the listing starts at its prefix.
+         * @return this builder
+         */
+        public Builder clearCursor() {
+            this.cursor = Optional.empty();
             return this;
         }
 
@@ -215,7 +210,7 @@ public record ListQuery(
          * read again when the listing reaches it. Memory: a request holds at most {@code readAhead} times
          * 1 MiB of pages read ahead and not yet used, and at most 4 times {@code readAhead} pages, until
          * the listing uses or passes them or ends; a key page above that budget, or above {@link
-         * Limits#maxPageBytes()}, is not read ahead. The reads ahead end, and are waited for, before the
+         * Limits#pageBytes()}, is not read ahead. The reads ahead end, and are waited for, before the
          * listing returns, including when it fails, is cancelled, or the dataset closes.
          *
          * <p>It pays where a read waits on a round trip (an object store), not on a local file. A listing

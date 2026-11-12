@@ -42,34 +42,34 @@ class RepeatedKeysTest {
     void lookupStartsAtTheFirstCandidateAndPreservesFileOrder() throws IOException {
         try (Dataset ds = Dataset.open(write(false))) {
             assertEquals(new KeyDefinition("object.id", false), ds.manifest().key());
-            List<Row> group = ds.lookup(Bytes.utf8("b"), 100, "size", "object.id", "key");
+            List<Row> group = ds.get(Bytes.utf8("b"), List.of("size", "object.id", "key"));
             assertEquals(17, group.size());
             for (int i = 0; i < group.size(); i++) {
                 assertEquals(i, group.get(i).offset());
                 assertEquals(List.of(new Value.Int64(17 - i), new Value.ByteArray(Bytes.utf8("b")), Value.absent()), group.get(i).values());
             }
-            assertTrue(ds.lookup(Bytes.utf8("bb"), 100).isEmpty());
+            assertTrue(ds.get(Bytes.utf8("bb"), List.of()).isEmpty());
         }
     }
 
     @Test
     void rangePaginationResumesInsideGroupsWithTheOriginalBounds() throws IOException {
         try (Dataset ds = Dataset.open(write(false))) {
-            RangeQuery q = RangeQuery.lookup(Bytes.utf8("b"), 2).toBuilder().columns("size").build();
+            Query q = Reads.lookup(Bytes.utf8("b"), 2).toBuilder().columns("size").build();
             List<Row> got = new ArrayList<>();
             for (int page = 0; page < 20; page++) {
-                List<Row> rows = ds.range(q);
+                List<Row> rows = ds.rows(q);
                 got.addAll(rows);
                 if (rows.size() < q.limit()) {
                     break;
                 }
                 q = q.next(rows.getLast());
             }
-            assertEquals(ds.lookup(Bytes.utf8("b"), 100, "size"), got);
+            assertEquals(ds.get(Bytes.utf8("b"), List.of("size")), got);
             assertEquals(LongStream.range(0, 17).boxed().toList(), got.stream().map(Row::offset).toList());
-            assertTrue(ds.range(q.toBuilder().after(new Cursor.RowPosition(Bytes.utf8("b"), Long.MAX_VALUE)).build()).isEmpty());
+            assertTrue(ds.rows(q.toBuilder().cursor(new Cursor.RowPosition(Bytes.utf8("b"), Long.MAX_VALUE)).build()).isEmpty());
             // Exclusive bounds apply to the whole group even when a row cursor names that group.
-            assertTrue(ds.range(q.toBuilder().startAfter(Bytes.utf8("b")).build()).isEmpty());
+            assertTrue(ds.rows(q.toBuilder().span(q.span().toBuilder().startAfter(Bytes.utf8("b")).build()).build()).isEmpty());
         }
     }
 
@@ -96,19 +96,20 @@ class RepeatedKeysTest {
     void equalKeysRemainAnErrorInUniqueMode() throws IOException {
         try (Dataset ds = Dataset.open(write(true))) {
             assertEquals(RefusalCode.KEY_ORDER,
-                    assertThrows(RefusalException.class, () -> ds.range(RangeQuery.all(100))).code());
+                    assertThrows(RefusalException.class, () -> ds.rows(Reads.all(100))).code());
         }
     }
 
     @Test
-    void entryLimitIsConfigurableAndCursorsRejectAmbiguity() throws IOException {
-        Limits limits = new Limits(1 << 20, 100, 1 << 20, 1 << 20, 1 << 20, 100, 2);
+    void resultsHaveNoCapOfTheirOwnAndCursorsRejectAmbiguity() throws IOException {
+        Limits limits = Limits.builder().manifestBytes(1 << 20).parts(100).footerBytes(1 << 20).pageIndexBytes(1 << 20).pageBytes(1 << 20).pageValues(100).build();
         try (Dataset ds = Dataset.open(LocalStorage.of(write(false)), OpenOptions.DEFAULT.withLimits(limits), Cancellation.none())) {
-            assertEquals(2, ds.lookup(Bytes.utf8("b"), 2).size());
-            assertEquals("maxResultEntries", assertThrows(LimitExceededException.class, () -> ds.range(RangeQuery.all(3))).limit());
+            assertEquals(17, ds.get(Bytes.utf8("b"), List.of()).size());
+            // A collected result has no cap of its own: the caller's limit bounds it.
+            assertEquals(3, ds.rows(Reads.all(3)).size());
         }
         assertThrows(IllegalArgumentException.class, () -> new Cursor.RowPosition(Bytes.utf8("b"), -1));
-        assertThrows(IllegalArgumentException.class, () -> RangeQuery.builder().limit(1)
+        assertThrows(IllegalArgumentException.class, () -> Reads.builder().limit(1)
                 .after(new Cursor.CommonPrefix(Bytes.utf8("b"))).build());
     }
 }

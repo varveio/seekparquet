@@ -38,7 +38,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * {@link RangePlan#split}: the shards' scans together are the plan's scan, which is the oracle's rows;
+ * {@link Plan#split}: the shards' scans together are the plan's scan, which is the oracle's rows;
  * every shard is non-empty; counts and projected bytes add up to the plan's, and a shard's scan asks for
  * exactly its projected bytes; no group of equal keys crosses two shards.
  */
@@ -50,7 +50,7 @@ class SplitTest {
     @TempDir Path tmp;
 
     /** {@return whether {@code q} selects {@code row}, by the definition, its cursor included} */
-    static boolean admits(RangeQuery q, Row row) {
+    static boolean admits(Query q, Row row) {
         if (!RangePlanTest.selects(q, row.key())) {
             return false;
         }
@@ -61,19 +61,19 @@ class SplitTest {
         return true;
     }
 
-    static List<Row> scan(RangePlan plan) {
+    static List<Row> scan(Plan plan) {
         List<Row> rows = new ArrayList<>();
-        plan.scan(rows::add);
+        Reads.scan(plan, rows::add);
         return rows;
     }
 
-    static void checkSplit(Dataset d, RecordingStorage storage, Oracle oracle, String column, List<RangeQuery> ranges) {
+    static void checkSplit(Dataset d, RecordingStorage storage, Oracle oracle, String column, List<Query> ranges) {
         List<Row> want = oracle.rows().stream().filter(r -> ranges.stream().anyMatch(q -> admits(q, r))).toList();
         for (List<String> columns : List.of(List.of(column), List.<String>of())) {
             String name = columns + " over " + ranges;
-            RangePlan plan = d.planRanges(ranges, columns);
+            Plan plan = Reads.plan(d, ranges, columns);
             for (int n : COUNTS) {
-                List<RangePlan> shards = plan.split(n);
+                List<Plan> shards = plan.split(n);
                 assertTrue(shards.size() <= n && (want.isEmpty() == shards.isEmpty()),
                         name + ": " + want.size() + " rows split " + n + " ways into " + shards.size());
                 List<Row> got = new ArrayList<>();
@@ -81,30 +81,30 @@ class SplitTest {
                 long bytes = 0;
                 Bytes lastKey = null;
                 for (int i = 0; i < shards.size(); i++) {
-                    RangePlan shard = shards.get(i);
+                    Plan shard = shards.get(i);
                     storage.take();
                     List<Row> shardRows = scan(shard);
                     long served = oracle.bytes(name, storage.take());
                     String where = name + ": shard " + i + " of " + n;
                     assertFalse(shardRows.isEmpty(), where);
-                    assertEquals(shardRows.size(), shard.count(), where);
-                    assertTrue(shard.countExact() || !plan.countExact(), where);
-                    assertEquals(plan.projectedBytesExact(), shard.projectedBytesExact(), where);
+                    assertEquals(shardRows.size(), shard.count().value(), where);
+                    assertTrue(shard.count().exact() || !plan.count().exact(), where);
+                    assertEquals(plan.projectedBytes().exact(), shard.projectedBytes().exact(), where);
                     if (columns.isEmpty()) {
-                        assertEquals(0, shard.projectedBytes(), where);
-                    } else if (shard.projectedBytesExact()) {
-                        assertEquals(served, shard.projectedBytes(), where + ": projected bytes against its scan");
+                        assertEquals(0, shard.projectedBytes().value(), where);
+                    } else if (shard.projectedBytes().exact()) {
+                        assertEquals(served, shard.projectedBytes().value(), where + ": projected bytes against its scan");
                     }
                     assertNotEquals(lastKey, shardRows.getFirst().key(), where + ": a group crosses shards");
                     lastKey = shardRows.getLast().key();
                     got.addAll(shardRows);
-                    rows += shard.count();
-                    bytes += shard.projectedBytes();
+                    rows += shard.count().value();
+                    bytes += shard.projectedBytes().value();
                 }
                 List<Row> w = columns.isEmpty() ? want.stream().map(r -> new Row(r.key(), r.offset(), List.of(), List.of())).toList() : want;
                 assertEquals(w, got, name + " in " + n);
-                assertEquals(plan.count(), rows, name + ": counts add up");
-                assertEquals(plan.projectedBytes(), bytes, name + ": projected bytes add up");
+                assertEquals(plan.count().value(), rows, name + ": counts add up");
+                assertEquals(plan.projectedBytes().value(), bytes, name + ": projected bytes add up");
             }
         }
     }
@@ -122,14 +122,14 @@ class SplitTest {
         Oracle oracle = Oracle.of(root, column);
         RecordingStorage storage = new RecordingStorage(root);
         try (Dataset d = Dataset.open(storage)) {
-            List<RangeQuery> ranges = RangePlanTest.ranges(oracle.rows());
-            checkSplit(d, storage, oracle, column, List.of(RangeQuery.all(1)));
+            List<Query> ranges = RangePlanTest.ranges(oracle.rows());
+            checkSplit(d, storage, oracle, column, List.of(Reads.all(1)));
             for (int i = 0; i < ranges.size(); i += 11) {
                 checkSplit(d, storage, oracle, column, List.of(ranges.get(i)));
             }
             Random random = new Random(2L * oracle.rows().size() + 1);
             for (int i = 0; i < 10; i++) {
-                List<RangeQuery> set = new ArrayList<>();
+                List<Query> set = new ArrayList<>();
                 for (int k = 2 + random.nextInt(3); k > 0; k--) {
                     set.add(ranges.get(random.nextInt(ranges.size())));
                 }
@@ -207,20 +207,20 @@ class SplitTest {
             try (Dataset d = Dataset.open(storage)) {
                 List<Bytes> distinct = oracle.rows().stream().map(Row::key).distinct().toList();
                 int step = Math.max(1, distinct.size() / 12);
-                checkSplit(d, storage, oracle, "size", List.of(RangeQuery.all(1)));
+                checkSplit(d, storage, oracle, "size", List.of(Reads.all(1)));
                 for (int i = 0; i < distinct.size(); i += step) {
                     Bytes k = distinct.get(i);
                     Bytes after = distinct.get(Math.min(i + distinct.size() / 3, distinct.size() - 1));
-                    for (RangeQuery q : List.of(
-                            RangeQuery.builder().start(k).limit(1).build(),
-                            RangeQuery.builder().end(k).limit(1).build(),
-                            RangeQuery.builder().start(k).end(after).limit(1).build(),
-                            RangeQuery.builder().start(k).after(new Cursor.RowPosition(k, 1)).limit(1).build(),
-                            RangeQuery.lookup(k, 1))) {
+                    for (Query q : List.of(
+                            Reads.builder().start(k).limit(1).build(),
+                            Reads.builder().end(k).limit(1).build(),
+                            Reads.builder().start(k).end(after).limit(1).build(),
+                            Reads.builder().start(k).after(new Cursor.RowPosition(k, 1)).limit(1).build(),
+                            Reads.lookup(k, 1))) {
                         checkSplit(d, storage, oracle, "size", List.of(q));
                     }
                     checkSplit(d, storage, oracle, "size",
-                            List.of(RangeQuery.builder().end(k).limit(1).build(), RangeQuery.builder().start(after).limit(1).build()));
+                            List.of(Reads.builder().end(k).limit(1).build(), Reads.builder().start(after).limit(1).build()));
                 }
             }
         }
@@ -246,9 +246,9 @@ class SplitTest {
             Random random = new Random(dir);
             try (Dataset d = Dataset.open(storage)) {
                 for (int round = 0; round < 25; round++) {
-                    List<RangeQuery> set = new ArrayList<>();
+                    List<Query> set = new ArrayList<>();
                     for (int n = 1 + random.nextInt(3); n > 0; n--) {
-                        RangeQuery.Builder b = RangeQuery.builder().limit(1);
+                        Reads.Builder b = Reads.builder().limit(1);
                         switch (random.nextInt(4)) {
                             case 0 -> {
                                 Row r = rows.get(random.nextInt(rows.size()));
@@ -283,34 +283,37 @@ class SplitTest {
             spec.rowsPerPage = 5;
             try (Dataset d = Dataset.open(TestDatasets.write(tmp.resolve("r" + repeated), spec, uniqueParts(240, 2)))) {
                 for (List<String> columns : List.of(List.of("size"), List.<String>of())) {
-                    List<RangePlan> shards = d.planRanges(List.of(RangeQuery.all(1)), columns).split(4);
+                    AtomicReference<ReadStats> split = new AtomicReference<>();
+                    List<Plan> shards = Reads.plan(d, List.of(Reads.all(1)), columns).split(4, ReadOptions.of(split::set));
                     assertEquals(4, shards.size());
                     for (int i = 0; i < 4; i++) {
-                        long n = shards.get(i).count();
+                        long n = shards.get(i).count().value();
                         assertTrue(n % 20 == 0 && n >= 40 && n <= 80, "shard " + i + " has " + n + " rows");
-                        // The boundary after shard 1 is part 1's first row.
-                        assertEquals(repeated && i < 3 && i != 1, shards.get(i).stats().keyPagesDecoded() > 0,
-                                "repeated " + repeated + ", " + columns + ": shard " + i + " " + shards.get(i).stats());
                     }
+                    // Splitting reads key pages only when keys repeat: two around each of the two boundaries
+                    // inside a part (the boundary after shard 1 is part 1's first row).
+                    assertEquals(repeated ? 4 : 0, split.get().keyPagesDecoded(), "repeated " + repeated + ", " + columns + ": " + split.get());
                 }
                 // A cancelled split fails in both modes, with or without columns: with unique keys it reads
                 // nothing, and fails by checking its cancellation.
                 Cancellation cancelled = Cancellation.create();
                 cancelled.cancel();
                 for (List<String> columns : List.of(List.of("size"), List.<String>of())) {
-                    RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), columns);
-                    assertThrows(CancellationException.class, () -> plan.split(4, cancelled), "repeated " + repeated + ", " + columns);
+                    Plan plan = Reads.plan(d, List.of(Reads.all(1)), columns);
+                    assertThrows(CancellationException.class, () -> plan.split(4, ReadOptions.of(cancelled)), "repeated " + repeated + ", " + columns);
                 }
-                // An empty plan, or n below 1, has no shard, but a cancelled split still fails.
-                RangePlan nothing = d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8("zzzz")).limit(1).build()), List.of());
-                assertThrows(CancellationException.class, () -> nothing.split(3, cancelled));
-                RangePlan whole = d.planRanges(List.of(RangeQuery.all(1)), List.of());
-                assertThrows(CancellationException.class, () -> whole.split(0, cancelled));
-                RangePlan inside = d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8("k00003")).end(Bytes.utf8("k00015")).limit(1).build()),
+                // An empty plan has no shard, but a cancelled split still fails; n below 1 is an invalid request.
+                Plan nothing = Reads.plan(d, List.of(Reads.builder().start(Bytes.utf8("zzzz")).limit(1).build()), List.of());
+                assertEquals(List.of(), nothing.split(3));
+                assertThrows(CancellationException.class, () -> nothing.split(3, ReadOptions.of(cancelled)));
+                Plan whole = Reads.plan(d, List.of(Reads.all(1)), List.of());
+                assertThrows(IllegalArgumentException.class, () -> whole.split(0));
+                assertThrows(IllegalArgumentException.class, () -> whole.split(-1, ReadOptions.of(cancelled)));
+                Plan inside = Reads.plan(d, List.of(Reads.builder().start(Bytes.utf8("k00003")).end(Bytes.utf8("k00015")).limit(1).build()),
                         List.of("size"));
                 assertEquals(1, inside.split(5).size());
-                assertEquals(List.of(), d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8("zzzz")).limit(1).build()), List.of()).split(3));
-                assertEquals(List.of(), inside.split(0));
+                assertEquals(List.of(), Reads.plan(d, List.of(Reads.builder().start(Bytes.utf8("zzzz")).limit(1).build()), List.of()).split(3));
+                assertThrows(IllegalArgumentException.class, () -> inside.split(0));
             }
         }
     }
@@ -324,18 +327,18 @@ class SplitTest {
         spec.rowsPerPage = 2;
         try (Dataset d = Dataset.open(TestDatasets.write(tmp, spec, repeatedParts()));
                 ExecutorService executor = Executors.newFixedThreadPool(4)) {
-            RangePlan plan = d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8("a/")).limit(1).build()), List.of("size"));
+            Plan plan = Reads.plan(d, List.of(Reads.builder().start(Bytes.utf8("a/")).limit(1).build()), List.of("size"));
             List<Row> want = scan(plan);
             for (int round = 0; round < 4; round++) {
-                List<RangePlan> shards = plan.split(7);
+                List<Plan> shards = plan.split(7);
                 List<Future<List<Row>>> scans = new ArrayList<>();
                 List<AtomicReference<ReadStats>> stats = new ArrayList<>();
-                for (RangePlan shard : shards) {
+                for (Plan shard : shards) {
                     AtomicReference<ReadStats> st = new AtomicReference<>();
                     stats.add(st);
                     scans.add(executor.submit(() -> {
                         List<Row> rows = Collections.synchronizedList(new ArrayList<>());
-                        shard.scan(Cancellation.none(), st::set, rows::add);
+                        Reads.scan(shard, Cancellation.none(), st::set, rows::add);
                         return rows;
                     }));
                 }
@@ -369,17 +372,17 @@ class SplitTest {
         // Part 1's schema_id stamp differs from the manifest's: a refusal when a read touches it.
         Files.copy(stamped.resolve("data/part-00001.parquet"), root.resolve("data/part-00001.parquet"), StandardCopyOption.REPLACE_EXISTING);
         Dataset d = Dataset.open(root);
-        RangePlan plan = d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8("k00010")).end(Bytes.utf8("k00290")).limit(1).build()), List.of());
-        List<RangePlan> shards = plan.split(7);
+        Plan plan = Reads.plan(d, List.of(Reads.builder().start(Bytes.utf8("k00010")).end(Bytes.utf8("k00290")).limit(1).build()), List.of());
+        List<Plan> shards = plan.split(7);
         assertTrue(shards.size() >= 3, shards.size() + " shards");
         int refused = 0;
         long at = 0;
-        for (RangePlan shard : shards) {
+        for (Plan shard : shards) {
             long first = at;
-            at += shard.count();
+            at += shard.count().value();
             boolean touches = first + 10 < 200 && at + 10 > 100;
             try {
-                shard.scan(row -> {});
+                Reads.scan(shard, row -> {});
                 assertFalse(touches, "a shard over part 1 was not refused");
             } catch (RefusalException e) {
                 assertTrue(touches, "a shard not over part 1 was refused: " + e);
@@ -389,12 +392,12 @@ class SplitTest {
         assertEquals(1, refused);
         Cancellation cancelled = Cancellation.create();
         cancelled.cancel();
-        assertThrows(CancellationException.class, () -> shards.getFirst().scan(cancelled, row -> {}));
-        RangePlan empty = d.planRanges(List.of(RangeQuery.builder().start(Bytes.utf8("zzzz")).limit(1).build()), List.of());
+        assertThrows(CancellationException.class, () -> Reads.scan(shards.getFirst(), cancelled, row -> {}));
+        Plan empty = Reads.plan(d, List.of(Reads.builder().start(Bytes.utf8("zzzz")).limit(1).build()), List.of());
         d.close();
         assertThrows(IllegalStateException.class, () -> plan.split(2));
         assertThrows(IllegalStateException.class, () -> empty.split(2), "an empty plan's split after close");
-        assertThrows(IllegalStateException.class, () -> plan.split(0), "a split into no shard after close");
+        assertThrows(IllegalArgumentException.class, () -> plan.split(0), "an invalid split is invalid before the dataset state is checked");
     }
 
     /** One repeated-key part of four row groups of 20 distinct keys, two key pages each. */
@@ -411,14 +414,16 @@ class SplitTest {
     }
 
     /**
-     * Each shard's stats are exactly the key pages that placed its end, the last page of its last row
-     * group and the first of the next, though one cursor places every boundary.
+     * A split's statistics are exactly the key pages that placed its boundaries: for each, the last page
+     * of its last row group and the first of the next.
      */
     @Test
     void boundaryStats() throws IOException {
         try (Dataset d = Dataset.open(boundaryDataset())) {
-            List<RangePlan> shards = d.planRanges(List.of(RangeQuery.all(1)), List.of()).split(4);
-            assertEquals(List.of(2L, 2L, 2L, 0L), shards.stream().map(s -> s.stats().keyPagesDecoded()).toList());
+            AtomicReference<ReadStats> stats = new AtomicReference<>();
+            List<Plan> shards = Reads.plan(d, List.of(Reads.all(1)), List.of()).split(4, ReadOptions.of(stats::set));
+            assertEquals(4, shards.size());
+            assertEquals(6, stats.get().keyPagesDecoded());
         }
     }
 
@@ -429,12 +434,12 @@ class SplitTest {
         spec.rowsPerGroup = 100;
         spec.rowsPerPage = 10;
         try (Dataset d = Dataset.open(TestDatasets.write(tmp, spec, uniqueParts(300, 1)))) {
-            java.util.function.BiFunction<Integer, Integer, RangeQuery> between = (a, b) -> RangeQuery.builder()
+            java.util.function.BiFunction<Integer, Integer, Query> between = (a, b) -> Reads.builder()
                     .start(Bytes.utf8(String.format("k%05d", a))).end(Bytes.utf8(String.format("k%05d", b))).limit(1).build();
-            RangePlan plan = d.planRanges(List.of(between.apply(10, 20), between.apply(210, 220)), List.of());
+            Plan plan = Reads.plan(d, List.of(between.apply(10, 20), between.apply(210, 220)), List.of());
             assertEquals(1, plan.split(2).size(), "no row group begins inside the ranges");
-            plan = d.planRanges(List.of(between.apply(10, 20), between.apply(100, 110)), List.of());
-            List<RangePlan> shards = plan.split(2);
+            plan = Reads.plan(d, List.of(between.apply(10, 20), between.apply(100, 110)), List.of());
+            List<Plan> shards = plan.split(2);
             assertEquals(2, shards.size(), "row group 1 begins the second range");
             for (int i = 0; i < 2; i++) {
                 List<Row> rows = scan(shards.get(i));
@@ -480,16 +485,16 @@ class SplitTest {
         long offset;
         int size;
         try (Dataset d = Dataset.open(storage)) {
-            RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of());
+            Plan plan = Reads.plan(d, List.of(Reads.all(1)), List.of());
             Cancellation cancelled = Cancellation.create();
             hook.set(cancelled);
-            assertThrows(CancellationException.class, () -> plan.split(4, cancelled));
+            assertThrows(CancellationException.class, () -> plan.split(4, ReadOptions.of(cancelled)));
             hook.set(null);
-            List<RangePlan> shards = plan.split(4);
+            List<Plan> shards = plan.split(4);
             assertEquals(4, shards.size());
-            for (RangePlan shard : shards) {
-                assertEquals(20, shard.count());
-                assertTrue(shard.countExact());
+            for (Plan shard : shards) {
+                assertEquals(20, shard.count().value());
+                assertTrue(shard.count().exact());
             }
             ReadContext ctx = new ReadContext(Cancellation.none(), Limits.DEFAULT);
             PartFile p = d.parts().get(0, ctx);
@@ -501,7 +506,7 @@ class SplitTest {
             f.write(ByteBuffer.allocate(size), offset);
         }
         try (Dataset broken = Dataset.open(root)) {
-            RangePlan plan = broken.planRanges(List.of(RangeQuery.all(1)), List.of());
+            Plan plan = Reads.plan(broken, List.of(Reads.all(1)), List.of());
             assertThrows(RefusalException.class, () -> plan.split(4));
         }
     }

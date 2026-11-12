@@ -29,7 +29,7 @@ class ListIndexResourcesTest {
         Path root=TestDatasets.write(temp.resolve("memory"),spec,List.of(rows));
         long memory;
         try(Dataset probe=Dataset.open(root)){probe.verify();memory=retained(probe);}
-        var options=OpenOptions.DEFAULT.withLimits(Limits.DEFAULT.withMaxIndexMemoryBytes(memory/2));
+        var options=OpenOptions.DEFAULT.withLimits(Limits.DEFAULT.toBuilder().indexMemory(memory/2).build());
         var q=ListQuery.builder((byte)'/').prefix(Bytes.utf8("d3999/")).limit(10).build();
         List<ListEntry> expected;
         try(Dataset plain=Dataset.open(io.varve.seekparquet.storage.LocalStorage.of(root),options,Cancellation.none())){expected=plain.list(q);}
@@ -56,8 +56,7 @@ class ListIndexResourcesTest {
                 var first=d.list(ListQuery.builder((byte)'/').limit(1).build());
                 assertEquals(Bytes.utf8("a/"),((ListEntry.CommonPrefix)first.getFirst()).prefix());
                 for(int i=0;i<3;i++) {
-                    var next=d.list(new ListQuery(Bytes.empty(),(byte)'/',Optional.empty(),1,List.of(),
-                            Optional.of(new Cursor.CommonPrefix(Bytes.utf8("a/")))));
+                    var next=d.list(new ListQuery(Bytes.empty(), (byte)'/', Optional.empty(), 1, List.of(), Optional.of(new Cursor.CommonPrefix(Bytes.utf8("a/"))), 0));
                     assertEquals(Bytes.utf8("b/"),((ListEntry.CommonPrefix)next.getFirst()).prefix());
                 }
                 var g=d.parts().listIndex.groups[0];

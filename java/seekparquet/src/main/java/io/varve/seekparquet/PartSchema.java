@@ -90,7 +90,7 @@ final class PartSchema {
     static Column column(Field f, String keyColumn) {
         boolean group = f.type() == Column.Type.GROUP;
         Optional<LogicalType> logical = group ? Optional.empty() : logicalType(f.element());
-        return new Column(f.name(), f.type(), f.typeLength(), logical, f.repetition(), f.name().equals(keyColumn), 1);
+        return new Column(f.name(), f.type(), f.typeLength(), logical, f.repetition(), f.name().equals(keyColumn));
     }
 
     /**
@@ -202,7 +202,7 @@ final class PartSchema {
         /** {@return the signature of the subtree under se (already consumed)} */
         private String subtree(SchemaElement se, int depth) throws DataException {
             if (depth > MAX_NESTING) {
-                throw new LimitExceededException("schemaNesting", depth, MAX_NESTING, "a part's schema");
+                throw new LimitExceededException(LimitName.SCHEMA_NESTING, depth, MAX_NESTING, "a part's schema");
             }
             if (se.isSetNum_children() && (se.getNum_children() < 0 || se.isSetType() && se.getNum_children() > 0)) {
                 throw new DataException("a schema element has an invalid child count or both a type and children");

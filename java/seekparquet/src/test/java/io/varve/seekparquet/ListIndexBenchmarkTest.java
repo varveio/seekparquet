@@ -36,7 +36,7 @@ class ListIndexBenchmarkTest {
         AtomicReference<ReadStats> stats = new AtomicReference<>();
         for (int i = 0; i < 5; i++) d.list(q);
         long start = System.nanoTime();
-        for (int i = 0; i < 5; i++) d.list(q, Cancellation.none(), stats::set);
+        for (int i = 0; i < 5; i++) Reads.list(d, q, Cancellation.none(), stats::set);
         System.out.printf("LIST_BENCH %s %s ms=%.3f keyPages=%d keys=%d%n", layout, mode,
                 (System.nanoTime() - start) / 5e6, stats.get().keyPagesDecoded(), stats.get().keysDecoded());
     }

@@ -42,11 +42,11 @@ class RefusalTest {
         spec.swapFirstKeys = true;
         Path root = TestDatasets.write(tmp, spec, rows());
         try (Dataset ds = Dataset.open(root)) {
-            RefusalException e = assertThrows(RefusalException.class, () -> ds.range(RangeQuery.all(100)));
+            RefusalException e = assertThrows(RefusalException.class, () -> ds.rows(Reads.all(100)));
             assertEquals(RefusalCode.KEY_ORDER, e.code());
             assertEquals(Optional.of("data/part-00000.parquet"), e.part());
             // A read that never decodes the faulty page succeeds (CHECK-4).
-            assertEquals(2, ds.range(RangeQuery.builder().start(Bytes.utf8("f")).limit(10).build()).size());
+            assertEquals(2, ds.rows(Reads.builder().start(Bytes.utf8("f")).limit(10).build()).size());
         }
     }
 
@@ -56,16 +56,16 @@ class RefusalTest {
         spec.omitKeyColumnIndex = true;
         Path root = TestDatasets.write(tmp, spec, rows());
         try (Dataset ds = Dataset.open(root)) {
-            assertEquals(RefusalCode.MISSING_PAGE_INDEX, assertThrows(RefusalException.class, () -> ds.range(RangeQuery.all(100))).code());
-            assertEquals(1, ds.range(RangeQuery.all(1)).size());
+            assertEquals(RefusalCode.MISSING_PAGE_INDEX, assertThrows(RefusalException.class, () -> ds.rows(Reads.all(100))).code());
+            assertEquals(1, ds.rows(Reads.all(1)).size());
         }
     }
 
     /** A part fault: opening succeeds; a read touching the part and verification are refused with the code. */
     private static RefusalCode touchRefusal(Path root) {
         try (Dataset ds = Dataset.open(root)) {
-            assertEquals(5, ds.range(RangeQuery.builder().end(Bytes.utf8("f")).limit(10).build()).size());
-            RefusalCode code = assertThrows(RefusalException.class, () -> ds.range(RangeQuery.all(100))).code();
+            assertEquals(5, ds.rows(Reads.builder().end(Bytes.utf8("f")).limit(10).build()).size());
+            RefusalCode code = assertThrows(RefusalException.class, () -> ds.rows(Reads.all(100))).code();
             assertEquals(code, assertThrows(RefusalException.class, ds::verify).code());
         }
         try (Dataset ds = Dataset.open(root)) {
@@ -123,10 +123,10 @@ class RefusalTest {
     @Test
     void limitsAreNotRefusals() throws IOException {
         Path root = TestDatasets.write(tmp, new TestDatasets.Spec(), rows());
-        OpenOptions tiny = OpenOptions.DEFAULT.withLimits(new Limits(1 << 20, 1, 1 << 20, 1 << 20, 1 << 20, 1 << 20));
+        OpenOptions tiny = OpenOptions.DEFAULT.withLimits(Limits.builder().manifestBytes(1 << 20).parts(1).footerBytes(1 << 20).pageIndexBytes(1 << 20).pageBytes(1 << 20).pageValues(1 << 20).build());
         LimitExceededException e = assertThrows(LimitExceededException.class,
                 () -> Dataset.open(io.varve.seekparquet.storage.LocalStorage.of(root), tiny, Cancellation.none()));
-        assertEquals("maxParts", e.limit());
+        assertEquals(LimitName.PARTS, e.limit());
     }
 
     @Test
@@ -135,10 +135,10 @@ class RefusalTest {
         try (Dataset ds = Dataset.open(projection)) {
             for (String nested : List.of("meta", "tags")) {
                 UnsupportedFeatureException e = assertThrows(UnsupportedFeatureException.class,
-                        () -> ds.range(RangeQuery.builder().limit(10).columns(nested).build()));
-                assertEquals(UnsupportedCode.UNSUPPORTED_PROJECTION, e.code());
+                        () -> ds.rows(Reads.builder().limit(10).columns(nested).build()));
+                assertEquals(UnsupportedCode.PROJECTION, e.code());
             }
-            assertEquals(Value.absent(), ds.range(RangeQuery.builder().limit(1).columns("nowhere").build()).getFirst().values().getFirst());
+            assertEquals(Value.absent(), ds.rows(Reads.builder().limit(1).columns("nowhere").build()).getFirst().values().getFirst());
         }
     }
 }

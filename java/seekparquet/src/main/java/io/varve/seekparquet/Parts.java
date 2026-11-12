@@ -55,8 +55,8 @@ final class Parts {
         this.storage = storage;
         this.manifest = manifest;
         this.limits = limits;
-        this.indexMemory = new IndexMemory(limits.maxIndexMemoryBytes());
-        this.offsetIndexMemory = new OffsetIndexMemory(limits.maxOffsetIndexMemoryBytes());
+        this.indexMemory = new IndexMemory(limits.indexMemory());
+        this.offsetIndexMemory = new OffsetIndexMemory(limits.offsetIndexMemory());
         this.slots = new Slot[manifest.parts().size()];
         for (int i = 0; i < slots.length; i++) {
             slots[i] = new Slot();
@@ -230,11 +230,11 @@ final class Parts {
      * failure, which is thrown. Once a part's own checks fail, no further part is started; parts after
      * the failure that were opened ahead are closed unchecked. An interrupt cancels the checks in
      * progress through their cancellation rather than by interrupting them, and ends with {@link
-     * CancellationException}.
+     * CancellationException}. The reads are counted in {@code ctx}'s statistics.
      */
-    void checkAll(int concurrency, Cancellation cancellation) {
+    void checkAll(int concurrency, ReadContext ctx) {
         int n = slots.length;
-        ReadContext ctx = new ReadContext(cancellation, limits);
+        Cancellation cancellation = ctx.cancellation;
         if (concurrency == 1 || n <= 1) {
             for (int i = 0; i < n; i++) {
                 get(i, ctx);
@@ -242,6 +242,7 @@ final class Parts {
             return;
         }
         Staged[] staged = new Staged[n];
+        ReadStats.Counter[] counted = new ReadStats.Counter[n];
         Cancellation scope = Cancellation.linkedTo(cancellation);
         AtomicInteger next = new AtomicInteger();
         AtomicBoolean failed = new AtomicBoolean();
@@ -255,8 +256,10 @@ final class Parts {
                         if (slots[i].part != null || slots[i].refusal != null) {
                             continue; // its outcome is known: admitting it in turn reuses it
                         }
+                        ReadContext own = new ReadContext(scope, limits);
+                        counted[i] = own.stats;
                         try {
-                            staged[i] = new Staged(PartFile.open(storage, manifest, i, new ReadContext(scope, limits), indexMemory, offsetIndexMemory), null);
+                            staged[i] = new Staged(PartFile.open(storage, manifest, i, own, indexMemory, offsetIndexMemory), null);
                         } catch (RuntimeException e) {
                             staged[i] = new Staged(null, e);
                             failed.set(true);
@@ -282,6 +285,12 @@ final class Parts {
             }
         } finally {
             scope.detach();
+            // Every worker has ended: their counts are published to this thread.
+            for (ReadStats.Counter c : counted) {
+                if (c != null) {
+                    ctx.stats.add(c);
+                }
+            }
             if (interrupted) {
                 Thread.currentThread().interrupt();
             }

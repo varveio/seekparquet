@@ -7,11 +7,13 @@ import java.nio.ByteBuffer;
 
 /**
  * The values of one projection slot in a {@link Batch}, read by row without a {@link Value} object per
- * row. It is borrowed exactly as its batch is: valid only until the action that received the batch
- * returns, after which every method throws {@link IllegalStateException}.
+ * row. It is borrowed exactly as its batch is: valid only until the visit that received the batch
+ * returns, after which every method throws {@link IllegalStateException}. The Go reader's {@code
+ * ColumnView}.
  *
- * <p>A slot is {@linkplain #isAbsent() absent} when the batch's part has no such column (COL-2), which is
- * distinct from a null value. A present slot has a value or a null for every row of the batch, of its
+ * <p>Every row of a slot is in exactly one of three states: <b>absent</b> when the batch's part has no
+ * such column (COL-2: {@link #isPresent()} is false), <b>null</b> when the column is present and the row
+ * stores a null ({@link #isNull}), or a <b>value</b>. A present slot has a value or a null for every row of the batch, of its
  * {@linkplain #type() physical type} in the batch's part; values are physical, as {@link Value}'s are,
  * and floating-point values keep their exact bits. A projected key column is a present {@code
  * BYTE_ARRAY} slot holding each row's key.
@@ -42,10 +44,10 @@ public final class BatchColumn {
         this.base = source.base();
     }
 
-    /** {@return whether the batch's part has no such column (COL-2)} */
-    public boolean isAbsent() {
+    /** {@return whether the batch's part has the column; false when it is absent (COL-2), whose rows are all absent, not null} */
+    public boolean isPresent() {
         batch.checkLive();
-        return type == null;
+        return type != null;
     }
 
     /**
@@ -64,8 +66,8 @@ public final class BatchColumn {
     }
 
     /**
-     * Returns whether row {@code i} holds no value. An absent slot is not null, as {@link Value.Absent} is
-     * not.
+     * Returns whether row {@code i} of a present slot stores a null. An absent slot is not null, as {@link
+     * Value.Absent} is not.
      *
      * @param i the row
      * @return whether the row's value is null
@@ -156,7 +158,7 @@ public final class BatchColumn {
      * @param i the row
      * @return the number of bytes
      */
-    public int length(int i) {
+    public int byteLength(int i) {
         int r = binary(i);
         return page == null ? batch.keyArray(i).length : page.length(r);
     }
@@ -168,7 +170,7 @@ public final class BatchColumn {
      * @param i the row
      * @param dst the destination
      * @param dstOffset where the value begins in {@code dst}
-     * @return the number of bytes copied, {@link #length(int)}
+     * @return the number of bytes copied, {@link #byteLength(int)}
      * @throws IndexOutOfBoundsException if the value does not fit
      */
     public int copyBytes(int i, byte[] dst, int dstOffset) {
@@ -184,14 +186,15 @@ public final class BatchColumn {
 
     /**
      * Returns a read-only view of row {@code i}'s {@code BYTE_ARRAY} or {@code FIXED_LEN_BYTE_ARRAY}
-     * value, borrowed as the batch is: the scan reuses its storage for later pages. It allocates the view.
+     * value, borrowed as the batch is: the scan reuses its storage for later pages. It allocates the view,
+     * whose position and limit are its own.
      *
      * @param i the row
      * @return the view, positioned at the value's first byte
      */
-    public ByteBuffer byteBuffer(int i) {
+    public ByteBuffer bytes(int i) {
         int r = binary(i);
-        return page == null ? batch.keyBuffer(i) : page.view(r);
+        return page == null ? batch.key(i) : page.view(r);
     }
 
     /**
@@ -201,13 +204,13 @@ public final class BatchColumn {
      * @param i the row
      * @return the value
      */
-    public Bytes bytes(int i) {
+    public Bytes copyBytes(int i) {
         int r = binary(i);
-        return page == null ? batch.key(i) : page.ownBytes(r);
+        return page == null ? batch.copyKey(i) : page.ownBytes(r);
     }
 
     /**
-     * Returns an owning copy of row {@code i}'s value, the value a range read returns for it: {@link
+     * Returns an owning copy of row {@code i}'s value, the value {@link Dataset#rows} returns for it: {@link
      * Value.Absent} for an absent slot, {@link Value.Null} for a null row.
      *
      * @param i the row
@@ -219,7 +222,7 @@ public final class BatchColumn {
             return Value.Absent.INSTANCE;
         }
         if (page == null) {
-            return new Value.ByteArray(batch.key(i));
+            return new Value.ByteArray(batch.copyKey(i));
         }
         return page.value(base + r);
     }

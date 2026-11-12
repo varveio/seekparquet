@@ -14,7 +14,7 @@ final class IndexMemory {
 
     void reserve(long bytes) {
         if (bytes > maximum - retained) {
-            throw new LimitExceededException("maxIndexMemoryBytes", bytes > Long.MAX_VALUE - retained ? Long.MAX_VALUE : retained + bytes,
+            throw new LimitExceededException(LimitName.INDEX_MEMORY, bytes > Long.MAX_VALUE - retained ? Long.MAX_VALUE : retained + bytes,
                     maximum, "retained page indexes");
         }
         retained += bytes;
