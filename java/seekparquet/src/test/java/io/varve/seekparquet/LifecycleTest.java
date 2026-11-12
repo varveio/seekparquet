@@ -150,15 +150,16 @@ class LifecycleTest {
     void aFailedVerifyClosesTheRefusedPartAndCloseTheRest() throws Exception {
         Path root = dataset(4, 3);
         java.nio.file.Files.write(root.resolve("data/part-00002.parquet"), new byte[] {0}, java.nio.file.StandardOpenOption.APPEND);
-        for (int concurrency : new int[] {0, 1, 4}) {
+        record VerifyCase(boolean publicVerify, int concurrency) {}
+        for (VerifyCase mode : List.of(new VerifyCase(true, 1), new VerifyCase(false, 1), new VerifyCase(false, 4))) {
             GatedStorage storage = new GatedStorage(root);
             Dataset ds = Dataset.open(storage);
             Parts parts = new Parts(storage, Manifest.parse(java.nio.file.Files.readAllBytes(root.resolve("manifest.json")),
                     Limits.DEFAULT), Limits.DEFAULT);
             assertEquals(0, storage.open.get());
             RefusalException e = assertThrows(RefusalException.class, () -> {
-                if (concurrency == 0) ds.verify();
-                else parts.checkAll(concurrency, new ReadContext(Cancellation.none(), Limits.DEFAULT));
+                if (mode.publicVerify()) ds.verify();
+                else parts.checkAll(mode.concurrency(), new ReadContext(Cancellation.none(), Limits.DEFAULT));
             });
             assertEquals(RefusalCode.PART_MISMATCH, e.code());
             assertEquals(Optional.of("data/part-00002.parquet"), e.part());

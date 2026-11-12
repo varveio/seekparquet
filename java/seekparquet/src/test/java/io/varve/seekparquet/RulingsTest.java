@@ -24,6 +24,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import shaded.parquet.org.apache.thrift.protocol.TCompactProtocol;
 import shaded.parquet.org.apache.thrift.protocol.TField;
+import shaded.parquet.org.apache.thrift.protocol.TList;
 import shaded.parquet.org.apache.thrift.protocol.TStruct;
 import shaded.parquet.org.apache.thrift.transport.TIOStreamTransport;
 
@@ -173,6 +174,74 @@ class RulingsTest {
         }
     }
 
+    @Test
+    void unknownAdvisoryEncodingStatsDoNotBlockUsablePages() throws Exception {
+        Path root = dataset(f -> {
+            for (ColumnChunk chunk : f.getRow_groups().getFirst().getColumns()) {
+                chunk.getMeta_data().setEncoding_stats(List.of(new PageEncodingStats(PageType.DATA_PAGE, Encoding.PLAIN, 1) {
+                    @Override public void write(shaded.parquet.org.apache.thrift.protocol.TProtocol p)
+                            throws shaded.parquet.org.apache.thrift.TException {
+                        p.writeStructBegin(new TStruct("PageEncodingStats"));
+                        writeInt(p, 1, 0); writeInt(p, 2, 99); writeInt(p, 3, 1);
+                        p.writeFieldStop(); p.writeStructEnd();
+                    }
+                }));
+            }
+        });
+        try (Dataset ds = Dataset.open(root)) {
+            ds.verify();
+            assertEquals(2, ds.rows(request("size")).size());
+        }
+        byte[] bytes = Files.readAllBytes(root.resolve("data/part-00000.parquet"));
+        int size = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getInt(bytes.length - 8);
+        FileMetaData f = Thrift.fileMetaData(Arrays.copyOfRange(bytes, bytes.length - size - 8, bytes.length - 8),
+                Limits.DEFAULT.metadataMemory());
+        for (ColumnChunk chunk : f.getRow_groups().getFirst().getColumns()) {
+            PageEncodingStats stats = chunk.getMeta_data().getEncoding_stats().getFirst();
+            assertNull(stats.getEncoding());
+            assertEquals(99, ((Thrift.RawEncodingStats) stats).rawEncoding);
+        }
+    }
+
+    private static void structList(TCompactProtocol p, int field, List<? extends shaded.parquet.org.apache.thrift.TBase<?, ?>> values)
+            throws Exception {
+        p.writeFieldBegin(new TField("", (byte) 15, (short) field));
+        p.writeListBegin(new TList((byte) 12, values.size()));
+        for (var value : values) value.write(p);
+        p.writeListEnd(); p.writeFieldEnd();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2})
+    void duplicateFooterListsUseTheLastOccurrence(int lastSize) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        TCompactProtocol p = new TCompactProtocol(new TIOStreamTransport(out));
+        p.writeStructBegin(new TStruct("FileMetaData"));
+        integer(p, 1, 1);
+        structList(p, 2, List.of(new RawAnnotation(19, -2)));
+        List<SchemaElement> schema = new ArrayList<>();
+        List<RowGroup> groups = new ArrayList<>();
+        for (int i = 0; i < lastSize; i++) {
+            schema.add(new SchemaElement("kept" + i));
+            ColumnMetaData md = new ColumnMetaData(Type.INT64, List.of(Encoding.PLAIN), List.of("kept" + i),
+                    CompressionCodec.SNAPPY, 0, 0, 0, 0);
+            groups.add(new RowGroup(List.of(new ColumnChunk(0).setMeta_data(md)), 0, 0));
+        }
+        structList(p, 2, schema);
+        p.writeFieldBegin(new TField("", (byte) 10, (short) 3)); p.writeI64(0); p.writeFieldEnd();
+        structList(p, 4, List.of(new RowGroup(List.of(), 0, 0)));
+        structList(p, 4, groups);
+        p.writeFieldStop(); p.writeStructEnd();
+        FileMetaData f = Thrift.fileMetaData(out.toByteArray(), Limits.DEFAULT.metadataMemory());
+        assertEquals(lastSize, f.getSchemaSize());
+        assertEquals(lastSize, f.getRow_groupsSize());
+        for (int i = 0; i < lastSize; i++) {
+            assertEquals("kept" + i, f.getSchema().get(i).getName());
+            assertNull(((Thrift.RawSchema) f.getSchema().get(i)).wire.child("LogicalType"));
+            assertEquals(CompressionCodec.SNAPPY, f.getRow_groups().get(i).getColumns().getFirst().getMeta_data().getCodec());
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"format_version", "draft_revision", "schema_id", "key_column", "key_unique"})
     void valuelessListedStampsAndDuplicatesAreStampMismatch(String suffix) throws Exception {
@@ -272,9 +341,10 @@ class RulingsTest {
         @Override
         public void write(shaded.parquet.org.apache.thrift.protocol.TProtocol p) throws shaded.parquet.org.apache.thrift.TException {
             p.writeStructBegin(new TStruct("SchemaElement"));
-            writeInt(p, 1, Type.INT64.getValue());
+            if (isSetType()) writeInt(p, 1, getType().getValue());
             writeInt(p, 3, FieldRepetitionType.OPTIONAL.getValue());
             p.writeFieldBegin(new TField("name", (byte) 11, (short) 4)); p.writeString("size"); p.writeFieldEnd();
+            if (isSetNum_children()) writeInt(p, 5, getNum_children());
             p.writeFieldBegin(new TField("logicalType", (byte) 12, (short) 10));
             p.writeStructBegin(new TStruct("LogicalType"));
             p.writeFieldBegin(new TField("", (byte) 12, (short) member));
@@ -310,6 +380,23 @@ class RulingsTest {
         Path root = dataset(f -> f.getSchema().set(2, new RawAnnotation(member, -2)));
         try (Dataset ds = Dataset.open(root)) {
             assertEquals(RefusalCode.INVALID_FOOTER, assertThrows(RefusalException.class, () -> ds.rows(request())).code());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {19, 20})
+    void newerGroupOnlyAnnotationsAreAcceptedOnGroups(int member) throws Exception {
+        Path root = dataset(f -> {
+            RawAnnotation group = new RawAnnotation(member, -2);
+            group.unsetType();
+            group.setNum_children(1);
+            f.getSchema().get(2).setName("child");
+            f.getSchema().add(2, group);
+            f.getRow_groups().getFirst().getColumns().get(1).getMeta_data().setPath_in_schema(List.of("size", "child"));
+        });
+        try (Dataset ds = Dataset.open(root)) {
+            assertEquals(Column.Type.GROUP, ds.columns(0).get(1).type());
+            assertEquals(2, ds.rows(request()).size());
         }
     }
 

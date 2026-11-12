@@ -10,6 +10,10 @@ independent of the specification's draft revisions.
 - Unknown numeric page encodings and column codecs retain wire presence and raw values through bounded
   Thrift decoding. Needed data reports `unsupported_encoding`; unprojected values do not block a read.
   Unknown boundary order and unused V1 repetition encodings are ignored; required fields remain required.
+- Unknown `PageEncodingStats.encoding` values are accepted as advisory metadata, with the raw integer
+  preserved. Wire records are retained only for schema annotations; maps are allocated only for unknown
+  enum integers, and OffsetIndex decoding needs no wire records. Metadata accounting charges 96 bytes
+  per tracked structure (48 for OffsetIndex structures), plus 32 per recorded unknown enum integer.
 - Intrinsic indexed key-header corruption, including negative V1 counts and V2 level lengths, reports
   `invalid_parquet` before index extent or row disagreement. Undecodable headers remain `invalid_page_index`.
 - Every leaf’s recognized annotation restrictions are checked at first touch, including unprojected and

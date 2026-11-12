@@ -15,6 +15,7 @@ import org.apache.parquet.format.DataPageHeader;
 import org.apache.parquet.format.Encoding;
 import org.apache.parquet.format.FileMetaData;
 import org.apache.parquet.format.OffsetIndex;
+import org.apache.parquet.format.PageEncodingStats;
 import org.apache.parquet.format.PageHeader;
 import org.apache.parquet.format.RowGroup;
 import org.apache.parquet.format.SchemaElement;
@@ -50,7 +51,9 @@ import shaded.parquet.org.apache.thrift.transport.TTransportException;
  * the decoder actually reads (a container's elements are decoded by the schema, whatever element type the
  * bytes declare; unknown fields are skipped through the same reads): every string or binary length is
  * checked against the bytes that remain and charged before its bytes are allocated, and each
- * structure twice {@value #STRUCT_BYTES} bytes (generated object and wire record), each list, set or map element {@value #ELEMENT_BYTES} bytes (twice
+ * structure twice {@value #STRUCT_BYTES} bytes (generated object and wire record), or once for an
+ * OffsetIndex, which needs no wire tracking; each recorded unknown enum integer 32 bytes; each list,
+ * set or map element {@value #ELEMENT_BYTES} bytes (twice
  * for a map entry), each binary value its length plus {@value #STRUCT_BYTES}, and each string twice its
  * encoded length plus {@value #STRUCT_BYTES} (a Java string can take two bytes per encoded UTF-8 byte). Past the budget
  * it fails with {@link LimitExceededException} naming {@link LimitName#METADATA_MEMORY}, before any string,
@@ -76,7 +79,6 @@ final class Thrift {
     static <T extends TBase<?, ?>> Decoded<T> read(byte[] b, int off, int len, T struct, long budget) throws DataException {
         // Generated required-enum validation must see a known placeholder. After the complete
         // structure has validated, restore unknown values to null, retaining their wire integers.
-        struct = compatible(struct);
         ByteArrayInputStream in = new ByteArrayInputStream(b, off, len);
         Bounded protocol;
         try {
@@ -120,90 +122,125 @@ final class Thrift {
         return read(b, off, len, new PageHeader(), budget);
     }
 
-    /** Raw values live with the decoded object; no global cache or lifetime extension. */
-    private static final class RawFooter extends FileMetaData { Wire wire; }
-    private static final class RawPage extends PageHeader { Wire wire; }
-    private static final class RawIndex extends ColumnIndex { Wire wire; }
+    /** Unknown advisory encodings retain their integer without retaining the footer's wire tree. */
+    static final class RawEncodingStats extends PageEncodingStats {
+        final int rawEncoding;
+        RawEncodingStats(PageEncodingStats stats, int rawEncoding) {
+            super(stats);
+            this.rawEncoding = rawEncoding;
+            setEncoding(null);
+        }
+    }
     static final class RawSchema extends SchemaElement {
         final Wire wire;
         RawSchema(SchemaElement se, Wire wire) { super(se); this.wire = wire; }
     }
 
-    @SuppressWarnings("unchecked") // each replacement extends the requested generated root type
-    private static <T extends TBase<?, ?>> T compatible(T value) {
-        if (value.getClass() == FileMetaData.class) return (T) new RawFooter();
-        if (value.getClass() == PageHeader.class) return (T) new RawPage();
-        if (value.getClass() == ColumnIndex.class) return (T) new RawIndex();
-        return value;
-    }
-
     /** Only recognized schema paths participate; unknown structures cannot masquerade as enums. */
     static final class Wire {
         final String kind;
-        final List<Wire> children = new ArrayList<>();
-        final java.util.Map<Short, Integer> integers = new java.util.HashMap<>();
+        private List<Wire> children;
+        private java.util.Map<Short, Integer> integers;
         short field;
         byte type;
         int members;
         short alternative;
         Wire(String kind) { this.kind = kind; }
-        Wire child(String name) { return children.stream().filter(w -> w.kind.equals(name)).findFirst().orElse(null); }
-        int integer(int id, int fallback) { return integers.getOrDefault((short) id, fallback); }
+        List<Wire> children() { return children == null ? List.of() : children; }
+        void add(Wire child) {
+            if (children == null) children = new ArrayList<>();
+            children.add(child);
+        }
+        void replaceChildren(String kind) {
+            if (children != null) children.removeIf(w -> w.kind.equals(kind));
+        }
+        Wire child(String name) {
+            for (Wire w : children()) if (w.kind.equals(name)) return w;
+            return null;
+        }
+        void integer(short id, int value) {
+            if (integers == null) integers = new java.util.HashMap<>();
+            integers.put(id, value);
+        }
+        int integer(int id, int fallback) { return integers == null ? fallback : integers.getOrDefault((short) id, fallback); }
     }
 
     private static String childKind(Wire parent) {
-        return switch (parent.kind + ":" + parent.field) {
-            case "FileMetaData:2" -> "SchemaElement";
-            case "FileMetaData:4" -> "RowGroup";
-            case "RowGroup:1" -> "ColumnChunk";
-            case "ColumnChunk:3" -> "ColumnMetaData";
-            case "SchemaElement:10" -> "LogicalType";
-            case "LogicalType:7" -> "TimeType";
-            case "LogicalType:8" -> "TimestampType";
-            case "TimeType:2", "TimestampType:2" -> "TimeUnit";
-            case "PageHeader:5" -> "DataPageHeader";
-            case "PageHeader:7" -> "DictionaryPageHeader";
-            case "PageHeader:8" -> "DataPageHeaderV2";
+        // Only the wire types consumed by generated readers can replace an earlier field.
+        if (parent.type == 15) return switch (parent.kind) {
+            case "FileMetaData" -> switch (parent.field) {
+                case 2 -> "SchemaElement";
+                case 4 -> "RowGroup";
+                default -> "";
+            };
+            case "RowGroup" -> parent.field == 1 ? "ColumnChunk" : "";
+            case "ColumnMetaData" -> parent.field == 13 ? "PageEncodingStats" : "";
+            default -> "";
+        };
+        if (parent.type != 12) return "";
+        return switch (parent.kind) {
+            case "ColumnChunk" -> parent.field == 3 ? "ColumnMetaData" : "";
+            case "SchemaElement" -> parent.field == 10 ? "LogicalType" : "";
+            case "LogicalType" -> switch (parent.field) {
+                case 7 -> "TimeType";
+                case 8 -> "TimestampType";
+                default -> "";
+            };
+            case "TimeType", "TimestampType" -> parent.field == 2 ? "TimeUnit" : "";
+            case "PageHeader" -> switch (parent.field) {
+                case 5 -> "DataPageHeader";
+                case 7 -> "DictionaryPageHeader";
+                case 8 -> "DataPageHeaderV2";
+                default -> "";
+            };
             default -> "";
         };
     }
 
     private static void restore(TBase<?, ?> value, Wire wire) {
-        if (value instanceof RawFooter f) {
-            f.wire = wire;
+        if (value instanceof FileMetaData f) {
             int si = 0, gi = 0;
-            for (Wire w : wire.children) {
+            for (Wire w : wire.children()) {
                 if (w.kind.equals("SchemaElement")) {
                     f.getSchema().set(si, new RawSchema(f.getSchema().get(si), w));
                     si++;
                 } else if (w.kind.equals("RowGroup")) {
                     RowGroup group = f.getRow_groups().get(gi++);
                     int ci = 0;
-                    for (Wire chunk : w.children) {
+                    for (Wire chunk : w.children()) {
                         if (!chunk.kind.equals("ColumnChunk")) continue;
                         ColumnMetaData md = group.getColumns().get(ci++).getMeta_data();
                         Wire m = chunk.child("ColumnMetaData");
                         if (m != null && CompressionCodec.findByValue(m.integer(4, 0)) == null) md.setCodec(null);
+                        if (m != null) {
+                            int ei = 0;
+                            for (Wire stats : m.children()) {
+                                if (!stats.kind.equals("PageEncodingStats")) continue;
+                                int raw = stats.integer(2, 0);
+                                if (Encoding.findByValue(raw) == null) {
+                                    md.getEncoding_stats().set(ei, new RawEncodingStats(md.getEncoding_stats().get(ei), raw));
+                                }
+                                ei++;
+                            }
+                        }
                     }
                 }
             }
-        } else if (value instanceof RawPage p) {
-            p.wire = wire;
-            for (Wire w : wire.children) {
+        } else if (value instanceof PageHeader p) {
+            for (Wire w : wire.children()) {
                 if (w.kind.equals("DataPageHeader")) {
                     DataPageHeader h = p.getData_page_header();
                     h.setEncoding(Encoding.findByValue(w.integer(2, h.getEncoding().getValue())));
                     h.setDefinition_level_encoding(Encoding.findByValue(w.integer(3, h.getDefinition_level_encoding().getValue())));
                     h.setRepetition_level_encoding(Encoding.findByValue(w.integer(4, h.getRepetition_level_encoding().getValue())));
                 } else if (w.kind.equals("DataPageHeaderV2")) {
-                    p.getData_page_header_v2().setEncoding(Encoding.findByValue(w.integer(4, 0)));
+                    p.getData_page_header_v2().setEncoding(Encoding.findByValue(w.integer(4, p.getData_page_header_v2().getEncoding().getValue())));
                 } else if (w.kind.equals("DictionaryPageHeader")) {
-                    p.getDictionary_page_header().setEncoding(Encoding.findByValue(w.integer(2, 0)));
+                    p.getDictionary_page_header().setEncoding(Encoding.findByValue(w.integer(2, p.getDictionary_page_header().getEncoding().getValue())));
                 }
             }
-        } else if (value instanceof RawIndex i) {
-            i.wire = wire;
-            i.setBoundary_order(BoundaryOrder.findByValue(wire.integer(4, 0)));
+        } else if (value instanceof ColumnIndex i) {
+            i.setBoundary_order(BoundaryOrder.findByValue(wire.integer(4, i.getBoundary_order().getValue())));
         }
     }
 
@@ -239,7 +276,7 @@ final class Thrift {
         private long left;
 
         private final String rootKind;
-        private final ArrayDeque<Wire> structs = new ArrayDeque<>();
+        private final ArrayDeque<Wire> structs;
         private Wire root;
 
         Bounded(TTransport transport, long max, ByteArrayInputStream in, long budget, String rootKind) {
@@ -247,6 +284,7 @@ final class Thrift {
             this.in = in;
             this.left = budget;
             this.rootKind = rootKind;
+            this.structs = rootKind.equals("OffsetIndex") ? null : new ArrayDeque<>();
         }
 
         /** Charges the decoded estimate of what is about to be allocated, before it is. */
@@ -403,18 +441,20 @@ final class Thrift {
         @Override
         public TStruct readStructBegin() throws TException {
             enter();
-            charge(2L * STRUCT_BYTES); // generated object and its wire-presence record
-            Wire w = new Wire(structs.isEmpty() ? rootKind : childKind(structs.peek()));
-            if (structs.isEmpty()) root = w;
-            else structs.peek().children.add(w);
-            structs.push(w);
+            charge(structs == null ? STRUCT_BYTES : 2L * STRUCT_BYTES);
+            if (structs != null) {
+                Wire w = new Wire(structs.isEmpty() ? rootKind : childKind(structs.peek()));
+                if (structs.isEmpty()) root = w;
+                else structs.peek().add(w);
+                structs.push(w);
+            }
             return super.readStructBegin();
         }
 
         @Override
         public void readStructEnd() throws TException {
             super.readStructEnd();
-            structs.pop();
+            if (structs != null) structs.pop();
             level--;
         }
 
@@ -424,32 +464,45 @@ final class Thrift {
             if (field.type != STOP && field.type != BOOL && level > MAX_DEPTH) {
                 throw tooDeep();
             }
-            Wire w = structs.peek();
-            w.field = field.id;
-            w.type = field.type;
-            if (field.type != STOP) { w.members++; w.alternative = field.id; }
+            if (structs != null) {
+                Wire w = structs.peek();
+                w.field = field.id;
+                w.type = field.type;
+                if (field.type != STOP) { w.members++; w.alternative = field.id; }
+                String child = childKind(w);
+                if (!child.isEmpty()) w.replaceChildren(child);
+            }
             return field;
         }
 
         @Override
         public int readI32() throws TException {
             int raw = super.readI32();
+            if (structs == null) return raw;
             Wire w = structs.peek();
             if (w.type != 8) return raw; // only direct I32 fields, never values skipped inside another wire type
-            String field = w.kind + ":" + w.field;
-            boolean encoding = switch (field) {
-                case "DataPageHeader:2", "DataPageHeader:3", "DataPageHeader:4",
-                     "DataPageHeaderV2:4", "DictionaryPageHeader:2" -> true;
+            boolean encoding = switch (w.kind) {
+                case "DataPageHeader" -> w.field >= 2 && w.field <= 4;
+                case "DataPageHeaderV2" -> w.field == 4;
+                case "DictionaryPageHeader", "PageEncodingStats" -> w.field == 2;
                 default -> false;
             };
             // An I32 field only. Missing/wrong-type fields still
             // fail generated validation. No bytes are invented or skipped by this adaptation.
-            if (encoding || field.equals("ColumnMetaData:4") || field.equals("ColumnIndex:4")) {
+            boolean codec = w.kind.equals("ColumnMetaData") && w.field == 4;
+            boolean boundary = w.kind.equals("ColumnIndex") && w.field == 4;
+            boolean unknown = encoding && Encoding.findByValue(raw) == null
+                    || codec && CompressionCodec.findByValue(raw) == null
+                    || boundary && BoundaryOrder.findByValue(raw) == null;
+            if (unknown) {
                 charge(32);
-                w.integers.put(w.field, raw);
-                if (encoding && Encoding.findByValue(raw) == null) return Encoding.PLAIN.getValue();
-                if (field.equals("ColumnMetaData:4") && CompressionCodec.findByValue(raw) == null) return CompressionCodec.LZO.getValue();
-                if (field.equals("ColumnIndex:4") && BoundaryOrder.findByValue(raw) == null) return BoundaryOrder.UNORDERED.getValue();
+                w.integer(w.field, raw);
+                if (encoding) return Encoding.PLAIN.getValue();
+                if (codec) return CompressionCodec.LZO.getValue();
+                return BoundaryOrder.UNORDERED.getValue();
+            } else if (encoding || codec || boundary) {
+                // A later, known duplicate scalar replaces the earlier raw enum too.
+                if (w.integers != null) w.integers.remove(w.field);
             }
             return raw;
         }

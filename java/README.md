@@ -488,7 +488,9 @@ page over it fails with `LimitExceededException` naming `PAGE_MEMORY`. Its defau
 byte-array dictionary near both `pageValues` and `pageBytes` can exceed it under this reader's estimate; set it
 higher to admit such a page. `metadataMemory` is charged in the protocol the Thrift decoder reads a footer, page index or page header
 through, before each string, binary or container is allocated, so it holds whatever element types the bytes
-declare: 48 bytes per structure, 16 per list element (32 per map entry), 48 plus the length of each binary, and
+declare: 96 bytes per structure (generated object and wire record), or 48 for an OffsetIndex or its
+PageLocations, which need no wire tracking; 32 per unknown enum integer recorded, 16 per list element
+(32 per map entry), 48 plus the length of each binary, and
 48 plus twice the encoded length of each string (a Java string can take two bytes per UTF-8 byte), each declared
 length checked against the bytes left. A page header of unknown length is read in windows of at most min(16 MiB,
 `metadataMemory`). The parts limit is enforced before materializing more than the permitted number of part

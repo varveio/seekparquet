@@ -254,17 +254,17 @@ class ReviewRegressionTest {
 
     @Test
     void interruptedVerifyDrainsSuccessfulTasksAndPreservesTheFlag() throws Exception {
-        interruptedVerify(2);
+        interruptedVerify(false, 2);
     }
 
     @Test
     void interruptedVerifyDrainsTasksAtTheInternalBound() throws Exception {
-        interruptedVerify(0);
+        interruptedVerify(true, 2);
     }
 
-    private void interruptedVerify(int concurrency) throws Exception {
+    private void interruptedVerify(boolean publicVerify, int concurrency) throws Exception {
         Path root = dataset(3);
-        int expectedOpened = concurrency == 0 ? 3 : 2;
+        int expectedOpened = publicVerify ? 3 : 2;
         CountDownLatch reading = new CountDownLatch(expectedOpened);
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch cancelled = new CountDownLatch(1);
@@ -298,7 +298,7 @@ class ReviewRegressionTest {
         Parts parts = new Parts(storage, Manifest.parse(Files.readAllBytes(root.resolve("manifest.json")), Limits.DEFAULT), Limits.DEFAULT);
         Thread opener = Thread.ofPlatform().start(() -> {
             try {
-                if (concurrency == 0) ds.verify();
+                if (publicVerify) ds.verify();
                 else parts.checkAll(concurrency, new ReadContext(Cancellation.none(), Limits.DEFAULT));
                 failure.set(new AssertionError("verify should have been cancelled"));
             } catch (Throwable e) {
