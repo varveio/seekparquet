@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,12 +62,13 @@ var ErrBudget = errors.New("thrift input exceeds its memory budget")
 // returns the number of bytes the struct occupies and the estimated memory
 // a decoder will allocate for it. It fails with ErrMalformed when the bytes are not a
 // well-formed struct whose lengths fit in data, and with ErrBudget as soon
-// as the estimate exceeds budget.
-func Check(data []byte, typ reflect.Type, budget int64) (n int, cost int64, err error) {
+// as the estimate exceeds budget. Types in nonempty must have at least one wire
+// field when present, including an unknown field (for extensible unions).
+func Check(data []byte, typ reflect.Type, budget int64, nonempty ...reflect.Type) (n int, cost int64, err error) {
 	if typ != nil && typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
-	w := walker{data: data, budget: budget}
+	w := walker{data: data, budget: budget, nonempty: nonempty}
 	if typ != nil {
 		w.cost = int64(typ.Size())
 	}
@@ -77,10 +79,11 @@ func Check(data []byte, typ reflect.Type, budget int64) (n int, cost int64, err 
 }
 
 type walker struct {
-	data   []byte
-	pos    int
-	cost   int64
-	budget int64
+	data     []byte
+	pos      int
+	cost     int64
+	budget   int64
+	nonempty []reflect.Type
 }
 
 func (w *walker) malformed(what string) error {
@@ -132,14 +135,19 @@ func (w *walker) length(n uint64, min int) (int, error) {
 func (w *walker) structure(typ reflect.Type, depth int) error {
 	fields := fieldsOf(typ)
 	var id int64
+	fieldsSeen := 0
 	for {
 		b, err := w.byte()
 		if err != nil {
 			return err
 		}
 		if b == tStop {
+			if fieldsSeen == 0 && slices.Contains(w.nonempty, typ) {
+				return w.malformed("empty annotation union")
+			}
 			return nil
 		}
+		fieldsSeen++
 		kind := b & 0x0f
 		if delta := b >> 4; delta != 0 {
 			id += int64(delta)
