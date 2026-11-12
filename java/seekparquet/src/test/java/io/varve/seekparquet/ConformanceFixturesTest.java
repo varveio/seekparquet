@@ -33,7 +33,7 @@ class ConformanceFixturesTest {
             "no-value-page-index", "non-monotone-bounds", "non-utf8-keys", "projection", "repeated-keys", "one-large-group", "named-key", "binary-bounds-truncated-2-byte", "binary-bounds-truncated-16-byte"})
     void everyValidFixtureReadsInFull(String name) {
         Path root = fixture("datasets/" + name);
-        OpenOptions options = OpenOptions.DEFAULT.withVerifyConcurrency(1);
+        OpenOptions options = OpenOptions.DEFAULT;
         try (Dataset ds = Dataset.open(LocalStorage.of(root), options, Cancellation.none())) {
             ds.verify();
             List<String> columns = Reads.columns(ds).stream().filter(Column::projectable).map(Column::name).toList();

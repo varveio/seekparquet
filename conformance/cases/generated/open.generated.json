@@ -404,6 +404,60 @@
       }
     },
     {
+      "id": "open/annotation-physical-fallback-controls",
+      "description": "Legal DECIMAL INT32(9), INT64(18), FLBA(1)(2); TIMESTAMP(MICROS) FLBA(12); unknown logical 99, converted 99 and timestamp unit 99 retain physical values.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/annotation-physical-fallback-controls",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/ignored-enums-99",
+      "description": "Key boundary_order, every non-repeated key/value repetition_level_encoding and key/value encoding_stats encodings include 99.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/ignored-enums-99",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/metadata-no-value",
+      "description": "Append valueless metadata entries: ordinary, ordinary, seekparquet.future, seekparquet.future.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3"
+      ],
+      "dataset": "datasets/metadata-no-value",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
       "id": "open/empty-list",
       "family": "open/empty-dataset",
       "requirements": [

@@ -1,0 +1,65 @@
+{
+  "dataset": "rulings",
+  "description": "Synthetic physical source rows for proposal 0001 part B; V1 PLAIN, four rows in two pages.",
+  "schema_id": "conformance/rulings/v1",
+  "key_type": "binary",
+  "key": {
+    "column": "key",
+    "unique": true
+  },
+  "columns": [
+    {
+      "name": "value",
+      "type": "int64",
+      "nullable": true
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        4
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "YQ==",
+          "values": {
+            "value": {
+              "int": "1"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "value": {
+              "null": true
+            }
+          }
+        },
+        {
+          "key_base64": "Yw==",
+          "values": {
+            "value": {
+              "int": "3"
+            }
+          }
+        },
+        {
+          "key_base64": "ZA==",
+          "values": {
+            "value": {
+              "int": "4"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

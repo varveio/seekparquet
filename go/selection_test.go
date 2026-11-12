@@ -87,7 +87,11 @@ func oracle(t *testing.T, dir string, meta Metadata, column string) ([]oracleRow
 	for _, part := range meta.Parts {
 		raw, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(part.Path)))
 		must(t, err)
-		f, err := parquet.OpenFile(bytes.NewReader(raw), int64(len(raw)))
+		// Use the reader's footer decoding and normalization: STAMP-2
+		// permits valueless metadata that parquet-go's decoder rejects.
+		// Pages are still decoded independently through parquet-go below.
+		lim := Limits{}.withDefaults()
+		f, _, err := readFooter(ctx, part.Path, bytes.NewReader(raw), int64(len(raw)), &lim, nil, 0, 1, false)
 		must(t, err)
 		keyLeaf, ok := f.Schema().Lookup(meta.Key.Column)
 		if !ok {

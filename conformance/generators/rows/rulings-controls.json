@@ -1,0 +1,184 @@
+{
+  "dataset": "rulings-controls",
+  "description": "Synthetic physical source rows for proposal 0001 part B; V1 PLAIN, four rows in two pages.",
+  "schema_id": "conformance/rulings/v1",
+  "key_type": "binary",
+  "key": {
+    "column": "key",
+    "unique": true
+  },
+  "columns": [
+    {
+      "name": "value",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "decimal_i32",
+      "type": "int32",
+      "nullable": true
+    },
+    {
+      "name": "decimal_i64",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "decimal_flba1",
+      "type": "fixed:1",
+      "nullable": true
+    },
+    {
+      "name": "timestamp_flba12",
+      "type": "fixed:12",
+      "nullable": true
+    },
+    {
+      "name": "future_logical",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "future_converted",
+      "type": "int64",
+      "nullable": true
+    },
+    {
+      "name": "future_time",
+      "type": "int64",
+      "nullable": true
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        4
+      ],
+      "writer": {
+        "max_rows_per_page": 2,
+        "compression": "none",
+        "use_dictionary": false,
+        "data_page_version": "1.0"
+      },
+      "rows": [
+        {
+          "key_base64": "YQ==",
+          "values": {
+            "value": {
+              "int": "1"
+            },
+            "decimal_i32": {
+              "int": "1"
+            },
+            "decimal_i64": {
+              "int": "1"
+            },
+            "decimal_flba1": {
+              "bytes_base64": "AQ=="
+            },
+            "timestamp_flba12": {
+              "bytes_base64": "AQAAAAAAAAAAAAAA"
+            },
+            "future_logical": {
+              "int": "1"
+            },
+            "future_converted": {
+              "int": "1"
+            },
+            "future_time": {
+              "int": "1"
+            }
+          }
+        },
+        {
+          "key_base64": "Yg==",
+          "values": {
+            "value": {
+              "null": true
+            },
+            "decimal_i32": {
+              "int": "2"
+            },
+            "decimal_i64": {
+              "int": "2"
+            },
+            "decimal_flba1": {
+              "bytes_base64": "Ag=="
+            },
+            "timestamp_flba12": {
+              "bytes_base64": "AgAAAAAAAAAAAAAA"
+            },
+            "future_logical": {
+              "int": "2"
+            },
+            "future_converted": {
+              "int": "2"
+            },
+            "future_time": {
+              "int": "2"
+            }
+          }
+        },
+        {
+          "key_base64": "Yw==",
+          "values": {
+            "value": {
+              "int": "3"
+            },
+            "decimal_i32": {
+              "int": "3"
+            },
+            "decimal_i64": {
+              "int": "3"
+            },
+            "decimal_flba1": {
+              "bytes_base64": "Aw=="
+            },
+            "timestamp_flba12": {
+              "bytes_base64": "AwAAAAAAAAAAAAAA"
+            },
+            "future_logical": {
+              "int": "3"
+            },
+            "future_converted": {
+              "int": "3"
+            },
+            "future_time": {
+              "int": "3"
+            }
+          }
+        },
+        {
+          "key_base64": "ZA==",
+          "values": {
+            "value": {
+              "int": "4"
+            },
+            "decimal_i32": {
+              "int": "4"
+            },
+            "decimal_i64": {
+              "int": "4"
+            },
+            "decimal_flba1": {
+              "bytes_base64": "BA=="
+            },
+            "timestamp_flba12": {
+              "bytes_base64": "BAAAAAAAAAAAAAAA"
+            },
+            "future_logical": {
+              "int": "4"
+            },
+            "future_converted": {
+              "int": "4"
+            },
+            "future_time": {
+              "int": "4"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

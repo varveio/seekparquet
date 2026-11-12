@@ -19,7 +19,7 @@ var corpus = filepath.Join("..", "conformance")
 // suite: each valid one completes at the full level, and each invalid one
 // fails at the lowest level its fault declares (generators/faults.json),
 // with one of its codes, every level below completing; a fault whose
-// outcome is unsupported (an encrypted part) leaves that level incomplete
+// outcome is unsupported leaves that level incomplete
 // with its unsupported code.
 func TestValidateCorpus(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(corpus, "datasets"))
@@ -38,8 +38,8 @@ func TestValidateCorpus(t *testing.T) {
 			}
 		})
 	}
-	if valid != 26 {
-		t.Errorf("%d valid datasets, want 26", valid)
+	if valid != 29 {
+		t.Errorf("%d valid datasets, want 29", valid)
 	}
 	raw, err := os.ReadFile(filepath.Join(corpus, "generators", "faults.json"))
 	must(t, err)
@@ -56,8 +56,8 @@ func TestValidateCorpus(t *testing.T) {
 		} `json:"faults"`
 	}
 	must(t, json.Unmarshal(raw, &faults))
-	if len(faults.Faults) != 151 {
-		t.Errorf("%d invalid datasets, want 151", len(faults.Faults))
+	if len(faults.Faults) != 162 {
+		t.Errorf("%d invalid datasets, want 162", len(faults.Faults))
 	}
 	for _, f := range faults.Faults {
 		t.Run("invalid/"+f.ID, func(t *testing.T) {

@@ -222,7 +222,7 @@ class LocalStorageSwapTest {
     void closeEndsAVerificationBlockedOnAPartSwappedForAFifo() throws Exception {
         Path part = root.resolve("data/part-00001.parquet");
         DatasetStorage storage = storage(LocalStorage.of(root), LocalStorage.of(hookedRoot(root, swapOnce(part))));
-        Dataset ds = Dataset.open(storage, OpenOptions.DEFAULT.withVerifyConcurrency(4), Cancellation.none());
+        Dataset ds = Dataset.open(storage, OpenOptions.DEFAULT, Cancellation.none());
         Thread[] t = new Thread[1];
         AtomicReference<Object> outcome = run(() -> {
             ds.verify();

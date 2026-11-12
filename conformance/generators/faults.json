@@ -2178,6 +2178,168 @@
         "KEY-7"
       ],
       "location": "manifest or key column footer/data, as described by the fixture"
+    },
+    {
+      "id": "unknown-key-encoding-99-v1",
+      "dataset": "datasets/invalid/unknown-key-encoding-99-v1",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "unsupported_encoding"
+      ],
+      "requirements": [
+        "ENC-1"
+      ],
+      "location": "key first V1 data page",
+      "outcome": "unsupported",
+      "read_columns": [
+        "value"
+      ]
+    },
+    {
+      "id": "unknown-value-encoding-99",
+      "dataset": "datasets/invalid/unknown-value-encoding-99",
+      "reader_detect": "read",
+      "validation_level": "full",
+      "codes": [
+        "unsupported_encoding"
+      ],
+      "requirements": [
+        "ENC-1"
+      ],
+      "location": "optional value first V1 data page",
+      "outcome": "unsupported",
+      "read_columns": [
+        "value"
+      ]
+    },
+    {
+      "id": "unknown-codec-99",
+      "dataset": "datasets/invalid/unknown-codec-99",
+      "reader_detect": "read",
+      "validation_level": "full",
+      "codes": [
+        "unsupported_encoding"
+      ],
+      "requirements": [
+        "ENC-1"
+      ],
+      "location": "optional value column metadata",
+      "outcome": "unsupported",
+      "read_columns": [
+        "value"
+      ]
+    },
+    {
+      "id": "missing-boundary-order",
+      "dataset": "datasets/invalid/missing-boundary-order",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "RG-6"
+      ],
+      "location": "key ColumnIndex"
+    },
+    {
+      "id": "missing-repetition-encoding-value",
+      "dataset": "datasets/invalid/missing-repetition-encoding-value",
+      "reader_detect": "read",
+      "validation_level": "full",
+      "codes": [
+        "invalid_parquet"
+      ],
+      "requirements": [
+        "ENC-1",
+        "CHECK-5"
+      ],
+      "location": "optional value first V1 page",
+      "read_columns": [
+        "value"
+      ]
+    },
+    {
+      "id": "stamp-duplicate-one-valueless",
+      "dataset": "datasets/invalid/stamp-duplicate-one-valueless",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "stamp_mismatch"
+      ],
+      "requirements": [
+        "STAMP-2"
+      ],
+      "location": "footer metadata"
+    },
+    {
+      "id": "key-header-negative-num-values-v1",
+      "dataset": "datasets/invalid/key-header-negative-num-values-v1",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_parquet"
+      ],
+      "requirements": [
+        "CHECK-5",
+        "RG-7"
+      ],
+      "location": "first indexed key V1 header"
+    },
+    {
+      "id": "key-index-undecodable-header",
+      "dataset": "datasets/invalid/key-index-undecodable-header",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "CHECK-5",
+        "RG-7"
+      ],
+      "location": "first indexed key header"
+    },
+    {
+      "id": "key-index-valid-row-count-mismatch",
+      "dataset": "datasets/invalid/key-index-valid-row-count-mismatch",
+      "reader_detect": "read",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_page_index"
+      ],
+      "requirements": [
+        "CHECK-5",
+        "RG-7"
+      ],
+      "location": "first indexed key V1 header"
+    },
+    {
+      "id": "annotation-decimal-int64-p19-unprojected",
+      "dataset": "datasets/invalid/annotation-decimal-int64-p19-unprojected",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "optional INT64 value leaf"
+    },
+    {
+      "id": "annotation-timestamp-empty-unit",
+      "dataset": "datasets/invalid/annotation-timestamp-empty-unit",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "optional INT64 value leaf"
     }
   ]
 }

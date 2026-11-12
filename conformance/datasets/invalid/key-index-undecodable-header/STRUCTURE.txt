@@ -1,0 +1,28 @@
+# key-index-undecodable-header
+
+valid: no
+description: First indexed key header replaced with an empty Thrift struct (STOP); required fields absent.
+provenance: mutated
+producer: pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)
+source rows: generators/rows/rulings.json
+fault (generators/faults.json): key-index-undecodable-header: invalid_page_index; reader detects on read; lowest validation level structural (CHECK-5, RG-7); location: first indexed key header
+changes:
+  - First indexed key header replaced with an empty Thrift struct (STOP); required fields absent.
+  - Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed.
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 4, bytes 1380, keys 'a' .. 'd'
+
+file data/part-00000.parquet: 1380 bytes, footer 1141 bytes
+  num_rows 4, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/rulings/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column value: INT64 OPTIONAL def=1 rep=0
+  row_group 0: rows 4, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: unreadable (page header at 4: type missing)
+    offset index: 2 pages, first_row_index [0, 2]
+    column index: 2 pages, boundary_order ASCENDING, null_pages none
+      min lengths [1, 1]
+      max lengths [1, 1]

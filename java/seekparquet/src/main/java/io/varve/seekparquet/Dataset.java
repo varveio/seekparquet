@@ -69,7 +69,7 @@ import java.util.function.Consumer;
  *
  * <p>Each part a request touches stays open, with its checked footer in memory, until the dataset
  * closes; no limit bounds how many. {@link Limits#parts()} bounds the manifest and the index memory
- * budget the retained page indexes, while {@code verifyConcurrency} bounds how many parts {@link
+ * budget the retained page indexes, while an internal bound controls how many parts {@link
  * #verify()} checks at a time, not how many stay open. A long-lived dataset that touches many parts,
  * or {@code verify()}, which touches them all, holds a source for each ({@link
  * io.varve.seekparquet.storage.LocalStorage} keeps a file channel and a directory handle per part): size
@@ -83,7 +83,8 @@ public final class Dataset implements AutoCloseable {
     private final Manifest manifest;
     private final Parts parts;
     private final Limits limits;
-    private final int verifyConcurrency;
+    /** Internal bound on independent part checks, matching Go readConcurrency. */
+    static final int VERIFY_CONCURRENCY = 64;
 
     private final ReentrantReadWriteLock lifecycle = new ReentrantReadWriteLock();
     private final Cancellation closing = Cancellation.create();
@@ -94,7 +95,6 @@ public final class Dataset implements AutoCloseable {
         this.manifest = manifest;
         this.parts = parts;
         this.limits = options.limits();
-        this.verifyConcurrency = options.verifyConcurrency();
     }
 
     /**
@@ -203,8 +203,7 @@ public final class Dataset implements AutoCloseable {
      * Checks every part now, as the first request to touch each part would (CHECK-1), then decodes
      * every row group's first key page and each part's last, and compares each part's first and last
      * key with the manifest's bounds (CHECK-3). Parts already checked by a request are not checked
-     * again; {@link OpenOptions#verifyConcurrency()} parts are checked at once (one by default, as the
-     * Go reader does). It reads one footer per unchecked part, plus the key page index and one or two key
+     * again; an internal bound controls concurrent part checks. It reads one footer per unchecked part, plus the key page index and one or two key
      * pages per row group, never every row. It does not check digests (PART-5) and is not validation.
      *
      * @param options the request's cancellation and statistics
@@ -218,7 +217,7 @@ public final class Dataset implements AutoCloseable {
      */
     public void verify(ReadOptions options) {
         run(options, () -> {}, ctx -> {
-            parts.checkAll(verifyConcurrency, ctx);
+            parts.checkAll(VERIFY_CONCURRENCY, ctx);
             for (int i = 0; i < parts.size(); i++) {
                 verifyKeyPages(parts.get(i, ctx), ctx);
             }

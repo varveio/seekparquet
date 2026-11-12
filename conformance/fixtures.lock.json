@@ -7,7 +7,7 @@
     "requirements": "generators/requirements.txt"
   },
   "reproducibility": "Byte-reproducible with the pinned pyarrow on Python 3.13: generators/check_reproducible.py regenerates everything in a temporary directory and compares it with the checked-in files (pyarrow 26.0.1 footers carry no timestamps). If a future writer is not byte-reproducible, the checked-in bytes stay authoritative and STRUCTURE.txt must remain identical.",
-  "total_bytes": 841275,
+  "total_bytes": 868300,
   "largest_file_bytes": 9285,
   "datasets": [
     {
@@ -5787,6 +5787,451 @@
           "path": "datasets/invalid/page-index-shortened-ff-max/manifest.json",
           "bytes": 605,
           "sha256": "0c4b534a7806d64125fc077dcb242c3301516ef2f633e4931f64ead74e20d8f7",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "annotation-decimal-int64-p19-unprojected",
+      "dir": "datasets/invalid/annotation-decimal-int64-p19-unprojected",
+      "valid": false,
+      "description": "Optional INT64 value leaf is DECIMAL(19,0), exceeding INT64 precision ceiling 18; query does not project it.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "Optional INT64 value leaf is DECIMAL(19,0), exceeding INT64 precision ceiling 18; query does not project it.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "fault_id": "annotation-decimal-int64-p19-unprojected",
+      "files": [
+        {
+          "path": "datasets/invalid/annotation-decimal-int64-p19-unprojected/data/part-00000.parquet",
+          "bytes": 1404,
+          "sha256": "00525d8f5bc080bd3ccfb34f9780ec1ffe3731746823f7b5db9832206a8277d3",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/annotation-decimal-int64-p19-unprojected/manifest.json",
+          "bytes": 345,
+          "sha256": "e85c5686bc5fbb2e3addf4a4af021fd51824a0c4cc24919c83abb11839ad879c",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "annotation-physical-fallback-controls",
+      "dir": "datasets/annotation-physical-fallback-controls",
+      "valid": true,
+      "description": "Legal DECIMAL INT32(9), INT64(18), FLBA(1)(2); TIMESTAMP(MICROS) FLBA(12); unknown logical 99, converted 99 and timestamp unit 99 retain physical values.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings-controls.json",
+      "changes": [
+        "Legal DECIMAL INT32(9), INT64(18), FLBA(1)(2); TIMESTAMP(MICROS) FLBA(12); unknown logical 99, converted 99 and timestamp unit 99 retain physical values.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "files": [
+        {
+          "path": "datasets/annotation-physical-fallback-controls/data/part-00000.parquet",
+          "bytes": 3920,
+          "sha256": "90d7d1f7597b4526ce4aa164c4d6a02e795443b40ebdefb3c60540d02c53a6d2",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/annotation-physical-fallback-controls/manifest.json",
+          "bytes": 345,
+          "sha256": "87077342b8f44ab606e43012a41834e3c20cfa1f8739145aaf726fb35b8d8867",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "annotation-timestamp-empty-unit",
+      "dir": "datasets/invalid/annotation-timestamp-empty-unit",
+      "valid": false,
+      "description": "Optional INT64 value leaf TIMESTAMP has an empty required TimeUnit union.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "Optional INT64 value leaf TIMESTAMP has an empty required TimeUnit union.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "fault_id": "annotation-timestamp-empty-unit",
+      "files": [
+        {
+          "path": "datasets/invalid/annotation-timestamp-empty-unit/data/part-00000.parquet",
+          "bytes": 1403,
+          "sha256": "b1c1136833092f91ceffbdc56bfb2df403cf5bdb9ed7a78b7d5a8f26dffa3fa6",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/annotation-timestamp-empty-unit/manifest.json",
+          "bytes": 345,
+          "sha256": "955cb8f0dc9889bd941d65b876735309a5bf14ae62b089ef99f90ad231599f3a",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "ignored-enums-99",
+      "dir": "datasets/ignored-enums-99",
+      "valid": true,
+      "description": "Key boundary_order, every non-repeated key/value repetition_level_encoding and key/value encoding_stats encodings include 99.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "Key boundary_order, every non-repeated key/value repetition_level_encoding and key/value encoding_stats encodings include 99.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "files": [
+        {
+          "path": "datasets/ignored-enums-99/data/part-00000.parquet",
+          "bytes": 1417,
+          "sha256": "9d048b629f898732bd653c407fb4a98831a5505dbcce9447340b5fa6f55cdb50",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/ignored-enums-99/manifest.json",
+          "bytes": 345,
+          "sha256": "d337c1e10b94a41d55f14b9f4ac93bdf6394ac02a87379d798cb2f18cc62be87",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "key-header-negative-num-values-v1",
+      "dir": "datasets/invalid/key-header-negative-num-values-v1",
+      "valid": false,
+      "description": "First indexed key V1 header num_values is -5; index row interval unchanged.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "First indexed key V1 header num_values is -5; index row interval unchanged.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "fault_id": "key-header-negative-num-values-v1",
+      "files": [
+        {
+          "path": "datasets/invalid/key-header-negative-num-values-v1/data/part-00000.parquet",
+          "bytes": 1396,
+          "sha256": "195f857a2b8039ddfdb90ec647abce679536741c0f90d4105b9ebd8a7ac3466e",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/key-header-negative-num-values-v1/manifest.json",
+          "bytes": 345,
+          "sha256": "208c5ccec91b32469583374f3313fcdbedd019bcc1a7962c2e079dd1224c1909",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "key-index-undecodable-header",
+      "dir": "datasets/invalid/key-index-undecodable-header",
+      "valid": false,
+      "description": "First indexed key header replaced with an empty Thrift struct (STOP); required fields absent.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "First indexed key header replaced with an empty Thrift struct (STOP); required fields absent.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "fault_id": "key-index-undecodable-header",
+      "files": [
+        {
+          "path": "datasets/invalid/key-index-undecodable-header/data/part-00000.parquet",
+          "bytes": 1380,
+          "sha256": "7354906b80d1994db333a97f218f58804089cd1504e0004e5458a62de4081fa1",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/key-index-undecodable-header/manifest.json",
+          "bytes": 345,
+          "sha256": "18e8ed25b5299087d41a177d6206d8a9a1cd7dab3b502af606df2c4f8d28c7c5",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "key-index-valid-row-count-mismatch",
+      "dir": "datasets/invalid/key-index-valid-row-count-mismatch",
+      "valid": false,
+      "description": "First indexed key V1 header num_values is positive 3; index still declares 2 rows.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "First indexed key V1 header num_values is positive 3; index still declares 2 rows.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "fault_id": "key-index-valid-row-count-mismatch",
+      "files": [
+        {
+          "path": "datasets/invalid/key-index-valid-row-count-mismatch/data/part-00000.parquet",
+          "bytes": 1396,
+          "sha256": "3beb25af8b6a7e53d3edb907b5cddf6178817fd8f113e5b8b8b91bfd54a80df9",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/key-index-valid-row-count-mismatch/manifest.json",
+          "bytes": 345,
+          "sha256": "208c5ccec91b32469583374f3313fcdbedd019bcc1a7962c2e079dd1224c1909",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "metadata-no-value",
+      "dir": "datasets/metadata-no-value",
+      "valid": true,
+      "description": "Append valueless metadata entries: ordinary, ordinary, seekparquet.future, seekparquet.future.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "Append valueless metadata entries: ordinary, ordinary, seekparquet.future, seekparquet.future.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "files": [
+        {
+          "path": "datasets/metadata-no-value/data/part-00000.parquet",
+          "bytes": 1460,
+          "sha256": "40d7e90dcde14cd7ba0a32a6c36a1b9767b1c309bc4f7e5f38ac6ebe550fcb28",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/metadata-no-value/manifest.json",
+          "bytes": 345,
+          "sha256": "8fbd91b4369fdc742e353f83b98f1afb9d1df832b0595d8053a49c28d3ce044c",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "missing-boundary-order",
+      "dir": "datasets/invalid/missing-boundary-order",
+      "valid": false,
+      "description": "Required boundary_order absent from the key ColumnIndex.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "Required boundary_order absent from the key ColumnIndex.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "fault_id": "missing-boundary-order",
+      "files": [
+        {
+          "path": "datasets/invalid/missing-boundary-order/data/part-00000.parquet",
+          "bytes": 1394,
+          "sha256": "f8570b4147a8ddd759db0a23e0dd616174b64e7604782391b33782743ef41873",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/missing-boundary-order/manifest.json",
+          "bytes": 345,
+          "sha256": "34845dfc283576ec73466ab219aa45972a23457d023140d679007db440bfecca",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "missing-repetition-encoding-value",
+      "dir": "datasets/invalid/missing-repetition-encoding-value",
+      "valid": false,
+      "description": "Required repetition_level_encoding absent from projected optional value column first V1 page.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "Required repetition_level_encoding absent from projected optional value column first V1 page.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "fault_id": "missing-repetition-encoding-value",
+      "files": [
+        {
+          "path": "datasets/invalid/missing-repetition-encoding-value/data/part-00000.parquet",
+          "bytes": 1394,
+          "sha256": "99c448c7798903414b00574c0dfefb80503db9d121ebdc0b6e32bb7bc1a28086",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/missing-repetition-encoding-value/manifest.json",
+          "bytes": 345,
+          "sha256": "34845dfc283576ec73466ab219aa45972a23457d023140d679007db440bfecca",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "stamp-duplicate-one-valueless",
+      "dir": "datasets/invalid/stamp-duplicate-one-valueless",
+      "valid": false,
+      "description": "Append valueless metadata entries: seekparquet.schema_id.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "Append valueless metadata entries: seekparquet.schema_id.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "fault_id": "stamp-duplicate-one-valueless",
+      "files": [
+        {
+          "path": "datasets/invalid/stamp-duplicate-one-valueless/data/part-00000.parquet",
+          "bytes": 1420,
+          "sha256": "da81bf6560439f12c881c0f2b06301e06edb2b8497b3be7b4f99fb1b450b15d0",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/stamp-duplicate-one-valueless/manifest.json",
+          "bytes": 345,
+          "sha256": "c699915e5d50abf1dddb54eadc491b1625aa6844f65767a2af9997eb54a4b3a2",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "unknown-codec-99",
+      "dir": "datasets/invalid/unknown-codec-99",
+      "valid": false,
+      "description": "Optional value column CompressionCodec is 99; key codec is unchanged.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "Optional value column CompressionCodec is 99; key codec is unchanged.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "fault_id": "unknown-codec-99",
+      "files": [
+        {
+          "path": "datasets/invalid/unknown-codec-99/data/part-00000.parquet",
+          "bytes": 1397,
+          "sha256": "0c63811e551f2a7e06ea575b0ab242ae512c62d0a336f757a8ad369c98df71a6",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/unknown-codec-99/manifest.json",
+          "bytes": 345,
+          "sha256": "a0a885cb960c93970bc7fd6dc51db22265225869b129d4b6a70b6de6297a0d20",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "unknown-key-encoding-99-v1",
+      "dir": "datasets/invalid/unknown-key-encoding-99-v1",
+      "valid": false,
+      "description": "Column 0 first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "Column 0 first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "fault_id": "unknown-key-encoding-99-v1",
+      "files": [
+        {
+          "path": "datasets/invalid/unknown-key-encoding-99-v1/data/part-00000.parquet",
+          "bytes": 1407,
+          "sha256": "df76c290073788a0cb65c1c62732773c1eb4c6eaf9fa5053fcd477ceb47813a0",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/unknown-key-encoding-99-v1/manifest.json",
+          "bytes": 345,
+          "sha256": "666bff1d75756aeb5cb30d079867cd5a6f691fa367e8d80782ae4d27fb91ff01",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "unknown-value-encoding-99",
+      "dir": "datasets/invalid/unknown-value-encoding-99",
+      "valid": false,
+      "description": "Column 1 first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.",
+      "provenance": "mutated",
+      "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
+      "rows": "generators/rows/rulings.json",
+      "changes": [
+        "Column 1 first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.",
+        "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
+      ],
+      "fault_id": "unknown-value-encoding-99",
+      "files": [
+        {
+          "path": "datasets/invalid/unknown-value-encoding-99/data/part-00000.parquet",
+          "bytes": 1407,
+          "sha256": "1d00b8c1e7ce7ec73790f9a100bbe373721ee8f920f3785d4f61cc795c67dc21",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/unknown-value-encoding-99/manifest.json",
+          "bytes": 345,
+          "sha256": "666bff1d75756aeb5cb30d079867cd5a6f691fa367e8d80782ae4d27fb91ff01",
           "producer": "generators/mutate_metadata.py",
           "provenance": "mutated",
           "command": "python generators/regenerate.py"
