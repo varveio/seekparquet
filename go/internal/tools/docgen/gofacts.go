@@ -24,7 +24,13 @@ type goPackage struct {
 	fields     map[string][]goField        // struct type → fields in order
 	defaults   map[string]map[string]int64 // type → field → constant default
 	defaultSet map[string]map[string]bool  // type → field → has a default, constant or not
+	// errs are declarations of documented constant types in a form the
+	// parser does not read; they fail the check rather than go unseen.
+	errs []error
 }
+
+// codeTypes are the string types whose constants the docs enumerate.
+var codeTypes = map[string]bool{"RefusalCode": true, "UnsupportedCode": true, "LimitName": true}
 
 type goConst struct {
 	name, typ, value string
@@ -99,6 +105,7 @@ func receiverName(e ast.Expr) string {
 }
 
 func (p *goPackage) addGen(d *ast.GenDecl) {
+	lastType := ""
 	for _, spec := range d.Specs {
 		switch s := spec.(type) {
 		case *ast.TypeSpec:
@@ -127,27 +134,61 @@ func (p *goPackage) addGen(d *ast.GenDecl) {
 				}
 			}
 		case *ast.ValueSpec:
-			for i, n := range s.Names {
-				p.symbols[n.Name] = true
-				if i >= len(s.Values) {
-					continue
-				}
-				if lit, ok := s.Values[i].(*ast.BasicLit); ok && lit.Kind == token.STRING && s.Type != nil {
-					if typ, ok := s.Type.(*ast.Ident); ok {
-						v, err := strconv.Unquote(lit.Value)
-						if err == nil {
-							p.consts[n.Name] = goConst{n.Name, typ.Name, v}
-						}
-					}
-				}
-				if d.Tok == token.CONST {
-					if v, ok := evalInt(s.Values[i], p.ints); ok {
-						p.ints[n.Name] = v
-					}
+			p.addValueSpec(d.Tok, s, &lastType)
+		}
+	}
+}
+
+// addValueSpec records the names of a var or const spec and, for typed
+// string constants (T("x") or name T = "x"), their values. A constant of a
+// documented code type in any other form is an error. lastType is the
+// type of the previous spec of the group, for implicit repetition.
+func (p *goPackage) addValueSpec(tok token.Token, s *ast.ValueSpec, lastType *string) {
+	typ := ""
+	if id, ok := s.Type.(*ast.Ident); ok {
+		typ = id.Name
+	}
+	if tok == token.CONST && s.Type == nil && len(s.Values) == 0 && codeTypes[*lastType] {
+		p.errs = append(p.errs, fmt.Errorf("constant %s repeats a %s implicitly; give it an explicit value", s.Names[0].Name, *lastType))
+	}
+	for i, n := range s.Names {
+		p.symbols[n.Name] = true
+		if i >= len(s.Values) {
+			continue
+		}
+		t, value, ok := typ, "", false
+		switch v := s.Values[i].(type) {
+		case *ast.BasicLit:
+			if v.Kind == token.STRING {
+				value, ok = unquote(v.Value)
+			}
+		case *ast.CallExpr:
+			if fn, isIdent := v.Fun.(*ast.Ident); isIdent && len(v.Args) == 1 {
+				if lit, isLit := v.Args[0].(*ast.BasicLit); isLit && lit.Kind == token.STRING && t == "" {
+					t = fn.Name
+					value, ok = unquote(lit.Value)
 				}
 			}
 		}
+		if tok == token.CONST {
+			if ok && t != "" {
+				p.consts[n.Name] = goConst{n.Name, t, value}
+			} else if codeTypes[t] {
+				p.errs = append(p.errs, fmt.Errorf("constant %s of type %s is not a string literal docgen reads", n.Name, t))
+			}
+			if v, isInt := evalInt(s.Values[i], p.ints); isInt {
+				p.ints[n.Name] = v
+			}
+		}
+		if t != "" {
+			*lastType = t
+		}
 	}
+}
+
+func unquote(lit string) (string, bool) {
+	v, err := strconv.Unquote(lit)
+	return v, err == nil
 }
 
 // addDefaults records the defaults a withDefaults method sets, in either

@@ -15,6 +15,7 @@ Generated pages and snippets are checked by go/internal/tools/docgen.
 import argparse
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -33,6 +34,14 @@ REQ_ID = re.compile(r'\b([A-Z]{2,7})-([0-9]+)\b')
 
 
 def markdown_files(root=ROOT):
+    """The Markdown files git tracks or would track (not ignored); outside git, every one."""
+    try:
+        listed = subprocess.run(['git', '-C', str(root), 'ls-files', '-z', '--cached', '--others',
+                                 '--exclude-standard', '--', '*.md'], capture_output=True, check=True).stdout
+        names = sorted({n for n in listed.decode().split('\0') if n and '/datasets/' not in '/' + n})
+        return [root / n for n in names if (root / n).exists()]
+    except (OSError, subprocess.CalledProcessError):
+        pass
     out = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith('.'))
@@ -42,16 +51,29 @@ def markdown_files(root=ROOT):
     return out
 
 
+def rendered_lines(text):
+    """Yield (line number, line without inline code, line with it) outside fenced code and HTML comments.
+
+    A fence closes only on a fence of the same character, at least as long, with nothing after it.
+    """
+    text = HTML_COMMENT.sub(lambda m: '\n' * m.group(0).count('\n'), text)
+    fence = None
+    for number, line in enumerate(text.split('\n'), 1):
+        m = FENCE.match(line)
+        if fence is None and m:
+            fence = re.match(r'\s*(`{3,}|~{3,})', line).group(1)
+            continue
+        if fence is not None:
+            if re.fullmatch(r'\s*' + re.escape(fence[0]) + '{' + str(len(fence)) + r',}\s*', line):
+                fence = None
+            continue
+        yield number, INLINE_CODE.sub('', line), line
+
+
 def prose_lines(text):
     """Yield (line number, line) outside fenced code, without inline code and comments."""
-    text = HTML_COMMENT.sub(lambda m: '\n' * m.group(0).count('\n'), text)
-    fenced = False
-    for number, line in enumerate(text.split('\n'), 1):
-        if FENCE.match(line):
-            fenced = not fenced
-            continue
-        if not fenced:
-            yield number, INLINE_CODE.sub('', line)
+    for number, line, _raw in rendered_lines(text):
+        yield number, line
 
 
 def slug(heading):
@@ -64,16 +86,13 @@ def slug(heading):
 
 
 def anchors(text):
-    """The fragments a Markdown text defines: heading slugs and <a id> anchors."""
-    found = set(ANCHOR.findall(text))
+    """The fragments a Markdown text defines: heading slugs and <a id> anchors, outside code and comments."""
+    found = set()
     seen = {}
-    fenced = False
-    for line in text.split('\n'):
-        if FENCE.match(line):
-            fenced = not fenced
-            continue
-        m = HEADING.match(line)
-        if fenced or not m:
+    for _number, line, raw in rendered_lines(text):
+        found.update(ANCHOR.findall(line))
+        m = HEADING.match(raw)
+        if not m:
             continue
         base = slug(m.group(2))
         n = seen.get(base, 0)

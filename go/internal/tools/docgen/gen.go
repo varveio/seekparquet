@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -258,8 +259,24 @@ func (g *generator) run(write bool) ([]string, error) {
 // skipDirs are directories never searched for Markdown.
 var skipDirs = map[string]bool{".git": true, "build": true, ".gradle": true, "node_modules": true, ".venv": true, "datasets": true}
 
-// markdownFiles returns every Markdown file of the repository.
+// markdownFiles returns the repository's Markdown files: those git tracks
+// or would track (not ignored), or, outside a git checkout, every one.
 func (g *generator) markdownFiles() ([]string, error) {
+	cmd := exec.Command("git", "-C", g.root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.md")
+	if out, err := cmd.Output(); err == nil {
+		var files []string
+		for _, f := range strings.Split(string(out), "\x00") {
+			if f == "" || strings.Contains("/"+f, "/datasets/") {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(g.root, filepath.FromSlash(f))); err != nil {
+				continue // deleted in the working tree
+			}
+			files = append(files, f)
+		}
+		sort.Strings(files)
+		return slices.Compact(files), nil
+	}
 	var out []string
 	err := filepath.WalkDir(g.root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -282,6 +299,15 @@ func (g *generator) markdownFiles() ([]string, error) {
 	})
 	sort.Strings(out)
 	return out, err
+}
+
+func sortedPkgs(m map[string]*goPackage) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 var marker = regexp.MustCompile(`^<!-- (snippet|generated): ([^ ]+) -->[ \t]*$`)
@@ -443,6 +469,9 @@ func (g *generator) check() error {
 		for _, f := range s.Fields {
 			listed[f.Go] = true
 			described[f.Go] = true
+			if c, ok := root.consts["Limit"+f.Go]; !ok || c.typ != "LimitName" || c.value != f.Go {
+				fail("limits.json: Go has no LimitName Limit%s = %q", f.Go, f.Go)
+			}
 		}
 		for _, f := range fields {
 			if !listed[f.name] {
@@ -520,71 +549,120 @@ func (g *generator) check() error {
 	if g.java != nil {
 		errs = append(errs, g.checkJava()...)
 	}
+	for _, pkg := range sortedPkgs(g.goPkgs) {
+		errs = append(errs, g.goPkgs[pkg].errs...)
+	}
+	sort.Slice(errs, func(i, j int) bool { return errs[i].Error() < errs[j].Error() })
 	return errors.Join(errs...)
 }
 
-// checkJava checks the Java names and defaults the docs give.
+// javaBuilderExtra are public members of Limits.Builder that are not
+// settings.
+var javaBuilderExtra = map[string]bool{"build": true}
+
+// checkJava checks the Java names and defaults the docs give, against the
+// public declarations of the Java sources, both ways where the docs claim
+// a complete list.
 func (g *generator) checkJava() []error {
 	var errs []error
 	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf("java: "+format, args...)) }
 	for _, s := range g.parity.Sections {
 		for _, r := range s.Rows {
 			if r.Java != nil && !strings.HasPrefix(*r.Java, "std:") && !g.java.has(*r.Java) {
-				fail("parity.json: no %s", *r.Java)
+				fail("parity.json: no public %s", *r.Java)
 			}
 		}
 	}
+
+	// ReadStats: the record's components and the documented names, both ways.
+	documented := map[string]bool{}
 	for _, f := range g.stats.Fields {
-		if f.Java != nil && !g.java.has("ReadStats."+*f.Java) {
-			fail("read-stats.json: no ReadStats.%s", *f.Java)
+		if f.Java != nil {
+			documented[*f.Java] = true
 		}
 	}
-	defaults, err := g.java.limitDefaults()
-	if err != nil {
-		return append(errs, err)
+	if comps, err := g.java.recordComponents("ReadStats"); err != nil {
+		errs = append(errs, err)
+	} else {
+		have := map[string]bool{}
+		for _, c := range comps {
+			have[c] = true
+			if !documented[c] {
+				fail("ReadStats component %s is not in read-stats.json; add it", c)
+			}
+		}
+		for name := range documented {
+			if !have[name] {
+				fail("read-stats.json: ReadStats has no component %s", name)
+			}
+		}
 	}
+
+	// Limits: the builder's settings both ways, and every default equal to Go's.
 	names := map[string]bool{}
 	for _, s := range g.limits.Structs {
+		listed := map[string]bool{}
 		for _, f := range s.Fields {
+			listed[f.Java] = true
 			names[upperSnake(f.Java)] = true
-			if !g.java.has(s.Java + "." + f.Java) {
-				fail("limits.json: no %s.%s", s.Java, f.Java)
-			}
 			if f.Derived {
+				continue // both running values are checked against the page by LimitsDocTest (Java) and TestLimitsDoc (Go)
+			}
+			goDefault, err := g.goDefault(s.Go, f.Go, false)
+			if err != nil {
+				errs = append(errs, err)
 				continue
 			}
-			goDefault, ok := g.goPkgs[""].defaults[s.Go][f.Go]
-			javaDefault, jok := defaults[upperSnake(f.Java)]
-			if ok && jok && goDefault != javaDefault {
-				fail("%s default %d differs from Go's %d", f.Java, javaDefault, goDefault)
+			javaDefault, err := g.java.limitDefault(upperSnake(f.Java))
+			if err != nil {
+				errs = append(errs, err)
+				continue
 			}
+			if goDefault != javaDefault {
+				fail("%s default %d differs from Go's %s, %d", f.Java, javaDefault, f.Go, goDefault)
+			}
+		}
+		members, err := g.java.publicMembers(s.Java)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		for _, m := range members {
+			if !listed[m] && !javaBuilderExtra[m] {
+				fail("%s.%s is not in limits.json; add it", s.Java, m)
+			}
+			delete(listed, m)
+		}
+		for m := range listed {
+			fail("limits.json: %s has no public method %s", s.Java, m)
 		}
 	}
 	for _, f := range g.limits.Fixed {
 		names[f.Java] = true
 	}
-	got, err := g.java.enumConstants("LimitName")
-	if err != nil {
-		return append(errs, err)
-	}
-	if !mapsEqual(names, keysOf(got)) {
+	if got, err := g.java.enumValues("LimitName"); err != nil {
+		errs = append(errs, err)
+	} else if !mapsEqual(names, keysOf(got)) {
 		fail("LimitName constants %v differ from the documented %v", sortedKeys(keysOf(got)), sortedKeys(names))
 	}
-	for class, spec := range map[string][]specCode{"RefusalCode": g.codes.Codes, "UnsupportedCode": g.unsupportedCodes()} {
-		consts, err := g.java.enumConstants(class)
+	for _, c := range []struct {
+		class string
+		spec  []specCode
+	}{{"RefusalCode", g.codes.Codes}, {"UnsupportedCode", g.unsupportedCodes()}} {
+		consts, err := g.java.enumValues(c.class)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
 		want, have := map[string]bool{}, map[string]bool{}
-		for _, c := range spec {
-			want[c.Code] = true
+		for _, sc := range c.spec {
+			want[sc.Code] = true
 		}
 		for _, v := range consts {
 			have[v] = true
 		}
 		if !mapsEqual(want, have) {
-			fail("%s codes %v differ from spec/refusal-codes.json %v", class, sortedKeys(have), sortedKeys(want))
+			fail("%s codes %v differ from spec/refusal-codes.json %v", c.class, sortedKeys(have), sortedKeys(want))
 		}
 	}
 	return errs

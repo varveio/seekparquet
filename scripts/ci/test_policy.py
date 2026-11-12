@@ -15,6 +15,10 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(policy.select('pull_request', [('M', ['go/query.go'])]),
                          dict(go=True, java=True, conformance=True, macos=False))
 
+    def test_documentation_recipes_run_in_conformance(self):
+        result = policy.select('pull_request', [('M', ['docs/examples/pyarrow_writer.py'])])
+        self.assertEqual(result['conformance'], True)
+
     def test_documentation_only(self):
         self.assertFalse(any(policy.select('pull_request', [('M', ['CONTRIBUTING.md'])]).values()))
 

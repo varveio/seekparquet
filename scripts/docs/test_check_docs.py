@@ -14,6 +14,11 @@ class Slug(unittest.TestCase):
         self.assertEqual(check_docs.slug('`no_manifest`'), 'no_manifest')
         self.assertEqual(check_docs.slug('Go and [Java](x.md) names'), 'go-and-java-names')
 
+    def test_anchors_in_code_and_comments_do_not_count(self):
+        text = ('````md\n<a id="ghost"></a>\n```\n## Still code\n````\n'
+                '<!-- <a id="hidden"></a> -->\n`<a id="inline"></a>`\n<a id="real"></a>\n')
+        self.assertEqual(check_docs.anchors(text), {'real'})
+
     def test_duplicate_headings_and_anchors(self):
         text = '# A\n## A\n```\n# not a heading\n```\n- <a id="key-1"></a>[KEY-1] x\n'
         self.assertEqual(check_docs.anchors(text), {'a', 'a-1', 'key-1'})

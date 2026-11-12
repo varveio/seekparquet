@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -86,34 +87,44 @@ func (g *generator) pending(page string) string {
 	return "> Pending: Java names follow " + g.parity.JavaPending + "\n\n"
 }
 
-// limitDefault returns the default of a Limits field as the docs give it,
-// and checks that the field's comment states the same amount.
-func (g *generator) limitDefault(typ, field, unit string, derived bool, doc string) (string, error) {
+// goDefault returns the default Go's withDefaults sets for a Limits field.
+// A derived default (PageMemory) is computed as the field's comment and
+// worstPageMemory state it; TestLimitsDoc in the root package checks the
+// rendered amount against the running withDefaults. A default docgen cannot
+// read fails.
+func (g *generator) goDefault(typ, field string, derived bool) (int64, error) {
 	p := g.goPkgs[""]
 	if !p.defaultSet[typ][field] {
-		return "", fmt.Errorf("%s.withDefaults sets no default for %s", typ, field)
+		return 0, fmt.Errorf("%s.withDefaults sets no default for %s", typ, field)
 	}
-	var amount int64
-	var text string
 	if derived {
-		// PageMemory: the most PageValues and PageBytes admit,
-		// optionalValueSlices × valueBytes × PageValues + PageBytes.
 		slices, ok1 := p.ints["optionalValueSlices"]
 		size, ok2 := p.ints["valueBytes"]
 		values, ok3 := p.defaults[typ]["PageValues"]
 		pageBytes, ok4 := p.defaults[typ]["PageBytes"]
 		if !ok1 || !ok2 || !ok3 || !ok4 {
-			return "", fmt.Errorf("%s.%s: cannot derive its default; update docgen", typ, field)
+			return 0, fmt.Errorf("%s.%s: cannot derive its default; update docgen", typ, field)
 		}
-		amount = slices*size*values + pageBytes
-		text = fmt.Sprintf("%d × %d × `PageValues` + `PageBytes`: %s at their defaults", slices, size, formatAmount(amount, unit))
-	} else {
-		v, ok := p.defaults[typ][field]
-		if !ok {
-			return "", fmt.Errorf("%s.%s: its default is not a constant; mark it derived in limits.json", typ, field)
-		}
-		amount = v
-		text = formatAmount(v, unit)
+		return slices*size*values + pageBytes, nil
+	}
+	v, ok := p.defaults[typ][field]
+	if !ok {
+		return 0, fmt.Errorf("%s.%s: its default is not a constant expression docgen reads; mark it derived in limits.json", typ, field)
+	}
+	return v, nil
+}
+
+// limitDefault returns the default of a Limits field as the docs give it,
+// and checks that the field's comment states the same amount.
+func (g *generator) limitDefault(typ, field, unit string, derived bool, doc string) (string, error) {
+	amount, err := g.goDefault(typ, field, derived)
+	if err != nil {
+		return "", err
+	}
+	text := formatAmount(amount, unit)
+	if derived {
+		p := g.goPkgs[""]
+		text = fmt.Sprintf("%d × %d × `PageValues` + `PageBytes`: %s at their defaults", p.ints["optionalValueSlices"], p.ints["valueBytes"], text)
 	}
 	if !strings.Contains(doc, formatAmount(amount, unit)) {
 		return "", fmt.Errorf("%s.%s: its comment does not state its default, %s", typ, field, formatAmount(amount, unit))
@@ -212,13 +223,20 @@ func stage(detect string) string {
 	return detect
 }
 
+// goConstFor returns the Go constant of goType with value, the first by
+// name when several share it.
 func (g *generator) goConstFor(goType, value string) string {
+	var names []string
 	for _, c := range g.goPkgs[""].consts {
 		if c.typ == goType && c.value == value {
-			return c.name
+			names = append(names, c.name)
 		}
 	}
-	return ""
+	sort.Strings(names)
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0]
 }
 
 func (g *generator) renderRefusalCodes() (string, error) {
