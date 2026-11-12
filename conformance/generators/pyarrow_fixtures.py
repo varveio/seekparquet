@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import io
 import shutil
+import struct
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -388,9 +389,9 @@ def def_optional_codecs():
     rows = rows_of([b"opt-%02d" % i for i in range(6)],
                    lambda i, k: {"size": I(i), "lz4col": I(i * 1000), "brcol": S("brotli-%d" % i)})
     return {"dataset": "optional-codecs",
-            "description": ("Valid, but two value columns use codecs outside the ENC-1 baseline: lz4col is LZ4_RAW "
-                            "and brcol is BROTLI. The key and size columns are SNAPPY. A reader or validator may "
-                            "support these codecs or report them unsupported."),
+            "description": ("Valid. Value column brcol is BROTLI, outside the ENC-1 baseline: a reader or validator "
+                            "may support it or report it unsupported, but not when a request does not need it. "
+                            "Value column lz4col is LZ4_RAW, in the baseline. The key and size columns are SNAPPY."),
             "schema_id": "conformance/objects/v1", "key_type": "binary",
             "columns": [{"name": "size", "type": "int64", "nullable": False},
                         {"name": "lz4col", "type": "int64", "nullable": False},
@@ -400,6 +401,25 @@ def def_optional_codecs():
                                    expect_codecs={"key": "SNAPPY", "size": "SNAPPY", "lz4col": "LZ4_RAW",
                                                   "brcol": "BROTLI"}),
                        "rows": rows}]}
+
+
+def def_lz4_raw():
+    keys = [b"lz4/%03d/%s" % (i, b"x" * (i % 7)) for i in range(40)]
+    rows = rows_of(keys, lambda i, k: {"n": I(i * 7919 - 100000), "s": NULL if i % 6 == 5 else S("value-%d-" % i + "z" * i),
+                                       "f": {"float64": struct.pack(">d", i / 8).hex()}})
+    codecs = {"key": "LZ4_RAW", "n": "LZ4_RAW", "s": "LZ4_RAW", "f": "LZ4_RAW"}
+    return {"dataset": "lz4-raw",
+            "description": ("Every column, the key included, is LZ4_RAW (ENC-1 baseline, codec 7, not the legacy LZ4). "
+                            "Part 0 has data page v1 with dictionaries, part 1 data page v2 without; several key "
+                            "pages per row group."),
+            "schema_id": "conformance/lz4-raw/v1", "key_type": "binary",
+            "columns": [{"name": "n", "type": "int64", "nullable": False},
+                        {"name": "s", "type": "string", "nullable": True},
+                        {"name": "f", "type": "float64", "nullable": False}],
+            "parts": [{"path": "data/part-00000.parquet", "row_groups": [10, 10],
+                       "writer": W(4, "lz4", True, "1.0", expect_codecs=codecs), "rows": rows[:20]},
+                      {"path": "data/part-00001.parquet", "row_groups": [20],
+                       "writer": W(6, "lz4", False, "2.0", expect_codecs=codecs), "rows": rows[20:]}]}
 
 
 def def_inconsistent_width():
@@ -901,7 +921,7 @@ def new_invalid_docs():
 
 
 VALID = [def_repeated, def_large_group, def_named_key, def_empty, def_basic, def_multipart, def_binary_keys, def_projection, def_delimiter, def_list_bounds,
-         def_non_utf8_keys, def_annotated, def_encodings, def_optional_codecs]
+         def_non_utf8_keys, def_annotated, def_encodings, def_optional_codecs, def_lz4_raw]
 
 
 def def_inconsistent_all():

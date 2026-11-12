@@ -1,5 +1,5 @@
 {
-  "description": "Authored declaration of every invalid fixture's fault: the fault id (the dataset name), when a reader must detect it (open, touch: the first read that routes to the faulty part, read, or only by validation), the lowest validation level that detects it, the refusal codes of the fault itself, the requirements it breaks, any unavoidable secondary fault with its justification (its code is also accepted), and where the fault is. Reviewed by hand; make_cases.py and regenerate.py read it and never infer levels from codes.",
+  "description": "Authored declaration of every invalid fixture's fault: the fault id (the dataset name), when a reader must detect it (open, touch: the first read that routes to the faulty part, read, or only by validation), the lowest validation level that detects it, the refusal codes of the fault itself, the requirements it breaks, any unavoidable secondary fault with its justification (its code is also accepted), and where the fault is. Reviewed by hand; make_cases.py and regenerate.py read it and never infer levels from codes. A fault with outcome 'unsupported' is a part that is not readable data and not a refusal either: its codes are unsupported codes, a reader must answer unsupported no later than reader_detect, and validation reports its level incomplete.",
   "faults": [
     {
       "id": "key-order-within-page",
@@ -820,6 +820,50 @@
       "location": "manifest.json"
     },
     {
+      "id": "manifest-part-extensions-not-object",
+      "dataset": "datasets/invalid/manifest-part-extensions-not-object",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[1].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-duplicate-member",
+      "dataset": "datasets/invalid/manifest-part-extensions-duplicate-member",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-unknown-member",
+      "dataset": "datasets/invalid/manifest-part-extensions-unknown-member",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].checksum"
+    },
+    {
       "id": "manifest-duplicate-member-escaped",
       "dataset": "datasets/invalid/manifest-duplicate-member-escaped",
       "reader_detect": "open",
@@ -1083,6 +1127,34 @@
       "location": "data/part-00000.parquet: trailing magic PAR1 -> PAR0; size unchanged; data pages untouched"
     },
     {
+      "id": "invalid-header-magic",
+      "dataset": "datasets/invalid/invalid-header-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: leading magic PAR1 -> PAR0; size unchanged; data pages untouched"
+    },
+    {
+      "id": "encrypted-header-magic",
+      "dataset": "datasets/invalid/encrypted-header-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: leading magic PAR1 -> PARE; size unchanged; data pages untouched"
+    },
+    {
       "id": "invalid-footer-length",
       "dataset": "datasets/invalid/invalid-footer-length",
       "reader_detect": "touch",
@@ -1270,6 +1342,39 @@
         "size"
       ],
       "location": "shards/c.parquet: row group 1 column 1"
+    },
+    {
+      "id": "invalid-parquet-lz4-raw-page",
+      "dataset": "datasets/invalid/invalid-parquet-lz4-raw-page",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "invalid_parquet"
+      ],
+      "requirements": [
+        "CHECK-5",
+        "CHECK-2",
+        "ENC-1"
+      ],
+      "location": "data/part-00001.parquet: row group 0 key column, data page 1"
+    },
+    {
+      "id": "invalid-parquet-lz4-raw-size",
+      "dataset": "datasets/invalid/invalid-parquet-lz4-raw-size",
+      "reader_detect": "read",
+      "validation_level": "full",
+      "codes": [
+        "invalid_parquet"
+      ],
+      "requirements": [
+        "CHECK-5",
+        "ENC-1",
+        "VAL-1"
+      ],
+      "read_columns": [
+        "n"
+      ],
+      "location": "data/part-00000.parquet: row group 1 column n, data page 0"
     },
     {
       "id": "sorting-columns-missing-second-row-group",

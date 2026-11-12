@@ -7,7 +7,7 @@
     "requirements": "generators/requirements.txt"
   },
   "reproducibility": "Byte-reproducible with the pinned pyarrow on Python 3.13: generators/check_reproducible.py regenerates everything in a temporary directory and compares it with the checked-in files (pyarrow 26.0.1 footers carry no timestamps). If a future writer is not byte-reproducible, the checked-in bytes stay authoritative and STRUCTURE.txt must remain identical.",
-  "total_bytes": 693628,
+  "total_bytes": 776480,
   "largest_file_bytes": 9285,
   "datasets": [
     {
@@ -445,7 +445,7 @@
       "name": "optional-codecs",
       "dir": "datasets/optional-codecs",
       "valid": true,
-      "description": "Valid, but two value columns use codecs outside the ENC-1 baseline: lz4col is LZ4_RAW and brcol is BROTLI. The key and size columns are SNAPPY. A reader or validator may support these codecs or report them unsupported.",
+      "description": "Valid. Value column brcol is BROTLI, outside the ENC-1 baseline: a reader or validator may support it or report it unsupported, but not when a request does not need it. Value column lz4col is LZ4_RAW, in the baseline. The key and size columns are SNAPPY.",
       "provenance": "native",
       "producer": "pyarrow 26.0.1",
       "rows": "generators/rows/optional-codecs.json",
@@ -462,6 +462,41 @@
           "path": "datasets/optional-codecs/manifest.json",
           "bytes": 353,
           "sha256": "a763da7e75fdad99ea7b09a2e8f42b1f8393f62d277e148dea6d6d75ac332189",
+          "producer": "generators/pyarrow_fixtures.py",
+          "provenance": "generated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "lz4-raw",
+      "dir": "datasets/lz4-raw",
+      "valid": true,
+      "description": "Every column, the key included, is LZ4_RAW (ENC-1 baseline, codec 7, not the legacy LZ4). Part 0 has data page v1 with dictionaries, part 1 data page v2 without; several key pages per row group.",
+      "provenance": "native",
+      "producer": "pyarrow 26.0.1",
+      "rows": "generators/rows/lz4-raw.json",
+      "files": [
+        {
+          "path": "datasets/lz4-raw/data/part-00000.parquet",
+          "bytes": 4253,
+          "sha256": "3a2d8262624e032e13a7e4e235bcf58a8fc82c6c353935fc084eb2039f4d14bb",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/lz4-raw/data/part-00001.parquet",
+          "bytes": 3414,
+          "sha256": "06a7370ad4ca0f99398292dd20212003a6e419251cbd0163b7f29733b92515db",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/lz4-raw/manifest.json",
+          "bytes": 554,
+          "sha256": "73f554efdd9bdc056f270e3abdc869d07c6ac49dfadbfee5f9088fa36f72d38e",
           "producer": "generators/pyarrow_fixtures.py",
           "provenance": "generated",
           "command": "python generators/regenerate.py"
@@ -1670,6 +1705,54 @@
       ]
     },
     {
+      "name": "part-extensions",
+      "dir": "datasets/part-extensions",
+      "valid": true,
+      "description": "multipart with an extensions object on each part: an unknown namespace with nested values, the reserved namespace seekparquet with members no accelerator defines, and a mix; every reader ignores them, so queries answer exactly as on multipart (EXT-1, EXT-3, EXT-5).",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/multipart",
+      "changes": [
+        "manifest: parts[0].extensions = {\"conformance\": {\"nested\": {\"a\": [1, 2.5, null, {\"b\": [true, {}]}]}, \"n\": -7}}",
+        "manifest: parts[1].extensions = {\"seekparquet\": {\"future_accelerator\": {\"version\": 99, \"data\": [1, 2, 3]}, \"unknown\": \"ignored\"}}",
+        "manifest: parts[2].extensions = {\"other-tool\": null, \"seekparquet\": {}, \"conformance\": \"text\"}"
+      ],
+      "files": [
+        {
+          "path": "datasets/part-extensions/manifest.json",
+          "bytes": 1806,
+          "sha256": "a68bf3fd5d95316818a80a845bf1ae11cbf1e101c06ed6a8221de00287772088",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/part-extensions/shards/a.parquet",
+          "bytes": 6522,
+          "sha256": "525c95df656d28f4263bb448e8468b5fce900ef2b8802bfba57d8066d56f04d9",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/multipart)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/part-extensions/shards/b.parquet",
+          "bytes": 7260,
+          "sha256": "c6bb040398c045858aa97187182a4d301d0391f5260a089f3525cf8cf6fda786",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/multipart)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/part-extensions/shards/c.parquet",
+          "bytes": 7381,
+          "sha256": "6b6d850b8ab0e24755e7be43cd905b3101bf90fe1e89a176a8f10f1f46b4e9c8",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/multipart)",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
       "name": "digest-mixed",
       "dir": "datasets/digest-mixed",
       "valid": true,
@@ -2743,6 +2826,116 @@
       ]
     },
     {
+      "name": "manifest-part-extensions-not-object",
+      "dir": "datasets/invalid/manifest-part-extensions-not-object",
+      "valid": false,
+      "description": "Part 1's extensions is an array, not an object.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/multipart",
+      "changes": [
+        "manifest: parts[1].extensions = [\"conformance\"]"
+      ],
+      "fault_id": "manifest-part-extensions-not-object",
+      "files": [
+        {
+          "path": "datasets/invalid/manifest-part-extensions-not-object/manifest.json",
+          "bytes": 1160,
+          "sha256": "71a110844f16455780e76ebb482cad6d8b6498605831d214f8aa3c57bdcd64df",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/manifest-part-extensions-not-object/shards/a.parquet",
+          "bytes": 6522,
+          "sha256": "525c95df656d28f4263bb448e8468b5fce900ef2b8802bfba57d8066d56f04d9",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/multipart)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/manifest-part-extensions-not-object/shards/b.parquet",
+          "bytes": 7260,
+          "sha256": "c6bb040398c045858aa97187182a4d301d0391f5260a089f3525cf8cf6fda786",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/multipart)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/manifest-part-extensions-not-object/shards/c.parquet",
+          "bytes": 7381,
+          "sha256": "6b6d850b8ab0e24755e7be43cd905b3101bf90fe1e89a176a8f10f1f46b4e9c8",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/multipart)",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "manifest-part-extensions-duplicate-member",
+      "dir": "datasets/invalid/manifest-part-extensions-duplicate-member",
+      "valid": false,
+      "description": "The part's extensions object holds a namespace whose object has the member a twice.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "manifest text: '\"rows\": 12,' -> '\"rows\": 12,\\n      \"extensions\": {\"conformance\": {\"a\": 1, \"a\": 2}},'"
+      ],
+      "fault_id": "manifest-part-extensions-duplicate-member",
+      "files": [
+        {
+          "path": "datasets/invalid/manifest-part-extensions-duplicate-member/data/part-00000.parquet",
+          "bytes": 2828,
+          "sha256": "513420de0c01c0f13d5c38ea67b7bb823ca55441f14bd802bf6fc2acabf49dc1",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/basic)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/manifest-part-extensions-duplicate-member/manifest.json",
+          "bytes": 417,
+          "sha256": "d3332b50f86cc49b63f44410a4a5c07dbf2cc150aca285398a4fe9d370160f23",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "manifest-part-extensions-unknown-member",
+      "dir": "datasets/invalid/manifest-part-extensions-unknown-member",
+      "valid": false,
+      "description": "The part has a valid extensions object and, beside it, the undefined member checksum: the core part object stays closed.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "manifest: parts[0].extensions = {\"conformance\": {}}",
+        "manifest: parts.0.checksum \"<absent>\" -> \"abc\""
+      ],
+      "fault_id": "manifest-part-extensions-unknown-member",
+      "files": [
+        {
+          "path": "datasets/invalid/manifest-part-extensions-unknown-member/data/part-00000.parquet",
+          "bytes": 2828,
+          "sha256": "513420de0c01c0f13d5c38ea67b7bb823ca55441f14bd802bf6fc2acabf49dc1",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/basic)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/manifest-part-extensions-unknown-member/manifest.json",
+          "bytes": 444,
+          "sha256": "371fd69eac30e5579af7a4f8088433d6713f4646fab6219a171b4f3b927a0c2c",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
       "name": "manifest-duplicate-member-escaped",
       "dir": "datasets/invalid/manifest-duplicate-member-escaped",
       "valid": false,
@@ -3392,6 +3585,68 @@
         },
         {
           "path": "datasets/invalid/invalid-footer-magic/manifest.json",
+          "bytes": 362,
+          "sha256": "2fd83aa557700bfd362c6d218cbc9a79262383280d41c3d44c46d2a830024d60",
+          "producer": "generators/pyarrow_fixtures.py",
+          "provenance": "generated (copied unchanged from datasets/basic)",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "invalid-header-magic",
+      "dir": "datasets/invalid/invalid-header-magic",
+      "valid": false,
+      "description": "The part's leading magic is PAR0 instead of PAR1; its trailer, footer and pages are intact.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "data/part-00000.parquet: leading magic PAR1 -> PAR0; size unchanged; data pages untouched"
+      ],
+      "fault_id": "invalid-header-magic",
+      "files": [
+        {
+          "path": "datasets/invalid/invalid-header-magic/data/part-00000.parquet",
+          "bytes": 2828,
+          "sha256": "2e11c5cc97ed5cda86fb2eedb4c862ed75cf92055bed8124103d10dffcf93937",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/invalid-header-magic/manifest.json",
+          "bytes": 362,
+          "sha256": "2fd83aa557700bfd362c6d218cbc9a79262383280d41c3d44c46d2a830024d60",
+          "producer": "generators/pyarrow_fixtures.py",
+          "provenance": "generated (copied unchanged from datasets/basic)",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "encrypted-header-magic",
+      "dir": "datasets/invalid/encrypted-header-magic",
+      "valid": false,
+      "description": "The part's leading magic is PARE, the magic of an encrypted Parquet file; its trailer, footer and pages are intact. A reader reports it as unsupported_encryption (CHECK-1, FILE-2), never as readable or as a refusal.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "data/part-00000.parquet: leading magic PAR1 -> PARE; size unchanged; data pages untouched"
+      ],
+      "fault_id": "encrypted-header-magic",
+      "files": [
+        {
+          "path": "datasets/invalid/encrypted-header-magic/data/part-00000.parquet",
+          "bytes": 2828,
+          "sha256": "7737996baeee8a1371469d55b1451f73fdd55144c0588c8b98612bb15c7cafe8",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/encrypted-header-magic/manifest.json",
           "bytes": 362,
           "sha256": "2fd83aa557700bfd362c6d218cbc9a79262383280d41c3d44c46d2a830024d60",
           "producer": "generators/pyarrow_fixtures.py",
@@ -4156,6 +4411,84 @@
           "sha256": "3ffd9a48e6f4a84938dc8428e65ea2a86fbc6234e6374f7f3f2bb8001fea65b1",
           "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
           "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "invalid-parquet-lz4-raw-page",
+      "dir": "datasets/invalid/invalid-parquet-lz4-raw-page",
+      "valid": false,
+      "description": "Part 1 (data page v2): the body of key page 1 in row group 0, LZ4_RAW-compressed, is overwritten with 0xFF and does not decompress.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/lz4-raw",
+      "changes": [
+        "data/part-00001.parquet: row group 0 column 0: body of data page 1 (57 bytes at offset 106) overwritten with 0xFF; its header and every other byte unchanged"
+      ],
+      "fault_id": "invalid-parquet-lz4-raw-page",
+      "files": [
+        {
+          "path": "datasets/invalid/invalid-parquet-lz4-raw-page/data/part-00000.parquet",
+          "bytes": 4253,
+          "sha256": "3a2d8262624e032e13a7e4e235bcf58a8fc82c6c353935fc084eb2039f4d14bb",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/lz4-raw)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/invalid-parquet-lz4-raw-page/data/part-00001.parquet",
+          "bytes": 3414,
+          "sha256": "4df71122172a1b7c0989e23b3b2bc38f28f706724653acafb68cded0542253b3",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/invalid-parquet-lz4-raw-page/manifest.json",
+          "bytes": 554,
+          "sha256": "73f554efdd9bdc056f270e3abdc869d07c6ac49dfadbfee5f9088fa36f72d38e",
+          "producer": "generators/pyarrow_fixtures.py",
+          "provenance": "generated (copied unchanged from datasets/lz4-raw)",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "invalid-parquet-lz4-raw-size",
+      "dir": "datasets/invalid/invalid-parquet-lz4-raw-size",
+      "valid": false,
+      "description": "Part 0 (data page v1): the first data page of value column n in row group 1, LZ4_RAW-compressed, declares an uncompressed size one byte smaller than its body decompresses to: a reader must not accept output beyond the declared size.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/lz4-raw",
+      "changes": [
+        "data/part-00000.parquet: row group 1 column 1: data page 0 header uncompressed_page_size 4 -> 3 (its LZ4_RAW body decompresses to 4 bytes); header length unchanged"
+      ],
+      "fault_id": "invalid-parquet-lz4-raw-size",
+      "files": [
+        {
+          "path": "datasets/invalid/invalid-parquet-lz4-raw-size/data/part-00000.parquet",
+          "bytes": 4253,
+          "sha256": "a68f4ae94188897375bb76c9315d5f235aea4d43575bd8926fad465a1dda7be2",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/invalid-parquet-lz4-raw-size/data/part-00001.parquet",
+          "bytes": 3414,
+          "sha256": "06a7370ad4ca0f99398292dd20212003a6e419251cbd0163b7f29733b92515db",
+          "producer": "pyarrow 26.0.1",
+          "provenance": "native (copied unchanged from datasets/lz4-raw)",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/invalid-parquet-lz4-raw-size/manifest.json",
+          "bytes": 554,
+          "sha256": "73f554efdd9bdc056f270e3abdc869d07c6ac49dfadbfee5f9088fa36f72d38e",
+          "producer": "generators/pyarrow_fixtures.py",
+          "provenance": "generated (copied unchanged from datasets/lz4-raw)",
           "command": "python generators/regenerate.py"
         }
       ]

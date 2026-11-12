@@ -360,7 +360,7 @@
     },
     {
       "id": "validate-full/optional-codecs",
-      "description": "value columns use LZ4_RAW and BROTLI (outside ENC-1): full is complete, or incomplete with a reason for a validator without those codecs; structural and profile must complete",
+      "description": "value column brcol is BROTLI (outside ENC-1): full is complete, or incomplete with a reason for a validator without it; structural and profile must complete",
       "family": "validate-full/valid-dataset",
       "requirements": [
         "VAL-1",
@@ -388,6 +388,35 @@
             "accept": [
               "incomplete"
             ]
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/lz4-raw",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/lz4-raw",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
           }
         }
       }
@@ -542,6 +571,35 @@
       }
     },
     {
+      "id": "validate-full/part-extensions",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/part-extensions",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-full/digest-mixed",
       "family": "validate-full/valid-dataset",
       "requirements": [
@@ -645,6 +703,40 @@
         "validate:full"
       ],
       "dataset": "datasets/invalid/invalid-parquet-page",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "failed",
+            "code": "invalid_parquet"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/invalid-parquet-lz4-raw-size",
+      "description": "Part 0 (data page v1): the first data page of value column n in row group 1, LZ4_RAW-compressed, declares an uncompressed size one byte smaller than its body decompresses to: a reader must not accept output beyond the declared size.",
+      "family": "validate-full/fault-at-lowest-level",
+      "fault_id": "invalid-parquet-lz4-raw-size",
+      "requirements": [
+        "CHECK-5",
+        "ENC-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/invalid-parquet-lz4-raw-size",
       "request": {
         "op": "validate",
         "level": "full"

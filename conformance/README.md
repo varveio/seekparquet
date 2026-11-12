@@ -81,9 +81,12 @@ optimization changes no conformance answer. This is an adapter test setting, not
 it adds no query semantics or fixture expectations. Index budgets, caps and page-count guards live in
 each implementation's tests and benchmarks.
 
-**Optional features.** Cases on `optional-codecs` (LZ4_RAW and BROTLI value columns) accept the values or
-`unsupported` (`unsupported_encoding`); full validation of it may be `complete` or `incomplete`, never
-`failed`.
+**Optional features.** Cases on `optional-codecs` that project its BROTLI value column accept the values or
+`unsupported` (`unsupported_encoding`); its LZ4_RAW column is in the ENC-1 baseline, and requests that do not
+need the BROTLI column must succeed. Full validation of it may be `complete` or `incomplete`, never `failed`.
+A part whose leading magic is `PARE` (`invalid/encrypted-header-magic`, a fault whose `outcome` is
+`unsupported` in `generators/faults.json`) is answered `unsupported` (`unsupported_encryption`) by the first
+read that touches it, and its structural validation is `incomplete`.
 
 Passing this semantic suite does not claim indexed access (the planned indexed-access suite, which
 has no target until its cases exist) or performance.

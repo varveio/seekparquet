@@ -60,8 +60,8 @@ split-group, manifest-key and footer key-stamp faults explicitly in `faults.json
 `check_boolean.py --adapter COMMAND` generates temporary PyArrow 26.0.1
 V1/V2 Boolean datasets and compares complete real-adapter responses against
 source rows, also checking PyArrow's full-scan values. It covers true/false
-run boundaries, transitions, nulls, required/optional columns, four mandatory
-codecs, seven-row page boundaries and nineteen-row row-group boundaries.
+run boundaries, transitions, nulls, required/optional columns, four of the
+mandatory codecs (UNCOMPRESSED, SNAPPY, GZIP, ZSTD), seven-row page boundaries and nineteen-row row-group boundaries.
 Both reader CI jobs run it; no generated binary is retained or committed.
 
 ### Generated independent encoding and continuation qualification

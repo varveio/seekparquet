@@ -349,6 +349,32 @@
       }
     },
     {
+      "id": "validate-profile/lz4-raw",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/lz4-raw",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-profile/truncated-bounds",
       "family": "validate-profile/valid-dataset",
       "requirements": [
@@ -462,6 +488,32 @@
         "validate:profile"
       ],
       "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/part-extensions",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/part-extensions",
       "request": {
         "op": "validate",
         "level": "profile"
@@ -780,6 +832,38 @@
           "profile": {
             "result": "failed",
             "code": "invalid_key"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/invalid-parquet-lz4-raw-page",
+      "description": "Part 1 (data page v2): the body of key page 1 in row group 0, LZ4_RAW-compressed, is overwritten with 0xFF and does not decompress.",
+      "family": "validate-profile/fault-at-lowest-level",
+      "fault_id": "invalid-parquet-lz4-raw-page",
+      "requirements": [
+        "CHECK-5",
+        "CHECK-2",
+        "ENC-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/invalid-parquet-lz4-raw-page",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "failed",
+            "code": "invalid_parquet"
           }
         }
       }

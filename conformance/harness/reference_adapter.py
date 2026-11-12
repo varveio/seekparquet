@@ -244,6 +244,8 @@ class Part:
         self.data = self.path.read_bytes()
         if len(self.data) != entry["bytes"]:
             raise Refusal("part_mismatch", f"{rel}: size {len(self.data)} != {entry['bytes']}")
+        if b"PARE" in (self.data[:4], self.data[-4:]):  # CHECK-1 checks both magics; PARE is encryption (FILE-2)
+            raise NotSupported("unsupported_encryption", f"{rel}: PARE magic")
         try:
             self.pf = pm.read_parquet(self.data)
             self.fields = top_level(self.pf)

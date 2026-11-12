@@ -309,6 +309,29 @@
       }
     },
     {
+      "id": "validate-structural/lz4-raw",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/lz4-raw",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-structural/truncated-bounds",
       "family": "validate-structural/valid-dataset",
       "requirements": [
@@ -387,6 +410,29 @@
         "validate:structural"
       ],
       "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/part-extensions",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/part-extensions",
       "request": {
         "op": "validate",
         "level": "structural"
@@ -1745,6 +1791,92 @@
       }
     },
     {
+      "id": "validate-structural/manifest-part-extensions-not-object",
+      "description": "Part 1's extensions is an array, not an object.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-part-extensions-not-object",
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-not-object",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-part-extensions-duplicate-member",
+      "description": "The part's extensions object holds a namespace whose object has the member a twice.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-part-extensions-duplicate-member",
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-duplicate-member",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-part-extensions-unknown-member",
+      "description": "The part has a valid extensions object and, beside it, the undefined member checksum: the core part object stays closed.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-part-extensions-unknown-member",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-unknown-member",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-structural/manifest-duplicate-member-escaped",
       "description": "schema_id appears twice, once spelled with an escape (schema\\u005fid).",
       "family": "validate-structural/fault-at-lowest-level",
@@ -2130,6 +2262,60 @@
           "structural": {
             "result": "failed",
             "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/invalid-header-magic",
+      "description": "The part's leading magic is PAR0 instead of PAR1; its trailer, footer and pages are intact.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "invalid-header-magic",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/invalid-header-magic",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-header-magic",
+      "description": "The part's leading magic is PARE, the magic of an encrypted Parquet file; its trailer, footer and pages are intact. A reader reports it as unsupported_encryption (CHECK-1, FILE-2), never as readable or as a refusal.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-header-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-header-magic",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete"
           }
         }
       }

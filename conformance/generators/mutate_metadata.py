@@ -402,6 +402,33 @@ def bump_num_values(rg, col, page_no):
     return fn
 
 
+def shrink_uncompressed_size(rg, col, page_no):
+    """Lower a data page header's uncompressed_page_size by one, keeping the header's encoded length: the page
+    then decompresses to one byte more than it declares."""
+    def fn(data):
+        pf = pm.read_parquet(data)
+        cc = pm.column_chunk(pf, rg, col)
+        p = pm.data_pages(pf, cc)[page_no]
+        h, hend = pm.decode_struct(data, p.offset)
+        old = h.get(pm.PH_UNCOMPRESSED)
+        h.set(pm.PH_UNCOMPRESSED, pm.CT_I32, old - 1)
+        enc = pm.encode_struct(h)
+        assert len(enc) == hend - p.offset, "header length changed"
+        new = data[:p.offset] + enc + data[hend:]
+        return new, [f"row group {rg} column {col}: data page {page_no} header uncompressed_page_size {old} -> "
+                     f"{old - 1} (its LZ4_RAW body decompresses to {old} bytes); header length unchanged"]
+    return fn
+
+
+def set_part_extensions(values):
+    """Give parts their own extensions objects: {part index: object}."""
+    def fn(m, changes):
+        for i, v in values.items():
+            m["parts"][i]["extensions"] = v
+            changes.append(f"manifest: parts[{i}].extensions = {json.dumps(v)}")
+    return fn
+
+
 # Conservative bound shortening, as parquet-java's BinaryTruncator does it ------
 
 TRUNC = 16
@@ -513,6 +540,16 @@ def build():
                     None, valid=True, out=DATASETS / "extensions-numbers",
                     raw_manifest=lambda t: (t.replace(',\n  "parts": [', ext_text, 1),
                                             ["manifest text: extensions member added with ordinary JSON values"])))
+    R.append(derive("part-extensions", "multipart",
+                    "multipart with an extensions object on each part: an unknown namespace with nested values, the "
+                    "reserved namespace seekparquet with members no accelerator defines, and a mix; every reader "
+                    "ignores them, so queries answer exactly as on multipart (EXT-1, EXT-3, EXT-5).",
+                    None, valid=True, out=DATASETS / "part-extensions",
+                    manifest=set_part_extensions({
+                        0: {"conformance": {"nested": {"a": [1, 2.5, None, {"b": [True, {}]}]}, "n": -7}},
+                        1: {"seekparquet": {"future_accelerator": {"version": 99, "data": [1, 2, 3]},
+                                            "unknown": "ignored"}},
+                        2: {"other-tool": None, "seekparquet": {}, "conformance": "text"}})))
     R.append(derive("digest-mixed", "multipart",
                     "multipart with sha256 declared for parts 0 and 2 only: digest validation checks exactly 2.",
                     None, valid=True, out=DATASETS / "digest-mixed",
@@ -601,6 +638,18 @@ def build():
     R.append(derive("manifest-extensions-duplicate-member", "basic",
                     "An object inside extensions has the member a twice.", None,
                     raw_manifest=text_replace('  "parts": [', '  "extensions": {"conformance": {"a": 1, "a": 2}},\n  "parts": [')))
+    R.append(derive("manifest-part-extensions-not-object", "multipart",
+                    "Part 1's extensions is an array, not an object.", None,
+                    manifest=set_part_extensions({1: ["conformance"]})))
+    R.append(derive("manifest-part-extensions-duplicate-member", "basic",
+                    "The part's extensions object holds a namespace whose object has the member a twice.", None,
+                    raw_manifest=text_replace('"rows": 12,',
+                                              '"rows": 12,\n      "extensions": {"conformance": {"a": 1, "a": 2}},')))
+    R.append(derive("manifest-part-extensions-unknown-member", "basic",
+                    "The part has a valid extensions object and, beside it, the undefined member checksum: the core "
+                    "part object stays closed.", None,
+                    manifest=lambda m, ch: (set_part_extensions({0: {"conformance": {}}})(m, ch),
+                                            set_member(["parts", 0, "checksum"], "abc")(m, ch))))
     R.append(derive("manifest-duplicate-member-escaped", "basic",
                     "schema_id appears twice, once spelled with an escape (schema\\u005fid).", None,
                     raw_manifest=text_replace('"schema_id": "conformance/objects/v1",',
@@ -668,6 +717,12 @@ def build():
     # ---- footer ---------------------------------------------------------------
     R.append(derive_raw_part("invalid-footer-magic", "The part's trailing magic is PAR0 instead of PAR1.",
                              lambda d: d[:-4] + b"PAR0", "trailing magic PAR1 -> PAR0"))
+    R.append(derive_raw_part("invalid-header-magic", "The part's leading magic is PAR0 instead of PAR1; its trailer, "
+                             "footer and pages are intact.", lambda d: b"PAR0" + d[4:], "leading magic PAR1 -> PAR0"))
+    R.append(derive_raw_part("encrypted-header-magic", "The part's leading magic is PARE, the magic of an encrypted "
+                             "Parquet file; its trailer, footer and pages are intact. A reader reports it as "
+                             "unsupported_encryption (CHECK-1, FILE-2), never as readable or as a refusal.",
+                             lambda d: b"PARE" + d[4:], "leading magic PAR1 -> PARE"))
     R.append(derive_raw_part("invalid-footer-length", "The footer length field exceeds the file size.",
                              lambda d: d[:-8] + (len(d) + 10).to_bytes(4, "little") + d[-4:],
                              "footer length field -> file size + 10"))
@@ -726,6 +781,16 @@ def build():
                     "The first data page of column size in row group 1 of shards/c.parquet does not decompress.",
                     None,
                     raw={MP: corrupt_page(1, 1, 0)}))
+    LZ0, LZ1 = "data/part-00000.parquet", "data/part-00001.parquet"
+    R.append(derive("invalid-parquet-lz4-raw-page", "lz4-raw",
+                    "Part 1 (data page v2): the body of key page 1 in row group 0, LZ4_RAW-compressed, is overwritten "
+                    "with 0xFF and does not decompress.",
+                    None, raw={LZ1: corrupt_page(0, 0, 1)}))
+    R.append(derive("invalid-parquet-lz4-raw-size", "lz4-raw",
+                    "Part 0 (data page v1): the first data page of value column n in row group 1, LZ4_RAW-compressed, "
+                    "declares an uncompressed size one byte smaller than its body decompresses to: a reader must not "
+                    "accept output beyond the declared size.",
+                    None, raw={LZ0: shrink_uncompressed_size(1, 1, 0)}))
     R.append(derive("sorting-columns-missing-second-row-group", "basic",
                     "Only row group 1 lacks sorting_columns.",
                     None, parts={B: remove_sorting(1)}))
@@ -795,7 +860,7 @@ def _ff_footer(d):
 
 
 def derive_raw_part(name, desc, fn, what):
-    """Copy basic and apply a byte-level edit to the part's tail (footer), keeping the manifest size exact."""
+    """Copy basic and apply a byte-level edit to the part's magic or footer, keeping the manifest size exact."""
     src = DATASETS / "basic"
     out = INVALID / name
     if out.exists():

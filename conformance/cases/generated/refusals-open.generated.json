@@ -5,6 +5,7 @@
   "generator": "generators/make_cases.py",
   "description": "Faults in the manifest, which a reader must detect when opening the dataset (reader_detect open in generators/faults.json), and faults in a part, which it must detect no later than the first read that routes to the part, or on verify (reader_detect touch). Each touch request is an unbounded range whose limit covers every row, so it routes to every part.",
   "families": {
+    "refusals-open/unsupported": "a part that uses a feature outside this draft (outcome unsupported in generators/faults.json): the first read that touches it answers unsupported, never rows or a refusal",
     "refusals-open/fault": "one case per fault that a reader must refuse on open, or when a read first touches its part"
   },
   "cases": [
@@ -593,6 +594,65 @@
       }
     },
     {
+      "id": "refusals-open/manifest-part-extensions-not-object",
+      "description": "Part 1's extensions is an array, not an object.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-part-extensions-not-object",
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-not-object",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-part-extensions-duplicate-member",
+      "description": "The part's extensions object holds a namespace whose object has the member a twice.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-part-extensions-duplicate-member",
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-duplicate-member",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-part-extensions-unknown-member",
+      "description": "The part has a valid extensions object and, beside it, the undefined member checksum: the core part object stays closed.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-part-extensions-unknown-member",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-unknown-member",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
       "id": "refusals-open/manifest-draft-revision-zero",
       "description": "draft_revision is 0.",
       "family": "refusals-open/fault",
@@ -686,6 +746,44 @@
       "expect": {
         "status": "refused",
         "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/invalid-header-magic",
+      "description": "The part's leading magic is PAR0 instead of PAR1; its trailer, footer and pages are intact.",
+      "family": "refusals-open/fault",
+      "fault_id": "invalid-header-magic",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/invalid-header-magic",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "refusals-open/encrypted-header-magic",
+      "description": "The part's leading magic is PARE, the magic of an encrypted Parquet file; its trailer, footer and pages are intact. A reader reports it as unsupported_encryption (CHECK-1, FILE-2), never as readable or as a refusal.",
+      "family": "refusals-open/unsupported",
+      "fault_id": "encrypted-header-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "dataset": "datasets/invalid/encrypted-header-magic",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encryption"
       }
     },
     {

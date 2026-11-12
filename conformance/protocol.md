@@ -235,8 +235,8 @@ A capability that no target requires (`optional_capabilities` in capabilities.js
 is claimed or not at an adapter's choice. A case that requires one runs only when the adapter claims it, and
 is otherwise skipped without counting against its target's qualification.
 
-A case on a dataset that uses a feature outside the mandatory baseline (for example the LZ4_RAW or BROTLI
-codec, ENC-1) may list `accept_unsupported` codes in its expectation: the expected `ok` result passes, and so
+A case on a dataset that uses a feature outside the mandatory baseline (for example the BROTLI codec, ENC-1)
+may list `accept_unsupported` codes in its expectation: the expected `ok` result passes, and so
 does `unsupported` with one of those codes. A refusal never passes. In a validation expectation a level may
 list further acceptable results in `accept`, for example a `full` level that is `complete` or, for a
 validator without the codec, `incomplete` (never `failed`). Full validation of datasets with nested or
