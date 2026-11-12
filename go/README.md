@@ -54,6 +54,102 @@ for {
 
 Runnable examples are in [example_test.go](example_test.go).
 
+## Row positions and value-only scans
+
+Use row positions to count and aggregate rows under sorted hierarchical keys, independently of their application meaning.
+`RowPosition` is a boundary in one dataset handle's row order; its zero value is unknown.
+`RowSpan` selects `[Start, End)`. `ListEntry.Rows` describes candidate rows, restricted by the listing's prefix, end, and cursor.
+Check both boundaries with `Ordinal()`; a listing does not read extra bytes to complete them.
+In particular, a common prefix at the result limit can have an unknown end.
+
+`Dataset.PlanRows` without columns performs no storage I/O. `Count()` costs no I/O and reports whether the count is exact.
+Unchecked contributing parts make a count provisional; planning with columns checks those parts and locates projected pages.
+`Plan.RowSpans()` returns the inputs before union normalization.
+`Plan.SelectRows` selects contained spans with the parent's projection, without I/O, counting overlapping rows once.
+
+<!-- snippet: go/example_docs_test.go#Example_countAndAggregatePrefix -->
+```go
+ctx := context.Background()
+d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+if err != nil {
+	log.Fatal(err)
+}
+defer d.Close()
+
+// This fixture has three entries. Let List traverse beyond each prefix
+// so that it establishes both row boundaries.
+entries, err := d.List(ctx, seekparquet.ListQuery{
+	Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 4,
+}, nil)
+if err != nil {
+	log.Fatal(err)
+}
+var spans []seekparquet.RowSpan
+var counts seekparquet.ReadStats
+for _, entry := range entries {
+	_, startKnown := entry.Rows.Start.Ordinal()
+	_, endKnown := entry.Rows.End.Ordinal()
+	if !startKnown || !endKnown {
+		log.Fatal("use a key-range plan for an unknown boundary")
+	}
+	p, err := d.PlanRows(ctx, []seekparquet.RowSpan{entry.Rows}, nil, &counts)
+	if err != nil {
+		log.Fatal(err)
+	}
+	n, exact := p.Count()
+	fmt.Printf("%s: %d rows, exact=%t, reads=%d\n", entry.Bytes(), n, exact, counts.SourceReads)
+	spans = append(spans, entry.Rows)
+}
+
+// Load projection metadata once for the listed rows, then select the
+// first two entries without I/O. RowSpans preserves the input order.
+all, err := d.PlanRows(ctx, spans, []string{"size"}, nil)
+if err != nil {
+	log.Fatal(err)
+}
+selected, err := all.SelectRows(all.RowSpans()[:2])
+if err != nil {
+	log.Fatal(err)
+}
+var sum int64
+var scan seekparquet.ReadStats
+err = selected.ScanValues(ctx, &scan, func(b *seekparquet.ValueBatch) error {
+	column := b.Column(0)
+	if !column.Present() || column.Kind() != seekparquet.KindInt64 {
+		return fmt.Errorf("size must be an INT64 column")
+	}
+	for i := range b.Len() {
+		if !column.IsNull(i) {
+			sum += column.Int64(i)
+		}
+	}
+	return nil
+})
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Printf("selected size sum: %d; key pages decoded: %d\n", sum, scan.KeyPagesDecoded)
+// Output:
+// logs/2026/01/: 30 rows, exact=true, reads=0
+// logs/2026/02/: 40 rows, exact=true, reads=0
+// logs/2026/03/: 30 rows, exact=true, reads=0
+// selected size sum: 74822517816; key pages decoded: 0
+```
+<!-- /snippet -->
+
+The [counting guide](../docs/guides/counting.md) covers unknown boundaries, key-range fallback, request costs, and byte estimates.
+`Plan.ScanValues` reads projected columns by row position without implicit key decoding or equal-key offsets.
+`ValueBatch.Start()` identifies its first row; `Len()` and `Column(c)` expose its rows and projection slots.
+The batch, views, and value bytes are borrowed until the callback returns; clone retained values.
+Batches stay within row groups, projected pages, and selected spans.
+Success does not certify unread key pages; an explicitly projected key column is read as a value column.
+
+`ScanValues` honors `CacheDefault`, permitting Source-cache lookup and admission under storage policy.
+`Plan.Scan` uses `CacheBypass` for that mode. Use `WithCacheMode` to choose a mode explicitly.
+`Count`, `ProjectedBytes`, `Columns`, `RowSpans`, and `SelectRows` remain usable after `Dataset.Close`.
+Scanning or calling `Dataset.PlanRows` then fails with `ErrClosed` for valid arguments.
+Positions cannot be transferred to another dataset handle.
+
 ## Writing
 
 ```go
@@ -100,7 +196,7 @@ inside a large group costs a few pages, not the rows before the cursor.
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Rows`, `Get`, `Scan`, `List`, `Plan`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `Plan` with `Count`, `ProjectedBytes`, `Columns`, `Scan` and `Split`; the requests `Span` (`KeySpan`, `PrefixSpan`), `Selection`, `Query`, `ListQuery` and `Cursor` (`RowCursor`, `PrefixCursor`, `Encode`, `ParseCursor`); the results `Row`, `Value`, `ListEntry`, `Batch` and `ColumnView`; `ReadStats`; `Column`, a part's column as its footer declares it, with `Kind`, `Repetition` and `Logical`; `OpenOptions` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
+| `seekparquet` | `OpenDataset` (a dataset through a `Source`), `OpenDir` (a local directory), `Dataset` with `Rows`, `Get`, `Scan`, `List`, `Plan`, `PlanRows`, `BuildListIndex`, `Verify`, `Metadata`, `Columns` and `Close`; `Plan` with `Count`, `ProjectedBytes`, `Columns`, `RowSpans`, `SelectRows`, `Scan`, `ScanValues` and `Split`; `RowPosition` and `RowSpan`; the requests `Span` (`KeySpan`, `PrefixSpan`), `Selection`, `Query`, `ListQuery` and `Cursor` (`RowCursor`, `PrefixCursor`, `Encode`, `ParseCursor`); the results `Row`, `Value`, `ListEntry`, `Batch`, `ValueBatch` and `ColumnView`; `ReadStats`; `Column`, a part's column as its footer declares it, with `Kind`, `Repetition` and `Logical`; `OpenOptions` and `Limits`; refusal codes and errors; `Validate` and `ValidateDir` with `ValidateOptions`, `Level` and `Report`; the format constants and stamp keys, `Manifest` with `ParseManifest` and `MarshalManifest`, `InspectFooter` and `InspectKeyPages` |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows |
 | `local` | `PublishPart`, `Commit` and `WriteDir`: durable publication in a local directory |
 | `cmd/seekparquet` | the `seekparquet validate` command |
@@ -262,9 +358,16 @@ them in `ReadStats` (`PhysicalRequests`, `PhysicalBytes`, `PeakPhysicalRequests`
 for the open) and passes them on to an observer the caller set with `WithIOObserver`. `WithCacheMode` asks a
 source's byte cache to be bypassed (`CacheBypass`).
 
-Projected value pages reuse buffers within each `Rows`, `Get`, `Scan`, `List`, or `Plan.Scan` call,
+Scans, listings, and projected reads can fetch bounded windows through `RangeReader`; scalar sources use concurrent `ReadAt` calls.
+Windows hold up to 64 MiB of fetched, undecoded bytes **per operation**, not per `Dataset`.
+Concurrent operations each hold their own windows; decoded pages, dictionaries, metadata, and results add to that memory.
+Window scheduling honors `Limits.PageBytes` before fetching page extents, leaving oversized candidates to demand-time checks.
+Demand reads still check headers and payloads; the window bound is not a total memory limit.
+Panics in Source `ReadAt` or `ReadRanges` become environment errors containing the recovered value.
+
+Projected value pages reuse buffers within each `Rows`, `Get`, `Scan`, `List`, `Plan.Scan`, or `Plan.ScanValues` call,
 including across row groups. `Rows`, `Get` and `List` results own their keys and binary values;
-`Dataset.Scan` and `Plan.Scan` borrow page storage as described below. Dictionaries have separate storage
+`Dataset.Scan`, `Plan.Scan`, and `Plan.ScanValues` borrow page storage as described below. Dictionaries have separate storage
 for their chunk. `Dataset.Scan` and `Plan.Scan` also decode every key page into one
 buffer set of their own, each page overwriting the one before once the callbacks borrowing it have
 returned; what the call keeps of a key across pages (the first key of a group of equal keys, the decoded
@@ -324,18 +427,12 @@ reads it again, never failing for it. A listing
 resumes after each common prefix at the prefix's successor, skipping the pages wholly under it, but the page
 it lands on, and the pages around a prefix's boundaries, still decode some of the keys under it.
 
-**Key page read-ahead for listings.** Each of those resumes reads one key page, one after another: over an
-object store a listing of 100 common prefixes waits for about 100 round trips. `ListQuery.ReadAhead` (default 0,
-off) lets a listing predict, from the row group's key page index, the pages it will decode next and read up to
-that many of them concurrently, holding at most 1 MiB per slot of pages read and not yet used (a request with
-`ReadAhead: 64` can hold 64 MiB). The pages read ahead are checked as any page read is, and the entries do not
-change; a page predicted wrongly (shortened or overlapping page bounds) is read and transferred for nothing and
-held until the scan passes it or the key scan ends, counted in `ReadStats.ReadAheadUnused` and
-`ReadAheadUnusedBytes`. The reads ahead end when the key scan does, before values are projected. The
-prediction stays within the row group the listing is in. With a list index built, a `/` listing reads nothing
-ahead, including a row group the index declines; other delimiters read ahead as usual. With a 5 ms wait per read, a cold listing of 100 folders of 4,000 keys (1,024-row key pages) took 570 ms
-without read-ahead, and 106 ms (`ReadAhead: 8`) or 71 ms (`ReadAhead: 16`) with it, for the same 105 reads. On
-a local file it saves nothing and costs a goroutine per read ahead: leave it off there.
+**Key page read-ahead for listings.** Over a remote Source, zero `ListQuery.ReadAhead` selects adaptive prediction toward
+`Limit+1` entries. Positive values bound the future key pages considered by each prediction; negative values are invalid.
+Zero-policy `OpenDir` reads on demand. `ReadPolicy.DisableSpeculation` disables optional fetching while keeping demanded batching.
+Adjacent predicted pages share bounded windows and are checked on use; the operation-wide window bound above still applies.
+Unused predicted pages count in `ReadStats.ReadAheadUnused` and `ReadAheadUnusedBytes`.
+With a list index built, `/` listings do not read ahead, including for a row group the index declines.
 
 **Optional slash listing index.** A server that needs predictable wide-prefix listing latency can call:
 
@@ -405,10 +502,9 @@ and otherwise only when no part between the ends is still untouched. `ProjectedB
 bytes `Scan` will request for the projected columns: the extent of each page holding a selected row and of
 its chunk's dictionary, once each however many selections share them; it is not exact when a projected
 chunk has no OffsetIndex. `plan.Scan(ctx, stats, fn func(*Batch) error)` yields the rows in dataset order
-with their values as borrowed batches, reading each counted extent in one request, and checks every key page
-it decodes, reading a chunk's dictionary before its first page whether or not the pages use it. A page an
-OffsetIndex locates is read in one request of exactly its extent, by `Rows` and `List` too; they read a
-dictionary only for a page that uses it. A projected key column is read as a value column and its chunk counts
+with their values as borrowed batches, fetching bounded windows of the needed extents, and checks every key page
+it decodes, reading a chunk's dictionary before its first page whether or not the pages use it. Windowing and storage batching can join or split extents; page extents do not predict physical requests.
+`Rows` and `List` read a dictionary only for a page that uses it. A projected key column is read as a value column and its chunk counts
 in `ProjectedBytes`; the Java reader takes key values from its key pages and counts nothing for it (see
 [java/README.md](../java/README.md#parity-with-the-go-reader)), so the conformance planning cases never
 project the key.
@@ -466,7 +562,7 @@ belong to one shard. Splitting is a convenience of this reader, not part of the 
 protocol.
 
 **Read statistics.** Pass a `*ReadStats` to any read (`Rows`, `Get`, `Scan`, `List`, `Plan`, `Split`,
-`Plan.Scan`) to see what it did: key and value pages decoded, keys decoded, row groups opened and key page
+`PlanRows`, `Plan.Scan`, `Plan.ScanValues`) to see what it did: key and value pages decoded, keys decoded, row groups opened and key page
 indexes loaded, page-index seeks and prefix resumes, row groups a listing skipped whole, and the `Source`
 reads and requested bytes made on its behalf. It is reset when the operation starts; the counts are exact
 for the operation, are filled whether it succeeds or fails, and cost one integer increment per event.

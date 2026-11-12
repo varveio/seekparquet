@@ -5,6 +5,20 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Added the row-position API: `RowPosition`, `RowSpan`, `ListEntry.Rows`,
+  `Dataset.PlanRows`, `Plan.RowSpans`, `Plan.SelectRows`, `ValueBatch`, and
+  `Plan.ScanValues`. Listings expose candidate-row boundaries without additional I/O;
+  boundaries not established remain unknown. Column-free row planning and contained
+  selection perform no I/O. Value-only scans execute row positions without implicit
+  key decoding and allow Source caching under `CacheDefault`, while `Plan.Scan`
+  defaults to bypass. Counts and projected bytes report their exactness. No format change.
+- Scans, listings, and projected reads fetch bounded windows through `RangeReader`
+  when available, with scalar `ReadAt` fallback. Windows hold up to 64 MiB of fetched,
+  undecoded bytes per operation, not per dataset. Listing read-ahead is adaptive for a
+  remote Source when `ListQuery.ReadAhead` is zero; zero-policy `OpenDir` stays on demand.
+  Window scheduling honors `Limits.PageBytes` before fetching page extents. Panics in
+  Source `ReadAt` and `ReadRanges` surface as environment errors containing the recovered value.
+
 - A manifest nested deeper than 512 JSON objects and arrays (the manifest object counting 1), in
   extensions or anywhere else, is a `*LimitError` for the new `LimitManifestNesting` (wrapping
   `ErrLimitExceeded`), as in the Java reader, from `ParseManifest`, opening and validation: the syntax check

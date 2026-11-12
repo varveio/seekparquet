@@ -111,6 +111,35 @@ Every query can **project** columns by name. Each projected column of each row i
 **absent** when the row's part does not have the column ([COL-2](../spec/format-1.md#col-2),
 [RANGE-2](../spec/format-1.md#range-2)). Absent is not null.
 
+## Row positions and spans
+
+Implementation behavior: sorted hierarchical keys can identify tenants, categories, dates, or any other ordered dimensions.
+Keys locate rows; columns supply their values.
+Go `RowPosition` marks a boundary before a row, or the dataset's end, in that same row order.
+Its `Ordinal()` is a zero-based dataset coordinate, distinct from a row's offset within its key group.
+The zero value is unknown.
+Positions belong to one open `Dataset` handle, even when another handle reads the same data.
+Go `RowSpan` selects from `Start` inclusive to `End` exclusive; equal boundaries select no rows.
+
+Go `ListEntry.Rows` describes the entry's candidate rows, restricted by the listing's prefix, end, and cursor.
+A row entry has both boundaries known.
+A common prefix has the boundaries the traversal establishes without additional I/O.
+Its end can be unknown when the listing stops at its result limit or its end bound cuts through the prefix.
+Check both boundaries with `Ordinal()` before using the span.
+
+Go `Dataset.PlanRows` without projected columns and `Plan.Count` make no storage requests.
+The count is exact only when every contributing part has passed its part check; otherwise it is provisional.
+An ordinal alone does not certify row counts or unread keys.
+With columns, planning checks selected parts and locates projected pages without reading their data pages.
+`Plan.RowSpans` preserves input order before union normalization; `Plan.SelectRows` selects contained spans without I/O.
+Overlapping selected rows count once in a plan.
+
+A **value-only scan**, Go `Plan.ScanValues`, reads projected columns at planned row positions as borrowed `ValueBatch` values.
+It does not seek through keys or compute equal-key offsets.
+It reads the key column only if you project it explicitly; success does not certify unread key pages.
+See [counting and aggregating by prefix](guides/counting.md) for a worked example.
+The [parity table](reference/parity.md#planning) records language availability for this API.
+
 ## Pagination
 
 A **cursor** marks where a page ended. A **row cursor** is a key and an offset; a **prefix cursor** is a
@@ -331,9 +360,12 @@ complete reporting with `IOReporter`; see [read statistics](reference/read-stats
 - <a id="round"></a>**round**: A set of requests that must complete before the next can start.
 - <a id="row-entry"></a>**row entry**: A listing entry that is one row.
 - <a id="row-group"></a>**row group**: Parquet's horizontal slice of a part.
+- <a id="row-position"></a>**row position**: A dataset-bound boundary before a row, or at the dataset's end; unknown for the zero Go `RowPosition`.
+- <a id="row-span"></a>**row span**: Rows between an inclusive start position and an exclusive end position.
 - <a id="speculative-read"></a>**speculative read**: A read made before it is known to be needed, such as a tail read or listing read-ahead.
 - <a id="tail-read"></a>**tail read**: A read of the end of a part, which holds its footer.
 - <a id="unsupported"></a>**unsupported**: A feature, in the data or a request, that the reader does not implement. Says nothing about the rest of the data.
 - <a id="validate"></a>**validate**: The separate procedure that checks the scope of one of four levels (§8). Go only.
+- <a id="value-only-scan"></a>**value-only scan**: A scan of projected columns at planned row positions, without implicit key decoding or equal-key offsets.
 - <a id="verify"></a>**verify**: Check every part now ([CHECK-3](../spec/format-1.md#check-3)): Go `Dataset.Verify`, Java `Dataset.verify`.
 - <a id="warm"></a>**warm**: An operation on a dataset that earlier operations already loaded footers and key page indexes for.

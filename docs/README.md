@@ -10,6 +10,7 @@ Start with [concepts](concepts.md) for the terms every other page uses.
 
 ## Guides
 
+- [Counting and aggregating by prefix](guides/counting.md): count listed row spans without I/O, select rows, and sum a column.
 - [Producing datasets](guides/producing.md): the recipe, the Go writer, geometry, pyarrow.
 - [Validating datasets](guides/validating.md): levels, the `seekparquet` command, the API.
 - [Troubleshooting](guides/troubleshooting.md): every refusal, unsupported and limit code, and what to do.
