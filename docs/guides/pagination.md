@@ -141,3 +141,54 @@ A syntactically valid cursor applied to another dataset is not a dataset-mismatc
 It is interpreted against that dataset's keys; results can differ or be empty
 ([PAGE-1](../../spec/format-1.md#page-1), [`Cursor`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Cursor)).
 Reject mismatched envelopes in your service before asking the reader to resume.
+
+## Include complete-prefix aggregates
+
+Use [`Dataset.Page`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Page) to combine listing and named reductions over returned common prefixes.
+
+**Go**
+
+<!-- snippet: go/example_generic_test.go#ExampleDataset_Page -->
+```go
+ctx := context.Background()
+d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+if err != nil {
+	log.Fatal(err)
+}
+defer d.Close()
+if err := d.Verify(ctx, nil); err != nil {
+	log.Fatal(err)
+}
+q := seekparquet.PageQuery{
+	ListQuery:  seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 2},
+	Reductions: []seekparquet.Reduction{{Op: seekparquet.CountRows}},
+}
+for {
+	page, err := d.Page(ctx, q, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, entry := range page.Entries {
+		fmt.Printf("%s: %d rows\n", entry.Bytes(), entry.Aggregates[0].Value.Int64())
+	}
+	if page.Next == nil {
+		break
+	}
+	q.Cursor = page.Next
+}
+// Output:
+// logs/2026/01/: 30 rows
+// logs/2026/02/: 40 rows
+// logs/2026/03/: 30 rows
+```
+<!-- /snippet -->
+
+**Java:** not available; the page composition mirror is planned.
+
+`Page` lists one entry beyond the result limit and sets `Next` only when another page follows.
+Ordinary row entries have nil `Aggregates`; common prefixes follow `PageQuery.Reductions` order.
+`Exact` retains the exact row paired by `List`.
+The reductions describe the complete prefix, including that exact row.
+Unknown boundaries, `End` inside a prefix, and cursors clipping its start leave reductions unknown.
+`Page` performs no fallback seeks to complete them.
+Use `AggregateRows` explicitly when you want totals over clipped candidate rows.

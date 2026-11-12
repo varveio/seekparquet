@@ -20,11 +20,12 @@ import (
 // not promised.
 //
 // The batch object, keys, column views and their value bytes are borrowed,
-// read-only, and valid only until the Dataset.Scan or Plan.Scan callback
-// returns. Do not retain them or use them from a goroutine that outlives the
+// read-only, and valid only until the Dataset.Scan, Plan.Scan or
+// Plan.ScanParallel callback returns. Do not retain them or use them from a goroutine that outlives the
 // callback.
 // Row and Cursor make owning copies that may be retained.
 type Batch struct {
+	start   int64 // dataset ordinal of the first borrowed row, for generic reducers
 	keys    pageKeys
 	offsets []int64
 	columns []string
@@ -80,9 +81,9 @@ func (b *Batch) Cursor(i int) *Cursor {
 	return &Cursor{Key: bytes.Clone(b.Key(i)), Offset: b.Offset(i)}
 }
 
-// Stop, returned by a batch callback, ends Dataset.Scan, Plan.Scan or
-// Plan.ScanValues early with a nil error: a successful early stop. Any other error a
-// callback returns ends the scan and is returned unchanged.
+// Stop, returned by a batch callback, ends Dataset.Scan, Plan.Scan,
+// Plan.ScanValues or Plan.ScanParallel early with a nil error: a successful
+// early stop. Any other callback error ends the scan and is returned unchanged.
 var Stop = errors.New("seekparquet: stop the scan")
 
 // Scan hands fn borrowed batches of the plan's rows and projected values,
@@ -282,6 +283,7 @@ func (w *batcher) walk(s *scan, n int64, fn func(*Batch) error) error {
 			}
 		}
 		first, from := s.row, s.kp.next
+		b.start = s.ordinal()
 		b.offsets = resize(b.offsets, int(k))
 		for i := range b.offsets {
 			b.offsets[i] = s.offset()

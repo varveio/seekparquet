@@ -6,6 +6,113 @@ The example treats its `size` column as an INT64 measure and skips null values.
 An absent column or another physical type is an error in this example.
 See [row positions and spans](../concepts.md#row-positions-and-spans) for the model.
 
+## Reduce named columns
+
+Use [`Dataset.Aggregate`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Aggregate) for independent results over overlapping selections.
+
+**Go**
+
+<!-- snippet: go/example_generic_test.go#ExampleDataset_Aggregate -->
+```go
+ctx := context.Background()
+d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+if err != nil {
+	log.Fatal(err)
+}
+defer d.Close()
+if err := d.Verify(ctx, nil); err != nil {
+	log.Fatal(err)
+}
+results, err := d.Aggregate(ctx, []seekparquet.Selection{
+	{Span: seekparquet.PrefixSpan([]byte("logs/2026/01/"))},
+	{Span: seekparquet.PrefixSpan([]byte("logs/2026/02/"))},
+}, []seekparquet.Reduction{
+	{Op: seekparquet.CountRows},
+	{Op: seekparquet.Sum, Column: "size"},
+	{Op: seekparquet.CountNulls, Column: "size"},
+}, seekparquet.AggregateOptions{ValueBudgetBytes: 4 << 20}, nil)
+if err != nil {
+	log.Fatal(err)
+}
+for _, r := range results {
+	if r[0].Status == seekparquet.AggregateExact && r[1].Status == seekparquet.AggregateExact {
+		fmt.Printf("rows=%d size=%d nulls=%d\n", r[0].Value.Int64(), r[1].Value.Int64(), r[2].Value.Int64())
+	}
+}
+// Output:
+// rows=30 size=31543127898 nulls=0
+// rows=40 size=43279389918 nulls=0
+```
+<!-- /snippet -->
+
+**Java:** not available; the generic aggregation mirror is planned.
+
+[`AggregateRows`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.AggregateRows) accepts established spans without locating their keys again.
+Unfiltered `CountRows` over known, checked spans reads no values.
+Without `CheckKeys`, unchecked contributing parts leave results `AggregateUnknown`.
+With `CheckKeys`, selected keys and contributing parts are checked, and failures return no results.
+Counts include every selected row, including repeated keys.
+`Sum` and `Max` skip null and absent values; request `CountNulls` and `CountAbsent` to distinguish them.
+Empty sums are zero; empty maxima are null.
+Signed and unsigned integer sums report `AggregateOverflow` only when the final widened sum does not fit.
+Timestamp maxima retain their column's physical value and declared unit.
+
+`ValueBudgetBytes` charges unique compressed projected pages and dictionaries across accepted inputs.
+A value of zero permits no value I/O; `-1` permits unlimited value work.
+Positive budgets admit each input's value reductions together, leaving free unfiltered counts available.
+`AggregateBudgetExceeded` and `AggregateUnpriced` describe skipped value work, without partial totals.
+Planning metadata and implicit key checks do not consume the value budget.
+Set `CheckKeys: true` when every selected key needs checking, including order across shards.
+The result's exactness alone does not check unread keys.
+
+## Filter a union batch
+
+Declare predicate columns in [`BatchFilter`](https://pkg.go.dev/github.com/varveio/seekparquet/go#BatchFilter) and modify its borrowed keep mask.
+
+**Go**
+
+<!-- snippet: go/example_generic_test.go#ExampleBatchFilter -->
+```go
+ctx := context.Background()
+d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+if err != nil {
+	log.Fatal(err)
+}
+defer d.Close()
+if err := d.Verify(ctx, nil); err != nil {
+	log.Fatal(err)
+}
+filter := &seekparquet.BatchFilter{
+	Columns: []string{"size"},
+	Apply: func(b *seekparquet.ValueBatch, keep []bool) error {
+		sizes := b.Column(0)
+		for i := range keep {
+			keep[i] = sizes.Present() && !sizes.IsNull(i) && sizes.Int64(i) >= 0
+		}
+		return nil
+	},
+}
+results, err := d.Aggregate(ctx, []seekparquet.Selection{{Span: seekparquet.PrefixSpan([]byte("logs/2026/01/"))}},
+	[]seekparquet.Reduction{{Op: seekparquet.CountRows}},
+	seekparquet.AggregateOptions{ValueBudgetBytes: -1, Filter: filter}, nil)
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Println("selected rows:", results[0][0].Value.Int64())
+// Output:
+// selected rows: 30
+```
+<!-- /snippet -->
+
+**Java:** not available.
+
+The filter sees only its declared columns, in order, and runs once per scanned union batch.
+Its columns consume the same value budget as reduction columns.
+The keep mask starts true and is reused after the callback returns.
+With multiple workers, callbacks must support concurrent calls.
+Any callback error, including `Stop`, fails aggregation without results.
+Application predicates can select file payload rows without changing listing or exact-row retrieval.
+
 ## Count entries and sum selected rows
 
 List a prefix with a delimiter, count each known span without storage reads, and sum a column over two entries.
@@ -203,6 +310,8 @@ Use [read statistics](../reference/read-stats.md) to measure your Source and cac
 The counting test store pins `browse/count-prefix` at **0 physical requests, 0 rounds**, after an unrecorded listing.
 It pins `browse/sum-prefix`, including projected planning and scanning, at **1 physical request, 1 round, 6,153 bytes**.
 Both the scalar and capable store tables assert these numbers in [`TestReadBudgets`](../../go/iobudget_test.go).
+[`TestReadBudgetsGeneric`](../../go/generic_iobudget_test.go) pins the same counts and single-prefix sum for `AggregateRows`.
+Its 64 KiB budget admits exactly nine sums from more complete prefixes than fit; adding counts causes no additional physical requests.
 They describe that test's fixture and setup, not the small example above or arbitrary prefixes.
 
 `ProjectedBytes()` counts unique compressed projected page and dictionary extents, once each for the selected union.

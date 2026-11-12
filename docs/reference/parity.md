@@ -135,3 +135,31 @@ A dash means the language has no counterpart. Names are checked against the code
 | Validate through a Source | `Validate` | — |  |
 | Inspect a part's footer | `InspectFooter` | — |  |
 | Inspect a part's key pages | `InspectKeyPages` | — |  |
+
+## Generic execution and aggregation (Go only)
+
+| Concept | Go | Java | Note |
+|---|---|---|---|
+| Scan a plan with queued workers | `Plan.ScanParallel` | — | Go only; Java mirror planned. |
+| Aggregate key selections | `Dataset.Aggregate` | — | Go only; Java mirror planned. |
+| Aggregate established row spans | `Dataset.AggregateRows` | — | Go only; Java mirror planned. |
+| Named reduction | `Reduction` | — | Go only; Java mirror planned. |
+| Reduction operation | `AggregateOp` | — | Go only; Java mirror planned. |
+| Count rows | `CountRows` | — | Go only; Java mirror planned. |
+| Sum integers | `Sum` | — | Go only; Java mirror planned. |
+| Maximum value | `Max` | — | Go only; Java mirror planned. |
+| Count present nulls | `CountNulls` | — | Go only; Java mirror planned. |
+| Count absent columns | `CountAbsent` | — | Go only; Java mirror planned. |
+| Aggregation options | `AggregateOptions` | — | Go only; Java mirror planned. |
+| Borrowed batch predicate | `BatchFilter` | — | Go only; Java mirror planned. |
+| Aggregation result | `AggregateResult` | — | Go only; Java mirror planned. |
+| Aggregation completeness | `AggregateStatus` | — | Go only; Java mirror planned. |
+| Unknown aggregate | `AggregateUnknown` | — | Go only; Java mirror planned. |
+| Exact aggregate | `AggregateExact` | — | Go only; Java mirror planned. |
+| Value budget exceeded | `AggregateBudgetExceeded` | — | Go only; Java mirror planned. |
+| Unpriced value extents | `AggregateUnpriced` | — | Go only; Java mirror planned. |
+| Sum overflow | `AggregateOverflow` | — | Go only; Java mirror planned. |
+| Listing page with prefix aggregates | `Dataset.Page` | — | Go only; Java mirror planned. |
+| Page request | `PageQuery` | — | Go only; Java mirror planned. |
+| Page entry | `PageEntry` | — | Go only; Java mirror planned. |
+| Page result | `Page` | — | Go only; Java mirror planned. |

@@ -5,6 +5,21 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Fixed `Plan.Split` to keep equal selected keys across a gap in one shard.
+  A valid repeated-key `PlanRows` plan could previously be refused with `key_order`.
+  Splitting disjoint plans may now seek additional key pages.
+
+- Added `Plan.ScanParallel`, porting swath's queued shard scheduler and key-boundary checks.
+  Callbacks run in order within shards and concurrently across shards; `Stop` joins workers successfully.
+- Added `Dataset.Aggregate` and `AggregateRows`, named `Reduction` operations, exactness statuses,
+  compressed value budgets, explicit `CheckKeys`, and a projected `BatchFilter`.
+  Integer sums accumulate in 128 bits before checking the final signed or unsigned 64-bit result.
+  Maxima support integers, timestamps in their declared units, and byte strings.
+  Null and absent counters are separate; aggregation callback errors, including `Stop`, return no results.
+- Added `Dataset.Page` with `PageQuery`, `PageEntry`, and `Page`, composing limit-plus-one listings
+  with reductions for complete returned prefixes. Clipped or unknown boundaries remain unknown.
+  These execution and aggregation APIs are Go only pending the Java mirror. No format change.
+
 - Removed the physical request API: `IOObserver`, `IOReporter`, `IORequestKind`,
   `IOMetadata`, `IORange`, `IOWholeObject`, `IORequest`, `IOResult`,
   `WithIOObserver`, and `IOObserverFromContext` (including their reporting methods).

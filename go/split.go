@@ -40,7 +40,12 @@ import (
 // reset and receives the reads of splitting, whether it succeeds or fails.
 // A cancelled ctx, or a Close, fails a split whether or not it reads.
 // Splitting is a convenience of this reader, not a rule of the format.
-func (plan *Plan) Split(ctx context.Context, n int, st *ReadStats) (_ []*Plan, err error) {
+func (plan *Plan) Split(ctx context.Context, n int, st *ReadStats) ([]*Plan, error) {
+	return plan.split(ctx, n, st, true)
+}
+
+// split uses ordinal row-group cuts for value-only work, without key probes.
+func (plan *Plan) split(ctx context.Context, n int, st *ReadStats, checkKeys bool) (_ []*Plan, err error) {
 	st, spare := takeStats(st)
 	defer dropStats(spare)
 	if n < 1 {
@@ -60,7 +65,7 @@ func (plan *Plan) Split(ctx context.Context, n int, st *ReadStats) (_ []*Plan, e
 	if len(plan.spans) == 0 {
 		return nil, nil
 	}
-	cuts, err := plan.cuts(rctx, n, st)
+	cuts, err := plan.cuts(rctx, n, st, checkKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +87,7 @@ func (plan *Plan) Split(ctx context.Context, n int, st *ReadStats) (_ []*Plan, e
 
 // cuts returns at most n-1 shard boundaries, ascending dataset ordinals
 // each with rows of the plan on both sides, counting its reads in st.
-func (plan *Plan) cuts(ctx context.Context, n int, st *ReadStats) ([]int64, error) {
+func (plan *Plan) cuts(ctx context.Context, n int, st *ReadStats, checkKeys bool) ([]int64, error) {
 	r, spans := plan.r, plan.spans
 	first := spans[0].start
 	// The candidates are the selected rows that begin a row group, or a
@@ -157,7 +162,10 @@ func (plan *Plan) cuts(ctx context.Context, n int, st *ReadStats) ([]int64, erro
 		}
 		before := func(j int) bool { return j < next && (next == len(candidates) || rows[j] < rows[next]) }
 		for ; before(j); j++ {
-			inside, err := plan.insideGroup(s, candidates[j])
+			inside, err := false, error(nil)
+			if checkKeys {
+				inside, err = plan.insideGroup(s, candidates[j])
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -173,23 +181,37 @@ func (plan *Plan) cuts(ctx context.Context, n int, st *ReadStats) ([]int64, erro
 }
 
 // insideGroup reports whether row c, the first of its row group, and the
-// row before it are rows of the plan with equal keys, so that a boundary
-// at c would divide their group. Only when keys are not unique and the two
-// rows are in one part (PART-4) does it decode the key pages holding them.
+// selected row before it have equal keys, so a boundary at c would divide
+// their key group. They may straddle a gap between selected ordinal spans.
+// Only repeated keys in one part (PART-4) need key-page probes.
 func (plan *Plan) insideGroup(s *scan, c int64) (bool, error) {
 	r := plan.r
 	if r.key.Unique || r.parts[r.partAt(c)].start == c {
 		return false, nil
 	}
 	k := sort.Search(len(plan.spans), func(k int) bool { return plan.spans[k].end > c })
-	if k == len(plan.spans) || plan.spans[k].start >= c {
+	if k == len(plan.spans) {
 		return false, nil
 	}
-	if err := s.seekOrdinal(c - 1); err != nil {
+	beforeRow := c - 1
+	if plan.spans[k].start >= c {
+		if k == 0 {
+			return false, nil
+		}
+		beforeRow = plan.spans[k-1].end - 1
+		if r.partAt(beforeRow) != r.partAt(c) {
+			return false, nil
+		}
+	}
+	if err := s.seekOrdinal(beforeRow); err != nil {
 		return false, err
 	}
 	before := bytes.Clone(s.key)
-	if err := s.next(); err != nil {
+	if beforeRow == c-1 {
+		if err := s.next(); err != nil {
+			return false, err
+		}
+	} else if err := s.seekOrdinal(c); err != nil {
 		return false, err
 	}
 	return bytes.Equal(before, s.key), nil
