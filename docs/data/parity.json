@@ -72,7 +72,7 @@
         {"concept": "Split a plan into shards", "go": "Plan.Split", "java": "Plan.split"},
         {"concept": "Scan a plan", "go": "Plan.Scan", "java": "Plan.scan"},
         {"concept": "Plan a union of row intervals", "go": "Dataset.PlanRows", "java": "Dataset.planRows", "java_pending": "planned: Java browse API"},
-        {"concept": "Input row intervals before union normalization", "go": "Plan.RowSpans", "java": "Plan.rowSpans", "java_pending": "planned: Java browse API"},
+        {"concept": "Input row intervals before union normalization", "go": "Plan.InputRowSpans", "java": "Plan.inputRowSpans", "java_pending": "planned: Java browse API"},
         {"concept": "Select contained rows without I/O", "go": "Plan.SelectRows", "java": "Plan.selectRows", "java_pending": "planned: Java browse API"},
         {"concept": "Scan projected values by row position", "go": "Plan.ScanValues", "java": "Plan.scanValues", "java_pending": "planned: Java browse API"},
         {"concept": "Borrowed projected values", "go": "ValueBatch", "java": "ValueBatch", "java_pending": "planned: Java browse API"},

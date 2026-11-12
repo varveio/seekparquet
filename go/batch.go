@@ -80,8 +80,8 @@ func (b *Batch) Cursor(i int) *Cursor {
 	return &Cursor{Key: bytes.Clone(b.Key(i)), Offset: b.Offset(i)}
 }
 
-// Stop, returned by a batch callback, ends Dataset.Scan or Plan.Scan
-// early with a nil error: a successful early stop. Any other error a
+// Stop, returned by a batch callback, ends Dataset.Scan, Plan.Scan or
+// Plan.ScanValues early with a nil error: a successful early stop. Any other error a
 // callback returns ends the scan and is returned unchanged.
 var Stop = errors.New("seekparquet: stop the scan")
 

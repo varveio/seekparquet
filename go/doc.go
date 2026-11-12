@@ -6,8 +6,8 @@
 // into key-disjoint parts and committed by a manifest.json (SeekParquet
 // format 1, draft revision 1, stamped format_version 0).
 //
-// A read is routed to a part by its manifest bounds and to a row group by
-// the decoded first keys of the row groups; the key column's ColumnIndex
+// A read through keys is routed to a part by its manifest bounds and to a
+// row group by the decoded first keys of the row groups; the key column's ColumnIndex
 // and OffsetIndex locate the page that can hold the start; only that page
 // onward is decoded, in unsigned byte order of the keys. Keys are bytes;
 // nothing assumes UTF-8 unless the key column is annotated STRING.
@@ -43,8 +43,8 @@
 // scans to the end of the span. Dataset.Get returns every row of one key,
 // up to Limits.GetRows. Dataset.List lists a prefix with delimiter rollups.
 //
-// Every read checks a row group's key page index before using the group,
-// and every key page it decodes (CHECK-2): the page header matches its
+// Reads through keys check each key page index they use,
+// and every key page they decode (CHECK-2): the page header matches its
 // OffsetIndex entry, one non-empty key per row, in the declared order
 // (strictly ascending when keys are unique), inside the page's ColumnIndex
 // bounds and its part's manifest bounds, and in dataset order with every
@@ -79,6 +79,23 @@
 // in dataset order as borrowed batches, checking every key page it
 // decodes. A count certifies only the rows at the ends it decoded
 // (CHECK-4).
+//
+// Dataset.PlanRows plans RowSpan values from reader-produced RowPositions,
+// including ListEntry.Rows when both boundaries are known. With no
+// columns it performs no storage I/O; Count still reports whether the
+// contributing parts were checked at plan construction, even with known
+// positions. Unknown listing boundaries are not empty: use Dataset.Plan on
+// the corresponding key selection to resolve them, possibly reading storage.
+// Plan.InputRowSpans preserves overlaps and empties in the original input
+// spans before union normalization. Plan.SelectRows selects contained
+// spans with the same projection without I/O, including after Close.
+// Plan.ScanValues reads projected columns by row position as borrowed
+// ValueBatch batches, without implicit key decoding or equal-key offsets.
+// It permits Source-cache lookup and admission under CacheDefault;
+// Plan.Scan uses CacheBypass for that mode. Scans fail with ErrClosed
+// after the Dataset closes; positions remain inspectable and in-memory plan
+// inspection and SelectRows remain usable. Split requires the open Dataset:
+// it can read key pages to keep groups of equal keys whole.
 //
 // Plan.Split divides a plan into shards along row-group boundaries,
 // never inside a group of equal keys, balanced by projected bytes (or rows
@@ -120,8 +137,8 @@
 // A projected Value is one of three states: absent, when the row's part
 // lacks the column (COL-2); a null stored in the column; or a physical
 // Parquet value of a Kind, read with typed accessors. Absent is not null.
-// A ColumnView reads one projected column of a batch in place. Schema
-// descriptions (Column) use this package's Kind, Repetition and Logical.
+// A ColumnView reads one projected column of a Batch or ValueBatch in place.
+// Schema descriptions (Column) use this package's Kind, Repetition and Logical.
 // No parquet-go type appears in the read API; package write takes a
 // parquet-go schema.
 //
@@ -135,12 +152,23 @@
 // it holds (Limits.PageIndexCacheMemory), so that later index loads of the
 // part read nothing.
 //
+// With a non-local Source, scans, listings and projected reads can fetch
+// bounded windows through RangeReader, falling back to concurrent ReadAt
+// calls. Zero-policy OpenDir reads on demand; explicitly requesting listing
+// read-ahead or setting OpenOptions.Read opts into window fetching. The
+// windows hold at most 64 MiB of fetched, undecoded bytes per operation,
+// independently of other operations on the Dataset. This does not bound
+// decoded pages, dictionaries, metadata or results. Window scheduling respects
+// Limits.PageBytes before fetching page extents; demand reads still check
+// page headers and payloads. Panics in Source reads (ReadAt or ReadRanges)
+// become environment errors containing the recovered value.
+//
 // # Read statistics
 //
 // Passing a *ReadStats to a read (Rows, Get, Scan, List, Plan, Split,
-// Plan.Scan) makes it report the pages, keys, row groups and Source reads
-// it used, exactly, even when it fails. They are diagnostics, not part of
-// the format contract.
+// PlanRows, Plan.Scan, Plan.ScanValues) makes it report the pages, keys,
+// row groups and Source reads it used, exactly, even when it fails. They
+// are diagnostics, not part of the format contract.
 //
 // # Manifests, parts and writing
 //

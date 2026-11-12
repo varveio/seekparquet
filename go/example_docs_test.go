@@ -60,6 +60,123 @@ func Example_readme() {
 	// page 2: logs/2026/03/
 }
 
+// Count known listing spans without storage reads, then aggregate per input span.
+func Example_countAndAggregatePrefix() {
+	ctx := context.Background()
+	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer d.Close()
+
+	// This fixture has three entries. Let List traverse beyond each prefix
+	// so that it establishes both row boundaries.
+	entries, err := d.List(ctx, seekparquet.ListQuery{
+		Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 4,
+	}, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var spans []seekparquet.RowSpan
+	var counts seekparquet.ReadStats
+	for _, entry := range entries {
+		_, startKnown := entry.Rows.Start.Ordinal()
+		_, endKnown := entry.Rows.End.Ordinal()
+		if !startKnown || !endKnown {
+			log.Fatal("use a key-range plan for an unknown boundary")
+		}
+		p, err := d.PlanRows(ctx, []seekparquet.RowSpan{entry.Rows}, nil, &counts)
+		if err != nil {
+			log.Fatal(err)
+		}
+		n, exact := p.Count()
+		fmt.Printf("%s: %d rows, exact=%t, reads=%d\n", entry.Bytes(), n, exact, counts.SourceReads)
+		spans = append(spans, entry.Rows)
+	}
+
+	// Load projection metadata once for the listed rows, then select the
+	// first two entries without I/O. InputRowSpans preserves the input order.
+	all, err := d.PlanRows(ctx, spans, []string{"size"}, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	inputs := all.InputRowSpans()[:2]
+	selected, err := all.SelectRows(inputs)
+	if err != nil {
+		log.Fatal(err)
+	}
+	sums := make([]int64, len(inputs))
+	var scan seekparquet.ReadStats
+	err = selected.ScanValues(ctx, &scan, func(b *seekparquet.ValueBatch) error {
+		column := b.Column(0)
+		if !column.Present() || column.Kind() != seekparquet.KindInt64 {
+			return fmt.Errorf("size must be an INT64 column")
+		}
+		start, _ := b.Start().Ordinal()
+		for i := range b.Len() {
+			if column.IsNull(i) {
+				continue
+			}
+			// Union normalization may join adjacent inputs into one batch.
+			// Distribute each row by ordinal, including to overlapping inputs.
+			ordinal := start + int64(i)
+			for j, span := range inputs {
+				lo, _ := span.Start.Ordinal()
+				hi, _ := span.End.Ordinal()
+				if lo <= ordinal && ordinal < hi {
+					sums[j] += column.Int64(i)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("size sums per input: %v; key pages decoded: %d\n", sums, scan.KeyPagesDecoded)
+	// Output:
+	// logs/2026/01/: 30 rows, exact=true, reads=0
+	// logs/2026/02/: 40 rows, exact=true, reads=0
+	// logs/2026/03/: 30 rows, exact=true, reads=0
+	// size sums per input: [31543127898 43279389918]; key pages decoded: 0
+}
+
+// Resolve an unknown listing boundary with a key-range plan.
+func Example_countPrefixUnknownRows() {
+	ctx := context.Background()
+	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer d.Close()
+	entries, err := d.List(ctx, seekparquet.ListQuery{
+		Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 1,
+	}, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	entry := entries[0]
+	_, known := entry.Rows.End.Ordinal()
+	fmt.Println("end known:", known)
+
+	// This listing has no End or Cursor to restrict the prefix's rows.
+	// Plan resolves its key boundaries; unlike PlanRows without columns,
+	// this fallback can read storage.
+	p, err := d.Plan(ctx, []seekparquet.Selection{
+		{Span: seekparquet.PrefixSpan(entry.CommonPrefix)},
+	}, nil, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	n, exact := p.Count()
+	fmt.Printf("%s: %d rows, exact=%t\n", entry.Bytes(), n, exact)
+	fmt.Println("resolved spans:", len(p.InputRowSpans()))
+	// Output:
+	// end known: false
+	// logs/2026/01/: 30 rows, exact=true
+	// resolved spans: 1
+}
+
 // Validate a local dataset at the full level, which runs the structural
 // and profile levels first.
 func ExampleValidateDir() {

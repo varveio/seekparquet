@@ -14,10 +14,17 @@ import (
 // ValueBatch is a positive run of consecutive selected rows in dataset
 // order. It never crosses a row group, a projected column's page boundary,
 // or a gap in the selection. Its maximum size is bounded by the reader.
+// A batch may cross adjacent input-span boundaries after union normalization;
+// aggregate per input span by distributing rows using their dataset ordinals.
+// Only batches produced by ScanValues carry data; the zero value is empty.
 //
 // The batch, column views and value bytes are borrowed and read-only,
-// valid only until the ScanValues callback returns. Copy retained values
-// with ColumnView.Value(i).Clone().
+// valid only until the ScanValues callback returns. Copying a ValueBatch or
+// ColumnView does not retain values; use ColumnView.Value(i).Clone().
+// Start returns an independently owned position.
+//
+// Dataset ordinals and counts are int64; batch indexes and lengths are int.
+// Compute a row's ordinal as start + int64(i), without converting start to int.
 type ValueBatch struct {
 	ds     uint64
 	start  int64
@@ -32,7 +39,8 @@ type ValueBatch struct {
 func (b *ValueBatch) Len() int { return b.n }
 
 // Start returns an owned position at the batch's first row.
-// Row i has dataset ordinal Start's ordinal plus i.
+// Row i has dataset ordinal start + int64(i), where start is Start's ordinal.
+// The position remains inspectable after the callback and Dataset.Close.
 func (b *ValueBatch) Start() RowPosition { return RowPosition{ds: b.ds, ordinal: b.start} }
 
 // Column returns the borrowed values of projection slot c, following

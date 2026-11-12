@@ -231,7 +231,7 @@ func TestScanValuesStopAndClose(t *testing.T) {
 		t.Fatalf("cancelled: %v", err)
 	}
 	must(t, d.Close())
-	afterClose, err := plan.SelectRows(plan.RowSpans())
+	afterClose, err := plan.SelectRows(plan.InputRowSpans())
 	must(t, err)
 	if err := afterClose.ScanValues(ctx, nil, func(*ValueBatch) error { return nil }); !errors.Is(err, ErrClosed) {
 		t.Fatalf("selected plan after close: %v", err)
@@ -245,7 +245,7 @@ func TestScanValuesStopAndClose(t *testing.T) {
 }
 
 // TestSelectRowsProjectedBytes: SelectRows prices a union of a plan's rows
-// as planning those rows does, without I/O; RowSpans gives back the
+// as planning those rows does, without I/O; InputRowSpans gives back the
 // inputs; positions outside the plan are refused; with no room in
 // OffsetIndexMemory, the selected plan's bytes are not exact.
 func TestSelectRowsProjectedBytes(t *testing.T) {
@@ -258,7 +258,7 @@ func TestSelectRowsProjectedBytes(t *testing.T) {
 		cols := []string{"dict", "num", "missing", "opt"}
 		whole, err := d.PlanRows(ctx, []RowSpan{d.r.rowSpan(lo, hi)}, cols, nil)
 		must(t, err)
-		same, err := whole.SelectRows(whole.RowSpans())
+		same, err := whole.SelectRows(whole.InputRowSpans())
 		must(t, err)
 		if b, e := same.ProjectedBytes(); !eqBytes(b, e, whole) {
 			t.Fatalf("indexed=%v: all of the plan: %d %v, plan %d", indexed, b, e, whole.bytes)
@@ -280,7 +280,7 @@ func TestSelectRowsProjectedBytes(t *testing.T) {
 			}
 			gn, gx := sel.Count()
 			fn, fx := fresh.Count()
-			if gn != fn || gx != fx || !slices.Equal(sel.RowSpans(), spans) {
+			if gn != fn || gx != fx || !slices.Equal(sel.InputRowSpans(), spans) {
 				t.Fatalf("trial %d: counts %d %v, %d %v", trial, gn, gx, fn, fx)
 			}
 			_, a := scannedValues(t, sel, nil)
@@ -301,7 +301,7 @@ func TestSelectRowsProjectedBytes(t *testing.T) {
 		if _, exact := p.ProjectedBytes(); !exact {
 			t.Fatalf("the plan's own bytes are exact")
 		}
-		s, err := p.SelectRows(p.RowSpans())
+		s, err := p.SelectRows(p.InputRowSpans())
 		must(t, err)
 		if _, exact := s.ProjectedBytes(); exact {
 			t.Fatalf("locations not kept, yet selected bytes exact")
@@ -358,7 +358,7 @@ func TestSelectRowsDuplicateProjection(t *testing.T) {
 
 // TestPlanMetadataFirst: Dataset.Plan resolves the whole dataset, and ends
 // at part boundaries, from the manifest without decoding a key page, and
-// decoded unique first keys place an end at a row group; RowSpans gives
+// decoded unique first keys place an end at a row group; InputRowSpans gives
 // each selection's rows in input order, an empty one with equal ends.
 func TestPlanMetadataFirst(t *testing.T) {
 	keys := fixtureKeys(300)
@@ -380,7 +380,7 @@ func TestPlanMetadataFirst(t *testing.T) {
 	if st.KeyPagesDecoded != 0 {
 		t.Fatalf("part boundaries decoded %d key pages", st.KeyPagesDecoded)
 	}
-	spans := plan.RowSpans()
+	spans := plan.InputRowSpans()
 	ord := func(p RowPosition) int64 {
 		n, ok := p.Ordinal()
 		must(t, map[bool]error{true: nil, false: errors.New("unknown")}[ok])

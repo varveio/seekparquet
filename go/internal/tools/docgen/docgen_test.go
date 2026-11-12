@@ -432,3 +432,20 @@ func TestPendingJavaParityRows(t *testing.T) {
 		t.Fatalf("pending row bypassed Go check: %s", got)
 	}
 }
+
+func TestInputRowSpansParity(t *testing.T) {
+	g, err := newGenerator(mutableTree(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.check(); err != nil {
+		t.Fatal(err)
+	}
+	page, err := g.renderParity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page, "| Input row intervals before union normalization | `Plan.InputRowSpans` | `Plan.inputRowSpans` | Java pending") {
+		t.Error("parity reference must use InputRowSpans and its pending Java counterpart")
+	}
+}

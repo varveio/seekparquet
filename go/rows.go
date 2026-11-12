@@ -12,16 +12,19 @@ import (
 // RowPosition is an immutable boundary between rows of one Dataset.
 // It identifies the row following the boundary, or the end of the dataset.
 //
-// Positions are produced by the reader, may be copied, and remain usable
-// until their Dataset closes. They are not portable between Dataset
-// handles, even handles opened on the same source. The zero value is unknown.
+// Positions are produced by the reader, may be copied, and remain inspectable
+// after Dataset.Close. In-memory selection with Plan.SelectRows also remains
+// allowed; planning with Dataset.PlanRows and executing scans require the open
+// Dataset. Positions are not portable between Dataset handles, even handles
+// opened on the same source. The zero value is unknown.
 type RowPosition struct {
 	// ds is the Dataset's reader.id, zero for an unknown position.
 	ds      uint64
 	ordinal int64
 }
 
-// Ordinal returns the boundary's zero-based dataset row ordinal.
+// Ordinal returns the boundary's zero-based dataset row ordinal as an int64,
+// including after Dataset.Close.
 // known is false for the zero value.
 //
 // An ordinal is a coordinate in the dataset's declared row order, not
@@ -29,11 +32,14 @@ type RowPosition struct {
 func (p RowPosition) Ordinal() (ordinal int64, known bool) { return p.ordinal, p.ds != 0 }
 
 // RowSpan selects the rows between Start, inclusive, and End, exclusive.
-// Both positions must be known and belong to the same Dataset, and End
-// must not precede Start. Equal positions select no rows.
+// As planning input, both positions must be known and belong to the same
+// Dataset, and End must not precede Start. Equal known boundaries select no
+// rows. The zero value is incomplete and invalid as input, unlike the
+// key-based Span, whose zero value selects every key.
 //
-// A RowSpan returned by List may have an unknown boundary when the
-// listing did not establish it without additional reads.
+// Unknown boundaries are legitimate listing output: a RowSpan returned by
+// List may have an unknown boundary when the listing did not establish it
+// without additional reads. Unknown does not mean empty or zero rows.
 type RowSpan struct {
 	Start RowPosition
 	End   RowPosition
@@ -87,7 +93,10 @@ func (r *reader) ordinalSpans(ranges []rowRange) []span {
 //
 // With no columns, PlanRows performs no storage I/O: it neither opens
 // parts nor loads indexes or decodes keys. Count reports whether the
-// available row-count evidence is sufficient.
+// available row-count evidence is sufficient: even known positions yield an
+// inexact count if any contributing part was unchecked at plan construction.
+// Unknown boundaries are invalid input, never empty spans; resolve them with
+// Dataset.Plan over the corresponding key selection, which may read storage.
 //
 // With columns, planning checks selected parts and loads the metadata
 // needed to locate projected pages, as Dataset.Plan does. It does not
@@ -125,15 +134,16 @@ func (r *reader) planRows(ctx context.Context, spans []RowSpan, columns []string
 	return plan, nil
 }
 
-// RowSpans returns one span for each input selection or row span, in
-// input order, before union normalization. Empty selections have equal
-// boundaries. The returned slice belongs to the caller.
+// InputRowSpans returns the caller's original input row spans (or the resolved
+// spans of input key selections), in input order, including overlaps and
+// empties. It does not return the plan's normalized union. Empty selections
+// have equal known boundaries. The returned slice belongs to the caller.
 //
 // The positions are bound to the plan's Dataset. This method performs
 // no I/O and preserves overlapping inputs for independent aggregation.
 //
 // A shard of Plan.Split has one input per span of the plan's rows in it.
-func (plan *Plan) RowSpans() []RowSpan {
+func (plan *Plan) InputRowSpans() []RowSpan {
 	out := make([]RowSpan, len(plan.inputs))
 	for i, in := range plan.inputs {
 		out[i] = plan.r.rowSpan(in.start, in.end)
