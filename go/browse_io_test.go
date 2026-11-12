@@ -513,3 +513,72 @@ func TestScanValuesCacheMode(t *testing.T) {
 		})
 	}
 }
+
+// Whole-dataset sums span many value pages. Compare cold operations on
+// identical plans, and duplicate slots against a single physical column.
+func TestScanValuesWindows(t *testing.T) {
+	fx := ioFixtureOf(t, ioTiny)
+	for _, store := range []ioStore{plainStore, capableStore} {
+		t.Run(store.name, func(t *testing.T) {
+			var single ioMetrics
+			var singleStats seekparquet.ReadStats
+			for _, cols := range [][]string{{"size"}, {"size", "etag"}, {"size", "size"}} {
+				var metrics [2]ioMetrics
+				var stats [2]seekparquet.ReadStats
+				var sums [2]int64
+				for mode := range 2 {
+					synctest.Test(t, func(t *testing.T) {
+						ctx := context.Background()
+						src := fakestore.New(fx.objects, ioOptions)
+						d, err := seekparquet.OpenDataset(ctx, store.wrap(src), store.opt)
+						must(t, err)
+						defer d.Close()
+						p, err := d.Plan(ctx, []seekparquet.Selection{{}}, cols, nil)
+						must(t, err)
+						op := src.Begin("scan")
+						var rows, sum int64
+						if mode == 0 {
+							must(t, p.ScanValues(ctx, &stats[mode], func(b *seekparquet.ValueBatch) error {
+								rows += int64(b.Len())
+								for i := range b.Len() {
+									sum += b.Column(0).Int64(i)
+									if len(cols) == 2 && cols[0] == cols[1] && b.Column(0).Int64(i) != b.Column(1).Int64(i) {
+										t.Fatal("duplicate slot differs")
+									}
+								}
+								return nil
+							}))
+						} else {
+							must(t, p.Scan(ctx, &stats[mode], func(b *seekparquet.Batch) error {
+								rows += int64(b.Len())
+								for i := range b.Len() {
+									sum += b.Column(0).Int64(i)
+								}
+								return nil
+							}))
+						}
+						sums[mode] = sum
+						if rows != int64(len(fx.keys)) {
+							t.Fatalf("rows %d; want %d", rows, len(fx.keys))
+						}
+						metrics[mode] = metricsOf(op.End())
+					})
+				}
+				if sums[0] != sums[1] {
+					t.Fatalf("values sum %d, scan sum %d", sums[0], sums[1])
+				}
+				t.Logf("%v: values %+v, scan %+v", cols, metrics[0], metrics[1])
+				if metrics[0].Requests > metrics[1].Requests || metrics[0].Rounds > metrics[1].Rounds {
+					t.Errorf("%v: values %+v exceed scan %+v", cols, metrics[0], metrics[1])
+				}
+				if len(cols) == 1 {
+					single, singleStats = metrics[0], stats[0]
+				} else if cols[0] == cols[1] {
+					if metrics[0] != single || stats[0].ValuePagesDecoded != singleStats.ValuePagesDecoded {
+						t.Errorf("duplicate projection: %+v, %d decoded; single %+v, %d decoded", metrics[0], stats[0].ValuePagesDecoded, single, singleStats.ValuePagesDecoded)
+					}
+				}
+			}
+		})
+	}
+}

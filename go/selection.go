@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"runtime"
 	"slices"
 	"sort"
 )
@@ -27,12 +26,9 @@ import (
 // and the OffsetIndex row positions. Scan decodes every row and checks
 // every key page it reads; ScanValues reads no key page.
 //
-// A plan with columns keeps the checked page locations of the projected
-// chunks holding its rows, to price SelectRows: the Dataset's own, kept
-// within Limits.OffsetIndexMemory, or, when the Dataset did not keep them,
-// locations reserved in that same budget for as long as the plan, or a
-// plan made from it by SelectRows or Split, is reachable; locations that
-// do not fit are not kept.
+// A plan with columns shares the checked page locations the Dataset keeps
+// within Limits.OffsetIndexMemory, read-only, to price SelectRows. Other
+// locations are used transiently to price the original plan, then dropped.
 type Plan struct {
 	r       *reader
 	columns []string
@@ -51,9 +47,6 @@ type Plan struct {
 	// row of the plan, in dataset order, with the page locations that
 	// priced them (SelectRows).
 	groups []groupBytes
-	// pin, when set, holds the reservation of page locations the plan's
-	// groups keep privately, shared by the plans made from it.
-	pin *locsPin
 }
 
 // rowRange is the dataset rows [start, end).
@@ -69,7 +62,7 @@ type groupBytes struct {
 	bytes   int64
 	partial bool
 	// chunks are the group's distinct projected chunks. Repeated projection
-	// slots share physical extents and must only be priced and reserved once.
+	// slots share physical extents and must only be priced once.
 	chunks []plannedChunk
 }
 
@@ -78,52 +71,8 @@ type groupBytes struct {
 // extent.
 type plannedChunk struct {
 	present bool      // the part has the column (COL-2)
-	private bool      // locs are not the Dataset's kept locations (keep)
 	locs    []pageLoc // nil when the chunk has no OffsetIndex, or they are not kept
 	dict    int64
-}
-
-// locsPin is a reservation in Limits.OffsetIndexMemory of the page
-// locations plans keep privately, given back once no plan holds it.
-type locsPin struct {
-	// Keep the owner pointer here so the pin cannot share a tiny allocation
-	// with a live pin, which could prevent its cleanup from ever running.
-	r    *reader
-	size int64
-}
-
-// keep reserves the private page locations of gb's chunks in the
-// Dataset's OffsetIndexMemory, and drops those beyond it.
-func (plan *Plan) keep(gb *groupBytes) {
-	for c := range gb.chunks {
-		pc := &gb.chunks[c]
-		if !pc.private {
-			continue
-		}
-		pc.private = false
-		if size := locsSize(pc.locs); plan.r.reserveLocations(size) {
-			if plan.pin == nil {
-				plan.pin = &locsPin{r: plan.r}
-			}
-			plan.pin.size += size
-		} else {
-			pc.locs = nil
-		}
-	}
-}
-
-// release registers the plan's reservation to be given back once neither
-// it nor any plan made from it is reachable.
-func (plan *Plan) release() {
-	if plan.pin != nil {
-		runtime.AddCleanup(plan.pin, func(c locsCleanup) { c.r.locsMemory.Add(-c.size) }, locsCleanup{plan.pin.r, plan.pin.size})
-	}
-}
-
-// locsCleanup gives back a locsPin's reservation.
-type locsCleanup struct {
-	r    *reader
-	size int64
 }
 
 // price sets the group's bytes and partial from the plan's rows in it,
@@ -378,17 +327,10 @@ func (r *reader) cut(key []byte, inclusive bool) (ordinal int64, ok bool) {
 // planColumns checks every part holding a row of the plan and prices the
 // projected bytes (groupBytes.price), keeping each group's page locations
 // for SelectRows: those the Dataset keeps (Limits.OffsetIndexMemory) are
-// shared; those it does not are reserved in the same budget, pinned by the
-// plan, and, past the budget, dropped, their chunk then priced as partial
-// by SelectRows.
-func (plan *Plan) planColumns(ctx context.Context, st *ReadStats) (err error) {
+// shared read-only; those it does not are dropped, their chunk then priced
+// as partial by SelectRows.
+func (plan *Plan) planColumns(ctx context.Context, st *ReadStats) error {
 	r := plan.r
-	defer func() {
-		if err != nil && plan.pin != nil {
-			r.locsMemory.Add(-plan.pin.size)
-			plan.pin = nil
-		}
-	}()
 	plan.bytes, plan.partial = 0, false
 	current := groupRef{-1, 0}
 	for _, sp := range plan.spans {
@@ -404,6 +346,7 @@ func (plan *Plan) planColumns(ctx context.Context, st *ReadStats) (err error) {
 				if g := (groupRef{i, j}); g != current {
 					current = g
 					grp := p.groups[j]
+					var keptLocs [][]pageLoc
 					gb := groupBytes{start: grp.start, rows: grp.rows, chunks: make([]plannedChunk, 0, len(plan.columns))}
 					for c, name := range plan.columns {
 						if slices.Contains(plan.columns[:c], name) {
@@ -417,24 +360,28 @@ func (plan *Plan) planColumns(ctx context.Context, st *ReadStats) (err error) {
 							pc := plannedChunk{present: true, locs: cp.locs}
 							if cp.locs != nil {
 								pc.dict = cp.dictionaryBytes()
-								kept := p.locs[grp.physical][p.leaves[name].index].Load()
-								pc.private = kept == nil || &(*kept)[0] != &cp.locs[0]
 							}
 							gb.chunks = append(gb.chunks, pc)
+							var locs []pageLoc
+							if kept := p.locs[grp.physical][p.leaves[name].index].Load(); kept != nil {
+								locs = *kept
+							}
+							keptLocs = append(keptLocs, locs)
 						}
 					}
 					// Price while this group's locations are transient, then
-					// reserve or discard before retaining it and loading more.
+					// discard unkept locations before retaining it and loading more.
 					gb.price(plan.spans)
 					plan.bytes += gb.bytes
 					plan.partial = plan.partial || gb.partial
-					plan.keep(&gb)
+					for c := range gb.chunks {
+						gb.chunks[c].locs = keptLocs[c]
+					}
 					plan.groups = append(plan.groups, gb)
 				}
 			}
 		}
 	}
-	plan.release()
 	return nil
 }
 

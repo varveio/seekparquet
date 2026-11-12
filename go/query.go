@@ -542,20 +542,20 @@ func (s *scan) seekList(from []byte, req ListQuery, l *listing) error {
 			l.reached(s, from)
 			return nil
 		}
-		// The group's first key is its first candidate when it is at or
-		// after from: no earlier group holds a key at or after from
-		// (groupFor), and the row's offset is zero, since only a part's
-		// first group, or a group of unique keys, can begin at or after
-		// from here. A first key equal to whole is then its exact row.
-		// The group's first row is then also the first row at or after
-		// from, where the prefix before it ends; otherwise neither is
-		// known.
+		// A shortcut whose first key precedes from does not establish the
+		// first candidate's row. Seek it so equivalent listings agree on
+		// boundary knownness even when their routing evidence differs.
 		first := *s.r.group(g).first.Load()
-		start := int64(-1)
-		if bytes.Compare(first, from) >= 0 {
-			start = s.r.startOf(g)
+		if bytes.Compare(first, from) < 0 {
+			s.stats.GroupsSkipped-- // this shortcut will be read after all
+			if err := s.seek(from, true); err != nil {
+				return err
+			}
+			l.reached(s, from)
+			return nil
 		}
-		if start >= 0 && (s.end == nil || bytes.Compare(from, s.end) <= 0) {
+		start := s.r.startOf(g)
+		if s.end == nil || bytes.Compare(from, s.end) <= 0 {
 			l.close(start)
 		}
 		l.prefix(whole, bytes.Equal(first, whole) && start >= 0, 0, position{g, 0}, start)

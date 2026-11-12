@@ -157,6 +157,22 @@ func TestListMatchesOracle(t *testing.T) {
 			}
 		}
 	}
+	// The truncated-bound fixture above often starts inside a group. Such
+	// a shortcut now seeks its first candidate to establish Rows.Start and
+	// must not count the group as skipped. Also exercise a whole-group
+	// shortcut with an aligned start and a previously decoded witness.
+	alignedKeys := []string{"a/0", "a/1", "a/2", "a/3", "a/4", "a/5", "b/0"}
+	aligned := open(t, write(t, parts(testutil.Part{GroupRows: 3, PageBytes: 16}, alignedKeys)), OpenOptions{})
+	_, err := aligned.Rows(ctx, Query{Limit: 1}, nil)
+	must(t, err)
+	var st ReadStats
+	req := ListQuery{Delimiter: '/', Limit: 1}
+	got, err := aligned.r.readList(ctx, req, &st)
+	must(t, err)
+	if want := listOracle(alignedKeys, req); !slices.Equal(entriesOf(got), want) {
+		t.Fatalf("aligned shortcut: got %q, want %q", entriesOf(got), want)
+	}
+	skipped += st.GroupsSkipped
 	if skipped == 0 || seeks == 0 {
 		t.Fatalf("the listing never skipped: %d groups, %d seeks", skipped, seeks)
 	}

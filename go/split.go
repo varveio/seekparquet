@@ -201,7 +201,7 @@ func (plan *Plan) insideGroup(s *scan, c int64) (bool, error) {
 // row groups are ascending and disjoint, so it visits only those in
 // [lo, hi), after a binary search: many shards cost no more than few.
 func (plan *Plan) shard(lo, hi int64) *Plan {
-	shard := &Plan{r: plan.r, columns: plan.columns, pin: plan.pin}
+	shard := &Plan{r: plan.r, columns: plan.columns}
 	k := sort.Search(len(plan.spans), func(k int) bool { return plan.spans[k].end > lo })
 	for _, sp := range plan.spans[k:] {
 		if sp.start >= hi {

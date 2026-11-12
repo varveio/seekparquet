@@ -81,7 +81,7 @@ func compareListIndex(t *testing.T, plain, indexed *Dataset, q ListQuery) ReadSt
 	var st ReadStats
 	got, e2 := indexed.List(ctx, q, &st)
 	if e1 != nil || e2 != nil || !sameEntries(want, got) {
-		t.Fatalf("query=%+v plain=%v/%v indexed=%v/%v", q, entriesOf(want), e1, entriesOf(got), e2)
+		t.Fatalf("query=%+v cursor=%+v plain=%+v/%v indexed=%+v/%v", q, q.Cursor, want, e1, got, e2)
 	}
 	return st
 }

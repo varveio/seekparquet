@@ -103,6 +103,7 @@ var Stop = errors.New("seekparquet: stop the scan")
 // normally; once Close has begun they fail with ErrClosed. Concurrent or
 // reentrant scans have independent borrowed storage. It asks a Source's
 // byte cache to be bypassed (CacheBypass), unless ctx sets a cache mode.
+// ScanValues instead permits source-cache lookup and admission by default.
 func (plan *Plan) Scan(ctx context.Context, st *ReadStats, fn func(*Batch) error) error {
 	return plan.scanBatches(ctx, st, keyReuse{}, fn)
 }

@@ -388,8 +388,7 @@ func selectionsOf(qs []Query) []Selection {
 
 // sameEntries reports whether two listings, possibly of different Dataset
 // handles, have the same entries: equal but for the rows' positions, which
-// belong to their handles, and whose ordinals must agree wherever both
-// listings established them.
+// belong to their handles, and whose knownness and ordinals must agree.
 func sameEntries(want, got []ListEntry) bool {
 	if len(want) != len(got) {
 		return false
@@ -407,11 +406,11 @@ func sameEntries(want, got []ListEntry) bool {
 	return true
 }
 
-// samePosition reports whether two positions agree where both are known.
+// samePosition compares knownness and, for known positions, ordinals.
 func samePosition(a, b RowPosition) bool {
 	x, okx := a.Ordinal()
 	y, oky := b.Ordinal()
-	return !okx || !oky || x == y
+	return okx == oky && (!okx || x == y)
 }
 
 // sameResults is sameEntries for listings, and reflect.DeepEqual for

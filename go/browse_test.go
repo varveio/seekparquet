@@ -231,6 +231,11 @@ func TestScanValuesStopAndClose(t *testing.T) {
 		t.Fatalf("cancelled: %v", err)
 	}
 	must(t, d.Close())
+	afterClose, err := plan.SelectRows(plan.RowSpans())
+	must(t, err)
+	if err := afterClose.ScanValues(ctx, nil, func(*ValueBatch) error { return nil }); !errors.Is(err, ErrClosed) {
+		t.Fatalf("selected plan after close: %v", err)
+	}
 	if err := plan.ScanValues(ctx, nil, func(*ValueBatch) error { return nil }); !errors.Is(err, ErrClosed) {
 		t.Fatalf("closed: %v", err)
 	}
@@ -516,4 +521,121 @@ func listCandidates(keys []string, q ListQuery, e ListEntry) (lo, hi int64) {
 		}
 	}
 	return lo, hi
+}
+
+// Unindexed chunks still use windows, but an unchecked chunk must never
+// cause a read larger than the page bound, even if its extent is enormous.
+func TestScanValuesUnindexedWindows(t *testing.T) {
+	type record struct {
+		Key  string `parquet:"key"`
+		Size int64  `parquet:"size,plain"`
+	}
+	rows := make([]record, 6000)
+	for i := range rows {
+		rows[i] = record{fmt.Sprintf("key-%06d", i), int64(i)}
+	}
+	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: rows, PageBytes: 256}}})
+	dropValueOffsets(t, dir)
+	for _, tc := range []struct {
+		name      string
+		pageBytes int64
+		oversized bool
+	}{
+		{"bounded", 1024, false},
+		{"oversized", 1024, true},
+		{"large-page-limit", 128 << 20, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := &recordingWaveSource{Source: dirOf(t, dir)}
+			d := openWith(t, ctx, src, OpenOptions{Limits: Limits{PageBytes: tc.pageBytes, MetadataMemory: 8192}}, false)
+			p, err := d.Plan(ctx, []Selection{{}}, []string{"size"}, nil)
+			must(t, err)
+			if tc.oversized {
+				// Keep the extent within the declared file size so scheduling
+				// cannot rely on the file bound to reject the oversized chunk.
+				d.r.parts[0].size = 2 << 30
+				d.r.parts[0].footer.Metadata().RowGroups[0].Columns[1].MetaData.TotalCompressedSize = 1 << 30
+			}
+			src.batches = nil
+			var sum int64
+			err = p.ScanValues(ctx, nil, func(b *ValueBatch) error {
+				for i := range b.Len() {
+					sum += b.Column(0).Int64(i)
+				}
+				return nil
+			})
+			if tc.pageBytes > readWaveBytes {
+				// A bounded prefix of the forged extent reaches beyond the
+				// real file. Its source error must be surfaced.
+				if err == nil {
+					t.Fatal("expected a source error for the forged extent")
+				}
+			} else {
+				must(t, err)
+				if want := int64(len(rows) * (len(rows) - 1) / 2); sum != want {
+					t.Fatalf("sum %d, want %d", sum, want)
+				}
+			}
+			if len(src.batches) == 0 {
+				t.Fatal("unindexed chunk bypassed windows")
+			}
+			limit := min(readWindowBytes, d.r.limits.PageBytes+d.r.limits.headerBytes())
+			for _, batch := range src.batches {
+				for _, rg := range batch {
+					if rg[1] > limit {
+						t.Fatalf("window reads %d bytes, page bound %d", rg[1], limit)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestBrowsePositionEquality(t *testing.T) {
+	known := RowPosition{ds: 1, ordinal: 3}
+	otherHandle := RowPosition{ds: 2, ordinal: 3}
+	for _, tc := range []struct {
+		a, b  RowPosition
+		equal bool
+	}{
+		{RowPosition{}, RowPosition{}, true},
+		{known, RowPosition{}, false},
+		{RowPosition{}, known, false},
+		{known, otherHandle, true},
+		{known, RowPosition{ds: 1, ordinal: 4}, false},
+	} {
+		if samePosition(tc.a, tc.b) != tc.equal {
+			t.Fatalf("position comparison of %+v and %+v, want %v", tc.a, tc.b, tc.equal)
+		}
+		for _, end := range []bool{false, true} {
+			a, b := RowSpan{Start: tc.a}, RowSpan{Start: tc.b}
+			if end {
+				a, b = RowSpan{End: tc.a}, RowSpan{End: tc.b}
+			}
+			if sameEntries([]ListEntry{{Rows: a}}, []ListEntry{{Rows: b}}) != tc.equal {
+				t.Fatalf("entry comparison of %+v and %+v, want %v", a, b, tc.equal)
+			}
+		}
+	}
+}
+
+func TestListShortcutPartialGroupPosition(t *testing.T) {
+	keys := []string{"a/", "a/x", "a/y", "a/z", "a/zz", "b/z"}
+	d := open(t, write(t, parts(testutil.Part{GroupRows: 3, PageBytes: 16}, keys)), OpenOptions{})
+	// Seed the first-key witness used by the shortcut, then start inside
+	// that group, whose successor group still shares the common prefix.
+	_, err := d.Rows(ctx, Query{Limit: 1}, nil)
+	must(t, err)
+	var st ReadStats
+	entries, err := d.List(ctx, ListQuery{Delimiter: '/', Cursor: &Cursor{Prefix: []byte("a/x")}, Limit: 1}, &st)
+	must(t, err)
+	if len(entries) != 1 || string(entries[0].CommonPrefix) != "a/" {
+		t.Fatal(entries)
+	}
+	if n, known := entries[0].Rows.Start.Ordinal(); !known || n != 2 {
+		t.Fatalf("start %d, known %v; want 2, true", n, known)
+	}
+	if st.GroupsSkipped != 0 {
+		t.Fatalf("read group counted as skipped: %+v", st)
+	}
 }

@@ -149,12 +149,10 @@ func (plan *Plan) RowSpans() []RowSpan {
 // ProjectedBytes counts shared pages and dictionaries once for the
 // selected union, retaining inexactness where page extents are unavailable.
 //
-// The page locations p keeps for this are those the Dataset keeps within
-// Limits.OffsetIndexMemory, and those it reserved there for its own while
-// planning; a chunk whose locations did not fit is unavailable, and
-// ProjectedBytes is then inexact. Locations reserved for a plan stay
-// reserved while it, or any plan made from it by SelectRows or Split, is
-// reachable.
+// The page locations p shares are those the Dataset keeps within
+// Limits.OffsetIndexMemory. Other locations are unavailable, making
+// ProjectedBytes inexact. SelectRows also works after Dataset.Close;
+// scanning the returned plan then fails with ErrClosed.
 func (plan *Plan) SelectRows(spans []RowSpan) (*Plan, error) {
 	r := plan.r
 	inputs, err := r.rowRanges(spans)
@@ -170,7 +168,7 @@ func (plan *Plan) SelectRows(spans []RowSpan) (*Plan, error) {
 			return nil, invalidRequest("row span %d is not within the plan's rows", i)
 		}
 	}
-	out := &Plan{r: r, columns: plan.columns, inputs: inputs, pin: plan.pin}
+	out := &Plan{r: r, columns: plan.columns, inputs: inputs}
 	out.union(r.ordinalSpans(inputs))
 	for _, gb := range plan.groups {
 		k := sort.Search(len(out.spans), func(k int) bool { return out.spans[k].end > gb.start })

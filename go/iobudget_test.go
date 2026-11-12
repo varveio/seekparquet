@@ -145,7 +145,8 @@ var ioBudgets = []ioBudget{
 	{"verify/cold", ioMetrics{28, 3, 8477103, 0, 20}, ioTarget{24, 3}, current},
 	{"verify/warm", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
 	{"browse/count-prefix", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
-	{"browse/sum-prefix", ioMetrics{2, 2, 6153, 0, 1}, none, current},
+	{"browse/sum-prefix", ioMetrics{1, 1, 6153, 0, 1}, ioTarget{1, 1}, atTarget},
+	{"sum-all/scan", ioMetrics{16, 1, 1210103, 0, 16}, ioTarget{16, 1}, atTarget},
 }
 
 // ioCapableBudgets is measured on ioSmall through capableStore.
@@ -196,7 +197,8 @@ var ioCapableBudgets = []ioBudget{
 	{"verify/cold", ioMetrics{24, 2, 8477103, 0, 20}, ioTarget{24, 3}, atTarget},
 	{"verify/warm", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
 	{"browse/count-prefix", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
-	{"browse/sum-prefix", ioMetrics{2, 2, 6153, 0, 1}, none, current},
+	{"browse/sum-prefix", ioMetrics{1, 1, 6153, 0, 1}, ioTarget{1, 1}, atTarget},
+	{"sum-all/scan", ioMetrics{16, 1, 1210103, 0, 16}, ioTarget{16, 1}, atTarget},
 }
 
 // ioRepeatedBudgets is measured on the repeated-key variant of ioSmall,
@@ -462,6 +464,22 @@ func ioScenarios(fx *ioFixture) []ioScenario {
 			})
 			text, _ := planText(p, nil)
 			return withErr(fmt.Sprintf("%q %s: %d rows, size %d", prefix.CommonPrefix, text, rows, sum), err)
+		})
+	}})
+	out = append(out, ioScenario{"sum-all", func(e *ioEnv) {
+		d := e.open()
+		p, err := d.Plan(ctx, []seekparquet.Selection{{}}, []string{"size"}, nil)
+		must(e.t, err)
+		e.step("sum-all/scan", func() string {
+			var sum, rows int64
+			err := p.ScanValues(ctx, nil, func(b *seekparquet.ValueBatch) error {
+				for i := range b.Len() {
+					sum += b.Column(0).Int64(i)
+				}
+				rows += int64(b.Len())
+				return nil
+			})
+			return withErr(fmt.Sprintf("%d rows, size %d", rows, sum), err)
 		})
 	}})
 	out = append(out, ioScenario{"verify", func(e *ioEnv) {

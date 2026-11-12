@@ -62,7 +62,8 @@ const maxValueBatch = len(absentValues)
 // st is reset and filled on every exit. A nil fn is ErrInvalidRequest.
 // Cancellation, callback errors, Stop and Dataset lifetime follow Plan.Scan.
 // The caller's cache mode is honored; CacheDefault permits source-cache
-// lookup and admission. Each concurrent scan has independent borrowed storage.
+// lookup and admission, unlike Plan.Scan, which defaults to CacheBypass.
+// Each concurrent scan has independent borrowed storage.
 //
 // Value pages are located by their OffsetIndex row positions; a chunk
 // without one is walked by its page headers from its start. A plan with
@@ -86,6 +87,7 @@ func (plan *Plan) ScanValues(ctx context.Context, st *ReadStats, fn func(*ValueB
 		scratch: make([]pageScratch, len(plan.columns)),
 		pages:   make([]*columnPages, len(plan.columns)),
 		g:       groupRef{-1, 0},
+		plan:    r.newReadPlan(rctx, plan.columns, plan.spans, 0),
 	}
 	for _, sp := range plan.spans {
 		if err := v.span(sp.start, sp.end, fn); err != nil {
@@ -105,6 +107,7 @@ type valueScan struct {
 	st      *ReadStats
 	r       *reader
 	columns []string
+	plan    *readPlan
 	b       ValueBatch
 	scratch []pageScratch
 	pages   []*columnPages
@@ -168,6 +171,10 @@ func (v *valueScan) open(p *part, g groupRef) error {
 		return err
 	}
 	for c, name := range v.columns {
+		if first := slices.Index(v.columns[:c], name); first >= 0 {
+			v.pages[c], v.b.kinds[c] = v.pages[first], v.b.kinds[first]
+			continue
+		}
 		cp, err := p.openColumn(v.ctx, p.groups[g.index].physical, name, v.st, &v.scratch[c])
 		if err != nil {
 			v.g = groupRef{-1, 0}
@@ -187,6 +194,33 @@ func (v *valueScan) open(p *part, g groupRef) error {
 // current row group, and returns how many rows from row on, before to,
 // they all hold.
 func (v *valueScan) load(row, to int64) (int64, error) {
+	if v.plan != nil {
+		v.plan.w.release(v.r.group(v.g).start + row)
+		for _, cp := range v.pages {
+			if cp == nil || row >= cp.first && row < cp.first+int64(len(cp.values)) {
+				continue
+			}
+			off, size := cp.off, min(cp.c.end-cp.off, min(4<<10, v.r.limits.headerBytes()))
+			if cp.locs == nil {
+				// The header walker never returns to bytes before off. Retire
+				// consumed prefixes even in chunks larger than a wave.
+				w := v.plan.w
+				w.mu.Lock()
+				w.dropLocked(func(x *window) bool {
+					return x.p == cp.c.p && x.off >= cp.c.start && x.end() <= cp.off
+				})
+				w.mu.Unlock()
+			}
+			if cp.locs != nil {
+				loc := cp.locs[pageAt(cp.locs, row)]
+				off, size = loc.offset, loc.size
+			}
+			if !v.plan.w.holds(cp.c.p, off, size) {
+				v.wave(row)
+				break
+			}
+		}
+	}
 	k := to - row
 	if len(v.pages) == 0 || slices.Contains(v.pages, nil) {
 		k = min(k, int64(maxValueBatch))
@@ -201,4 +235,92 @@ func (v *valueScan) load(row, to int64) (int64, error) {
 		k = min(k, cp.first+int64(len(cp.values))-row)
 	}
 	return k, nil
+}
+
+// wave reads a bounded wave of projected pages from row on. It uses the
+// read plan's spans and operation windows, but needs no key page index.
+// Locations are scheduling hints; openColumn and load still check the data.
+func (v *valueScan) wave(row int64) {
+	rp := v.plan
+	g := v.g
+	from := v.r.group(g).start + row
+	var exts []extent
+	var total int64
+	for g.part < len(v.r.parts) {
+		p := v.r.parts[g.part]
+		if !p.ready.Load() {
+			break
+		}
+		if g.index >= len(p.groups) {
+			g = groupRef{g.part + 1, 0}
+			continue
+		}
+		grp := p.groups[g.index]
+		ranges, done := rp.rows(grp, max(from, grp.start))
+		if done {
+			break
+		}
+		for c, name := range rp.columns {
+			if slices.Contains(rp.columns[:c], name) || len(ranges) == 0 {
+				continue
+			}
+			col, ok := p.leaves[name]
+			if !ok {
+				continue
+			}
+			meta := &p.footer.Metadata().RowGroups[grp.physical].Columns[col.index].MetaData
+			start, end, ok := chunkRange(meta)
+			if !ok || end > p.size {
+				continue
+			}
+			var locs []pageLoc
+			if g == v.g {
+				cp := v.pages[c]
+				locs = cp.locs
+				if locs == nil {
+					start = cp.off
+				}
+			} else {
+				locs = p.planLocs(grp.physical, col, start, end)
+			}
+			add := func(off, size, rowEnd int64) bool {
+				if size <= 0 || rp.w.holds(p, off, size) {
+					return true
+				}
+				if total+size > rp.waveBytes || len(exts) >= MaxReadRanges {
+					return false
+				}
+				exts = append(exts, extent{p, off, size, rowEnd})
+				total += size
+				return true
+			}
+			if locs == nil {
+				// Unknown page coverage: prefetch only a page-sized prefix,
+				// never an unchecked whole chunk larger than the page limit.
+				limit := min(readWindowBytes, v.r.limits.PageBytes+v.r.limits.headerBytes())
+				if !add(start, min(end-start, limit), grp.start+grp.rows) {
+					goto fetch
+				}
+				continue
+			}
+			if !add(start, locs[0].offset-start, grp.start+grp.rows) {
+				goto fetch
+			}
+			last := -1
+			for _, rg := range ranges {
+				first, end := pageAt(locs, rg[0]-grp.start), pageAt(locs, rg[1]-grp.start-1)
+				for i := max(first, last+1); i <= end; i++ {
+					loc := locs[i]
+					if !add(loc.offset, loc.size, grp.start+loc.first+loc.rows) {
+						goto fetch
+					}
+				}
+				last = end
+			}
+		}
+		g = g.next()
+	}
+fetch:
+	sortExtents(exts)
+	rp.w.fetchWave(exts, nil)
 }

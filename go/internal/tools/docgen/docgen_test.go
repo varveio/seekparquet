@@ -412,3 +412,23 @@ func TestEvalJava(t *testing.T) {
 		t.Error("evalJava accepted a call")
 	}
 }
+
+// Pending parity names must not suppress checks of Go or unrelated Java
+// facts, and an explicit Java checkout must check the pending names too.
+func TestPendingJavaParityRows(t *testing.T) {
+	root := mutableTree(t)
+	if got := checkErr(t, root); got != "" {
+		t.Fatal(got)
+	}
+	g, err := newGenerator(root, filepath.Join(root, "java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.check(); err == nil || !strings.Contains(err.Error(), "no public ListEntry.rows") {
+		t.Fatalf("explicit Java check did not check pending rows: %v", err)
+	}
+	edit(t, root, "docs/data/parity.json", `"go": "Plan.ScanValues"`, `"go": "Plan.NoSuchMethod"`)
+	if got := checkErr(t, root); !strings.Contains(got, "Go has no Plan.NoSuchMethod") {
+		t.Fatalf("pending row bypassed Go check: %s", got)
+	}
+}
