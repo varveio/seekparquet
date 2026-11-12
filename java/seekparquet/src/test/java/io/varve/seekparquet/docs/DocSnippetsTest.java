@@ -34,12 +34,16 @@ class DocSnippetsTest {
         return Path.of(System.getProperty("seekparquet.conformance"), "datasets", name);
     }
 
-    private static String run(Snippet snippet) {
+    /**
+     * Runs a snippet and returns the lines it printed. PrintStream.println ends lines with
+     * System.lineSeparator() (CRLF on Windows), so the output is compared as lines, not as text.
+     */
+    private static List<String> run(Snippet snippet) {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8)) {
             snippet.run(out);
         }
-        return bytes.toString(StandardCharsets.UTF_8);
+        return bytes.toString(StandardCharsets.UTF_8).lines().toList();
     }
 
     private interface Snippet {
@@ -50,7 +54,7 @@ class DocSnippetsTest {
     @Test
     void readme() {
         Path dir = fixture("multipart");
-        String output = run(out -> {
+        List<String> output = run(out -> {
             // tag::readme[]
             try (Dataset dataset = Dataset.open(dir)) {
                 // The first three keys under a prefix.
@@ -81,14 +85,14 @@ class DocSnippetsTest {
                 page 1: logs/2026/01/
                 page 1: logs/2026/02/
                 page 2: logs/2026/03/
-                """, output);
+                """.lines().toList(), output);
     }
 
     /** docs/guides/troubleshooting.md: telling a refusal from the other kinds of failure. */
     @Test
     void errors() {
         Path dir = fixture("invalid/key-order-within-page");
-        String output = run(out -> {
+        List<String> output = run(out -> {
             // tag::errors[]
             try (Dataset dataset = Dataset.open(dir)) {
                 dataset.rows(Query.builder(Span.all()).limit(1000).build());
@@ -110,6 +114,6 @@ class DocSnippetsTest {
             // CancellationException: the read was cancelled.
             // end::errors[]
         });
-        assertEquals("refused: key_order in data/part-00000.parquet\n", output);
+        assertEquals(List.of("refused: key_order in data/part-00000.parquet"), output);
     }
 }
