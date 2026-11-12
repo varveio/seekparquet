@@ -90,8 +90,10 @@ each implementation's tests and benchmarks.
 **Optional features.** Cases on `optional-codecs` that project its BROTLI value column accept the values or
 `unsupported` (`unsupported_encoding`); its LZ4_RAW column is in the ENC-1 baseline, and requests that do not
 need the BROTLI column must succeed. Full validation of it may be `complete` or `incomplete`, never `failed`.
-`brotli-key` has a BROTLI key: requests may answer `unsupported`, structural validation must complete, and
-profile and full may be `incomplete`. Encrypted parts (`PARE` magic at either end of a part of at least 12
+`brotli-key` has a BROTLI key: requests may answer `unsupported`. Structural validation completes. If the
+key's BROTLI codec is unavailable, profile is incomplete with code `unsupported_encoding` and a non-empty
+reason; full is then incomplete because its prerequisite did not complete. A level cannot complete unless its
+prerequisite completed. Encrypted parts (`PARE` magic at either end of a part of at least 12
 bytes, or encryption declared in the footer: `invalid/encrypted-*`, faults whose `outcome` is `unsupported`)
 are answered `unsupported` (`unsupported_encryption`), and their structural validation is `incomplete` with
 that code.

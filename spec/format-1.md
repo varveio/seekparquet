@@ -185,7 +185,10 @@ Each part is a Parquet file that any conforming Parquet reader can read.
   No column chunk may set `file_path`. A reader MUST check this when it first touches the part (CHECK-1), before following any reference
   (`invalid_footer`).
 - [FILE-2] Parquet modular encryption is outside this draft. A reader MUST report `unsupported_encryption`
-  when CHECK-1 identifies an encryption magic or when readable footer metadata declares encryption.
+  when CHECK-1 identifies an encryption magic or when readable footer metadata declares encryption. This
+  includes Parquet's plaintext footer mode, where `PAR1` magics surround metadata that declares encryption
+  followed by a 28-byte signature, which the footer length covers; other bytes after the metadata, or a
+  signature without such a declaration, make the footer unreadable (`invalid_footer`).
 
 ### 5.1 The key column
 
@@ -418,8 +421,8 @@ A reader checks what it reads. It does not certify data it skips.
   otherwise); that its stamps agree (§5.4); that its `key` column meets KEY-1 and KEY-5; COL-5 against the
   parts already checked; and RG-1 for every non-empty row group. A failure of the manifest refuses the
   dataset. A failure of a part ends the request that touched it with its code; the reader keeps the outcome
-  for as long as the dataset is open, so every later request that touches the part is refused with the same
-  code. A reader MAY check every part on open instead.
+  for as long as the dataset is open, so every later request that touches the part ends with the same outcome
+  (`refused` or `unsupported`) and code. A reader MAY check every part on open instead.
 
   **Length and magic.** A part shorter than 12 bytes is `invalid_footer`. Otherwise, the reader MUST inspect
   its first and last four bytes. If either is `PARE`, it MUST report `unsupported_encryption`. If neither is

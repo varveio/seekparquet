@@ -248,6 +248,9 @@ def compare_entries(got, exp):
                        f"{'unexpected' if len(got) > len(exp) else 'missing'} {show_entry(more)})")
 
 
+VALIDATION_LEVELS = ["structural", "profile", "full"]  # each the prerequisite of the next; digest stands alone
+
+
 def acceptable(exp):
     if "codes" in exp:
         return exp["codes"]
@@ -312,6 +315,13 @@ class Runner:
         levels = resp.get("levels")
         if not isinstance(levels, dict):
             raise CaseFail("validate response without levels")
+        # VAL-1, for every expectation: a level completes or fails only if its prerequisite completed.
+        for lower, higher in zip(VALIDATION_LEVELS, VALIDATION_LEVELS[1:]):
+            g, p = levels.get(higher), levels.get(lower)
+            if isinstance(g, dict) and isinstance(p, dict) and g.get("result") in ("complete", "failed") \
+                    and p.get("result") != "complete":
+                raise CaseFail(f"level {higher}: {g.get('result')} although its prerequisite {lower} is "
+                               f"{p.get('result')!r} (VAL-1)")
         for lvl, w in want.items():
             g = levels.get(lvl)
             if not isinstance(g, dict):
@@ -324,9 +334,12 @@ class Runner:
                                f"{' (' + str(g.get('code') or g.get('reason')) + ')' if g.get('code') or g.get('reason') else ''}")
             if g.get("result") == "failed" and g.get("code") not in acceptable(w):
                 raise CaseFail(f"level {lvl}: expected code {acceptable(w)}, got {g.get('code')!r}")
-            # An incomplete level caused by an unsupported feature names it: the expected unsupported code.
-            if g.get("result") == "incomplete" == w["result"] and ("code" in w or "codes" in w) \
-                    and g.get("code") not in acceptable(w):
+            # An incomplete level caused by an unsupported feature (its prerequisite completed) names the
+            # expected unsupported code, whether incomplete is the expected or an accepted result.
+            prereq = VALIDATION_LEVELS[VALIDATION_LEVELS.index(lvl) - 1] if lvl in VALIDATION_LEVELS[1:] else None
+            caused_here = prereq is None or (levels.get(prereq) or {}).get("result") == "complete"
+            if g.get("result") == "incomplete" and caused_here and w["result"] != "failed" \
+                    and ("code" in w or "codes" in w) and g.get("code") not in acceptable(w):
                 raise CaseFail(f"level {lvl}: incomplete, expected unsupported code {acceptable(w)}, "
                                f"got {g.get('code')!r}")
             if "checked" in w and g.get("result") == w["result"] and g.get("checked") != w["checked"]:

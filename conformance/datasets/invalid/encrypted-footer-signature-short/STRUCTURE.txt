@@ -1,0 +1,16 @@
+# encrypted-footer-signature-short
+
+valid: no
+description: The footer declares encryption, but 27 bytes, not a 28-byte signature, follow its metadata: a malformed footer.
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/basic
+fault (generators/faults.json): encrypted-footer-signature-short: invalid_footer; reader detects on touch; lowest validation level structural (CHECK-1, FILE-2); location: data/part-00000.parquet: footer declaring encryption, then 27 bytes
+changes:
+  - data/part-00000.parquet: footer re-encoded declaring encryption, followed by 27 bytes the footer length covers
+  - manifest: parts[0].bytes 2828 -> 2876
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 2876, keys 'a/1.txt' .. 'foxtrot'
+
+file data/part-00000.parquet: 2876 bytes; footer unreadable: footer length does not match encoded FileMetaData

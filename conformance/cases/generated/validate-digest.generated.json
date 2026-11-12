@@ -3,7 +3,7 @@
   "target": "validator-digest",
   "generated": true,
   "generator": "generators/make_cases.py",
-  "description": "Validation at the digest level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code, and a dataset that cannot be opened shows structural failed.",
+  "description": "Validation at the digest level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code. An open-stage refusal makes structural failed with its refusal code; an unsupported feature makes structural incomplete with its unsupported code and a non-empty reason. Dependent levels are incomplete.",
   "families": {
     "validate-digest/digest": "six distinct digest behaviours (VAL-2, PART-5)"
   },

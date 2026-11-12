@@ -92,8 +92,8 @@ afresh, so that part checks kept by the earlier handle do not carry over.
 ```
 
 Checks every part of the dataset now, as the first read to touch each part would (the part checks of
-CHECK-1), and may check more (CHECK-3). It answers `ok`, or `refused` with the code of the first fault it
-found. The adapter opens the dataset first if it has not. `verify` is an optional capability: an adapter
+CHECK-1), and may check more (CHECK-3). It answers `ok`, `refused` with an applicable refusal code, or
+`unsupported` with an applicable unsupported-feature code. The adapter opens the dataset first if it has not. `verify` is an optional capability: an adapter
 whose `open` already checks every part has nothing more to do, and claiming it adds a step to every `touch`
 case (see below).
 

@@ -199,6 +199,19 @@ ORACLE_ADAPTER = textwrap.dedent(r'''
                     bad |= hashlib.sha256((CONF / d / part["path"]).read_bytes()).hexdigest() != part["sha256"]
             return {"digest": {"result": "failed", "code": "digest_mismatch"} if bad else {"result": "complete", "checked": n}}
         out = {}
+        if d == "datasets/brotli-key" and BUG in ("prereq-broken", "optional-no-code", "optional-wrong-code"):
+            # BUGs: a validator without BROTLI that completes full after an incomplete profile, or reports the
+            # incomplete profile without its unsupported code, or with the wrong one
+            code = {"optional-no-code": None, "optional-wrong-code": "unsupported_encryption"}.get(BUG, "unsupported_encoding")
+            out["structural"] = {"result": "complete"}
+            if level in ("profile", "full"):
+                out["profile"] = {"result": "incomplete", "reason": "BROTLI unavailable"}
+                if code:
+                    out["profile"]["code"] = code
+            if level == "full":
+                out["full"] = {"result": "complete"} if BUG == "prereq-broken" else \
+                    {"result": "incomplete", "reason": "a prerequisite level did not complete"}
+            return out
         flvl = f["validation_level"] if f else None
         for lvl in LEVELS[: LEVELS.index(level) + 1]:
             if flvl is None or flvl not in LEVELS or LEVELS.index(lvl) < LEVELS.index(flvl):
@@ -344,6 +357,13 @@ class HarnessSelfTest(unittest.TestCase):
 
     def test_detects_unsupported_incomplete_without_its_code(self):
         self.assert_detected("no-unsupported-code", r"^validate-(structural|profile|full)/(prerequisite/)?encrypted-")
+
+    def test_detects_level_completed_after_its_incomplete_prerequisite(self):
+        self.assert_detected("prereq-broken", r"^validate-(profile|full)/brotli-key$")
+
+    def test_detects_optional_incomplete_without_or_with_the_wrong_code(self):
+        self.assert_detected("optional-no-code", r"^validate-(profile|full)/brotli-key$")
+        self.assert_detected("optional-wrong-code", r"^validate-(profile|full)/brotli-key$")
 
     def test_detects_incomplete_without_reason(self):
         self.assert_detected("no-reason", r"^validate-(profile|full)/prerequisite/")

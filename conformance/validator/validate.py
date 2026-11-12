@@ -231,7 +231,10 @@ class Part:
             footer_len = int.from_bytes(self.mapping[-8:-4], 'little')
             if footer_len > limits.footer_bytes:
                 raise Incomplete('configured footer_bytes limit exceeded')
-            self.pf = p.read_parquet(self.mapping)
+            try:
+                self.pf = p.read_parquet(self.mapping)
+            except p.SignedPlaintextFooter as e:
+                raise Incomplete(f'unsupported_encryption: {e}') from None
             self.fields, self.leaves = field_tree(self.pf.schema)
             self._footer(m)
         except Exception:

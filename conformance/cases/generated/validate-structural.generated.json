@@ -3,7 +3,7 @@
   "target": "validator-structural",
   "generated": true,
   "generator": "generators/make_cases.py",
-  "description": "Validation at the structural level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code, and a dataset that cannot be opened shows structural failed.",
+  "description": "Validation at the structural level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code. An open-stage refusal makes structural failed with its refusal code; an unsupported feature makes structural incomplete with its unsupported code and a non-empty reason. Dependent levels are incomplete.",
   "families": {
     "validate-structural/valid-dataset": "every valid dataset completes this level and its prerequisites",
     "validate-structural/fault-at-lowest-level": "each fault at the lowest validation level that detects it (validation_level in generators/faults.json)"
@@ -2671,6 +2671,89 @@
           "structural": {
             "result": "incomplete",
             "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-signed",
+      "description": "A plaintext-footer encrypted layout: PAR1 at both ends; the footer declares encryption (encryption_algorithm AES_GCM_V1, footer_signing_key_metadata) and is followed by a 28-byte signature that the footer length covers. Readable footer metadata declares encryption (FILE-2).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-signed",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signed",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-signature-short",
+      "description": "The footer declares encryption, but 27 bytes, not a 28-byte signature, follow its metadata: a malformed footer.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-signature-short",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signature-short",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/invalid-footer-trailing-28",
+      "description": "28 bytes follow the footer metadata, which declares no encryption: a malformed footer, not a signature.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "invalid-footer-trailing-28",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-trailing-28",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
           }
         }
       }

@@ -56,8 +56,8 @@ func TestValidateCorpus(t *testing.T) {
 		} `json:"faults"`
 	}
 	must(t, json.Unmarshal(raw, &faults))
-	if len(faults.Faults) != 145 {
-		t.Errorf("%d invalid datasets, want 145", len(faults.Faults))
+	if len(faults.Faults) != 148 {
+		t.Errorf("%d invalid datasets, want 148", len(faults.Faults))
 	}
 	for _, f := range faults.Faults {
 		t.Run("invalid/"+f.ID, func(t *testing.T) {

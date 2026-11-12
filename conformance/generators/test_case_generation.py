@@ -79,7 +79,7 @@ class Generation(unittest.TestCase):
     def test_selected_prerequisites_and_digests(self):
         allc = self.allgen + [c for _d, c in self.core.values()]
         prereq = [c for c in allc if "/prerequisite/" in c["id"]]
-        self.assertEqual(len(prereq), 19)
+        self.assertEqual(len(prereq), 21)
         self.assertEqual(len([c for c in allc if c["id"].startswith("validate-digest/")]), 6)
 
     def test_reader_cases_follow_faults_json(self):

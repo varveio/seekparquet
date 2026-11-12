@@ -1,0 +1,16 @@
+# encrypted-footer-signed
+
+valid: no
+description: A plaintext-footer encrypted layout: PAR1 at both ends; the footer declares encryption (encryption_algorithm AES_GCM_V1, footer_signing_key_metadata) and is followed by a 28-byte signature that the footer length covers. Readable footer metadata declares encryption (FILE-2).
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/basic
+fault (generators/faults.json): encrypted-footer-signed: unsupported_encryption; reader detects on touch; lowest validation level structural (CHECK-1, FILE-2); location: data/part-00000.parquet: footer declaring encryption, then a 28-byte signature
+changes:
+  - data/part-00000.parquet: footer re-encoded declaring encryption, followed by 28 bytes the footer length covers
+  - manifest: parts[0].bytes 2828 -> 2877
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 2877, keys 'a/1.txt' .. 'foxtrot'
+
+file data/part-00000.parquet: 2877 bytes; footer unreadable: an encrypted part: a plaintext footer declaring encryption and its signature

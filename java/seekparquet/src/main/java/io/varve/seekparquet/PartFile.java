@@ -46,6 +46,9 @@ final class PartFile implements AutoCloseable {
     /** The most of a part's end the first footer read fetches, to get the footer in one read ({@link #footerWindow}). */
     static final int TAIL_WINDOW = 64 * 1024;
 
+    /** The signature after a plaintext footer that declares encryption (Parquet modular encryption). */
+    private static final int SIGNATURE_BYTES = 28;
+
     private static final String STAMP_VERSION = "seekparquet.format_version";
     private static final String STAMP_DRAFT = "seekparquet.draft_revision";
     private static final String STAMP_KEY_COLUMN = "seekparquet.key_column";
@@ -347,11 +350,23 @@ final class PartFile implements AutoCloseable {
             read(source, name, size - 8 - footerLength, before, ctx).get(footer, 0, before);
             tail.duplicate().position(start).get(footer, before, inWindow);
         }
+        Thrift.Decoded<FileMetaData> decoded;
         try {
-            return Thrift.fileMetaData(footer, ctx.limits.metadataMemory());
+            decoded = Thrift.read(footer, 0, footer.length, new FileMetaData(), ctx.limits.metadataMemory());
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_FOOTER, name, "the footer does not parse: " + e.getMessage());
         }
+        FileMetaData meta = decoded.value();
+        int after = footer.length - decoded.length();
+        // FILE-2, plaintext footer mode: metadata declaring encryption, then exactly its 28-byte signature, as Go
+        // decides. Any other trailing bytes are a malformed footer.
+        if (after == SIGNATURE_BYTES && (meta.isSetEncryption_algorithm() || meta.isSetFooter_signing_key_metadata())) {
+            throw new UnsupportedFeatureException(UnsupportedCode.ENCRYPTION, "part " + name + " uses Parquet modular encryption");
+        }
+        if (after != 0) {
+            throw refuse(RefusalCode.INVALID_FOOTER, name, "the footer does not parse: trailing bytes after the Thrift structure");
+        }
+        return meta;
     }
 
     /** {@return the 4 bytes of {@code b} at {@code at}, as ISO-8859-1 text} */

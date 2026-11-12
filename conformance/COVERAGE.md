@@ -152,8 +152,8 @@ No case. scope statement (one snapshot per manifest): not testable.
 
 ## FILE-2
 
-- Evidence: 11 positive, 7 negative.
-- Generated: `refusals-open/unsupported` (7), `validate-full/prerequisite` (2), `validate-profile/prerequisite` (2), `validate-structural/fault-at-lowest-level` (7)
+- Evidence: 14 positive, 10 negative.
+- Generated: `refusals-open/fault` (1), `refusals-open/unsupported` (8), `validate-full/prerequisite` (3), `validate-profile/prerequisite` (3), `validate-structural/fault-at-lowest-level` (9)
 - Note: partial: PARE magics and encryption declared in FileMetaData are covered; no fixture has encrypted column metadata (ColumnChunk crypto_metadata), and no fixture is a real encrypted file.
 
 ## KEY-5
@@ -394,9 +394,9 @@ No case. writer's choice: not a reader obligation.
 
 ## CHECK-1
 
-- Evidence: 37 positive, 181 negative.
+- Evidence: 40 positive, 186 negative.
 - Core: `open/empty`, `open/basic`, `open/multipart`, `open/extensions-numbers`, `open/optional-codecs` and 38 more
-- Generated: `open/valid-dataset` (21), `refusals-open/fault` (49), `refusals-open/unsupported` (7), `refusals-read/fault` (2), `validate-full/prerequisite` (6), `validate-profile/prerequisite` (6), `validate-structural/fault-at-lowest-level` (84)
+- Generated: `open/valid-dataset` (21), `refusals-open/fault` (51), `refusals-open/unsupported` (8), `refusals-read/fault` (2), `validate-full/prerequisite` (7), `validate-profile/prerequisite` (7), `validate-structural/fault-at-lowest-level` (87)
 
 ## CHECK-2
 
@@ -425,9 +425,9 @@ No case. uncovered: storage identity (no bytes of two versions of a part combine
 
 ## VAL-1
 
-- Evidence: 89 positive, 155 negative.
+- Evidence: 92 positive, 157 negative.
 - Core: `refusals-read/invalid-parquet-dictionary`, `validate-full/projection`, `validate-full/invalid-parquet-value-count`, `validate-full/prerequisite/invalid-footer-magic`, `validate-full/prerequisite/key-order-across-pages` and 14 more
-- Generated: `refusals-read/fault` (2), `validate-full/fault-at-lowest-level` (3), `validate-full/prerequisite` (9), `validate-full/valid-dataset` (25), `validate-profile/fault-at-lowest-level` (15), `validate-profile/prerequisite` (7), `validate-profile/valid-dataset` (25), `validate-structural/fault-at-lowest-level` (115), `validate-structural/valid-dataset` (24)
+- Generated: `refusals-read/fault` (2), `validate-full/fault-at-lowest-level` (3), `validate-full/prerequisite` (10), `validate-full/valid-dataset` (25), `validate-profile/fault-at-lowest-level` (15), `validate-profile/prerequisite` (8), `validate-profile/valid-dataset` (25), `validate-structural/fault-at-lowest-level` (118), `validate-structural/valid-dataset` (24)
 
 ## VAL-2
 
