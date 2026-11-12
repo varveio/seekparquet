@@ -204,6 +204,10 @@ func (rp *readPlan) units(p *part, g groupRef, ranges [][2]int64, end []byte) []
 	var units []unit
 	totalBytes, descriptors := int64(0), 0
 	groupEnd := grp.start + grp.rows
+	// Extents include headers: conservatively leave anything larger than
+	// PageBytes to demand, which checks the header before reading further.
+	// In particular, do not fetch later pages past a possible limit error.
+	maxExtent := rp.r.limits.PageBytes
 	for _, rg := range ranges {
 		a, b := rg[0]-grp.start, rg[1]-grp.start
 		for a < b {
@@ -224,14 +228,22 @@ func (rp *readPlan) units(p *part, g groupRef, ranges [][2]int64, end []byte) []
 				}
 				if col.locs == nil {
 					col.whole = true
-					u.exts = append(u.exts, extent{p, col.start, col.end - col.start, groupEnd})
+					if col.end-col.start <= maxExtent {
+						u.exts = append(u.exts, extent{p, col.start, col.end - col.start, groupEnd})
+					}
 					continue
 				}
-				if c > 0 && col.next == 0 && col.locs[0].offset > col.start {
+				if col.next == 0 && col.locs[0].offset > col.start {
+					if col.locs[0].offset-col.start > maxExtent {
+						return append(units, unit{stop: true})
+					}
 					u.exts = append(u.exts, extent{p, col.start, col.locs[0].offset - col.start, groupEnd})
 				}
 				for j := max(col.next, pageAt(col.locs, a)); j < len(col.locs) && col.locs[j].first < hi; j++ {
 					loc := col.locs[j]
+					if loc.size > maxExtent {
+						return append(units, unit{stop: true})
+					}
 					u.exts = append(u.exts, extent{p, loc.offset, loc.size, grp.start + loc.first + loc.rows})
 					col.next = j + 1
 					if descriptors+len(u.exts) >= MaxReadRanges {

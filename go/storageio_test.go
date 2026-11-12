@@ -314,14 +314,12 @@ func (*panicBatchFile) ReadRanges(context.Context, []ReadRange) error { panic("s
 // operation's slots back.
 func TestBatchPanicReleasesSlots(t *testing.T) {
 	op := newOperation(context.Background(), 4)
-	func() {
-		defer func() {
-			if recover() == nil {
-				t.Fatal("no panic")
-			}
-		}()
-		readRanges(op, rangeFile{file: &panicBatchFile{}, name: "p", concurrency: 4}, testRanges(3, 10), nil)
-	}()
+	errs := readRanges(op, rangeFile{file: &panicBatchFile{}, name: "p", concurrency: 4}, testRanges(3, 10), nil)
+	for _, err := range errs {
+		if !errors.Is(err, errSourcePanic) || !isEnvironment(ctx, err) || RefusalCodeOf(err) != "" {
+			t.Fatal(err)
+		}
+	}
 	if op.limit.free != 4 {
 		t.Fatalf("%d of 4 slots free after the panic", op.limit.free)
 	}

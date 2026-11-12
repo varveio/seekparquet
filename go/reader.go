@@ -550,7 +550,13 @@ func (pre *fetchedPart) close() {
 // completes, and the fetch is released then: the window bounds the tails
 // and pages held. The first failure stops it.
 func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats, want probeSet) error {
-	n := len(r.parts)
+	return r.verifyPartRange(ctx, memo, st, want, 0, len(r.parts))
+}
+
+// verifyPartRange checks only [first, last), retaining verifyParts' bounded
+// concurrency and manifest order. Builds use it for budgeted lookahead.
+func (r *reader) verifyPartRange(ctx context.Context, memo *pageMemo, st *ReadStats, want probeSet, first, last int) error {
+	n := last - first
 	window := max(1, r.policy.Concurrency)
 	fetched := make([]*fetchedPart, n)
 	done := make([]chan struct{}, n)
@@ -569,7 +575,7 @@ func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats,
 		}
 	}()
 	launch := func(i int) {
-		p := r.parts[i]
+		p := r.parts[first+i]
 		check := r.fetch != nil && !p.ready.Load() && p.flags.Load()&partRefused == 0
 		probes := want != probeNone && !r.local && p.ready.Load() && r.wantsProbes(p)
 		if !check && !probes {
@@ -580,7 +586,7 @@ func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats,
 		wg.Go(func() {
 			defer close(done[i])
 			if check {
-				r.prefetchPart(wctx, i, pre, want)
+				r.prefetchPart(wctx, first+i, pre, want)
 			} else { // a checked part's pages go to the request's memo
 				_, _ = r.fetchProbes(wctx, p, p.file, p.size, p.footer, p.retainedBytes, false, want, memo, &pre.st)
 			}
@@ -604,7 +610,7 @@ func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats,
 			pre.close()
 			return err
 		}
-		_, err := r.partWith(ctx, i, st, pre)
+		_, err := r.partWith(ctx, first+i, st, pre)
 		if pre != nil && pre.adopted {
 			memo.adopt(&pre.memo)
 		}
@@ -1015,7 +1021,10 @@ func (r *reader) routeWindows(ctx context.Context, at func(int) groupRef, a, b i
 			if start, end, ok := chunkRange(meta); ok && end <= p.size {
 				if locs := p.planLocs(grp.physical, p.key, start, end); len(locs) > 0 {
 					// Key dictionaries precede the first data page.
-					exts = append(exts, extent{p, start, locs[0].offset + locs[0].size - start, grp.start + grp.rows})
+					size := locs[0].offset + locs[0].size - start
+					if size <= r.limits.PageBytes {
+						exts = append(exts, extent{p, start, size, grp.start + grp.rows})
+					}
 				}
 			}
 		}

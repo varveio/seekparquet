@@ -140,7 +140,7 @@ func TestListReadAheadSameResults(t *testing.T) {
 					if decodeCounts(st) != decodeCounts(base) {
 						t.Fatalf("%s, ReadAhead %d: decoding differs:\n got %+v\nwant %+v", describe(req), n, st, base)
 					}
-					if st.ReadAheadUnused > st.ReadAheadReads {
+					if st.ReadAheadUnused > st.ReadAheadReads || st.SourceBytes > base.SourceBytes+st.ReadAheadUnusedBytes {
 						t.Fatalf("%s, ReadAhead %d: %+v", describe(req), n, st)
 					}
 					predicted += st.ReadAheadReads
@@ -215,6 +215,18 @@ func TestListReadAheadListIndex(t *testing.T) {
 			t.Errorf("a 'k' listing with the index built read nothing ahead: %+v", st)
 		}
 	}
+	// Owner decision: keep read-ahead with a list index, including its
+	// unused bytes. Pin its reads and bytes in addition to equal decoding.
+	for i, want := range []ReadStats{
+		{SourceReads: 3, SourceBytes: 8203},
+		{SourceReads: 3, SourceBytes: 10723, ReadAheadReads: 8, ReadAheadUnused: 7, ReadAheadUnusedBytes: 2520},
+	} {
+		st := counts[i]
+		if st.SourceReads != want.SourceReads || st.SourceBytes != want.SourceBytes || st.ReadAheadReads != want.ReadAheadReads ||
+			st.ReadAheadUnused != want.ReadAheadUnused || st.ReadAheadUnusedBytes != want.ReadAheadUnusedBytes {
+			t.Fatalf("mode %d: got %+v, want %+v", i, st, want)
+		}
+	}
 	if !slices.Equal(entries[0], entries[1]) || len(entries[0]) != 50 {
 		t.Fatalf("%d and %d entries", len(entries[0]), len(entries[1]))
 	}
@@ -256,7 +268,7 @@ func TestListReadAheadManyPages(t *testing.T) {
 	if stats[1].ReadAheadReads == 0 || stats[1].SourceReads >= stats[0].SourceReads {
 		t.Fatalf("nothing was read ahead, or not in fewer reads: %+v, without %+v", stats[1], stats[0])
 	}
-	if decodeCounts(stats[1]) != decodeCounts(stats[0]) {
+	if decodeCounts(stats[1]) != decodeCounts(stats[0]) || stats[1].SourceBytes > stats[0].SourceBytes+stats[1].ReadAheadUnusedBytes {
 		t.Fatalf("decoding differs:\n got %+v\nwant %+v", stats[1], stats[0])
 	}
 	if limit := 5*took[0] + time.Second; took[1] > limit {

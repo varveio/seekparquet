@@ -303,8 +303,7 @@ func (w *batcher) walk(s *scan, n int64, fn func(*Batch) error) error {
 		if err := w.ctx.Err(); err != nil {
 			return err
 		}
-		err := fn(b)
-		if err != nil {
+		if err := fn(b); err != nil {
 			return err
 		}
 		if n -= k; n == 0 || s.key == nil {

@@ -247,7 +247,7 @@ func checkPlan(t *testing.T, d *Dataset, src *extentSource, rows []oracleRow, ex
 	if sum != wantSum {
 		t.Fatalf("%s: sum %d, want %d", name, sum, wantSum)
 	}
-	served := scannedBytes(reads, extents)
+	served := scannedBytes(t, name, d, reads, extents)
 	if n, exact := plan.ProjectedBytes(); exact && n != served {
 		t.Fatalf("%s: projected %d bytes, Scan asked for %d", name, n, served)
 	} else if !exact && n != 0 {
@@ -317,19 +317,52 @@ func chunkBytes(t *testing.T, name string, reads []extentRead, extents []chunkEx
 	return n
 }
 
-// scannedBytes returns the bytes of a scan's reads inside extents: a
-// window may read the pages of several column chunks together, so a read
-// counts for the bytes of it each extent holds.
-func scannedBytes(reads []extentRead, extents []chunkExtent) int64 {
+// scannedBytes counts projected bytes while requiring a merged read to stay
+// within the union of adjacent chunks the scan requested (key and projection).
+// A window can cross a chunk boundary, but cannot run into a gap or another
+// column. Merely counting intersections would silently accept such overruns.
+func scannedBytes(t *testing.T, name string, d *Dataset, reads []extentRead, extents []chunkExtent) int64 {
+	t.Helper()
+	allowed := slices.Clone(extents)
+	for _, p := range d.r.parts {
+		if !p.ready.Load() {
+			continue
+		}
+		for _, grp := range p.groups {
+			meta := &p.footer.Metadata().RowGroups[grp.physical].Columns[p.key.index].MetaData
+			if start, end, ok := chunkRange(meta); ok {
+				allowed = append(allowed, chunkExtent{p.name, start, end})
+			}
+		}
+	}
 	var n int64
 	for _, read := range reads {
 		for _, e := range extents {
 			if lo, hi := max(read.off, e.start), min(read.off+read.len, e.end); read.path == e.path && lo < hi {
+				if !insideChunks(read, allowed) {
+					t.Fatalf("%s: a read of %d bytes at %d leaves the requested chunks", name, read.len, read.off)
+				}
 				n += hi - lo
 			}
 		}
 	}
 	return n
+}
+
+func insideChunks(read extentRead, extents []chunkExtent) bool {
+	for pos := read.off; pos < read.off+read.len; {
+		next := pos
+		for _, e := range extents {
+			if read.path == e.path && e.start <= pos && pos < e.end {
+				next = max(next, e.end)
+			}
+		}
+		if next == pos {
+			return false
+		}
+		pos = next
+	}
+	return true
 }
 
 // openOracle opens the dataset at dir through an extentSource and decodes
