@@ -1334,6 +1334,50 @@
       "location": "data/part-00000.parquet: footer declaring encryption, then 27 bytes"
     },
     {
+      "id": "encrypted-footer-signature-long",
+      "dataset": "datasets/invalid/encrypted-footer-signature-long",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "location": "data/part-00000.parquet: footer declaring encryption, then 29 bytes"
+    },
+    {
+      "id": "encrypted-footer-signed-algorithm",
+      "dataset": "datasets/invalid/encrypted-footer-signed-algorithm",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: footer with encryption_algorithm alone, then a 28-byte signature"
+    },
+    {
+      "id": "encrypted-footer-signed-empty-key",
+      "dataset": "datasets/invalid/encrypted-footer-signed-empty-key",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: footer with an empty footer_signing_key_metadata alone, then a 28-byte signature"
+    },
+    {
       "id": "invalid-footer-trailing-28",
       "dataset": "datasets/invalid/invalid-footer-trailing-28",
       "reader_detect": "touch",

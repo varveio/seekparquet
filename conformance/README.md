@@ -124,7 +124,7 @@ lowest validation level, its codes, the requirements it breaks, its location, an
 fault with a justification. Refusal and validation cases are built from that file; nothing is inferred
 from codes. Validation is one case per fault at its lowest detecting level, plus prerequisite cases
 (six structural faults with distinct entry paths requested at profile and full, three profile faults
-requested at full, and two unsupported parts requested at profile and full) and six distinct digest
+requested at full, and three unsupported parts requested at profile and full) and six distinct digest
 behaviours.
 
 

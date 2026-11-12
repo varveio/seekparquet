@@ -1,0 +1,16 @@
+# encrypted-footer-signed-algorithm
+
+valid: no
+description: A signed plaintext footer declaring encryption by encryption_algorithm alone, then a 28-byte signature.
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/basic
+fault (generators/faults.json): encrypted-footer-signed-algorithm: unsupported_encryption; reader detects on touch; lowest validation level structural (CHECK-1, FILE-2); location: data/part-00000.parquet: footer with encryption_algorithm alone, then a 28-byte signature
+changes:
+  - data/part-00000.parquet: footer re-encoded declaring encryption (algorithm), followed by 28 bytes the footer length covers
+  - manifest: parts[0].bytes 2828 -> 2860
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 2860, keys 'a/1.txt' .. 'foxtrot'
+
+file data/part-00000.parquet: 2860 bytes; footer unreadable: an encrypted part: a plaintext footer declaring encryption and its signature

@@ -7,7 +7,7 @@ producer: generators/mutate_metadata.py
 derived from: datasets/basic
 fault (generators/faults.json): encrypted-footer-signature-short: invalid_footer; reader detects on touch; lowest validation level structural (CHECK-1, FILE-2); location: data/part-00000.parquet: footer declaring encryption, then 27 bytes
 changes:
-  - data/part-00000.parquet: footer re-encoded declaring encryption, followed by 27 bytes the footer length covers
+  - data/part-00000.parquet: footer re-encoded declaring encryption (True), followed by 27 bytes the footer length covers
   - manifest: parts[0].bytes 2828 -> 2876
 
 manifest: format_version 0, 1 parts

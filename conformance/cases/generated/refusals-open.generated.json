@@ -1028,6 +1028,66 @@
       }
     },
     {
+      "id": "refusals-open/encrypted-footer-signature-long",
+      "description": "The footer declares encryption, but 29 bytes, not a 28-byte signature, follow its metadata: a malformed footer.",
+      "family": "refusals-open/fault",
+      "fault_id": "encrypted-footer-signature-long",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signature-long",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "refusals-open/encrypted-footer-signed-algorithm",
+      "description": "A signed plaintext footer declaring encryption by encryption_algorithm alone, then a 28-byte signature.",
+      "family": "refusals-open/unsupported",
+      "fault_id": "encrypted-footer-signed-algorithm",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signed-algorithm",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encryption"
+      }
+    },
+    {
+      "id": "refusals-open/encrypted-footer-signed-empty-key",
+      "description": "A signed plaintext footer whose only declaration is footer_signing_key_metadata present as an empty binary, then a 28-byte signature: the field's presence declares encryption.",
+      "family": "refusals-open/unsupported",
+      "fault_id": "encrypted-footer-signed-empty-key",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signed-empty-key",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encryption"
+      }
+    },
+    {
       "id": "refusals-open/invalid-footer-trailing-28",
       "description": "28 bytes follow the footer metadata, which declares no encryption: a malformed footer, not a signature.",
       "family": "refusals-open/fault",

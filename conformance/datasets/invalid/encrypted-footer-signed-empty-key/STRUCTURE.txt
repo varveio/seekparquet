@@ -1,0 +1,16 @@
+# encrypted-footer-signed-empty-key
+
+valid: no
+description: A signed plaintext footer whose only declaration is footer_signing_key_metadata present as an empty binary, then a 28-byte signature: the field's presence declares encryption.
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/basic
+fault (generators/faults.json): encrypted-footer-signed-empty-key: unsupported_encryption; reader detects on touch; lowest validation level structural (CHECK-1, FILE-2); location: data/part-00000.parquet: footer with an empty footer_signing_key_metadata alone, then a 28-byte signature
+changes:
+  - data/part-00000.parquet: footer re-encoded declaring encryption (empty-key), followed by 28 bytes the footer length covers
+  - manifest: parts[0].bytes 2828 -> 2858
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 2858, keys 'a/1.txt' .. 'foxtrot'
+
+file data/part-00000.parquet: 2858 bytes; footer unreadable: an encrypted part: a plaintext footer declaring encryption and its signature
