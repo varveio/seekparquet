@@ -54,8 +54,8 @@ class SplitTest {
         if (!RangePlanTest.selects(q, row.key())) {
             return false;
         }
-        if (q.cursor().orElse(null) instanceof Continuation.RowPosition c) {
-            int cmp = row.key().compareTo(c.bytes());
+        if (q.cursor().orElse(null) instanceof Cursor.RowPosition c) {
+            int cmp = row.key().compareTo(c.key());
             return cmp > 0 || (cmp == 0 && row.offset() > c.offset());
         }
         return true;
@@ -215,7 +215,7 @@ class SplitTest {
                             RangeQuery.builder().start(k).limit(1).build(),
                             RangeQuery.builder().end(k).limit(1).build(),
                             RangeQuery.builder().start(k).end(after).limit(1).build(),
-                            RangeQuery.builder().start(k).after(new Continuation.RowPosition(k, 1)).limit(1).build(),
+                            RangeQuery.builder().start(k).after(new Cursor.RowPosition(k, 1)).limit(1).build(),
                             RangeQuery.lookup(k, 1))) {
                         checkSplit(d, storage, oracle, "size", List.of(q));
                     }
@@ -252,7 +252,7 @@ class SplitTest {
                         switch (random.nextInt(4)) {
                             case 0 -> {
                                 Row r = rows.get(random.nextInt(rows.size()));
-                                b.after(new Continuation.RowPosition(r.key(), r.offset()));
+                                b.after(new Cursor.RowPosition(r.key(), r.offset()));
                             }
                             case 1 -> b.start(distinct.get(random.nextInt(distinct.size())));
                             case 2 -> b.startAfter(distinct.get(random.nextInt(distinct.size())));

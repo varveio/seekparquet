@@ -65,7 +65,7 @@ class ListIndexReadCacheTest {
                 assertTrue(st.hasIndex()); if(budget>0) assertTrue(st.budgetExhausted());
                 for (Object q:List.of(RangeQuery.builder().start(Bytes.utf8("f010000")).limit(3).build(),
                         new ListQuery(Bytes.utf8("z/"),(byte)'/',Optional.empty(),20,List.of("size"),Optional.empty()),
-                        new ListQuery(Bytes.utf8("z/"),(byte)'/',Optional.empty(),20,List.of("size"),Optional.of(new Continuation.CommonPrefix(Bytes.utf8("z/00/")))),
+                        new ListQuery(Bytes.utf8("z/"),(byte)'/',Optional.empty(),20,List.of("size"),Optional.of(new Cursor.CommonPrefix(Bytes.utf8("z/00/")))),
                         ListQuery.builder((byte)'/').prefix(Bytes.utf8("f01")).limit(3).build(),
                         ListQuery.builder((byte)'/').prefix(Bytes.utf8("g/")).limit(20).build())) {
                     for(int round=0;round<3;round++) {
@@ -120,7 +120,7 @@ class ListIndexReadCacheTest {
             try(Dataset plain=Dataset.open(root); Dataset indexed=Dataset.open(root)) {
                 assertFalse(indexed.buildListIndex(new ListIndexOptions(1,1,0),Cancellation.none()).hasIndex());
                 for(String cursor:List.of("a/","a","missing/")) {
-                    var q=new ListQuery(Bytes.empty(),(byte)'/',Optional.empty(),10,List.of(),Optional.of(new Continuation.CommonPrefix(Bytes.utf8(cursor))));
+                    var q=new ListQuery(Bytes.empty(),(byte)'/',Optional.empty(),10,List.of(),Optional.of(new Cursor.CommonPrefix(Bytes.utf8(cursor))));
                     var got=read(indexed,q); assertEquals(plain.list(q),got.entries()); var st=got.stats();
                     assertEquals(0,st.listIndexSkips()+st.listIndexDelimiter()+st.listIndexMissingGroup()+st.listIndexDensePage()+st.listIndexUnsafeRun());
                 }

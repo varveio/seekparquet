@@ -141,8 +141,8 @@ class QueryTest {
         Bytes p = q.prefix();
         for (TestRow r : all) {
             Bytes k = Bytes.of(r.key());
-            if (!k.startsWith(p) || (q.cursor().isPresent() && (k.compareTo(q.cursor().get().bytes()) <= 0
-                    || (q.cursor().get() instanceof Continuation.CommonPrefix && k.startsWith(q.cursor().get().bytes()))))
+            if (!k.startsWith(p) || (q.cursor().isPresent() && (k.compareTo(cursorBytes(q.cursor().get())) <= 0
+                    || (q.cursor().get() instanceof Cursor.CommonPrefix c && k.startsWith(c.prefix()))))
                     || (q.end().isPresent() && k.compareTo(q.end().get()) >= 0)) {
                 continue;
             }
@@ -172,7 +172,7 @@ class QueryTest {
         }
         Bytes after = maybe(random);
         if (after != null) {
-            b.after(random.nextBoolean() ? new Continuation.RowPosition(after, 0) : new Continuation.CommonPrefix(after));
+            b.after(random.nextBoolean() ? new Cursor.RowPosition(after, 0) : new Cursor.CommonPrefix(after));
         }
         Bytes end = maybe(random);
         if (end != null) {
@@ -217,5 +217,12 @@ class QueryTest {
                 assertTrue(Arrays.equals(all.get(j).key(), rows.get(j).key().toByteArray()));
             }
         }
+    }
+
+    private static Bytes cursorBytes(Cursor c) {
+        return switch (c) {
+            case Cursor.RowPosition r -> r.key();
+            case Cursor.CommonPrefix p -> p.prefix();
+        };
     }
 }

@@ -386,8 +386,8 @@ final class KeyCursor {
      * becomes a physical row displacement. A stale/oversized offset may land after the group;
      * in that case re-seek strictly after the key rather than skipping unrelated rows.
      */
-    boolean resume(Continuation.RowPosition after) {
-        byte[] target = after.bytes().unsafeArray();
+    boolean resume(Cursor.RowPosition after) {
+        byte[] target = after.key().unsafeArray();
         if (!Arrays.equals(key(), target) || offset() > after.offset()) {
             return true;
         }

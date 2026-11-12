@@ -298,7 +298,7 @@ class SeekCostTest {
             assertEquals(expected, actual);
             for (long offset : new long[] {202, 203, 220, 1000, Long.MAX_VALUE}) {
                 List<Row> resumed = ds.range(RangeQuery.all(1000).toBuilder().columns("size")
-                        .after(new Continuation.RowPosition(Bytes.utf8("b"), offset)).build());
+                        .after(new Cursor.RowPosition(Bytes.utf8("b"), offset)).build());
                 assertEquals(expected.stream().filter(r -> r.key().equals(Bytes.utf8("c"))).toList(), resumed);
             }
         }
@@ -377,7 +377,7 @@ class SeekCostTest {
         try (Dataset ds = Dataset.open(root)) {
             for (long offset : new long[] {2, 3, 4, 5, 6, Long.MAX_VALUE}) {
                 List<Row> got = ds.range(RangeQuery.all(10).toBuilder().columns("size")
-                        .after(new Continuation.RowPosition(Bytes.utf8("b"), offset)).build());
+                        .after(new Cursor.RowPosition(Bytes.utf8("b"), offset)).build());
                 assertEquals(List.of("c", "x", "y", "z").stream().map(Bytes::utf8).toList(),
                         got.stream().map(Row::key).toList());
                 assertEquals(List.of(3L, 4L, 5L, 6L), got.stream()

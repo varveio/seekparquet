@@ -67,7 +67,7 @@ class RepeatedKeysTest {
             }
             assertEquals(ds.lookup(Bytes.utf8("b"), 100, "size"), got);
             assertEquals(LongStream.range(0, 17).boxed().toList(), got.stream().map(Row::offset).toList());
-            assertTrue(ds.range(q.toBuilder().after(new Continuation.RowPosition(Bytes.utf8("b"), Long.MAX_VALUE)).build()).isEmpty());
+            assertTrue(ds.range(q.toBuilder().after(new Cursor.RowPosition(Bytes.utf8("b"), Long.MAX_VALUE)).build()).isEmpty());
             // Exclusive bounds apply to the whole group even when a row cursor names that group.
             assertTrue(ds.range(q.toBuilder().startAfter(Bytes.utf8("b")).build()).isEmpty());
         }
@@ -107,8 +107,8 @@ class RepeatedKeysTest {
             assertEquals(2, ds.lookup(Bytes.utf8("b"), 2).size());
             assertEquals("maxResultEntries", assertThrows(LimitExceededException.class, () -> ds.range(RangeQuery.all(3))).limit());
         }
-        assertThrows(IllegalArgumentException.class, () -> new Continuation.RowPosition(Bytes.utf8("b"), -1));
+        assertThrows(IllegalArgumentException.class, () -> new Cursor.RowPosition(Bytes.utf8("b"), -1));
         assertThrows(IllegalArgumentException.class, () -> RangeQuery.builder().limit(1)
-                .after(new Continuation.CommonPrefix(Bytes.utf8("b"))).build());
+                .after(new Cursor.CommonPrefix(Bytes.utf8("b"))).build());
     }
 }

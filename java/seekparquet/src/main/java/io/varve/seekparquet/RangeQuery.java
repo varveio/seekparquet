@@ -31,11 +31,11 @@ import java.util.Optional;
  * @param startExclusive whether a key equal to {@code start} is excluded
  * @param end the exclusive upper bound, when there is one
  * @param limit the most rows returned; positive (QUERY-1)
- * @param cursor the tagged continuation, when present
+ * @param cursor the cursor, when present
  * @param columns the columns to project, by exact top-level name (COL-6), in order
  */
 public record RangeQuery(
-        Bytes prefix, Optional<Bytes> start, boolean startExclusive, Optional<Bytes> end, int limit, List<String> columns, Optional<Continuation> cursor) {
+        Bytes prefix, Optional<Bytes> start, boolean startExclusive, Optional<Bytes> end, int limit, List<String> columns, Optional<Cursor> cursor) {
 
     /**
      * Creates a range query.
@@ -45,7 +45,7 @@ public record RangeQuery(
      * @param startExclusive whether the lower bound is exclusive
      * @param end the upper bound
      * @param limit the limit
-     * @param cursor the tagged continuation
+     * @param cursor the cursor
      * @param columns the projected columns
      * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1)
      */
@@ -54,7 +54,7 @@ public record RangeQuery(
         Objects.requireNonNull(start, "start");
         Objects.requireNonNull(end, "end");
         Objects.requireNonNull(cursor, "cursor");
-        if (cursor.orElse(null) instanceof Continuation.CommonPrefix) {
+        if (cursor.orElse(null) instanceof Cursor.CommonPrefix) {
             throw new IllegalArgumentException("a range accepts only a row cursor");
         }
         columns = List.copyOf(columns);
@@ -120,7 +120,7 @@ public record RangeQuery(
      * @return the next query
      */
     public RangeQuery next(Row last) {
-        return toBuilder().after(last.continuation()).build();
+        return toBuilder().after(last.cursor()).build();
     }
 
     /** Builds a {@link RangeQuery}. Not thread-safe. */
@@ -131,7 +131,7 @@ public record RangeQuery(
         private Optional<Bytes> end = Optional.empty();
         private int limit;
         private List<String> columns = List.of();
-        private Optional<Continuation> cursor = Optional.empty();
+        private Optional<Cursor> cursor = Optional.empty();
 
         private Builder() {}
 
@@ -214,10 +214,10 @@ public record RangeQuery(
         }
 
         /** Sets the tagged position after the last returned entry.
-         * @param cursor the continuation
+         * @param cursor the cursor
          * @return this builder
          */
-        public Builder after(Continuation cursor) {
+        public Builder after(Cursor cursor) {
             this.cursor = Optional.of(cursor);
             return this;
         }

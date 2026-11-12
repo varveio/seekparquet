@@ -4,7 +4,7 @@
 package io.varve.seekparquet.conformance;
 
 import io.varve.seekparquet.Bytes;
-import io.varve.seekparquet.Continuation;
+import io.varve.seekparquet.Cursor;
 import io.varve.seekparquet.Dataset;
 import io.varve.seekparquet.FormatVersion;
 import io.varve.seekparquet.Limits;
@@ -286,7 +286,7 @@ public final class Adapter {
         if (end != null) {
             b.end(end);
         }
-        Continuation after = cursor(req);
+        Cursor after = cursor(req);
         if (after != null) {
             b.after(after);
         }
@@ -307,14 +307,14 @@ public final class Adapter {
         if (end != null) {
             b.end(end);
         }
-        Continuation tagged = cursor(req);
+        Cursor tagged = cursor(req);
         if (tagged != null) {
             b.after(tagged);
         }
         return b.columns(columns(req)).build();
     }
 
-    private static Continuation cursor(Map<String, Object> req) throws BadRequest {
+    private static Cursor cursor(Map<String, Object> req) throws BadRequest {
         Object value = req.get("after");
         if (value == null || value == MiniJson.NULL) {
             return null;
@@ -329,7 +329,7 @@ public final class Adapter {
             if (prefix == null) {
                 throw new BadRequest("cursor prefix must be base64");
             }
-            return new Continuation.CommonPrefix(prefix);
+            return new Cursor.CommonPrefix(prefix);
         }
         if (!m.keySet().equals(java.util.Set.of("key_base64", "offset"))) {
             throw new BadRequest("cursor has undefined or missing members");
@@ -340,7 +340,7 @@ public final class Adapter {
             throw new BadRequest("cursor requires a key and a non-negative integer offset");
         }
         try {
-            return new Continuation.RowPosition(key, Long.parseLong(n.text()));
+            return new Cursor.RowPosition(key, Long.parseLong(n.text()));
         } catch (NumberFormatException e) {
             throw new BadRequest("cursor offset exceeds 2^63-1");
         }

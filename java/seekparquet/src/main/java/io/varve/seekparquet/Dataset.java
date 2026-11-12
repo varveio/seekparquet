@@ -489,8 +489,8 @@ public final class Dataset implements AutoCloseable {
      *
      * <p>{@link Batch} sets out the boundaries (never crossing a row group, a key page or a projected page;
      * the last batch ends at the limit or the upper bound) and the lifetime: a batch is read-only and
-     * borrowed until {@code action} returns, and {@link Batch#row}, {@link Batch#continuation} make the
-     * owning rows and continuations a range read returns. {@code stats} receives the request's read
+     * borrowed until {@code action} returns, and {@link Batch#row}, {@link Batch#cursor} make the
+     * owning rows and cursors a range read returns. {@code stats} receives the request's read
      * statistics when it ends, whether it succeeds or fails (zero counts when it fails to start); when every
      * call of {@code action} returns normally they are those of the same range read against the same caches.
      *

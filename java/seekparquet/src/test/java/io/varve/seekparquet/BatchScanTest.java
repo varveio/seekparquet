@@ -67,7 +67,7 @@ class BatchScanTest {
             Row row = batch.row(i);
             assertEquals(row.key(), batch.key(i));
             assertEquals(row.offset(), batch.offset(i));
-            assertEquals(row.continuation(), batch.continuation(i));
+            assertEquals(row.cursor(), batch.cursor(i));
             assertEquals(row.key().length(), batch.keyLength(i));
             byte[] key = new byte[batch.keyLength(i) + 3];
             assertEquals(batch.keyLength(i), batch.copyKey(i, key, 3));
@@ -393,19 +393,19 @@ class BatchScanTest {
                     List<Row> rows = d.range(page);
                     want.addAll(rows);
                     List<Row> batched = new ArrayList<>();
-                    AtomicReference<Continuation.RowPosition> last = new AtomicReference<>();
+                    AtomicReference<Cursor.RowPosition> last = new AtomicReference<>();
                     d.rangeBatches(page, batch -> {
                         check(batch);
                         for (int i = 0; i < batch.size(); i++) {
                             batched.add(batch.row(i));
                         }
-                        last.set(batch.continuation(batch.size() - 1));
+                        last.set(batch.cursor(batch.size() - 1));
                     });
                     got.addAll(batched);
                     if (rows.size() < limit) {
                         break;
                     }
-                    assertEquals(rows.getLast().continuation(), last.get());
+                    assertEquals(rows.getLast().cursor(), last.get());
                     page = page.toBuilder().after(last.get()).build();
                 }
                 assertEquals(want, got);
@@ -565,7 +565,7 @@ class BatchScanTest {
                 assertThrows(IllegalStateException.class, () -> b.key(0));
                 assertThrows(IllegalStateException.class, () -> b.offset(0));
                 assertThrows(IllegalStateException.class, () -> b.row(0));
-                assertThrows(IllegalStateException.class, () -> b.continuation(0));
+                assertThrows(IllegalStateException.class, () -> b.cursor(0));
                 assertThrows(IllegalStateException.class, () -> b.column(0));
                 assertThrows(IllegalStateException.class, () -> b.keyBuffer(0));
             }

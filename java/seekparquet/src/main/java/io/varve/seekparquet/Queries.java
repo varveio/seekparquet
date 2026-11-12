@@ -24,7 +24,7 @@ final class Queries {
         byte[] prefix = q.prefix().unsafeArray();
         Bounds b = Bounds.of(q);
         byte[] end = b.end();
-        Continuation.RowPosition after = b.after();
+        Cursor.RowPosition after = b.after();
         if (parts.size() == 0 || b.empty()) {
             return List.of();
         }
@@ -80,9 +80,9 @@ final class Queries {
         byte delimiter = q.delimiter();
         byte[] from = prefix.length == 0 ? null : prefix;
         boolean exclusive = false;
-        Continuation tagged = q.cursor().orElse(null);
-        if (tagged instanceof Continuation.CommonPrefix c) {
-            Optional<Bytes> successor = c.bytes().successor();
+        Cursor tagged = q.cursor().orElse(null);
+        if (tagged instanceof Cursor.CommonPrefix c) {
+            Optional<Bytes> successor = c.prefix().successor();
             if (successor.isEmpty()) {
                 return List.of();
             }
@@ -91,8 +91,8 @@ final class Queries {
                 from = floor;
                 exclusive = false;
             }
-        } else if (tagged != null && (from == null || Arrays.compareUnsigned(from, tagged.bytes().unsafeArray()) < 0)) {
-            from = tagged.bytes().unsafeArray();
+        } else if (tagged instanceof Cursor.RowPosition r && (from == null || Arrays.compareUnsigned(from, r.key().unsafeArray()) < 0)) {
+            from = r.key().unsafeArray();
             exclusive = false;
         }
         byte[] to = min(q.end().map(Bytes::unsafeArray).orElse(null), q.prefix().successor());
@@ -119,12 +119,12 @@ final class Queries {
             ReadContext ctx) {
         byte[] prefix = q.prefix().unsafeArray();
         byte delimiter = q.delimiter();
-        Continuation tagged = q.cursor().orElse(null);
+        Cursor tagged = q.cursor().orElse(null);
         List<String> columns = q.columns();
         List<ListEntry> out = new ArrayList<>(Math.min(q.limit(), 1024));
-        boolean ok = tagged instanceof Continuation.CommonPrefix c && delimiter == '/'
-                ? cursor.seekPrefixCursor(c.bytes().unsafeArray(), from) : cursor.seek(from, exclusive);
-        if (ok && tagged instanceof Continuation.RowPosition r) {
+        boolean ok = tagged instanceof Cursor.CommonPrefix c && delimiter == '/'
+                ? cursor.seekPrefixCursor(c.prefix().unsafeArray(), from) : cursor.seek(from, exclusive);
+        if (ok && tagged instanceof Cursor.RowPosition r) {
             ok = cursor.resume(r);
         }
         while (ok && out.size() < q.limit()) {
@@ -132,8 +132,8 @@ final class Queries {
             if ((to != null && Arrays.compareUnsigned(key, to) >= 0) || !startsWith(key, prefix)) {
                 break;
             }
-            if (tagged instanceof Continuation.RowPosition r
-                    && Arrays.equals(key, r.bytes().unsafeArray()) && cursor.offset() <= r.offset()) {
+            if (tagged instanceof Cursor.RowPosition r
+                    && Arrays.equals(key, r.key().unsafeArray()) && cursor.offset() <= r.offset()) {
                 ok = cursor.next();
                 continue;
             }
@@ -175,7 +175,7 @@ final class Queries {
      * @param end the exclusive upper bound, or null for none
      * @param after the row cursor, or null: rows of its key at or before its offset are excluded
      */
-    record Bounds(byte[] start, boolean exclusive, byte[] end, Continuation.RowPosition after) {
+    record Bounds(byte[] start, boolean exclusive, byte[] end, Cursor.RowPosition after) {
 
         static Bounds of(RangeQuery q) {
             byte[] prefix = q.prefix().unsafeArray();
@@ -189,9 +189,9 @@ final class Queries {
                 }
                 end = min(end, q.prefix().successor());
             }
-            Continuation.RowPosition after = (Continuation.RowPosition) q.cursor().orElse(null);
-            if (after != null && (start == null || Arrays.compareUnsigned(start, after.bytes().unsafeArray()) < 0)) {
-                start = after.bytes().unsafeArray();
+            Cursor.RowPosition after = (Cursor.RowPosition) q.cursor().orElse(null);
+            if (after != null && (start == null || Arrays.compareUnsigned(start, after.key().unsafeArray()) < 0)) {
+                start = after.key().unsafeArray();
                 exclusive = false;
             }
             return new Bounds(start, exclusive, end, after);
@@ -204,7 +204,7 @@ final class Queries {
 
         /** {@return whether the row at {@code key} and group {@code offset} is at or before the cursor} */
         boolean before(byte[] key, long offset) {
-            return after != null && Arrays.equals(key, after.bytes().unsafeArray()) && offset <= after.offset();
+            return after != null && Arrays.equals(key, after.key().unsafeArray()) && offset <= after.offset();
         }
 
         /**

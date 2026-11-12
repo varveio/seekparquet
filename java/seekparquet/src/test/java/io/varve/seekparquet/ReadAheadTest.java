@@ -282,9 +282,9 @@ class ReadAheadTest {
         for (String prefix : prefixes.subList(0, Math.min(prefixes.size(), 6))) {
             for (int i = 0; i < probes.size(); i++) {
                 String b = probes.get(i);
-                Optional<Continuation> cursor = switch (i % 3) {
-                    case 1 -> Optional.of(new Continuation.RowPosition(Bytes.utf8(b), i % 2));
-                    case 2 -> Optional.of(new Continuation.CommonPrefix(Bytes.utf8(b)));
+                Optional<Cursor> cursor = switch (i % 3) {
+                    case 1 -> Optional.of(new Cursor.RowPosition(Bytes.utf8(b), i % 2));
+                    case 2 -> Optional.of(new Cursor.CommonPrefix(Bytes.utf8(b)));
                     default -> Optional.empty();
                 };
                 if (i % 5 != 0 && cursor.isPresent()) {
@@ -402,10 +402,10 @@ class ReadAheadTest {
                 continue;
             }
             if (q.cursor().isPresent()) {
-                String c = q.cursor().get().bytes().toStringUtf8();
+                String c = (switch (q.cursor().get()) { case Cursor.RowPosition r -> r.key(); case Cursor.CommonPrefix p -> p.prefix(); }).toStringUtf8();
                 boolean after = switch (q.cursor().get()) {
-                    case Continuation.RowPosition r -> k.compareTo(c) > 0;
-                    case Continuation.CommonPrefix p -> !k.startsWith(c) && k.compareTo(c) > 0;
+                    case Cursor.RowPosition r -> k.compareTo(c) > 0;
+                    case Cursor.CommonPrefix p -> !k.startsWith(c) && k.compareTo(c) > 0;
                 };
                 if (!after) {
                     continue;
@@ -655,7 +655,7 @@ class ReadAheadTest {
     void cancelAndCloseEndTheReadsAhead() throws Exception {
         MemoryStorage storage = MemoryStorage.of(folders("cancel", 40, 500, 64, 1));
         ListQuery query = ListQuery.builder((byte) '/').prefix(Bytes.utf8(SEGMENTS)).limit(1000).readAhead(8)
-                .after(new Continuation.CommonPrefix(Bytes.utf8(SEGMENTS + "1712296817001.01/"))).build();
+                .after(new Cursor.CommonPrefix(Bytes.utf8(SEGMENTS + "1712296817001.01/"))).build();
         for (String how : List.of("cancel", "close")) {
             MemoryStorage s = storage.copy();
             Dataset d = Dataset.open(s);

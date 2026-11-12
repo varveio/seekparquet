@@ -56,7 +56,7 @@ class ListIndexTest {
                     for (Bytes prefix : prefixes) for (byte delimiter : new byte[] {'/', 'f'}) {
                         ListQuery base = ListQuery.builder(delimiter).prefix(prefix).columns("size", "note").limit(1000).build();
                         List<ListEntry> all = plain.list(base);
-                        List<Optional<Continuation>> cursors = new ArrayList<>(); cursors.add(Optional.empty());
+                        List<Optional<Cursor>> cursors = new ArrayList<>(); cursors.add(Optional.empty());
                         for (int i = 0; i < all.size(); i++) if (i < 4 || i == all.size() - 1) cursors.add(base.next(all.get(i)).cursor());
                         List<Optional<Bytes>> ends = new ArrayList<>(); ends.add(Optional.empty());
                         if (all.size() > 1) {
@@ -70,7 +70,7 @@ class ListIndexTest {
                             ends.add(Optional.of(Bytes.of(Arrays.copyOf(anchor, anchor.length + 1))));
                             ends.add(Optional.of(Bytes.of(Arrays.copyOf(anchor, anchor.length - 1))));
                         }
-                        for (Optional<Continuation> cursor : cursors) for (Optional<Bytes> end : ends) for (int limit : new int[] {1, 2, 4, 1000}) {
+                        for (Optional<Cursor> cursor : cursors) for (Optional<Bytes> end : ends) for (int limit : new int[] {1, 2, 4, 1000}) {
                             ListQuery q = new ListQuery(prefix, delimiter, end, limit, base.columns(), cursor);
                             assertEquals(plain.list(q), indexed.list(q), () -> "cap=" + cap + " budget=" + budget + " query=" + q);
                         }

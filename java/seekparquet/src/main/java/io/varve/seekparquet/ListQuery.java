@@ -31,7 +31,7 @@ import java.util.Optional;
  * @param delimiter the delimiter byte
  * @param end keys must be strictly less, when given
  * @param limit the most entries returned; positive (QUERY-1)
- * @param cursor the tagged continuation, when present
+ * @param cursor the cursor, when present
  * @param columns the columns to project for row entries, by exact top-level name, in order
  * @param readAhead the number of key pages the listing may read ahead concurrently; 0, the default,
  *     for none (see {@link Builder#readAhead(int)})
@@ -41,7 +41,7 @@ public record ListQuery(
         byte delimiter,
         Optional<Bytes> end,
         int limit,
-        List<String> columns, Optional<Continuation> cursor, int readAhead) {
+        List<String> columns, Optional<Cursor> cursor, int readAhead) {
 
     /** The largest read-ahead a listing uses: a larger {@link #readAhead()} is read as it. */
     public static final int MAX_READ_AHEAD = 64;
@@ -53,7 +53,7 @@ public record ListQuery(
      * @param delimiter the delimiter byte
      * @param end the exclusive upper bound
      * @param limit the limit
-     * @param cursor the tagged continuation
+     * @param cursor the cursor
      * @param columns the projected columns
      * @param readAhead the key pages read ahead, at least 0
      * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1), or {@code readAhead}
@@ -80,10 +80,10 @@ public record ListQuery(
      * @param end the exclusive upper bound
      * @param limit the limit
      * @param columns the projected columns
-     * @param cursor the tagged continuation
+     * @param cursor the cursor
      * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1)
      */
-    public ListQuery(Bytes prefix, byte delimiter, Optional<Bytes> end, int limit, List<String> columns, Optional<Continuation> cursor) {
+    public ListQuery(Bytes prefix, byte delimiter, Optional<Bytes> end, int limit, List<String> columns, Optional<Cursor> cursor) {
         this(prefix, delimiter, end, limit, columns, cursor, 0);
     }
 
@@ -116,12 +116,7 @@ public record ListQuery(
      * @return the next query
      */
     public ListQuery next(ListEntry last) {
-        Continuation next = switch (last) {
-            case ListEntry.RowEntry r -> r.row().continuation();
-            case ListEntry.CommonPrefix p -> new Continuation.CommonPrefix(p.prefix());
-        };
-        Builder b = toBuilder();
-        return b.after(next).build();
+        return toBuilder().after(last.cursor()).build();
     }
 
     /** Builds a {@link ListQuery}. Not thread-safe. */
@@ -131,7 +126,7 @@ public record ListQuery(
         private Optional<Bytes> end = Optional.empty();
         private int limit;
         private List<String> columns = List.of();
-        private Optional<Continuation> cursor = Optional.empty();
+        private Optional<Cursor> cursor = Optional.empty();
         private int readAhead;
 
         private Builder(byte delimiter) {
@@ -193,10 +188,10 @@ public record ListQuery(
         }
 
         /** Sets the tagged position after the last returned entry.
-         * @param cursor the continuation
+         * @param cursor the cursor
          * @return this builder
          */
-        public Builder after(Continuation cursor) {
+        public Builder after(Cursor cursor) {
             this.cursor = Optional.of(cursor);
             return this;
         }

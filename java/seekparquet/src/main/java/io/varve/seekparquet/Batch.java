@@ -20,7 +20,7 @@ import java.util.Objects;
  * {@link BatchColumn#byteBuffer} return view storage the scan reuses for later pages: they are read-only
  * and valid only until the action returns. Using the batch or its columns after that throws {@link
  * IllegalStateException}; a buffer view kept past it may show other bytes. Do not hand them to work that
- * outlives the action. {@link #row}, {@link #key}, {@link #continuation}, {@link BatchColumn#value} and
+ * outlives the action. {@link #row}, {@link #key}, {@link #cursor}, {@link BatchColumn#value} and
  * {@link BatchColumn#bytes} make owning copies, which may be kept. An index outside {@code [0, size())}
  * throws {@link IndexOutOfBoundsException}.
  *
@@ -182,13 +182,13 @@ public final class Batch {
     }
 
     /**
-     * Returns an owning continuation after row {@code i}, as {@link Row#continuation()} of {@link #row(int)}.
+     * Returns an owning cursor after row {@code i}, as {@link Row#cursor()} of {@link #row(int)}.
      *
      * @param i the row
-     * @return the continuation
+     * @return the cursor, which may be kept
      */
-    public Continuation.RowPosition continuation(int i) {
-        return new Continuation.RowPosition(key(i), offset(i));
+    public Cursor.RowPosition cursor(int i) {
+        return new Cursor.RowPosition(key(i), offset(i));
     }
 
     /** {@return the key bytes of row {@code i}, borrowed} */
