@@ -403,6 +403,21 @@ def def_optional_codecs():
                        "rows": rows}]}
 
 
+def def_brotli_key():
+    rows = rows_of([b"brk/%02d" % i for i in range(8)], lambda i, k: {"size": I(i * 3)})
+    return {"dataset": "brotli-key",
+            "description": ("Valid, but the key column is BROTLI, outside the ENC-1 baseline; the size column is "
+                            "SNAPPY. Structural validation needs no decompression and completes; a reader or "
+                            "validator without BROTLI answers requests, profile and full validation unsupported or "
+                            "incomplete."),
+            "schema_id": "conformance/objects/v1", "key_type": "binary",
+            "columns": [{"name": "size", "type": "int64", "nullable": False}],
+            "parts": [{"path": "data/part-00000.parquet", "row_groups": [4, 4],
+                       "writer": W(2, "snappy", column_compression={"key": "brotli"},
+                                   expect_codecs={"key": "BROTLI", "size": "SNAPPY"}),
+                       "rows": rows}]}
+
+
 def def_lz4_raw():
     keys = [b"lz4/%03d/%s" % (i, b"x" * (i % 7)) for i in range(40)]
     rows = rows_of(keys, lambda i, k: {"n": I(i * 7919 - 100000), "s": NULL if i % 6 == 5 else S("value-%d-" % i + "z" * i),
@@ -921,7 +936,7 @@ def new_invalid_docs():
 
 
 VALID = [def_repeated, def_large_group, def_named_key, def_empty, def_basic, def_multipart, def_binary_keys, def_projection, def_delimiter, def_list_bounds,
-         def_non_utf8_keys, def_annotated, def_encodings, def_optional_codecs, def_lz4_raw]
+         def_non_utf8_keys, def_annotated, def_encodings, def_optional_codecs, def_lz4_raw, def_brotli_key]
 
 
 def def_inconsistent_all():

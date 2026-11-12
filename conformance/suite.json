@@ -1,6 +1,6 @@
 {
   "suite": "seekparquet-conformance-semantic",
-  "revision": "0.1.0-draft.4",
+  "revision": "0.1.0-draft.5",
   "status": "draft",
   "specification": "spec/format-1.md",
   "format_version": 0,
@@ -64,24 +64,24 @@
     "cases/core/validate-profile.json": 4,
     "cases/core/validate-structural.json": 10,
     "cases/generated/repeated.generated.json": 451,
-    "cases/generated/open.generated.json": 19,
-    "cases/generated/range.generated.json": 584,
+    "cases/generated/open.generated.json": 22,
+    "cases/generated/range.generated.json": 588,
     "cases/generated/prefix.generated.json": 43,
     "cases/generated/list.generated.json": 41,
     "cases/generated/pagination.generated.json": 81,
-    "cases/generated/projection.generated.json": 39,
+    "cases/generated/projection.generated.json": 41,
     "cases/generated/planning.generated.json": 35,
     "cases/generated/requests.generated.json": 8,
-    "cases/generated/refusals-open.generated.json": 44,
+    "cases/generated/refusals-open.generated.json": 58,
     "cases/generated/refusals-read.generated.json": 21,
-    "cases/generated/validate-structural.generated.json": 122,
-    "cases/generated/validate-profile.generated.json": 42,
-    "cases/generated/validate-full.generated.json": 32,
+    "cases/generated/validate-structural.generated.json": 139,
+    "cases/generated/validate-profile.generated.json": 47,
+    "cases/generated/validate-full.generated.json": 37,
     "cases/generated/validate-digest.generated.json": 2
   },
   "totals": {
     "core": 185,
-    "generated": 1564
+    "generated": 1614
   },
   "renamed_datasets": {
     "datasets/truncated-bounds": "datasets/binary-bounds-truncated-16-byte",
@@ -185,5 +185,5 @@
       "reason": "tested the removed continuation member"
     }
   ],
-  "content_sha256": "d3116ae57c59cca092ad72541498033dde99ad41cf22c95e8e22d8382303835c"
+  "content_sha256": "c660d2f922e1c349df0502a2a9513b18469fa9cb681bebc1b66ba001e222b8da"
 }

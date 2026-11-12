@@ -850,6 +850,81 @@
       "location": "manifest.json: parts[0].extensions"
     },
     {
+      "id": "manifest-part-extensions-empty-namespace",
+      "dataset": "datasets/invalid/manifest-part-extensions-empty-namespace",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-null",
+      "dataset": "datasets/invalid/manifest-part-extensions-null",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-duplicate-namespace",
+      "dataset": "datasets/invalid/manifest-part-extensions-duplicate-namespace",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-escaped-duplicate",
+      "dataset": "datasets/invalid/manifest-part-extensions-escaped-duplicate",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-unpaired-surrogate",
+      "dataset": "datasets/invalid/manifest-part-extensions-unpaired-surrogate",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
       "id": "manifest-part-extensions-unknown-member",
       "dataset": "datasets/invalid/manifest-part-extensions-unknown-member",
       "reader_detect": "open",
@@ -1153,6 +1228,135 @@
       ],
       "outcome": "unsupported",
       "location": "data/part-00000.parquet: leading magic PAR1 -> PARE; size unchanged; data pages untouched"
+    },
+    {
+      "id": "encrypted-footer-magic",
+      "dataset": "datasets/invalid/encrypted-footer-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: trailing magic PARE"
+    },
+    {
+      "id": "encrypted-both-magic",
+      "dataset": "datasets/invalid/encrypted-both-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: leading and trailing magic PARE"
+    },
+    {
+      "id": "encrypted-header-bad-footer-magic",
+      "dataset": "datasets/invalid/encrypted-header-bad-footer-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: leading magic PARE, trailing PAR0"
+    },
+    {
+      "id": "encrypted-footer-bad-header-magic",
+      "dataset": "datasets/invalid/encrypted-footer-bad-header-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: leading magic PAR0, trailing PARE"
+    },
+    {
+      "id": "encrypted-footer-metadata",
+      "dataset": "datasets/invalid/encrypted-footer-metadata",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: FileMetaData.encryption_algorithm"
+    },
+    {
+      "id": "short-12-bytes-encrypted",
+      "dataset": "datasets/invalid/short-12-bytes-encrypted",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: 12 bytes, PARE at both ends"
+    },
+    {
+      "id": "invalid-both-magic",
+      "dataset": "datasets/invalid/invalid-both-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: leading and trailing magic PAR0"
+    },
+    {
+      "id": "short-11-bytes",
+      "dataset": "datasets/invalid/short-11-bytes",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: 11 bytes"
+    },
+    {
+      "id": "short-12-bytes",
+      "dataset": "datasets/invalid/short-12-bytes",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: 12 bytes, a zero footer length"
     },
     {
       "id": "invalid-footer-length",

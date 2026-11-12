@@ -360,7 +360,7 @@
     },
     {
       "id": "validate-full/optional-codecs",
-      "description": "value column brcol is BROTLI (outside ENC-1): full is complete, or incomplete with a reason for a validator without it; structural and profile must complete",
+      "description": "optional-codecs uses BROTLI (outside ENC-1), which the full level first needs: from there on a level is complete, or incomplete with a reason for a validator without it; the levels below must complete",
       "family": "validate-full/valid-dataset",
       "requirements": [
         "VAL-1",
@@ -417,6 +417,43 @@
           },
           "full": {
             "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/brotli-key",
+      "description": "brotli-key uses BROTLI (outside ENC-1), which the profile level first needs: from there on a level is complete, or incomplete with a reason for a validator without it; the levels below must complete",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1",
+        "ENC-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/brotli-key",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete",
+            "accept": [
+              "incomplete"
+            ]
+          },
+          "full": {
+            "result": "complete",
+            "accept": [
+              "incomplete"
+            ]
           }
         }
       }
@@ -600,6 +637,64 @@
       }
     },
     {
+      "id": "validate-full/part-extensions-empty",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/part-extensions-empty",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/part-extensions-null",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/part-extensions-null",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-full/digest-mixed",
       "family": "validate-full/valid-dataset",
       "requirements": [
@@ -753,6 +848,74 @@
           "full": {
             "result": "failed",
             "code": "invalid_parquet"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/prerequisite/encrypted-header-magic",
+      "description": "an unsupported part (encrypted-header-magic) with validation requested at full: structural incomplete with its unsupported code, and every dependent level incomplete",
+      "family": "validate-full/prerequisite",
+      "fault_id": "encrypted-header-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/encrypted-header-magic",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          },
+          "profile": {
+            "result": "incomplete"
+          },
+          "full": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/prerequisite/encrypted-both-magic",
+      "description": "an unsupported part (encrypted-both-magic) with validation requested at full: structural incomplete with its unsupported code, and every dependent level incomplete",
+      "family": "validate-full/prerequisite",
+      "fault_id": "encrypted-both-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/encrypted-both-magic",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          },
+          "profile": {
+            "result": "incomplete"
+          },
+          "full": {
+            "result": "incomplete"
           }
         }
       }

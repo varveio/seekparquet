@@ -1,0 +1,15 @@
+# invalid-both-magic
+
+valid: no
+description: The part's leading and trailing magics are both PAR0.
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/basic
+fault (generators/faults.json): invalid-both-magic: invalid_footer; reader detects on touch; lowest validation level structural (CHECK-1); location: data/part-00000.parquet: leading and trailing magic PAR0
+changes:
+  - data/part-00000.parquet: leading magic -> PAR0, trailing magic -> PAR0; size unchanged; data pages untouched
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 2828, keys 'a/1.txt' .. 'foxtrot'
+
+file data/part-00000.parquet: 2828 bytes; footer unreadable: missing PAR1 magic

@@ -203,6 +203,10 @@ ORACLE_ADAPTER = textwrap.dedent(r'''
         for lvl in LEVELS[: LEVELS.index(level) + 1]:
             if flvl is None or flvl not in LEVELS or LEVELS.index(lvl) < LEVELS.index(flvl):
                 out[lvl] = {"result": "complete"}
+            elif lvl == flvl and f.get("outcome") == "unsupported":
+                out[lvl] = {"result": "incomplete", "reason": "an unsupported feature"}
+                if BUG != "no-unsupported-code":  # BUG: the incomplete level does not name the unsupported code
+                    out[lvl]["code"] = f["codes"][0]
             elif lvl == flvl:
                 out[lvl] = {"result": "failed", "code": f["codes"][0]}
             elif BUG == "skip-prereq":
@@ -217,15 +221,18 @@ ORACLE_ADAPTER = textwrap.dedent(r'''
             return {"status": "ok", "implementation": "oracle-stub", "version": BUG,
                     "supports": [{"format_version": 0, "draft_revision": 1}],
                     "targets": ["reader", "validator-structural", "validator-profile", "validator-full", "validator-digest"],
-                    "capabilities": ["open", "range", "list", "projection", "validate:structural", "validate:profile",
-                                     "validate:full", "validate:digest"]}
+                    "capabilities": ["open", "range", "list", "projection", "verify", "validate:structural",
+                                     "validate:profile", "validate:full", "validate:digest"]}
         d = Path(req["dataset"]).relative_to(CONF).as_posix()
         if req["op"] == "validate":
             return {"status": "ok", "levels": validate(d, req["level"])}
         f = faults.get(d)
+        status = "unsupported" if f and f.get("outcome") == "unsupported" else "refused"
+        if f and status == "unsupported" and req["op"] == "verify" and BUG == "verify-ok":
+            return {"status": "ok"}  # BUG: verify does not check the part the range found unsupported
         if f and (f["reader_detect"] == "open" or req["op"] != "open" and f["reader_detect"] in ("touch", "read")):
-            return {"status": "refused", "code": f["codes"][0]}
-        if req["op"] == "open":
+            return {"status": status, "code": f["codes"][0]}
+        if req["op"] in ("open", "verify"):
             return {"status": "ok"}
         ds = oracle.Dataset.load(rows_name(d))
         cols = req.get("columns", [])
@@ -330,6 +337,13 @@ class HarnessSelfTest(unittest.TestCase):
 
     def test_detects_validation_skipping_prerequisites(self):
         self.assert_detected("skip-prereq", r"^validate-(profile|full)/prerequisite/")
+
+    def test_detects_unsupported_part_passing_verify(self):
+        # an unsupported part follows the refusal lifecycle: verify on a fresh handle must answer unsupported too
+        self.assert_detected("verify-ok", r"^refusals-open/encrypted-")
+
+    def test_detects_unsupported_incomplete_without_its_code(self):
+        self.assert_detected("no-unsupported-code", r"^validate-(structural|profile|full)/(prerequisite/)?encrypted-")
 
     def test_detects_incomplete_without_reason(self):
         self.assert_detected("no-reason", r"^validate-(profile|full)/prerequisite/")

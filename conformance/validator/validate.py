@@ -245,6 +245,8 @@ class Part:
             self.file.close()
 
     def _footer(self, m):
+        if self.pf.meta.has(8) or self.pf.meta.has(9):  # FILE-2: encryption declared in the footer
+            raise Incomplete('unsupported_encryption: encryption declared in the footer')
         groups = self.pf.row_groups
         counts = [g.get(p.RG_NUM_ROWS) for g in groups]
         require(all(integer(n) for n in counts), 'invalid_footer', 'negative/missing row group count')
@@ -384,7 +386,9 @@ def _run_level(action):
     except p.ResourceLimit as e:
         return {'result': 'incomplete', 'reason': str(e), 'category': 'limit'}
     except Incomplete as e:
-        return {'result': 'incomplete', 'reason': str(e), 'category': 'unsupported' if str(e).startswith('unsupported_') else 'limit'}
+        if str(e).startswith('unsupported_'):  # an unsupported feature names its code
+            return {'result': 'incomplete', 'reason': str(e), 'category': 'unsupported', 'code': str(e).split(':')[0]}
+        return {'result': 'incomplete', 'reason': str(e), 'category': 'limit'}
     except OSError as e:
         return {'result': 'incomplete', 'reason': str(e), 'category': 'storage'}
     except (p.ParquetMetaError, p.ThriftError, AttributeError, IndexError, TypeError, ValueError) as e:

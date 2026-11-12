@@ -244,13 +244,18 @@ class Part:
         self.data = self.path.read_bytes()
         if len(self.data) != entry["bytes"]:
             raise Refusal("part_mismatch", f"{rel}: size {len(self.data)} != {entry['bytes']}")
-        if b"PARE" in (self.data[:4], self.data[-4:]):  # CHECK-1 checks both magics; PARE is encryption (FILE-2)
+        # CHECK-1: length first, then PARE at either end is encryption (FILE-2), then anything but PAR1.
+        if len(self.data) < 12:
+            raise Refusal("invalid_footer", f"{rel}: shorter than 12 bytes")
+        if b"PARE" in (self.data[:4], self.data[-4:]):
             raise NotSupported("unsupported_encryption", f"{rel}: PARE magic")
         try:
             self.pf = pm.read_parquet(self.data)
             self.fields = top_level(self.pf)
         except (pm.ParquetMetaError, pm.ThriftError, AttributeError, IndexError, TypeError) as e:
             raise Refusal("invalid_footer", f"{rel}: {e}") from None
+        if self.pf.meta.has(8) or self.pf.meta.has(9):  # FILE-2: encryption declared in the footer
+            raise NotSupported("unsupported_encryption", f"{rel}: encryption declared in the footer")
         for rg in self.pf.row_groups:
             for cc in rg.items_of(pm.RG_COLUMNS):
                 if cc.has(pm.CC_FILE_PATH):
@@ -715,7 +720,7 @@ def do_validate(path, level):
             out[lvl] = {"result": "failed", "code": r.code}
             blocked = True
         except NotSupported as u:
-            out[lvl] = {"result": "incomplete", "reason": f"unsupported ({u.code}): {u}"}
+            out[lvl] = {"result": "incomplete", "code": u.code, "reason": f"unsupported ({u.code}): {u}"}
             blocked = True
     return out
 

@@ -170,10 +170,12 @@ Validation runs the requested level and its prerequisites (spec §8) and reports
 
 `result` is `complete`, `failed` (with `code`) or `incomplete` (with `reason`, a non-empty string; the
 harness rejects an `incomplete` level without one, but never compares its wording). A level that needs an
-unsupported column, encoding or codec is `incomplete`, never an `unsupported` response; lower levels keep
-their results and higher levels are `incomplete` (VAL-1). A `validate` request never answers `refused`: at
-the structural, profile and full levels, a dataset that cannot be opened reports `structural` as `failed`
-with the refusal code, so validator targets include the open-stage faults. The `digest` level has no
+unsupported column, encoding or codec, or meets an encrypted part, is `incomplete`, never an `unsupported`
+response, and carries the unsupported `code` (for example `unsupported_encryption`), which the harness compares
+when the case expects one; lower levels keep their results and higher levels are `incomplete` (VAL-1). A
+`validate` request never answers `refused`. At the structural, profile and full levels, an open-stage refusal
+makes `structural` failed with its refusal code; an unsupported feature makes it incomplete with a reason.
+Dependent levels are incomplete. Validator targets so include the open-stage faults. The `digest` level has no
 prerequisite and does not open the dataset: it hashes the bytes of the parts the manifest lists, so a part
 that is not valid Parquet can still complete it. It adds `checked`, the number of digests it compared.
 `status` is `ok` whenever validation ran, whatever it found.
@@ -216,6 +218,15 @@ stages in order and stops at the first refusal:
 3. **validate.** If `detect` is `validate:<level>`, it sends the case's request if it has one (success, or
    a refusal with an acceptable code, which completes the case), then `validate` at that level, whose
    report must show that level `failed` with an acceptable code.
+
+A fault declaration's `outcome` defaults to `refused`; `unsupported` selects an unsupported-feature response
+instead. Both outcomes use the declared detection stage and the same open/read/verify lifecycle. An acceptable
+outcome during open completes that path; otherwise a `touch` case checks the first routed read and, when
+claimed, verification on a fresh handle. Validation represents unsupported features as `incomplete` with a
+non-empty reason, never as a failed level. In a case, an unsupported outcome is an expectation of status
+`unsupported` with a `detect` stage; every stage above then expects `unsupported` with an acceptable code
+where it would expect a refusal, and a refusal fails the case. The validation expectation of such a fault
+gives the level `incomplete` with the unsupported `code`, which the validator must report.
 
 A `read` case's request must decode the faulty data under every correct access path: for example a range
 that starts before the faulty page and whose limit covers it. Faults that an index-guided reader may

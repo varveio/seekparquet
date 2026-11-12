@@ -634,6 +634,106 @@
       }
     },
     {
+      "id": "refusals-open/manifest-part-extensions-empty-namespace",
+      "description": "The part's extensions object has an empty namespace name.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-part-extensions-empty-namespace",
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-empty-namespace",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-part-extensions-null",
+      "description": "The part's extensions is null, not an object.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-part-extensions-null",
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-null",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-part-extensions-duplicate-namespace",
+      "description": "The part's extensions object names the namespace conformance twice.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-part-extensions-duplicate-namespace",
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-duplicate-namespace",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-part-extensions-escaped-duplicate",
+      "description": "The part's extensions object names the namespace conformance twice, once spelled with an escape (conform\\u0061nce).",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-part-extensions-escaped-duplicate",
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-escaped-duplicate",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
+      "id": "refusals-open/manifest-part-extensions-unpaired-surrogate",
+      "description": "A string nested inside the part's extensions is the escaped lone surrogate \\ud800.",
+      "family": "refusals-open/fault",
+      "fault_id": "manifest-part-extensions-unpaired-surrogate",
+      "requirements": [
+        "EXT-4",
+        "MAN-1",
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-unpaired-surrogate",
+      "detect": "open",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_manifest"
+      }
+    },
+    {
       "id": "refusals-open/manifest-part-extensions-unknown-member",
       "description": "The part has a valid extensions object and, beside it, the undefined member checksum: the core part object stays closed.",
       "family": "refusals-open/fault",
@@ -777,6 +877,7 @@
         "FILE-2"
       ],
       "dataset": "datasets/invalid/encrypted-header-magic",
+      "detect": "touch",
       "request": {
         "op": "range",
         "limit": 100000
@@ -784,6 +885,183 @@
       "expect": {
         "status": "unsupported",
         "code": "unsupported_encryption"
+      }
+    },
+    {
+      "id": "refusals-open/encrypted-footer-magic",
+      "description": "The part's trailing magic is PARE.",
+      "family": "refusals-open/unsupported",
+      "fault_id": "encrypted-footer-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-magic",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encryption"
+      }
+    },
+    {
+      "id": "refusals-open/encrypted-both-magic",
+      "description": "The part begins and ends with PARE, the magics of an encrypted-footer Parquet file (its footer and pages are plaintext).",
+      "family": "refusals-open/unsupported",
+      "fault_id": "encrypted-both-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "dataset": "datasets/invalid/encrypted-both-magic",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encryption"
+      }
+    },
+    {
+      "id": "refusals-open/encrypted-header-bad-footer-magic",
+      "description": "The part's leading magic is PARE and its trailing magic PAR0: encryption takes precedence.",
+      "family": "refusals-open/unsupported",
+      "fault_id": "encrypted-header-bad-footer-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "dataset": "datasets/invalid/encrypted-header-bad-footer-magic",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encryption"
+      }
+    },
+    {
+      "id": "refusals-open/encrypted-footer-bad-header-magic",
+      "description": "The part's leading magic is PAR0 and its trailing magic PARE: encryption takes precedence.",
+      "family": "refusals-open/unsupported",
+      "fault_id": "encrypted-footer-bad-header-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-bad-header-magic",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encryption"
+      }
+    },
+    {
+      "id": "refusals-open/encrypted-footer-metadata",
+      "description": "The part's footer declares encryption (FileMetaData.encryption_algorithm AES_GCM_V1); its magics are PAR1 and its pages plaintext.",
+      "family": "refusals-open/unsupported",
+      "fault_id": "encrypted-footer-metadata",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-metadata",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encryption"
+      }
+    },
+    {
+      "id": "refusals-open/short-12-bytes-encrypted",
+      "description": "The part is 12 bytes, PARE, a zero footer length, PARE: long enough, so encryption.",
+      "family": "refusals-open/unsupported",
+      "fault_id": "short-12-bytes-encrypted",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "dataset": "datasets/invalid/short-12-bytes-encrypted",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "unsupported",
+        "code": "unsupported_encryption"
+      }
+    },
+    {
+      "id": "refusals-open/invalid-both-magic",
+      "description": "The part's leading and trailing magics are both PAR0.",
+      "family": "refusals-open/fault",
+      "fault_id": "invalid-both-magic",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/invalid-both-magic",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "refusals-open/short-11-bytes",
+      "description": "The part is 11 bytes, PARE ... PARE: shorter than 12 bytes, invalid_footer whatever its magic.",
+      "family": "refusals-open/fault",
+      "fault_id": "short-11-bytes",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/short-11-bytes",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
+      }
+    },
+    {
+      "id": "refusals-open/short-12-bytes",
+      "description": "The part is 12 bytes, PAR1, a zero footer length, PAR1: long enough, magic valid, but no footer.",
+      "family": "refusals-open/fault",
+      "fault_id": "short-12-bytes",
+      "requirements": [
+        "CHECK-1"
+      ],
+      "dataset": "datasets/invalid/short-12-bytes",
+      "detect": "touch",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_footer"
       }
     },
     {

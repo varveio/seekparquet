@@ -31,7 +31,12 @@
             ]
           },
           "n": -7
-        }
+        },
+        "seekparquet": [
+          1,
+          "x",
+          null
+        ]
       }
     },
     {
@@ -64,8 +69,8 @@
       "sha256": "c6bb040398c045858aa97187182a4d301d0391f5260a089f3525cf8cf6fda786",
       "extensions": {
         "other-tool": null,
-        "seekparquet": {},
-        "conformance": "text"
+        "seekparquet": "text",
+        "conformance": 3.5
       }
     }
   ],
@@ -73,6 +78,13 @@
     "conformance": {
       "synthetic": true,
       "note": "ignored by readers"
-    }
+    },
+    "seekparquet": [
+      true,
+      null,
+      {
+        "future": 1
+      }
+    ]
   }
 }

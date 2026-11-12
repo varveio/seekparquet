@@ -212,6 +212,25 @@
       }
     },
     {
+      "id": "open/brotli-key",
+      "description": "Valid, but the key column is BROTLI, outside the ENC-1 baseline; the size column is SNAPPY. Structural validation needs no decompression and completes; a reader or validator without BROTLI answers requests, profile and full validation unsupported or incomplete.",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3",
+        "ENC-1"
+      ],
+      "dataset": "datasets/brotli-key",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
       "id": "open/truncated-bounds",
       "description": "binary-keys with every key-page bound longer than 16 bytes shortened conservatively (lower bounds to a 16-byte prefix, upper bounds to an incremented prefix, except that an upper bound whose first 16 bytes are all 0xFF is kept full). Adjacent page bounds overlap. Row group 1 of part 0 is marked UNORDERED.",
       "family": "open/valid-dataset",
@@ -287,7 +306,7 @@
     },
     {
       "id": "open/part-extensions",
-      "description": "multipart with an extensions object on each part: an unknown namespace with nested values, the reserved namespace seekparquet with members no accelerator defines, and a mix; every reader ignores them, so queries answer exactly as on multipart (EXT-1, EXT-3, EXT-5).",
+      "description": "multipart with an extensions object on each part: an unknown namespace with nested values, the reserved namespace seekparquet holding an array, an object with members no accelerator defines and a string, and the reserved namespace at the top level too (an array); every reader ignores them, so queries answer exactly as on multipart (EXT-1, EXT-3, EXT-5).",
       "family": "open/valid-dataset",
       "requirements": [
         "CHECK-1",
@@ -299,6 +318,48 @@
         "EXT-5"
       ],
       "dataset": "datasets/part-extensions",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/part-extensions-empty",
+      "description": "basic with the reserved namespace seekparquet holding a number at the top level, and an empty extensions object on the part; readers ignore both (EXT-3, EXT-5).",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3",
+        "EXT-1",
+        "EXT-3",
+        "EXT-5"
+      ],
+      "dataset": "datasets/part-extensions-empty",
+      "request": {
+        "op": "open"
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "id": "open/part-extensions-null",
+      "description": "basic with the reserved namespace seekparquet holding null at the top level and in the part's extensions; readers ignore both (EXT-3, EXT-5).",
+      "family": "open/valid-dataset",
+      "requirements": [
+        "CHECK-1",
+        "LAYOUT-1",
+        "MAN-1",
+        "MAN-3",
+        "EXT-1",
+        "EXT-3",
+        "EXT-5"
+      ],
+      "dataset": "datasets/part-extensions-null",
       "request": {
         "op": "open"
       },

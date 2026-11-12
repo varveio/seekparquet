@@ -375,6 +375,37 @@
       }
     },
     {
+      "id": "validate-profile/brotli-key",
+      "description": "brotli-key uses BROTLI (outside ENC-1), which the profile level first needs: from there on a level is complete, or incomplete with a reason for a validator without it; the levels below must complete",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1",
+        "ENC-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/brotli-key",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete",
+            "accept": [
+              "incomplete"
+            ]
+          }
+        }
+      }
+    },
+    {
       "id": "validate-profile/truncated-bounds",
       "family": "validate-profile/valid-dataset",
       "requirements": [
@@ -514,6 +545,58 @@
         "validate:profile"
       ],
       "dataset": "datasets/part-extensions",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/part-extensions-empty",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/part-extensions-empty",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/part-extensions-null",
+      "family": "validate-profile/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/part-extensions-null",
       "request": {
         "op": "validate",
         "level": "profile"
@@ -1054,6 +1137,68 @@
           "profile": {
             "result": "failed",
             "code": "key_order"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/prerequisite/encrypted-header-magic",
+      "description": "an unsupported part (encrypted-header-magic) with validation requested at profile: structural incomplete with its unsupported code, and every dependent level incomplete",
+      "family": "validate-profile/prerequisite",
+      "fault_id": "encrypted-header-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/encrypted-header-magic",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          },
+          "profile": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/prerequisite/encrypted-both-magic",
+      "description": "an unsupported part (encrypted-both-magic) with validation requested at profile: structural incomplete with its unsupported code, and every dependent level incomplete",
+      "family": "validate-profile/prerequisite",
+      "fault_id": "encrypted-both-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/encrypted-both-magic",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          },
+          "profile": {
+            "result": "incomplete"
           }
         }
       }

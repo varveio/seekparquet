@@ -28,7 +28,7 @@ sys.path.insert(0, str(HERE))
 import oracle  # noqa: E402
 from common import b64d, b64e, dumps, load_rows, write_text  # noqa: E402
 
-SUITE_REVISION = "0.1.0-draft.4"
+SUITE_REVISION = "0.1.0-draft.5"
 GENERATOR = "generators/make_cases.py"
 # Datasets renamed for clarity: old label (kept in case ids, which are stable) -> dataset directory.
 RENAMED = {"truncated-bounds": "binary-bounds-truncated-16-byte",
@@ -40,7 +40,10 @@ GROUP_ORDER = ["open", "range", "prefix", "list", "pagination", "projection", "p
                "refusals-read", "validate-structural", "validate-profile", "validate-full", "validate-digest"]
 # Datasets that use optional features (outside ENC-1): a reader may support them or answer unsupported, but only
 # for a request that needs them.
-OPTIONAL = {"optional-codecs": ["unsupported_encoding"]}
+OPTIONAL = {"optional-codecs": ["unsupported_encoding"], "brotli-key": ["unsupported_encoding"]}
+# The lowest validation level that needs each optional dataset's codec: BROTLI values need full, a BROTLI key
+# profile (structural reads no page data, so it completes).
+OPTIONAL_LEVEL = {"optional-codecs": "full", "brotli-key": "profile"}
 BIG = 100000  # a limit at least the number of rows of every fixture (QUERY-3)
 # Retired cases that tested only removed request members; their ids are never reused.
 REMOVED = {"list/delimiter/continuation-without-after": "tested the removed continuation member"}
@@ -208,7 +211,7 @@ def open_group(lock):
                 reqs += ["EXT-1", "MAN-6"]
             if d["name"] in ("encodings", "lz4-raw"):
                 reqs += ["ENC-1"]
-            if d["name"] == "part-extensions":
+            if d["name"].startswith("part-extensions"):
                 reqs += ["EXT-1", "EXT-3", "EXT-5"]
             exp = {"status": "ok"}
             if d["name"] in OPTIONAL:
@@ -357,6 +360,9 @@ def range_group():
               desc=f"a read that starts at part {j}'s first key")
     add("part-extensions/across-parts", reqs, "part-extensions", "multipart",
         rq_range(start=b"logs/2026/02/f001", end=b"logs/2026/03/f012", columns=["size"]), "a range across all three parts")
+    for name in ("part-extensions-empty", "part-extensions-null"):
+        add(f"{name}/all", reqs, name, "basic", rq_range(columns=["size", "etag"]))
+        add(f"{name}/seek", reqs, name, "basic", rq_range(start=b"bravo", limit=3, columns=["etag"]))
     return g
 
 
@@ -630,6 +636,11 @@ def projection_group():
     g.add("optional-codecs/brcol", ["RANGE-2", "ENC-1"], "optional-codecs",
           dict(run(oc, req), accept_unsupported=["unsupported_encoding"]), request=req,
           desc="a codec outside the baseline: the values, or unsupported (never wrong values or a refusal)")
+    bk = oracle.Dataset.load("brotli-key")
+    for name, req in (("range", rq_range(columns=["size"])), ("list", rq_list(prefix=b"brk/", columns=["size"]))):
+        g.add(f"brotli-key/{name}", ["RANGE-2", "ENC-1"] + (["LIST-3"] if name == "list" else []), "brotli-key",
+              dict(run(bk, req), accept_unsupported=["unsupported_encoding"]), request=req,
+              desc="the key column is BROTLI, outside the baseline: the rows, or unsupported (never a refusal)")
     lz = oracle.Dataset.load("lz4-raw")
     g.fam("lz4-raw", "LZ4_RAW (ENC-1 baseline) in the key and every value column, data page v1 and v2: the values")
     for name, req, desc in (
@@ -840,6 +851,8 @@ LEVELS = ["structural", "profile", "full"]
 # and three profile faults requested at full. Every other fault is tested only at its lowest level.
 STRUCTURAL_SENTINELS = ["manifest-unknown-member", "missing-part", "invalid-footer-magic", "stamp-wrong-schema-id",
                         "inconsistent-column-type", "missing-column-index"]
+# Unsupported parts (outcome unsupported) requested at profile and full: structural incomplete propagates.
+UNSUPPORTED_SENTINELS = ["encrypted-header-magic", "encrypted-both-magic"]
 PROFILE_SENTINELS = ["key-order-across-pages", "bounds-last-key-differs", "page-index-min-above-first-key"]
 # Six distinct digest behaviours (VAL-2): (dataset, expected digest level, description).
 DIGEST_CASES = [
@@ -902,11 +915,13 @@ def refusal_groups(lock):
         for lvl in LEVELS:
             levels = {x: {"result": "complete"} for x in LEVELS[: LEVELS.index(lvl) + 1]}
             reqs, desc = ["VAL-1"], None
-            if lvl == "full" and d["name"] in OPTIONAL:
-                levels["full"] = {"result": "complete", "accept": ["incomplete"]}
+            if d["name"] in OPTIONAL and LEVELS.index(lvl) >= LEVELS.index(OPTIONAL_LEVEL[d["name"]]):
+                for x in LEVELS[LEVELS.index(OPTIONAL_LEVEL[d["name"]]): LEVELS.index(lvl) + 1]:
+                    levels[x] = {"result": "complete", "accept": ["incomplete"]}
                 reqs.append("ENC-1")
-                desc = ("value column brcol is BROTLI (outside ENC-1): full is complete, or incomplete with a reason for a "
-                        "validator without it; structural and profile must complete")
+                desc = (f"{d['name']} uses BROTLI (outside ENC-1), which the {OPTIONAL_LEVEL[d['name']]} level first "
+                        "needs: from there on a level is complete, or incomplete with a reason for a validator without "
+                        "it; the levels below must complete")
             if lvl == "full" and d["name"] in NESTED_COLUMNS:
                 levels["full"] = {"result": "complete", "accept": ["incomplete"]}
                 desc = (f"the dataset has nested/repeated columns ({NESTED_COLUMNS[d['name']]}); a validator that "
@@ -925,16 +940,17 @@ def refusal_groups(lock):
         exp = expect_refusal(codes)
         meta = {"fault_id": fid}
         if f.get("outcome") == "unsupported":
-            # Not readable data and not a refusal: a request that touches the part answers unsupported, and
-            # validation reports the level incomplete (VAL-1).
+            # Not readable data and not a refusal: the same lifecycle as a refusal (open, the first routed read,
+            # verify on a fresh handle), answered unsupported; validation reports the level incomplete with the
+            # unsupported code (VAL-1).
             assert f["reader_detect"] == "touch" and len(codes) == 1, fid
             g_open.family = "refusals-open/unsupported"
             g_open.add(fid, f["requirements"], ddir, {"status": "unsupported", "code": codes[0]},
-                       request=rq_range(limit=BIG), desc=desc, meta=meta)
+                       request=rq_range(limit=BIG), detect="touch", desc=desc, meta=meta)
             g_open.family = "refusals-open/fault"
             lvl = f["validation_level"]
             levels = {x: {"result": "complete"} for x in LEVELS[: LEVELS.index(lvl)]}
-            levels[lvl] = {"result": "incomplete"}
+            levels[lvl] = {"result": "incomplete", "code": codes[0]}
             gv[lvl].add(fid, f["requirements"] + ["VAL-1"], ddir, {"status": "ok", "levels": levels},
                         request={"op": "validate", "level": lvl}, requires=[f"validate:{lvl}"], desc=desc, meta=meta)
             continue
@@ -955,6 +971,17 @@ def refusal_groups(lock):
     for lvl in ("profile", "full"):
         gv[lvl].fam("prerequisite", "a lower-level fault with validation requested at a higher level: the failing "
                                     "level is reported failed and every dependent level incomplete with a reason")
+    for fid in UNSUPPORTED_SENTINELS:
+        f = faults[fid]
+        for higher in ("profile", "full"):
+            levels = {"structural": {"result": "incomplete", "code": f["codes"][0]}}
+            for x in LEVELS[1: LEVELS.index(higher) + 1]:
+                levels[x] = {"result": "incomplete"}
+            gv[higher].add(f"prerequisite/{fid}", f["requirements"] + ["VAL-1"], f["dataset"],
+                           {"status": "ok", "levels": levels}, request={"op": "validate", "level": higher},
+                           requires=[f"validate:{higher}"], meta={"fault_id": fid},
+                           desc=f"an unsupported part ({fid}) with validation requested at {higher}: structural "
+                                "incomplete with its unsupported code, and every dependent level incomplete")
     for fid in STRUCTURAL_SENTINELS + PROFILE_SENTINELS:
         f = faults[fid]
         low = f["validation_level"]
@@ -1152,8 +1179,9 @@ UNTESTABLE = {
     "VER-2": "process rule for the specification itself: not testable",
     "VAL-3": "statement of what validation cannot show: not testable",
     "EXT-2": "API recommendation (expose extensions unchanged): outside the runner protocol",
-    "CHECK-6": "storage identity (no bytes of two versions of a part combined): a property of the storage layer and "
-               "the reader's caches across a replacement, outside the runner protocol's immutable fixtures",
+    "CHECK-6": "uncovered: storage identity (no bytes of two versions of a part combined; a reported change is a "
+               "storage error, or disables an accelerator) needs a controllable storage source that replaces "
+               "objects, retries and caches metadata; immutable fixtures cannot show it",
     "GEO-1": "writer recommendation affecting speed, not validity; reader acceptance of any page size is "
              "exercised by every fixture with a different page size",
     "GEO-2": "writer's choice: not a reader obligation",
@@ -1163,7 +1191,13 @@ UNTESTABLE = {
     "COL-1": "producer freedom: no reader obligation",
 }
 GAPS = {
-    "FILE-2": "partial: only an encrypted (PARE) magic; no fixture declares encryption in its footer or columns",
+    "FILE-2": "partial: PARE magics and encryption declared in FileMetaData are covered; no fixture has encrypted "
+              "column metadata (ColumnChunk crypto_metadata), and no fixture is a real encrypted file",
+    "EXT-3": "partial: ignoring unknown namespaces, members and reserved values is covered; disabling an unusable "
+             "recognised accelerator has no case, since this draft defines no accelerator (an obligation of each "
+             "future accelerator document)",
+    "CHECK-5": "partial: corrupt data is covered; that a reader's resource limit (for example its manifest nesting "
+               "depth) is not a refusal has no shared case, since limits are each implementation's own",
     "CHECK-3": "gap: permission for earlier checks; the harness accepts early refusals but no case targets it",
     "CHECK-4": "gap: needs the planned indexed-access suite (a reader must not certify rows it skipped)",
     "RG-3": "partial: no fixture whose OffsetIndex omits a data page while every listed entry is consistent",

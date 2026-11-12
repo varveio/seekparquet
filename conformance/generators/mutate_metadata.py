@@ -420,6 +420,12 @@ def shrink_uncompressed_size(rg, col, page_no):
     return fn
 
 
+def declare_encryption(part):
+    """Declare AES_GCM_V1 encryption in FileMetaData (field 8, union EncryptionAlgorithm, member 1)."""
+    part.meta.set(8, pm.CT_STRUCT, pm.Struct(fields=[(1, pm.CT_STRUCT, pm.Struct())]))
+    part.changes.append("footer: FileMetaData.encryption_algorithm = AES_GCM_V1 {} (nothing else encrypted)")
+
+
 def set_part_extensions(values):
     """Give parts their own extensions objects: {part index: object}."""
     def fn(m, changes):
@@ -542,14 +548,30 @@ def build():
                                             ["manifest text: extensions member added with ordinary JSON values"])))
     R.append(derive("part-extensions", "multipart",
                     "multipart with an extensions object on each part: an unknown namespace with nested values, the "
-                    "reserved namespace seekparquet with members no accelerator defines, and a mix; every reader "
-                    "ignores them, so queries answer exactly as on multipart (EXT-1, EXT-3, EXT-5).",
+                    "reserved namespace seekparquet holding an array, an object with members no accelerator defines "
+                    "and a string, and the reserved namespace at the top level too (an array); every reader ignores "
+                    "them, so queries answer exactly as on multipart (EXT-1, EXT-3, EXT-5).",
                     None, valid=True, out=DATASETS / "part-extensions",
-                    manifest=set_part_extensions({
-                        0: {"conformance": {"nested": {"a": [1, 2.5, None, {"b": [True, {}]}]}, "n": -7}},
-                        1: {"seekparquet": {"future_accelerator": {"version": 99, "data": [1, 2, 3]},
-                                            "unknown": "ignored"}},
-                        2: {"other-tool": None, "seekparquet": {}, "conformance": "text"}})))
+                    manifest=lambda m, ch: (
+                        set_member(["extensions", "seekparquet"], [True, None, {"future": 1}])(m, ch),
+                        set_part_extensions({
+                            0: {"conformance": {"nested": {"a": [1, 2.5, None, {"b": [True, {}]}]}, "n": -7},
+                                "seekparquet": [1, "x", None]},
+                            1: {"seekparquet": {"future_accelerator": {"version": 99, "data": [1, 2, 3]},
+                                                "unknown": "ignored"}},
+                            2: {"other-tool": None, "seekparquet": "text", "conformance": 3.5}})(m, ch))))
+    R.append(derive("part-extensions-empty", "basic",
+                    "basic with the reserved namespace seekparquet holding a number at the top level, and an empty "
+                    "extensions object on the part; readers ignore both (EXT-3, EXT-5).",
+                    None, valid=True, out=DATASETS / "part-extensions-empty",
+                    manifest=lambda m, ch: (set_member(["extensions"], {"seekparquet": 42})(m, ch),
+                                            set_part_extensions({0: {}})(m, ch))))
+    R.append(derive("part-extensions-null", "basic",
+                    "basic with the reserved namespace seekparquet holding null at the top level and in the part's "
+                    "extensions; readers ignore both (EXT-3, EXT-5).",
+                    None, valid=True, out=DATASETS / "part-extensions-null",
+                    manifest=lambda m, ch: (set_member(["extensions"], {"seekparquet": None})(m, ch),
+                                            set_part_extensions({0: {"seekparquet": None}})(m, ch))))
     R.append(derive("digest-mixed", "multipart",
                     "multipart with sha256 declared for parts 0 and 2 only: digest validation checks exactly 2.",
                     None, valid=True, out=DATASETS / "digest-mixed",
@@ -645,6 +667,19 @@ def build():
                     "The part's extensions object holds a namespace whose object has the member a twice.", None,
                     raw_manifest=text_replace('"rows": 12,',
                                               '"rows": 12,\n      "extensions": {"conformance": {"a": 1, "a": 2}},')))
+    for fid, desc, text in (
+            ("manifest-part-extensions-empty-namespace", "The part's extensions object has an empty namespace name.",
+             '"extensions": {"": 1}'),
+            ("manifest-part-extensions-null", "The part's extensions is null, not an object.", '"extensions": null'),
+            ("manifest-part-extensions-duplicate-namespace", "The part's extensions object names the namespace "
+             "conformance twice.", '"extensions": {"conformance": 1, "conformance": 2}'),
+            ("manifest-part-extensions-escaped-duplicate", "The part's extensions object names the namespace "
+             "conformance twice, once spelled with an escape (conform\\u0061nce).",
+             '"extensions": {"conformance": 1, "conform\\u0061nce": 2}'),
+            ("manifest-part-extensions-unpaired-surrogate", "A string nested inside the part's extensions is the "
+             "escaped lone surrogate \\ud800.", '"extensions": {"conformance": {"x": ["\\ud800"]}}')):
+        R.append(derive(fid, "basic", desc, None,
+                        raw_manifest=text_replace('"rows": 12,', '"rows": 12,\n      ' + text + ',')))
     R.append(derive("manifest-part-extensions-unknown-member", "basic",
                     "The part has a valid extensions object and, beside it, the undefined member checksum: the core "
                     "part object stays closed.", None,
@@ -717,6 +752,30 @@ def build():
     # ---- footer ---------------------------------------------------------------
     R.append(derive_raw_part("invalid-footer-magic", "The part's trailing magic is PAR0 instead of PAR1.",
                              lambda d: d[:-4] + b"PAR0", "trailing magic PAR1 -> PAR0"))
+    # The magic matrix (CHECK-1): PARE at either end is encryption; otherwise anything but PAR1 is invalid_footer.
+    for name, head, tail, desc in (
+            ("encrypted-footer-magic", b"PAR1", b"PARE", "The part's trailing magic is PARE."),
+            ("encrypted-both-magic", b"PARE", b"PARE", "The part begins and ends with PARE, the magics of an encrypted-"
+                                                        "footer Parquet file (its footer and pages are plaintext)."),
+            ("encrypted-header-bad-footer-magic", b"PARE", b"PAR0", "The part's leading magic is PARE and its "
+                                                                     "trailing magic PAR0: encryption takes precedence."),
+            ("encrypted-footer-bad-header-magic", b"PAR0", b"PARE", "The part's leading magic is PAR0 and its "
+                                                                     "trailing magic PARE: encryption takes precedence."),
+            ("invalid-both-magic", b"PAR0", b"PAR0", "The part's leading and trailing magics are both PAR0.")):
+        R.append(derive_raw_part(name, desc, lambda d, h=head, e=tail: h + d[4:-4] + e,
+                                 f"leading magic -> {head.decode()}, trailing magic -> {tail.decode()}"))
+    for name, data, desc in (
+            ("short-11-bytes", b"PARE" + bytes(3) + b"PARE", "The part is 11 bytes, PARE ... PARE: shorter than 12 bytes, "
+                                                             "invalid_footer whatever its magic."),
+            ("short-12-bytes", b"PAR1" + bytes(4) + b"PAR1", "The part is 12 bytes, PAR1, a zero footer length, PAR1: "
+                                                             "long enough, magic valid, but no footer."),
+            ("short-12-bytes-encrypted", b"PARE" + bytes(4) + b"PARE", "The part is 12 bytes, PARE, a zero footer "
+                                                                       "length, PARE: long enough, so encryption.")):
+        R.append(derive_raw_part(name, desc, lambda d, b=data: b, f"replaced by the {len(data)} bytes {data.hex()}",
+                                 resize=True))
+    R.append(derive("encrypted-footer-metadata", "basic",
+                    "The part's footer declares encryption (FileMetaData.encryption_algorithm AES_GCM_V1); its magics "
+                    "are PAR1 and its pages plaintext.", None, parts={B: declare_encryption}))
     R.append(derive_raw_part("invalid-header-magic", "The part's leading magic is PAR0 instead of PAR1; its trailer, "
                              "footer and pages are intact.", lambda d: b"PAR0" + d[4:], "leading magic PAR1 -> PAR0"))
     R.append(derive_raw_part("encrypted-header-magic", "The part's leading magic is PARE, the magic of an encrypted "
@@ -859,8 +918,9 @@ def _ff_footer(d):
     return d[:start] + b"\xff" * flen + d[-8:]
 
 
-def derive_raw_part(name, desc, fn, what):
-    """Copy basic and apply a byte-level edit to the part's magic or footer, keeping the manifest size exact."""
+def derive_raw_part(name, desc, fn, what, resize=False):
+    """Copy basic and apply a byte-level edit to the part's magic or footer, keeping the manifest size exact
+    (resize: the edit may change the part's size, and the manifest's bytes follows it)."""
     src = DATASETS / "basic"
     out = INVALID / name
     if out.exists():
@@ -869,14 +929,18 @@ def derive_raw_part(name, desc, fn, what):
     p = m["parts"][0]
     data = (src / p["path"]).read_bytes()
     new = fn(data)
-    assert len(new) == len(data)
+    assert resize or len(new) == len(data)
+    changes = [f"{p['path']}: {what}; size unchanged; data pages untouched"]
+    if resize:
+        changes = [f"{p['path']}: {what}", f"manifest: parts[0].bytes {p['bytes']} -> {len(new)}"]
+        p["bytes"] = len(new)
     dst = out / p["path"]
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_bytes(new)
     write_text(out / "manifest.json", dumps(m))
     return {"name": name, "dir": str(out.relative_to(CONF)), "valid": False, "description": desc, "rows": None,
             "producer": PRODUCER, "provenance": "mutated", "command": COMMAND, "derived_from": "datasets/basic",
-            "changes": [f"{p['path']}: {what}; size unchanged; data pages untouched"]}
+            "changes": changes}
 
 
 if __name__ == "__main__":

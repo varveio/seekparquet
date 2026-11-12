@@ -7009,6 +7009,219 @@
       }
     },
     {
+      "id": "projection/brotli-key/range",
+      "description": "the key column is BROTLI, outside the baseline: the rows, or unsupported (never a refusal)",
+      "family": "projection/optional-codec",
+      "requirements": [
+        "RANGE-2",
+        "ENC-1"
+      ],
+      "dataset": "datasets/brotli-key",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzAw",
+            "offset": 0,
+            "values": [
+              {
+                "int": "0"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzAx",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzAy",
+            "offset": 0,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzAz",
+            "offset": 0,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzA0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzA1",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzA2",
+            "offset": 0,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzA3",
+            "offset": 0,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          }
+        ],
+        "accept_unsupported": [
+          "unsupported_encoding"
+        ]
+      }
+    },
+    {
+      "id": "projection/brotli-key/list",
+      "description": "the key column is BROTLI, outside the baseline: the rows, or unsupported (never a refusal)",
+      "family": "projection/optional-codec",
+      "requirements": [
+        "RANGE-2",
+        "ENC-1",
+        "LIST-3"
+      ],
+      "dataset": "datasets/brotli-key",
+      "request": {
+        "op": "list",
+        "prefix_base64": "YnJrLw==",
+        "delimiter_base64": "Lw==",
+        "limit": 100000,
+        "columns": [
+          "size"
+        ]
+      },
+      "expect": {
+        "status": "ok",
+        "entries": [
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzAw",
+            "offset": 0,
+            "values": [
+              {
+                "int": "0"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzAx",
+            "offset": 0,
+            "values": [
+              {
+                "int": "3"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzAy",
+            "offset": 0,
+            "values": [
+              {
+                "int": "6"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzAz",
+            "offset": 0,
+            "values": [
+              {
+                "int": "9"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzA0",
+            "offset": 0,
+            "values": [
+              {
+                "int": "12"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzA1",
+            "offset": 0,
+            "values": [
+              {
+                "int": "15"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzA2",
+            "offset": 0,
+            "values": [
+              {
+                "int": "18"
+              }
+            ]
+          },
+          {
+            "kind": "row",
+            "key_base64": "YnJrLzA3",
+            "offset": 0,
+            "values": [
+              {
+                "int": "21"
+              }
+            ]
+          }
+        ],
+        "accept_unsupported": [
+          "unsupported_encoding"
+        ]
+      }
+    },
+    {
       "id": "projection/lz4-raw/key-only",
       "description": "LZ4_RAW key pages alone, in both parts (v1 then v2)",
       "family": "projection/lz4-raw",

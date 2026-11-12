@@ -79,7 +79,7 @@ class Generation(unittest.TestCase):
     def test_selected_prerequisites_and_digests(self):
         allc = self.allgen + [c for _d, c in self.core.values()]
         prereq = [c for c in allc if "/prerequisite/" in c["id"]]
-        self.assertEqual(len(prereq), 15)
+        self.assertEqual(len(prereq), 19)
         self.assertEqual(len([c for c in allc if c["id"].startswith("validate-digest/")]), 6)
 
     def test_reader_cases_follow_faults_json(self):
@@ -95,8 +95,10 @@ class Generation(unittest.TestCase):
         for c in self.allgen + [c for _d, c in self.core.values()]:
             for lvl, v in c["expect"].get("levels", {}).items():
                 if "incomplete" in v.get("accept", []):
-                    self.assertEqual(lvl, "full", c["id"])
-                    self.assertIn(c["dataset"].split("/")[-1], allowed, c["id"])
+                    name = c["dataset"].split("/")[-1]
+                    self.assertIn(name, allowed, c["id"])
+                    lowest = make_cases.OPTIONAL_LEVEL.get(name, "full")
+                    self.assertGreaterEqual(make_cases.LEVELS.index(lvl), make_cases.LEVELS.index(lowest), c["id"])
 
     def test_miss_labels_are_misses(self):
         import oracle

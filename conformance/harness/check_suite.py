@@ -126,12 +126,16 @@ def main(argv=None):
                 bad(f"{where}: dataset {c.get('dataset')} does not exist")
             exp = c.get("expect", {})
             codes = exp.get("codes") or ([exp["code"]] if "code" in exp else [])
-            for lv in exp.get("levels", {}).values():
-                codes += lv.get("codes") or ([lv["code"]] if "code" in lv else [])
             allowed = unsupported_codes if exp.get("status") == "unsupported" else refusal_codes
             for code in codes:
                 if code not in allowed:
                     bad(f"{where}: unknown code {code!r} for status {exp.get('status')}")
+            # A failed level names a refusal code; an incomplete one, an unsupported code.
+            for name, lv in exp.get("levels", {}).items():
+                allowed = unsupported_codes if lv.get("result") == "incomplete" else refusal_codes
+                for code in lv.get("codes") or ([lv["code"]] if "code" in lv else []):
+                    if code not in allowed:
+                        bad(f"{where}: unknown code {code!r} for a {lv.get('result')} {name} level")
             for code in exp.get("accept_unsupported", []):
                 if code not in unsupported_codes:
                     bad(f"{where}: accept_unsupported names unknown code {code!r}")

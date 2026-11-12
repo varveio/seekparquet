@@ -1,14 +1,15 @@
 # part-extensions
 
 valid: yes
-description: multipart with an extensions object on each part: an unknown namespace with nested values, the reserved namespace seekparquet with members no accelerator defines, and a mix; every reader ignores them, so queries answer exactly as on multipart (EXT-1, EXT-3, EXT-5).
+description: multipart with an extensions object on each part: an unknown namespace with nested values, the reserved namespace seekparquet holding an array, an object with members no accelerator defines and a string, and the reserved namespace at the top level too (an array); every reader ignores them, so queries answer exactly as on multipart (EXT-1, EXT-3, EXT-5).
 provenance: mutated
 producer: generators/mutate_metadata.py
 derived from: datasets/multipart
 changes:
-  - manifest: parts[0].extensions = {"conformance": {"nested": {"a": [1, 2.5, null, {"b": [true, {}]}]}, "n": -7}}
+  - manifest: extensions.seekparquet "<absent>" -> [true, null, {"future": 1}]
+  - manifest: parts[0].extensions = {"conformance": {"nested": {"a": [1, 2.5, null, {"b": [true, {}]}]}, "n": -7}, "seekparquet": [1, "x", null]}
   - manifest: parts[1].extensions = {"seekparquet": {"future_accelerator": {"version": 99, "data": [1, 2, 3]}, "unknown": "ignored"}}
-  - manifest: parts[2].extensions = {"other-tool": null, "seekparquet": {}, "conformance": "text"}
+  - manifest: parts[2].extensions = {"other-tool": null, "seekparquet": "text", "conformance": 3.5}
 
 manifest: format_version 0, 3 parts
   part 0: 'shards/c.parquet', rows 45, bytes 7381, keys 'README' .. 'logs/2026/02/f003.gz'
