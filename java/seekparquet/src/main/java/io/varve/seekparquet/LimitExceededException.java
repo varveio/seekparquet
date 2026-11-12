@@ -4,41 +4,42 @@
 package io.varve.seekparquet;
 
 /**
- * A size the data declares (a manifest, a footer, a page, a number of parts or values) exceeds a
- * configured {@link Limits limit}. The data may be valid; the reader declined to allocate for it.
- * Raise the limit in {@link OpenOptions} to read it.
+ * Input or a result beyond one of the {@link Limits} (spec §11), or beyond a fixed capacity of this
+ * reader: a policy of the caller or a capacity of the reader, not a refusal of the data, which may be
+ * valid. Configured limits may be raised (in {@link OpenOptions}); fixed reader capacities cannot. The Go
+ * reader's {@code *LimitError}.
  */
 public final class LimitExceededException extends SeekParquetException {
 
     private static final long serialVersionUID = 1L;
 
-    /** The name of the limit. */
-    private final String limit;
+    /** The limit. */
+    private final LimitName limit;
 
-    /** The size the data declared. */
+    /** The amount declared or found, -1 when known only to exceed the maximum. */
     private final long declared;
 
-    /** The configured maximum. */
+    /** The limit in force. */
     private final long maximum;
 
-    LimitExceededException(String limit, long declared, long maximum, String where) {
-        super(where + ": " + limit + " " + declared + " exceeds the configured limit " + maximum, null);
+    LimitExceededException(LimitName limit, long declared, long maximum, String where) {
+        super(where + ": limit " + limit + (declared >= 0 ? " " + declared + " exceeds " : " exceeds ") + maximum, null);
         this.limit = limit;
         this.declared = declared;
         this.maximum = maximum;
     }
 
-    /** {@return the name of the limit, as the {@link Limits} component is named} */
-    public String limit() {
+    /** {@return which limit was exceeded} */
+    public LimitName limit() {
         return limit;
     }
 
-    /** {@return the size the data declared} */
+    /** {@return the amount the input declared or the read found, or -1 when it is known only to exceed {@link #maximum()}} */
     public long declared() {
         return declared;
     }
 
-    /** {@return the configured maximum} */
+    /** {@return the limit in force} */
     public long maximum() {
         return maximum;
     }

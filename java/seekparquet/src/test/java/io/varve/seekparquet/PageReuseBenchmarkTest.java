@@ -45,7 +45,7 @@ class PageReuseBenchmarkTest {
                 spec.rowsPerPage = 256;
                 spec.valueCodec = codec;
                 try (Dataset d = Dataset.open(TestDatasets.write(tmp.resolve(encoding + "-" + codec.name()), spec, parts))) {
-                    RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size", "note"));
+                    Plan plan = Reads.plan(d, List.of(Reads.all(1)), List.of("size", "note"));
                     for (int i = 0; i < 20; i++) scan(plan, rows);
                     for (int trial = 0; trial < 3; trial++) {
                         long before = bean.getCurrentThreadAllocatedBytes();
@@ -56,14 +56,42 @@ class PageReuseBenchmarkTest {
                         System.out.printf("PAGE_BENCH encoding=%s codec=%s trial=%d rows=%d bytes/row=%.2f ns/row=%.2f checksum=%d%n",
                                 encoding, codec, trial, rows, bytes / (5.0 * rows), elapsed / (5.0 * rows), checksum);
                     }
+                    for (int i = 0; i < 20; i++) borrowed(plan, rows);
+                    for (int trial = 0; trial < 3; trial++) {
+                        long before = bean.getCurrentThreadAllocatedBytes();
+                        long start = System.nanoTime();
+                        for (int i = 0; i < 5; i++) borrowed(plan, rows);
+                        long elapsed = System.nanoTime() - start;
+                        long bytes = bean.getCurrentThreadAllocatedBytes() - before;
+                        System.out.printf("BATCH_BENCH encoding=%s codec=%s trial=%d rows=%d bytes/row=%.2f ns/row=%.2f checksum=%d%n",
+                                encoding, codec, trial, rows, bytes / (5.0 * rows), elapsed / (5.0 * rows), checksum);
+                    }
                 }
             }
         }
     }
 
-    private static void scan(RangePlan plan, int expected) {
+    /** The borrowed path: the typed accessors, no owning row. */
+    private static void borrowed(Plan plan, int expected) {
         long[] totals = new long[2];
-        plan.scan(row -> {
+        plan.scan(b -> {
+            BatchColumn size = b.column(0);
+            BatchColumn note = b.column(1);
+            for (int i = 0; i < b.size(); i++) {
+                totals[0]++;
+                totals[1] += size.getLong(i);
+                if (note.isPresent() && !note.isNull(i)) totals[1] += note.byteLength(i);
+            }
+            return true;
+        });
+        assertEquals(expected, totals[0]);
+        checksum = totals[1];
+    }
+
+    /** The owning path: a row per batch row. */
+    private static void scan(Plan plan, int expected) {
+        long[] totals = new long[2];
+        Reads.scan(plan, row -> {
             totals[0]++;
             totals[1] += ((Value.Int64) row.values().getFirst()).value();
             if (row.values().get(1) instanceof Value.ByteArray b) totals[1] += b.value().length();

@@ -1,5 +1,5 @@
 {
-  "description": "Authored declaration of every invalid fixture's fault: the fault id (the dataset name), when a reader must detect it (open, touch: the first read that routes to the faulty part, read, or only by validation), the lowest validation level that detects it, the refusal codes of the fault itself, the requirements it breaks, any unavoidable secondary fault with its justification (its code is also accepted), and where the fault is. Reviewed by hand; make_cases.py and regenerate.py read it and never infer levels from codes.",
+  "description": "Authored declaration of every invalid fixture's fault: the fault id (the dataset name), when a reader must detect it (open, touch: the first read that routes to the faulty part, read, or only by validation), the lowest validation level that detects it, the refusal codes of the fault itself, the requirements it breaks, any unavoidable secondary fault with its justification (its code is also accepted), and where the fault is. Reviewed by hand; make_cases.py and regenerate.py read it and never infer levels from codes. A fault with outcome 'unsupported' is a part that is not readable data and not a refusal either: its codes are unsupported codes, a reader must answer unsupported no later than reader_detect, and validation reports its level incomplete.",
   "faults": [
     {
       "id": "key-order-within-page",
@@ -820,6 +820,125 @@
       "location": "manifest.json"
     },
     {
+      "id": "manifest-part-extensions-not-object",
+      "dataset": "datasets/invalid/manifest-part-extensions-not-object",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[1].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-duplicate-member",
+      "dataset": "datasets/invalid/manifest-part-extensions-duplicate-member",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-empty-namespace",
+      "dataset": "datasets/invalid/manifest-part-extensions-empty-namespace",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-null",
+      "dataset": "datasets/invalid/manifest-part-extensions-null",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-duplicate-namespace",
+      "dataset": "datasets/invalid/manifest-part-extensions-duplicate-namespace",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-escaped-duplicate",
+      "dataset": "datasets/invalid/manifest-part-extensions-escaped-duplicate",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-unpaired-surrogate",
+      "dataset": "datasets/invalid/manifest-part-extensions-unpaired-surrogate",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "EXT-4",
+        "MAN-1",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].extensions"
+    },
+    {
+      "id": "manifest-part-extensions-unknown-member",
+      "dataset": "datasets/invalid/manifest-part-extensions-unknown-member",
+      "reader_detect": "open",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_manifest"
+      ],
+      "requirements": [
+        "MAN-3",
+        "CHECK-1"
+      ],
+      "location": "manifest.json: parts[0].checksum"
+    },
+    {
       "id": "manifest-duplicate-member-escaped",
       "dataset": "datasets/invalid/manifest-duplicate-member-escaped",
       "reader_detect": "open",
@@ -1083,6 +1202,249 @@
       "location": "data/part-00000.parquet: trailing magic PAR1 -> PAR0; size unchanged; data pages untouched"
     },
     {
+      "id": "invalid-header-magic",
+      "dataset": "datasets/invalid/invalid-header-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: leading magic PAR1 -> PAR0; size unchanged; data pages untouched"
+    },
+    {
+      "id": "encrypted-header-magic",
+      "dataset": "datasets/invalid/encrypted-header-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: leading magic PAR1 -> PARE; size unchanged; data pages untouched"
+    },
+    {
+      "id": "encrypted-footer-magic",
+      "dataset": "datasets/invalid/encrypted-footer-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: trailing magic PARE"
+    },
+    {
+      "id": "encrypted-both-magic",
+      "dataset": "datasets/invalid/encrypted-both-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: leading and trailing magic PARE"
+    },
+    {
+      "id": "encrypted-header-bad-footer-magic",
+      "dataset": "datasets/invalid/encrypted-header-bad-footer-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: leading magic PARE, trailing PAR0"
+    },
+    {
+      "id": "encrypted-footer-bad-header-magic",
+      "dataset": "datasets/invalid/encrypted-footer-bad-header-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: leading magic PAR0, trailing PARE"
+    },
+    {
+      "id": "encrypted-footer-metadata",
+      "dataset": "datasets/invalid/encrypted-footer-metadata",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: FileMetaData.encryption_algorithm"
+    },
+    {
+      "id": "encrypted-footer-signed",
+      "dataset": "datasets/invalid/encrypted-footer-signed",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: footer declaring encryption, then a 28-byte signature"
+    },
+    {
+      "id": "encrypted-footer-signature-short",
+      "dataset": "datasets/invalid/encrypted-footer-signature-short",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "location": "data/part-00000.parquet: footer declaring encryption, then 27 bytes"
+    },
+    {
+      "id": "encrypted-footer-signature-long",
+      "dataset": "datasets/invalid/encrypted-footer-signature-long",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "location": "data/part-00000.parquet: footer declaring encryption, then 29 bytes"
+    },
+    {
+      "id": "encrypted-footer-signed-algorithm",
+      "dataset": "datasets/invalid/encrypted-footer-signed-algorithm",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: footer with encryption_algorithm alone, then a 28-byte signature"
+    },
+    {
+      "id": "encrypted-footer-signed-empty-key",
+      "dataset": "datasets/invalid/encrypted-footer-signed-empty-key",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: footer with an empty footer_signing_key_metadata alone, then a 28-byte signature"
+    },
+    {
+      "id": "invalid-footer-trailing-28",
+      "dataset": "datasets/invalid/invalid-footer-trailing-28",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: footer without an encryption declaration, then 28 bytes"
+    },
+    {
+      "id": "short-12-bytes-encrypted",
+      "dataset": "datasets/invalid/short-12-bytes-encrypted",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: 12 bytes, PARE at both ends"
+    },
+    {
+      "id": "invalid-both-magic",
+      "dataset": "datasets/invalid/invalid-both-magic",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: leading and trailing magic PAR0"
+    },
+    {
+      "id": "short-11-bytes",
+      "dataset": "datasets/invalid/short-11-bytes",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: 11 bytes"
+    },
+    {
+      "id": "short-12-bytes",
+      "dataset": "datasets/invalid/short-12-bytes",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: 12 bytes, a zero footer length"
+    },
+    {
       "id": "invalid-footer-length",
       "dataset": "datasets/invalid/invalid-footer-length",
       "reader_detect": "touch",
@@ -1270,6 +1632,39 @@
         "size"
       ],
       "location": "shards/c.parquet: row group 1 column 1"
+    },
+    {
+      "id": "invalid-parquet-lz4-raw-page",
+      "dataset": "datasets/invalid/invalid-parquet-lz4-raw-page",
+      "reader_detect": "read",
+      "validation_level": "profile",
+      "codes": [
+        "invalid_parquet"
+      ],
+      "requirements": [
+        "CHECK-5",
+        "CHECK-2",
+        "ENC-1"
+      ],
+      "location": "data/part-00001.parquet: row group 0 key column, data page 1"
+    },
+    {
+      "id": "invalid-parquet-lz4-raw-size",
+      "dataset": "datasets/invalid/invalid-parquet-lz4-raw-size",
+      "reader_detect": "read",
+      "validation_level": "full",
+      "codes": [
+        "invalid_parquet"
+      ],
+      "requirements": [
+        "CHECK-5",
+        "ENC-1",
+        "VAL-1"
+      ],
+      "read_columns": [
+        "n"
+      ],
+      "location": "data/part-00000.parquet: row group 1 column n, data page 0"
     },
     {
       "id": "sorting-columns-missing-second-row-group",

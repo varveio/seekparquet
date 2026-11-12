@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Three race shards. New tests and packages automatically enter rest."""
+"""Four race shards. New tests and packages automatically enter rest."""
 import argparse
 import json
 import re
@@ -9,7 +9,8 @@ from pathlib import Path
 
 GO = Path(__file__).resolve().parents[2] / 'go'
 HEAVY = {'differential': 'TestListIndexDifferential',
-         'randomized': 'TestListIndexRandomizedDifferential'}
+         'randomized': 'TestListIndexRandomizedDifferential',
+         'faults': 'TestFaultMatrix'}
 SHARDS = [*HEAVY, 'rest']
 EXCLUDED = '^(' + '|'.join(HEAVY.values()) + ')$'
 

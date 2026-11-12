@@ -32,12 +32,19 @@ class CorpusTest(unittest.TestCase):
                     report = validate_dataset(path)
                     self.assertTrue(all(x['result'] == 'complete' for x in report.values()), report)
     def test_every_invalid_dataset(self):
+        # A fault with outcome unsupported (an encrypted part) is not invalid data: validation is incomplete.
+        faults = json.loads((CONF / 'generators' / 'faults.json').read_text(encoding='utf-8'))['faults']
+        unsupported = {f['id']: f['codes'][0] for f in faults if f.get('outcome') == 'unsupported'}
         for path in sorted((CONF / 'datasets' / 'invalid').iterdir()):
             if not path.is_dir():
                 continue
             with self.subTest(dataset=path.name):
                 report = validate_dataset(path)
                 digest = validate_dataset(path, 'digest')
+                if path.name in unsupported:
+                    self.assertEqual(report['structural']['result'], 'incomplete', report)
+                    self.assertTrue(report['structural']['reason'].startswith(unsupported[path.name]), report)
+                    continue
                 self.assertTrue(any(x['result'] == 'failed' for x in [*report.values(), *digest.values()]),
                                 (report, digest))
 

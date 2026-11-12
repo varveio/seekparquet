@@ -133,6 +133,7 @@ func (plan *Plan) scanBatches(ctx context.Context, st *ReadStats, kr keyReuse, f
 	defer rctx.done(ctx, &err, st)
 	w := newBatcher(rctx, plan.columns, st, true)
 	s := w.newScan(r, nil, kr)
+	s.plan = r.newReadPlan(rctx, plan.columns, plan.spans, 0)
 	for _, sp := range plan.spans {
 		if sp.ordinal {
 			if err := s.seekOrdinal(sp.start); err != nil {
@@ -181,6 +182,7 @@ func (r *reader) rangeBatches(ctx context.Context, q Query, st *ReadStats, kr ke
 	}
 	w := newBatcher(ctx, q.Columns, st, false)
 	s := w.newScan(r, end, kr)
+	s.plan = r.newReadPlan(ctx, q.Columns, nil, q.Limit)
 	if err := s.start(from, exclusive, q.Cursor); err != nil {
 		return err
 	}
@@ -306,7 +308,8 @@ func (w *batcher) walk(s *scan, n int64, fn func(*Batch) error) error {
 		if err := w.ctx.Err(); err != nil {
 			return err
 		}
-		if err := fn(b); err != nil {
+		err := fn(b)
+		if err != nil {
 			return err
 		}
 		if n -= k; n == 0 || s.key == nil {

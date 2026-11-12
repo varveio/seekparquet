@@ -42,6 +42,12 @@ import (
 // fault.
 const faultPositions = 12
 
+// raceFaultPositions is faultPositions under the race detector, which
+// slows every cell tenfold: the first, the last and two between still
+// cover every phase, within the race shard's time; the full matrix runs
+// without it.
+const raceFaultPositions = 4
+
 // faultDeadline ends a hung operation on the virtual clock.
 const faultDeadline = time.Hour
 
@@ -277,6 +283,10 @@ func TestFaultMatrix(t *testing.T) {
 	ops := faultOps(fx, ents[len(ents)-1].Cursor())
 	cells := 0
 	outcomes := map[string]int{}
+	tried := faultPositions
+	if raceEnabled {
+		tried = raceFaultPositions
+	}
 	for _, store := range ioStores {
 		for i := -1; i < len(ops); i++ {
 			var op *faultOp
@@ -291,7 +301,7 @@ func TestFaultMatrix(t *testing.T) {
 				}
 				n := len(clean.report.Requests)
 				for _, kind := range faultKinds {
-					for _, at := range positions(n, faultPositions) {
+					for _, at := range positions(n, tried) {
 						cells++
 						got := runFaulted(t, fx, store, op, fakestore.Fault{At: at, Kind: kind})
 						where := fmt.Sprintf("%s at request %d of %d", kind, at, n)
@@ -546,8 +556,10 @@ func (f reportFile) WithContext(ctx context.Context) io.ReaderAt {
 // whichever receivers report them, from its first call: the open's
 // manifest read, a cold lookup, a cold listing reading ahead, a warm
 // lookup, and an operation whose first check fails. In this store each
-// call makes one request, so the requests counted and the calls left
-// unreported add up to the requests made, exactly.
+// call makes at most one request (none when the operation's end cancels
+// it in the store's queue), so the requests counted and the calls left
+// unreported add up to at least the requests made, and the requests
+// counted are exactly those made when every call reports.
 func TestPhysicalReportingCombinations(t *testing.T) {
 	fx := ioFixtureOf(t, ioTiny)
 	for _, c := range []struct{ source, file bool }{{true, true}, {true, false}, {false, true}, {false, false}} {
@@ -562,7 +574,10 @@ func TestPhysicalReportingCombinations(t *testing.T) {
 					switch {
 					case made == 0:
 						t.Fatalf("%s: no request", what)
-					case st.PhysicalRequests+st.UnreportedIOCalls != made:
+					case st.PhysicalRequests > made || st.PhysicalRequests+st.UnreportedIOCalls < made,
+						st.UnreportedIOCalls == 0 && st.PhysicalRequests != made:
+						// An unreported call may make no request: a read ahead
+						// the operation's end cancels in the store's queue.
 						t.Fatalf("%s: %d physical requests and %d unreported calls counted, %d requests made", what, st.PhysicalRequests, st.UnreportedIOCalls, made)
 					case c.source && c.file && st.UnreportedIOCalls != 0:
 						t.Fatalf("%s: %d unreported calls with every receiver reporting", what, st.UnreportedIOCalls)

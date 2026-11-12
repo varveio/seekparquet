@@ -20,6 +20,9 @@ import (
 type browseTrace struct {
 	mu    sync.Mutex
 	lines []string
+	// ordered also makes the capable test source execute batch inputs
+	// sequentially, so physical request order is deterministic.
+	ordered bool
 }
 
 func (tr *browseTrace) add(line string) {
@@ -39,7 +42,9 @@ func (tr *browseTrace) text() string {
 	defer tr.mu.Unlock()
 	// Scheduling of independent calls is immaterial; preserve each batch's
 	// input order within its line, and preserve repeated calls.
-	slices.Sort(tr.lines)
+	if !tr.ordered {
+		slices.Sort(tr.lines)
+	}
 	return strings.Join(tr.lines, "\n")
 }
 
@@ -111,5 +116,13 @@ func (f browseRangeFile) ReadRanges(ctx context.Context, ranges []seekparquet.Re
 		fmt.Fprintf(&b, " %d+%d", rg.Off, len(rg.Buf))
 	}
 	f.tr.add(b.String())
+	if f.tr.ordered {
+		for i := range ranges {
+			if err := f.SourceFile.(seekparquet.RangeReader).ReadRanges(ctx, ranges[i:i+1]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	return f.SourceFile.(seekparquet.RangeReader).ReadRanges(ctx, ranges)
 }

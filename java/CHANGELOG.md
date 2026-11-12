@@ -5,7 +5,75 @@ independent of the specification's draft revisions.
 
 ## Unreleased
 
+### Changed: the read API is aligned with the Go reader's
+
+Pre-release, without deprecated aliases. Java exposes corresponding reader operations and request/result
+concepts, with matching configurable limit defaults. Java representation differences and the capability,
+resource-accounting and execution differences listed in README.md remain; see its correspondence table.
+
+- Requests: `Span` (`all`, `prefix`, `key`, builder), `Selection` (a span and an optional row cursor) and an
+  immutable `Query` (span or selection, `long` limit, columns, cursor set and clear, `next(Row)`) replace
+  `RangeQuery`.
+- Reads: `Dataset.rows(query)` (a limit from 1 to `Integer.MAX_VALUE`, a `List`'s capacity), `scan(query, visitor)` (limit 0 reads to the end of the span),
+  `get(key, columns)` (one whole group, capped by `Limits.getRows()`, checked before any value page is read),
+  `plan(selections, columns)` and `list(query)`, each also with `ReadOptions`. `range`, `rangeBatches`,
+  `lookup` and `planRanges` are removed; so are the row-callback plan scan and `scanBatches`.
+- `Plan` (was `RangePlan`): `count()` and `projectedBytes()` return `Estimate(value, exact)`; `columns()`,
+  `scan(ReadOptions, BatchVisitor)`, `split(n, ReadOptions)` (`n` below 1 is `IllegalArgumentException`).
+  A planned selection takes no limit. `Plan.stats()` is removed: planning and splitting report through
+  `ReadOptions`, including when they fail.
+- `ReadOptions(cancellation, statistics)` for every operation, `verify` and `columns(part)` included. The
+  statistics are delivered once, on every exit, after the request is released, an invalid argument
+  (a null visitor, key or column, a limit out of range) included, with zero counts. Fixed: a statistics consumer
+  that threw while the operation (or the batch callback) failed replaced the operation's exception; it is now
+  added to it as suppressed. `ReadStats.plus` sums two.
+- `BatchVisitor<E extends Exception>` (`true` continues, `false` stops successfully) replaces
+  `Consumer<Batch>`. `Batch.key(i)` is the borrowed read-only `ByteBuffer` (was `keyBuffer`), `copyKey(i)` the
+  owning `Bytes` (was `key`), `cursor(i)` (was `continuation`); `BatchColumn.isPresent()` (was `isAbsent`),
+  `byteLength` (was `length`), borrowed `bytes(i)` (was `byteBuffer`), owning `copyBytes(i)` (was `bytes`).
+- `Cursor` (sealed: `RowPosition(key, offset)`, `CommonPrefix(prefix)`) replaces `Continuation`;
+  `Row.cursor()`, `ListEntry.cursor()`. `Cursor.encode()` and `Cursor.parse(token)` implement the shared
+  cursor token (spec/cursor-token-1.md), tested against its golden vectors. `ListQuery.Builder.cursor(c)` and
+  `clearCursor()` replace `after(c)`.
+- `Limits` is an immutable class with `builder()`/`toBuilder()` and named settings, with the Go reader's
+  defaults: footer 16 MiB (was 64), page 64 MiB (was 256), 16,777,216 page values (was 4,194,304), index memory
+  1 GiB (was 256 MiB), page memory derived as Go derives it (48 × page values + page bytes, 832 MiB), the new
+  `metadataMemory` (256 MiB), charged in the protocol the Thrift decoder reads each footer, page index and page
+  header through, before each string, binary or container is allocated (strings at twice their encoded length), which also caps page-header probing at
+  min(16 MiB, `metadataMemory`) as in Go (was up to the page-byte limit), and `getRows` (1,000). Zero means the default; a negative setting is `IllegalArgumentException`. `maxResultEntries` is
+  removed: `rows` and `list` are bounded by the caller's limit, `scan` by nothing.
+- `LimitExceededException.limit()` is a `LimitName` enum. A manifest whose row total exceeds 2^63-1 is refused
+  at open (`DATASET_ROWS`). `Manifest.parse(bytes, limits)` enforces the manifest size and the parts limit:
+  the parts limit is enforced before materializing more than the permitted number of part entries, including
+  intermediate JSON representations, and after the version is decided. `OpenOptions.DEFAULT` verifies one part at a time (was 8), as the Go reader does.
+- Schema: `Dataset.columns()` and `column(name)`, which described only the parts checked so far, and
+  `Column.parts()` are removed; `columns(part)` remains. `Dataset.rows()` (the row total) is `rowCount()`.
+- Storage: `PartSource` no longer extends parquet-java's `InputFile`; `storage.ParquetJavaInterop` holds the
+  conversions (`partSource(path, inputFile, version)`, was `PartSource.of`; `inputFile(source)`). `read`
+  documents the returned buffer's lifetime.
+- `INT96` columns are projected as raw bits: `Value.Int96(word0, word1, word2)`, least-significant word
+  first, and `BatchColumn.getInt96(i)`; no timestamp interpretation (was `unsupported_projection`).
+- A part schema nested deeper than 64 is `invalid_footer`, as in Go (was a limit at 256).
+- `ListQuery` is an immutable class with `builder(delimiter)` and `toBuilder()` (was a record);
+  `BatchColumn.size()`; `ReadStats.NONE` is public.
+- Fixed: a part's kept refusal was thrown as one shared exception, so what one request attached to it (a
+  suppressed statistics failure) reached later requests; each request now gets a fresh exception with the same
+  code and location.
+- Null extension names and values, and a null `ListIndexStats` duration or options, are rejected.
+- Smaller: `Bytes.successor()` is `prefixEnd()`; `Bytes.utf8` rejects unpaired surrogates;
+  `UnsupportedCode` constants are `ENCODING`, `PROJECTION`, `ENCRYPTION`; the compatibility constructors of
+  `ReadStats`, `ListIndexStats`, `ListQuery` and `ManifestPart` are removed; `LocalStorage.MAX_STRANDED_OPENS`,
+  `Cancellation.linkedTo`, `detach` and `Registration.NOOP` are no longer public.
+
+The entries below predate the alignment and use the names of their time.
+
 ### Added
+
+- `ManifestPart.extensions()`: a part's `extensions` object (spec §3.4, EXT-1 to EXT-5), each namespace mapped
+  to its value's JSON text exactly as written, as `Manifest.extensions()` is for the top level; empty when the
+  part has none. A part's `extensions` that is not an object, or has an empty namespace name, is
+  `invalid_manifest`; an undefined part member beside it still is. The six-argument constructor remains, with no
+  extensions. The reader ignores extensions (EXT-3).
 
 - Key page read-ahead for delimited listings, the Go reader's `List.ReadAhead`: `ListQuery.Builder.readAhead(n)`
   (a new record component `readAhead()`, default 0, off; a value above `ListQuery.MAX_READ_AHEAD`, 64, is read
@@ -123,14 +191,17 @@ independent of the specification's draft revisions.
 
 ### Changed
 
+- The leading `PAR1` magic is checked when a part is first touched (CHECK-1), as Go does: a part no larger than
+  the 64 KiB footer window holds it in the window, so nothing more is read; a larger part costs one more
+  storage read, of its first 4 bytes, before the read of its end. `PARE` at either end is
+  `unsupported_encryption`; any other magic but `PAR1` is `invalid_footer`, with Go's message. LZ4_RAW is now
+  in the ENC-1 baseline, which this reader already decoded.
 - A part's footer is read in fewer bytes: the first read of a part's end, the last 64 KiB or the whole part
   when smaller, is now never more than `Limits.maxFooterBytes` plus the 8-byte trailer, and a footer larger
   than that window costs one more read of only the footer bytes before it (it read the whole footer again).
   Still one read for a footer within the window and two above it; the window is not kept once the footer is
   decoded. Every check, refusal code and message is unchanged, including for truncated parts and garbage
-  tails. As before, the reader does not read a part's leading magic, so a footer within the window is one
-  read whatever the part's size (the Go reader, which checks the leading magic, reads it apart for a part
-  larger than the window).
+  tails (the leading-magic check above adds a read for a part larger than the window).
 - The checked page locations of each projected column chunk's OffsetIndex, kept once a request has loaded
   them so that later requests do not read and decode them again, are now bounded by the new
   `Limits.maxOffsetIndexMemoryBytes` (default 256 MiB, `withMaxOffsetIndexMemoryBytes`, apart from

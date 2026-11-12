@@ -117,13 +117,13 @@ class LifecycleTest {
         try (Dataset ds = Dataset.open(storage); ExecutorService ex = Executors.newSingleThreadExecutor()) {
             storage.gate = new CountDownLatch(1);
             Cancellation cancel = Cancellation.create();
-            Future<List<Row>> f = ex.submit(() -> ds.range(RangeQuery.all(100), cancel));
+            Future<List<Row>> f = ex.submit(() -> Reads.range(ds, Reads.all(100), cancel));
             storage.blocked.await();
             cancel.cancel();
             Exception e = assertThrows(java.util.concurrent.ExecutionException.class, f::get);
             assertTrue(e.getCause() instanceof CancellationException, e.getCause().toString());
             storage.gate = null;
-            assertEquals(20, ds.range(RangeQuery.all(100)).size());
+            assertEquals(20, ds.rows(Reads.all(100)).size());
         }
         assertEquals(0, storage.open.get());
     }
@@ -135,14 +135,14 @@ class LifecycleTest {
         assertEquals(0, storage.open.get());
         try (ExecutorService ex = Executors.newSingleThreadExecutor()) {
             storage.gate = new CountDownLatch(1);
-            Future<List<Row>> f = ex.submit(() -> ds.range(RangeQuery.all(100)));
+            Future<List<Row>> f = ex.submit(() -> ds.rows(Reads.all(100)));
             storage.blocked.await();
             ds.close();
             Exception e = assertThrows(java.util.concurrent.ExecutionException.class, f::get);
             assertTrue(e.getCause() instanceof CancellationException, e.getCause().toString());
         }
         assertEquals(0, storage.open.get());
-        assertThrows(IllegalStateException.class, () -> ds.range(RangeQuery.all(1)));
+        assertThrows(IllegalStateException.class, () -> ds.rows(Reads.all(1)));
         ds.close();
     }
 
@@ -166,11 +166,11 @@ class LifecycleTest {
     void concurrentRequestsAgree() throws Exception {
         Path root = dataset(5, 40);
         try (Dataset ds = Dataset.open(root); ExecutorService ex = Executors.newFixedThreadPool(8)) {
-            List<Row> expected = ds.range(RangeQuery.builder().limit(1000).columns("size").build());
+            List<Row> expected = ds.rows(Reads.builder().limit(1000).columns("size").build());
             List<ListEntry> listing = ds.list(ListQuery.builder((byte) '/').limit(1000).build());
             List<Future<Boolean>> results = new ArrayList<>();
             for (int i = 0; i < 64; i++) {
-                results.add(ex.submit(() -> ds.range(RangeQuery.builder().limit(1000).columns("size").build()).equals(expected)
+                results.add(ex.submit(() -> ds.rows(Reads.builder().limit(1000).columns("size").build()).equals(expected)
                         && ds.list(ListQuery.builder((byte) '/').limit(1000).build()).equals(listing)));
             }
             for (Future<Boolean> r : results) {
@@ -183,8 +183,10 @@ class LifecycleTest {
 
     @Test
     void invalidRequestsAreRejectedWhenBuilt() {
-        assertThrows(IllegalArgumentException.class, () -> RangeQuery.all(0));
+        // A limit of 0 is a scan to the end of the span: it is built, and rows rejects it before reading.
+        assertEquals(0, Reads.all(0).limit());
+        assertThrows(IllegalArgumentException.class, () -> Query.builder().limit(-1).build());
         assertThrows(IllegalArgumentException.class, () -> ListQuery.builder((byte) '/').build());
-        assertThrows(IllegalArgumentException.class, () -> RangeQuery.builder().limit(-1).build());
+        assertThrows(IllegalArgumentException.class, () -> Reads.builder().limit(-1).build());
     }
 }

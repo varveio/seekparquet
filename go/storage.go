@@ -301,11 +301,10 @@ type IOReporter interface {
 // logical reads. A zero field takes its default; a negative one is an
 // invalid request when the dataset is opened.
 type ReadPolicy struct {
-	// Concurrency bounds outstanding logical part ranges across one
-	// operation, including scalar reads, batches, speculative reads,
-	// Verify's parts and a list-index build's workers: each range takes a
-	// slot while it is read. It does not bound physical requests made by
-	// the source.
+	// Concurrency bounds concurrent scalar reads and part acquisition
+	// across one operation. A RangeReader receives the whole bounded
+	// batch, reserving up to Concurrency slots for its duration; the
+	// source owns its physical request scheduling and concurrency.
 	// Zero selects the default, 64; negative values are invalid.
 	Concurrency int
 	// MetadataPrefetchBytes is the speculative read of a part's end when
@@ -318,7 +317,8 @@ type ReadPolicy struct {
 	// 2 MiB; OpenDir's default is 64 KiB.
 	MetadataPrefetchBytes int64
 	// DisableSpeculation disables optional fetching, including listing
-	// read-ahead. It does not disable batching of demanded ranges or
+	// read-ahead, windows beyond the pages a planned scan needs, and value
+	// routing probes. It does not disable batching of demanded ranges or
 	// reuse of already available bytes. A part's end is then still read
 	// in one window of up to 64 KiB, the footer read strategy that
 	// precedes these capabilities, and only the footer is kept.

@@ -378,31 +378,18 @@ func TestPartialTail(t *testing.T) {
 }
 
 // TestReadAheadPolicy: DisableSpeculation reads no page ahead, whatever
-// ReadAhead asks; Concurrency bounds the pages read ahead.
+// ReadAhead asks.
 func TestReadAheadPolicy(t *testing.T) {
 	noTestReadAhead(t)
 	keys := dirKeys(map[string]int{"a": 300, "b": 300, "c": 300}, "a", "b", "c")
 	dir := write(t, parts(testutil.Part{GroupRows: 900, PageBytes: 200}, keys))
-	for _, tc := range []struct {
-		policy ReadPolicy
-		most   int64
-	}{{ReadPolicy{DisableSpeculation: true}, 0}, {ReadPolicy{Concurrency: 3}, 2}} {
-		d := open(t, dir, OpenOptions{Read: tc.policy})
-		r := d.r.newReadAhead(ctx, 8)
-		switch {
-		case tc.most == 0 && r != nil:
-			t.Fatalf("%+v: a read-ahead", tc.policy)
-		case tc.most > 0 && (r == nil || int64(r.slots) != tc.most):
-			t.Fatalf("%+v: %v", tc.policy, r)
+	for _, n := range []int{0, 8} {
+		var st ReadStats
+		d := openWith(t, ctx, dirOf(t, dir), OpenOptions{Read: ReadPolicy{DisableSpeculation: true}}, false)
+		_, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 100, ReadAhead: n}, &st)
+		must(t, err)
+		if st.ReadAheadReads != 0 || st.ReadAheadUnused != 0 {
+			t.Fatalf("ReadAhead %d: %d bytes read ahead with speculation disabled", n, st.ReadAheadReads)
 		}
-		if r != nil {
-			r.close(new(ReadStats))
-		}
-	}
-	var st ReadStats
-	_, err := open(t, dir, OpenOptions{Read: ReadPolicy{DisableSpeculation: true}}).List(ctx, ListQuery{Delimiter: '/', Limit: 100, ReadAhead: 8}, &st)
-	must(t, err)
-	if st.ReadAheadReads != 0 {
-		t.Fatalf("%d pages read ahead with speculation disabled", st.ReadAheadReads)
 	}
 }

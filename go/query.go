@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go/format"
 )
 
 // Row is one row of a result: its key, its offset in its equal-key group,
@@ -174,31 +175,12 @@ type ListQuery struct {
 	// Columns names the columns projected for each row entry and each
 	// exact row (ListEntry.Exact), as Query.Columns.
 	Columns []string
-	// ReadAhead, when positive, is the number of key pages the listing may
-	// read ahead concurrently (at most 64): within the row group it is
-	// in, it predicts from the key page index the pages it will decode
-	// next, after each common prefix at the prefix's successor, and reads
-	// them in the background, so that a listing that skips from prefix to
-	// prefix waits for about one read per ReadAhead pages instead of one
-	// per page. Memory: the request holds at most ReadAhead times 1 MiB of
-	// pages read ahead and not yet used, and at most 4 times ReadAhead
-	// pages, until the scan uses or passes them or the key scan ends. Pages
-	// read ahead are checked as any page read is, and the entries are the
-	// same with or without it. A page predicted wrongly is read and
-	// transferred for nothing, and held until the scan passes it or the
-	// key scan ends (ReadStats.ReadAheadUnused counts such reads). Each
-	// read runs in its own goroutine, ended and waited for when the key
-	// scan ends, before the values are projected and before List returns;
-	// a panic of the Source's ReadAt in one is treated as a failed read
-	// ahead. It pays where a read waits on a round trip (an object store),
-	// not on a local file. Zero, the default, reads no page ahead; a
-	// negative value is an invalid request. A listing with delimiter '/'
-	// reads no page ahead when a list index (Dataset.BuildListIndex) is
-	// built, whether or not the index serves a given row group. Read-ahead
-	// is speculation: ReadPolicy.DisableSpeculation turns it off, and it
-	// reads at most ReadPolicy.Concurrency-1 pages ahead at once, each only
-	// on a slot of the operation's Concurrency free with another left, so
-	// that its reads and the listing's own stay within Concurrency.
+	// ReadAhead caps the future key pages considered by each listing
+	// prediction. Zero selects adaptive read-ahead toward Limit+1 over a
+	// remote Source; zero-policy OpenDir reads on demand. Positive values
+	// cap the same predictor; negative values are invalid. Adjacent pages
+	// are fetched together in bounded windows and checked on use.
+	// ReadPolicy.DisableSpeculation disables this optional fetching.
 	ReadAhead int
 }
 
@@ -415,13 +397,7 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 	if ahead == 0 {
 		ahead = testListReadAhead
 	}
-	// With a list index built, a '/' listing runs without a read-ahead,
-	// even for a row group the index declines: the index answers its
-	// skips without decoding the pages a read-ahead would predict.
-	if s.listIndex == nil || len(s.listIndex.groups) == 0 || req.Delimiter != '/' {
-		s.ahead = r.newReadAhead(ctx, ahead)
-		defer s.ahead.close(st)
-	}
+	s.ahead = r.newReadAhead(ctx, ahead, req.Limit)
 	l := listing{r: r}
 	if req.Cursor != nil && req.Cursor.Key != nil {
 		err = s.start(from, false, req.Cursor)
@@ -471,10 +447,8 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 			return nil, err
 		}
 	}
-	// The key scan is over, and the projection reads no key page ahead
-	// (chunk.ahead is the key scan's): end the reads ahead now. The deferred
-	// close is the safety net for the returns above.
-	s.ahead.close(st)
+	// The key scan is over: the pages read ahead are not needed any more.
+	s.ahead.close()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -618,6 +592,13 @@ func (r *reader) project(ctx context.Context, rows []*Row, at []position, column
 		if err := p.checkProjection(columns); err != nil {
 			return err
 		}
+		w := windowsOf(ctx)
+		_, batched := p.file.(RangeReader)
+		if o := operationOf(ctx); !r.local && batched && o != nil {
+			w = o.windows()
+			w.release(math.MaxInt64)
+			r.projectWindows(w, p, at[i:j], columns)
+		}
 		for c, name := range columns {
 			cp, err := p.openColumn(ctx, p.groups[at[i].g.index].physical, name, st, &scratch[c])
 			if err != nil {
@@ -627,9 +608,90 @@ func (r *reader) project(ctx context.Context, rows []*Row, at []position, column
 				return err
 			}
 		}
+		w.release(math.MaxInt64)
 		i = j
 	}
 	return nil
+}
+
+// projectWindows batches the distinct pages holding selected rows, including
+// dictionaries. Locations are scheduling hints; openColumn still validates
+// each column in projection order. Missing indexes are fetched together first
+// when their locations are not already resident.
+func (r *reader) projectWindows(w *windows, p *part, at []position, columns []string) {
+	phys := p.groups[at[0].g.index].physical
+	endRow := p.groups[at[0].g.index].start + p.groups[at[0].g.index].rows
+	var indexes []extent
+	for _, name := range columns {
+		col, ok := p.leaves[name]
+		if !ok || p.locs[phys][col.index].Load() != nil {
+			continue
+		}
+		meta := &p.footer.Metadata().RowGroups[phys].Columns[col.index]
+		if p.checkIndexExtent(phys, meta.OffsetIndexOffset, meta.OffsetIndexLength) == nil &&
+			p.retainedBytes(meta.OffsetIndexOffset, int64(meta.OffsetIndexLength)) == nil {
+			indexes = append(indexes, extent{p, meta.OffsetIndexOffset, int64(meta.OffsetIndexLength), endRow})
+			if len(indexes) == MaxReadRanges {
+				break
+			}
+		}
+	}
+	sortExtents(indexes)
+	w.fetch(indexes, false)
+	var exts []extent
+	for _, name := range columns {
+		if len(exts) >= MaxReadRanges {
+			break
+		}
+		col, ok := p.leaves[name]
+		if !ok {
+			continue
+		}
+		meta := &p.footer.Metadata().RowGroups[phys].Columns[col.index]
+		start, end, ok := chunkRange(&meta.MetaData)
+		if !ok || end > p.size {
+			continue
+		}
+		locs := p.planLocs(phys, col, start, end)
+		if locs == nil && meta.OffsetIndexLength > 0 && w.holds(p, meta.OffsetIndexOffset, int64(meta.OffsetIndexLength)) {
+			raw := make([]byte, meta.OffsetIndexLength)
+			if hit, err := w.copy(p, raw, meta.OffsetIndexOffset); hit && err == nil {
+				if oi, err := p.decodeOffsetIndex(raw); err == nil {
+					locs, _ = checkLocations(oi, p.groups[at[0].g.index].rows, start, end)
+				}
+			}
+		}
+		if len(locs) == 0 {
+			continue
+		} // unknown coverage: read on demand
+		// In a mixed PLAIN/dictionary chunk, location hints cannot tell
+		// which selected pages need the dictionary. Leave it on demand.
+		dictionaryOnly := len(meta.MetaData.EncodingStats) > 0
+		for _, enc := range meta.MetaData.EncodingStats {
+			if (enc.PageType == format.DataPage || enc.PageType == format.DataPageV2) &&
+				enc.Encoding != format.RLEDictionary && enc.Encoding != format.PlainDictionary {
+				dictionaryOnly = false
+			}
+		}
+		if dictionaryOnly && locs[0].offset > start {
+			exts = append(exts, extent{p, start, locs[0].offset - start, endRow})
+		}
+		previous := -1
+		for _, pos := range at {
+			pg := pageAt(locs, pos.row)
+			if pg == previous {
+				continue
+			}
+			loc := locs[pg]
+			exts = append(exts, extent{p, loc.offset, loc.size, endRow})
+			previous = pg
+			if len(exts) >= MaxReadRanges {
+				break
+			}
+		}
+	}
+	sortExtents(exts)
+	w.fetch(exts, false)
 }
 
 // projectColumn sets value c of rows, found at positions at in one row

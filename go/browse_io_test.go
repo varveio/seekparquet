@@ -27,9 +27,10 @@ var ioTinyRepeated = ioFixtureSpec{rows: 20_000, parts: 4, groups: 4, perFolder:
 // fresh handle (a list index, or an earlier page whose cursor it takes),
 // the listing itself.
 type browseCase struct {
-	name  string
-	setup func(ctx context.Context, d *seekparquet.Dataset) (*seekparquet.Cursor, error)
-	q     seekparquet.ListQuery
+	name    string
+	setup   func(ctx context.Context, d *seekparquet.Dataset) (*seekparquet.Cursor, error)
+	q       seekparquet.ListQuery
+	ordered bool
 }
 
 // browseCases are the listings of the trace invariant: final pages,
@@ -100,13 +101,18 @@ func runBrowse(t *testing.T, fx *ioFixture, store ioStore, c browseCase, counts 
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		src := fakestore.New(fx.objects, ioOptions)
-		tr := new(browseTrace)
+		tr := &browseTrace{ordered: c.ordered}
 		source := browseSource{Source: store.wrap(src), tr: tr}
 		var wrapped seekparquet.Source = source
 		if _, ok := source.Source.(seekparquet.SizedSource); ok {
 			wrapped = browseCapableSource{source}
 		}
-		d, err := seekparquet.OpenDataset(ctx, wrapped, store.opt)
+		opt := store.opt
+		if c.ordered {
+			opt.Read.Concurrency = 1
+			opt.Read.DisableSpeculation = true
+		}
+		d, err := seekparquet.OpenDataset(ctx, wrapped, opt)
 		must(t, err)
 		defer d.Close()
 		q := c.q
@@ -128,7 +134,7 @@ func runBrowse(t *testing.T, fx *ioFixture, store ioStore, c browseCase, counts 
 		}
 		rep := op.End()
 		run.entries, _ = listText(ents, nil)
-		run.trace = requestsText(rep)
+		run.trace = requestsText(rep, c.ordered)
 		run.logical = tr.text()
 		if counts && c.name == "all-parts/unchecked-middle" {
 			if len(run.counts) != 1 || run.counts[0] != fmt.Sprintf("%d false", len(fx.keys)) {
@@ -155,18 +161,45 @@ func countOf(t *testing.T, ctx context.Context, d *seekparquet.Dataset, e seekpa
 }
 
 // requestsText is every request of a report: its kind, object, range,
-// batch and outcome, sorted, then when the last ended on the bubble's
-// clock. Concurrent requests (read-ahead goroutines, the ranges of one
-// batch) start in an order of the scheduler's, which is left out.
-func requestsText(r fakestore.Report) string {
+// batch and outcome, then when the last ended on the bubble's clock.
+// Serial runs preserve request order; concurrent runs sort requests whose
+// start order is chosen by the scheduler.
+func requestsText(r fakestore.Report, ordered bool) string {
 	var lines []string
 	var last time.Duration
 	for _, q := range r.Requests {
 		lines = append(lines, fmt.Sprintf("%s %s %d+%d batch %d %v", q.Kind, q.Object, q.Off, q.Len, q.Batch, q.Err))
 		last = max(last, q.End)
 	}
-	slices.Sort(lines)
+	if !ordered {
+		slices.Sort(lines)
+	}
 	return strings.Join(lines, "\n") + fmt.Sprintf("\nlast ends at %v", last)
+}
+
+// The serial source controls scheduling without sleeps. Logical call order,
+// batch input order and physical request order are all compared verbatim.
+// The companion test below also exercises concurrent speculative scheduling.
+func TestBrowseCountsOrderedTraceInvariant(t *testing.T) {
+	seekparquet.NoTestReadAhead(t)
+	for _, spec := range []ioFixtureSpec{ioTiny, ioTinyRepeated} {
+		fx := ioFixtureOf(t, spec)
+		for _, c := range browseCases(fx) {
+			c.ordered = true
+			for _, store := range []ioStore{plainStore, capableStore} {
+				t.Run(fmt.Sprintf("repeated-%v/%s/%s", spec.repeated, c.name, store.name), func(t *testing.T) {
+					off := runBrowse(t, fx, store, c, false)
+					on := runBrowse(t, fx, store, c, true)
+					if off.trace != on.trace || off.logical != on.logical {
+						t.Fatalf("counts change ordered traces:\nphysical off\n%s\nphysical on\n%s\nlogical off\n%s\nlogical on\n%s", off.trace, on.trace, off.logical, on.logical)
+					}
+					if off.stats != on.stats || off.entries != on.entries {
+						t.Fatal("counts change listing results or statistics")
+					}
+				})
+			}
+		}
+	}
 }
 
 // TestBrowseCountsTraceInvariant: with identical initial state, a listing
@@ -437,5 +470,46 @@ func TestScanValuesReadsNoKeyPage(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestScanValuesCacheMode(t *testing.T) {
+	fx := ioFixtureOf(t, ioTiny)
+	for _, store := range []ioStore{plainStore, capableStore} {
+		t.Run(store.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx := context.Background()
+				opt := ioOptions
+				opt.Cache = true
+				src := fakestore.New(fx.objects, opt)
+				d, err := seekparquet.OpenDataset(ctx, store.wrap(src), store.opt)
+				must(t, err)
+				defer d.Close()
+				p, err := d.Plan(ctx, []seekparquet.Selection{{}}, []string{"size"}, nil)
+				must(t, err)
+				scan := func(ctx context.Context) (fakestore.Report, seekparquet.ReadStats) {
+					op := src.Begin("values")
+					var st seekparquet.ReadStats
+					var rows int64
+					must(t, p.ScanValues(ctx, &st, func(b *seekparquet.ValueBatch) error {
+						rows += int64(b.Len())
+						return nil
+					}))
+					if rows != int64(len(fx.keys)) || st.KeyPagesDecoded != 0 {
+						t.Fatalf("rows %d, stats %+v", rows, st)
+					}
+					return op.End(), st
+				}
+				cold, _ := scan(ctx)
+				warm, st := scan(ctx)
+				if len(cold.Requests) == 0 || len(warm.Requests) != 0 || st.ByteCacheHitBytes == 0 {
+					t.Fatalf("cold requests %d, warm %d, warm stats %+v", len(cold.Requests), len(warm.Requests), st)
+				}
+				bypass, _ := scan(seekparquet.WithCacheMode(ctx, seekparquet.CacheBypass))
+				if len(bypass.Requests) == 0 {
+					t.Fatal("explicit bypass used the source cache")
+				}
+			})
+		})
 	}
 }

@@ -6,281 +6,67 @@ package seekparquet
 import (
 	"bytes"
 	"context"
-	"errors"
-	"sync"
-	"sync/atomic"
+	"math"
 )
-
-// maxReadAhead bounds ListQuery.ReadAhead: larger values are read as it.
-const maxReadAhead = 64
-
-// readAheadPageBytes is the byte budget of each read-ahead slot: a listing
-// with ReadAhead n holds at most n times this many bytes read ahead and not
-// yet used, in flight or fetched. A key page larger than the whole budget
-// is never read ahead; it is read when the scan reaches it.
-const readAheadPageBytes = 1 << 20
 
 // testListReadAhead, when positive, is the read-ahead of a listing that
 // asks for none. Tests set it to run every listing with read-ahead; it is
 // zero otherwise.
 var testListReadAhead int
 
-// readAhead is one List request's read-ahead of key pages (ListQuery.ReadAhead).
-// The request's scan predicts, from the checked key page index of the row
-// group it is in, the key pages it will decode next, and readAhead reads
-// their raw bytes (header and payload, the extent their OffsetIndex entry
-// gives) concurrently, at most slots reads in flight and at most budget
-// bytes held. When the scan decodes a page, the page read path takes the
-// bytes read ahead for exactly that extent instead of reading it, and
-// checks them exactly as it checks bytes it reads itself (CHECK-2):
-// nothing is trusted because it was read ahead. A read ahead that failed
-// or was cut short is not used; the page is read again as if it had not
-// been read ahead. A prediction is a hint: a page predicted wrongly costs
-// its bytes, never a result.
-//
-// Only the request's goroutine calls its methods; the reads run in
-// goroutines that close waits for, so none outlives the request. Their
-// context is the request's: a cancelled request, or Close, ends them.
+// readAhead is one List request's read-ahead of key pages
+// (ListQuery.ReadAhead): from the checked key page index of the row group
+// the scan is in, it predicts the key pages the listing will decode next,
+// and reads them ahead together, speculatively, in the operation's windows
+// (windows.fetch): runs of adjacent pages in one window, up to
+// readWindowBytes. When the scan decodes a page, the page read path takes its
+// bytes from the windows instead of reading them, and checks them exactly
+// as it checks bytes it reads itself (CHECK-2): nothing is trusted because
+// it was read ahead. A read ahead that failed is not used; the page is
+// read again as if it had not been read ahead. A prediction is a hint: a
+// page predicted wrongly costs its bytes, never a result. Only the
+// request's goroutine calls its methods.
 type readAhead struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	slots  int
-	// limit is the operation's (operation.limit): a page is read ahead
-	// only on a slot free with another left for the scan's own reads.
-	limit  *opLimit
-	budget int64
-	// maxPending bounds len(pending): a small multiple of slots, so that
-	// the bookkeeping stays small however long the listing is.
-	maxPending int
-	// maxPage is the largest extent the page read path reads in one read
-	// (chunk.located): a larger one is not read ahead.
-	maxPage int64
-	// inflight is the number of reads not yet ended: raised by the request's
-	// goroutine when it starts one, lowered by the read's goroutine when it
-	// ends, before it closes its done channel.
-	inflight atomic.Int32
-	// held is the bytes of pages in flight or fetched and not yet taken
-	// or dropped.
-	held int64
-	// pending holds the pages read ahead and not yet taken or dropped, by
-	// extent. queue holds them in the order they were read ahead, from
-	// qhead on, with the entries taken or dropped since (gone) left in it
-	// until the queue is compacted: pages are used in the order the scan
-	// reaches them, so drop only looks at the queue's front.
-	pending map[aheadKey]*aheadPage
-	queue   []*aheadPage
-	qhead   int
-	// reads, readBytes, unused and unusedBytes count the pages read ahead
-	// that were taken or dropped, for the request's counts; the pages
-	// still pending are counted when the read-ahead closes.
-	reads, readBytes, unused, unusedBytes int64
-	// unreported counts the reads of parts whose files do not report
-	// their physical requests (UnreportedIOCalls).
-	unreported int64
-	closed     bool
+	w *windows
+	// pages bounds the pages one prediction reads ahead; bytes their
+	// bytes.
+	pages int
+	bytes int64
 	// lastG and lastAt are the page the last prediction of rows started
 	// from: a scan stepping through rows predicts again only on a new page.
 	lastG  groupRef
 	lastAt int
+	// passed is the first row of the page the last prediction started
+	// from, a dataset ordinal: the windows of rows before it are dropped
+	// at the next.
+	passed int64
+	// remaining is the most entries the listing can still return, as the
+	// last prediction found it.
+	remaining int
 }
 
-// aheadKey is a page's extent in a part.
-type aheadKey struct {
-	p         *part
-	off, size int64
-}
-
-// aheadPage is one page read ahead: g and page locate it in the scan's
-// walk. raw, read and err are set by its goroutine before done is closed.
-type aheadPage struct {
-	key  aheadKey
-	g    groupRef
-	page int
-	size int64
-	done chan struct{}
-	raw  []byte
-	read bool // the goroutine called ReadAt
-	err  error
-	gone bool // taken or dropped: no longer pending, and counted
-}
-
-// errReadAheadPanic is the failure of a read ahead whose source panicked.
-var errReadAheadPanic = errors.New("the read ahead panicked")
-
-// newReadAhead returns the read-ahead of a request with n slots, or nil
-// for none. Read-ahead is speculation: ReadPolicy.DisableSpeculation turns
-// it off, and its slots and the listing's own read stay within
-// ReadPolicy.Concurrency.
-func (r *reader) newReadAhead(ctx context.Context, n int) *readAhead {
-	if r.policy.DisableSpeculation {
+// newReadAhead returns the read-ahead of a listing under ctx that asks
+// for n pages (ListQuery.ReadAhead), or nil for none: n of zero reads
+// adaptively ahead over a remote Source, and nothing from a local file.
+// Read-ahead is speculation: ReadPolicy.DisableSpeculation turns it off,
+// and each wave is bounded internally.
+func (r *reader) newReadAhead(ctx context.Context, n, limit int) *readAhead {
+	o := operationOf(ctx)
+	if r.policy.DisableSpeculation || o == nil || o.r == nil || n == 0 && r.local {
 		return nil
 	}
-	n = min(n, maxReadAhead, r.policy.Concurrency-1)
-	if n <= 0 {
-		return nil
+	if n == 0 {
+		n = math.MaxInt
 	}
-	actx, cancel := context.WithCancel(ctx)
-	return &readAhead{ctx: actx, cancel: cancel, slots: n, limit: limitOf(ctx), budget: int64(n) * readAheadPageBytes, maxPending: 4 * n,
-		maxPage: r.limits.PageBytes + r.limits.headerBytes(), pending: map[aheadKey]*aheadPage{}, lastAt: -1}
+	return &readAhead{w: o.windows(), pages: n, bytes: readWindowBytes, lastAt: -1, passed: -1, remaining: limit}
 }
 
-// finished reports whether e's read has ended.
-func (e *aheadPage) finished() bool {
-	select {
-	case <-e.done:
-		return true
-	default:
-		return false
+// close drops the windows of the pages read ahead, once their reads have
+// ended: the key scan is over.
+func (a *readAhead) close() {
+	if a != nil {
+		a.w.release(math.MaxInt64)
 	}
-}
-
-// retire removes e, which is pending, from the read-ahead and counts it:
-// used when the scan took its bytes.
-func (a *readAhead) retire(e *aheadPage, used bool) {
-	delete(a.pending, e.key)
-	a.held -= e.size
-	e.gone = true
-	e.raw = nil
-	if !e.read {
-		return
-	}
-	a.reads++
-	a.readBytes += e.size
-	if unreported(a.ctx, e.key.p.reports) {
-		a.unreported++
-	}
-	if !used {
-		a.unused++
-		a.unusedBytes += e.size
-	}
-}
-
-// compact removes the entries gone from the queue.
-func (a *readAhead) compact() {
-	kept := a.queue[:0]
-	for _, e := range a.queue[a.qhead:] {
-		if !e.gone {
-			kept = append(kept, e)
-		}
-	}
-	clear(a.queue[len(kept):])
-	a.queue, a.qhead = kept, 0
-}
-
-// fetch reads ahead page i of row group g of part p, which loc locates,
-// unless it is pending already. It reports false when there is no room
-// for it: every slot in flight, the budget held, or the most pages
-// pending.
-func (a *readAhead) fetch(p *part, g groupRef, i int, loc pageLoc) bool {
-	if a.closed {
-		return false
-	}
-	key := aheadKey{p, loc.offset, loc.size}
-	if _, ok := a.pending[key]; ok {
-		return true
-	}
-	if loc.size <= 0 || loc.size > a.maxPage || a.held+loc.size > a.budget || int(a.inflight.Load()) >= a.slots || len(a.pending) >= a.maxPending ||
-		!a.limit.tryAcquire(1, 1) {
-		return false
-	}
-	e := &aheadPage{key: key, g: g, page: i, size: loc.size, done: make(chan struct{})}
-	a.pending[key] = e
-	if len(a.queue) >= 4*a.maxPending {
-		a.compact()
-	}
-	a.queue = append(a.queue, e)
-	a.held += loc.size
-	a.inflight.Add(1)
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		defer close(e.done)
-		defer a.inflight.Add(-1)
-		defer a.limit.release(1)
-		defer func() {
-			// A panic of the source ends the read ahead, not the process:
-			// the page is read again by the scan, which meets the panic, if
-			// it repeats, as it would without a read-ahead.
-			if r := recover(); r != nil {
-				e.raw, e.err = nil, errReadAheadPanic
-			}
-		}()
-		if err := a.ctx.Err(); err != nil {
-			e.err = err
-			return
-		}
-		e.read = true
-		raw := make([]byte, loc.size)
-		if err := readFull(bind(a.ctx, p.file), raw, loc.offset); err != nil {
-			e.err = err
-			return
-		}
-		e.raw = raw
-	}()
-	return true
-}
-
-// take returns the bytes read ahead for the extent of size bytes at off in
-// part p, waiting for their read to end, or false when none were read
-// ahead or their read failed: the caller then reads the extent itself.
-func (a *readAhead) take(p *part, off, size int64) ([]byte, bool) {
-	key := aheadKey{p, off, size}
-	e, ok := a.pending[key]
-	if !ok {
-		return nil, false
-	}
-	select {
-	case <-e.done:
-	case <-a.ctx.Done():
-		return nil, false // the read the caller makes fails with the request
-	}
-	raw := e.raw
-	ok = e.err == nil && raw != nil
-	a.retire(e, ok)
-	return raw, ok
-}
-
-// drop forgets the pages read ahead that the scan, now on page at of row
-// group g, has passed: pages of other row groups and pages at or before
-// at, once their reads have ended. They count as unused. Only the front of
-// the queue is looked at, so a call costs the pages it drops.
-func (a *readAhead) drop(g groupRef, at int) {
-	for a.qhead < len(a.queue) {
-		e := a.queue[a.qhead]
-		if !e.gone {
-			if (e.g == g && e.page > at) || !e.finished() {
-				break
-			}
-			a.retire(e, false)
-		}
-		a.queue[a.qhead] = nil
-		a.qhead++
-	}
-}
-
-// close ends the reads still in flight, waits for them, and adds the
-// read-ahead's reads to st: every read made is in SourceReads and
-// SourceBytes, and in ReadAheadReads; those the scan did not use in
-// ReadAheadUnused and ReadAheadUnusedBytes. It may be called again: the
-// reads are added once.
-func (a *readAhead) close(st *ReadStats) {
-	if a == nil || a.closed {
-		return
-	}
-	a.closed = true
-	a.cancel()
-	a.wg.Wait()
-	for _, e := range a.pending {
-		a.retire(e, false)
-	}
-	st.SourceReads += a.reads
-	st.SourceBytes += a.readBytes
-	st.ReadAheadReads += a.reads
-	st.ReadAheadUnused += a.unused
-	st.ReadAheadUnusedBytes += a.unusedBytes
-	st.UnreportedIOCalls += a.unreported
-	a.queue, a.qhead = nil, 0
 }
 
 // readAhead predicts the key pages a listing will decode next in the row
@@ -306,9 +92,15 @@ func (s *scan) readAhead(req *ListQuery, remaining int) {
 		return
 	}
 	a.lastG, a.lastAt = s.g, at
-	a.drop(s.g, at)
-	pos := at
-	for n := 0; n < remaining; {
+	a.remaining = remaining
+	ordinal := s.r.group(s.g).start + index.pages[at].first
+	a.w.release(min(a.passed, ordinal))
+	a.passed = ordinal
+	p := s.kp.part
+	var exts []extent
+	size := int64(0)
+	pos, n := at, 0
+	for n < min(remaining, a.pages, MaxReadRanges) {
 		j := pos + 1
 		if cur != nil {
 			next, ok := successor(cur)
@@ -326,17 +118,80 @@ func (s *scan) readAhead(req *ListQuery, remaining int) {
 			}
 		}
 		if j >= len(index.pages) {
-			return
+			// The listing continues in the next row group, from its first
+			// page.
+			exts, _ = a.following(s, s.g.next(), 0, exts, size, n)
+			break
 		}
 		page := &index.pages[j]
 		if s.end != nil && bytes.Compare(page.lo, s.end) >= 0 {
-			return
+			break
 		}
-		if !a.fetch(s.kp.part, s.g, j, page.pageLoc) {
-			return
+		if len(exts) == 0 && a.w.holds(p, page.offset, page.size) {
+			return // read ahead already: predict again once the scan reaches what is not
 		}
+		if size+page.size > a.bytes && len(exts) > 0 {
+			break
+		}
+		size += page.size
+		exts = append(exts, extent{p, page.offset, page.size, s.r.group(s.g).start + page.first + page.rows})
 		n++
 		pos = j
 		cur = commonPrefix(page.hi, req.Prefix, req.Delimiter)
 	}
+	a.w.fetchAhead(exts)
+}
+
+// landing is called before a listing's walker decodes key page i of row
+// group g, which the read-ahead did not predict: when no window holds it,
+// it reads it ahead with the pages after it, up to the read-ahead's
+// bounds, in the row group and the ones after it in the part, as the
+// listing reads them when it does not skip.
+func (a *readAhead) landing(s *scan, k *keyPages, i int) {
+	loc := k.index.pages[i].pageLoc
+	if a.w.holds(k.part, loc.offset, loc.size) {
+		return
+	}
+	exts, _ := a.following(s, k.g, i, nil, 0, 0)
+	a.w.fetchAhead(exts)
+}
+
+// following appends to exts, of size bytes and n pages, the key pages of
+// row group g from page i on, and of the groups after it in its part, up
+// to the read-ahead's bounds and the listing's upper bound, and returns
+// them and their pages. Pages are located by the group's checked key page
+// index, or by the OffsetIndex held in the part's retained metadata; a
+// group located by neither ends them.
+func (a *readAhead) following(s *scan, g groupRef, i int, exts []extent, size int64, n int) ([]extent, int) {
+	r := s.r
+	p := r.parts[g.part]
+	for ; g.index < len(p.groups) && n < min(a.remaining, a.pages, MaxReadRanges); g, i = g.next(), 0 {
+		if s.end != nil && i == 0 && r.startsAtOrAfter(g, s.end) {
+			break
+		}
+		grp := p.groups[g.index]
+		meta := &p.footer.Metadata().RowGroups[grp.physical].Columns[p.key.index].MetaData
+		start, stop, ok := chunkRange(meta)
+		if !ok || stop > p.size {
+			break
+		}
+		locs := p.planLocs(grp.physical, p.key, start, stop)
+		if locs == nil {
+			break
+		}
+		index := p.index[grp.physical].Load()
+		for ; i < len(locs) && n < min(a.remaining, a.pages, MaxReadRanges); i++ {
+			loc := locs[i]
+			if s.end != nil && index != nil && bytes.Compare(index.pages[i].lo, s.end) >= 0 {
+				return exts, n
+			}
+			if size+loc.size > a.bytes && len(exts) > 0 {
+				return exts, n
+			}
+			size += loc.size
+			exts = append(exts, extent{p, loc.offset, loc.size, grp.start + loc.first + loc.rows})
+			n++
+		}
+	}
+	return exts, n
 }

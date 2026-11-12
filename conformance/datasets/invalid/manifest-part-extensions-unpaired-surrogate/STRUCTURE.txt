@@ -1,0 +1,35 @@
+# manifest-part-extensions-unpaired-surrogate
+
+valid: no
+description: A string nested inside the part's extensions is the escaped lone surrogate \ud800.
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/basic
+fault (generators/faults.json): manifest-part-extensions-unpaired-surrogate: invalid_manifest; reader detects on open; lowest validation level structural (EXT-4, MAN-1, CHECK-1); location: manifest.json: parts[0].extensions
+changes:
+  - manifest text: '"rows": 12,' -> '"rows": 12,\n      "extensions": {"conformance": {"x": ["\\ud800"]}},'
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 2828, keys 'a/1.txt' .. 'foxtrot'
+
+file data/part-00000.parquet: 2828 bytes, footer 1593 bytes
+  num_rows 12, row_groups 2, created_by 'parquet-cpp-arrow version 26.0.1'
+  stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/objects/v1'}
+  other key-value keys ['ARROW:schema']
+  column key: BYTE_ARRAY REQUIRED def=0 rep=0
+  column size: INT64 REQUIRED def=0 rep=0
+  column etag: BYTE_ARRAY OPTIONAL def=1 rep=0
+  row_group 0: rows 6, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 3 pages, first_row_index [0, 2, 4]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [7, 9, 1]
+      max lengths [7, 5, 5]
+  row_group 1: rows 6, sorting_columns [col0 asc]
+    key chunk: codec UNCOMPRESSED, encodings RLE,PLAIN
+    page headers: DATA_PAGE(2) DATA_PAGE(2) DATA_PAGE(2)
+    offset index: 3 pages, first_row_index [0, 2, 4]
+    column index: 3 pages, boundary_order ASCENDING, null_pages none
+      min lengths [2, 7, 4]
+      max lengths [3, 5, 7]

@@ -1,0 +1,16 @@
+# short-11-bytes
+
+valid: no
+description: The part is 11 bytes, PARE ... PARE: shorter than 12 bytes, invalid_footer whatever its magic.
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/basic
+fault (generators/faults.json): short-11-bytes: invalid_footer; reader detects on touch; lowest validation level structural (CHECK-1); location: data/part-00000.parquet: 11 bytes
+changes:
+  - data/part-00000.parquet: replaced by the 11 bytes 5041524500000050415245
+  - manifest: parts[0].bytes 2828 -> 11
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 11, keys 'a/1.txt' .. 'foxtrot'
+
+file data/part-00000.parquet: 11 bytes; footer unreadable: missing PAR1 magic

@@ -1,0 +1,630 @@
+{
+  "dataset": "lz4-raw",
+  "description": "Every column, the key included, is LZ4_RAW (ENC-1 baseline, codec 7, not the legacy LZ4). Part 0 has data page v1 with dictionaries, part 1 data page v2 without; several key pages per row group.",
+  "schema_id": "conformance/lz4-raw/v1",
+  "key_type": "binary",
+  "columns": [
+    {
+      "name": "n",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "name": "s",
+      "type": "string",
+      "nullable": true
+    },
+    {
+      "name": "f",
+      "type": "float64",
+      "nullable": false
+    }
+  ],
+  "parts": [
+    {
+      "path": "data/part-00000.parquet",
+      "row_groups": [
+        10,
+        10
+      ],
+      "writer": {
+        "max_rows_per_page": 4,
+        "compression": "lz4",
+        "use_dictionary": true,
+        "data_page_version": "1.0",
+        "expect_codecs": {
+          "key": "LZ4_RAW",
+          "n": "LZ4_RAW",
+          "s": "LZ4_RAW",
+          "f": "LZ4_RAW"
+        }
+      },
+      "rows": [
+        {
+          "key_base64": "bHo0LzAwMC8=",
+          "values": {
+            "n": {
+              "int": "-100000"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMC0="
+            },
+            "f": {
+              "float64": "0000000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAwMS94",
+          "values": {
+            "n": {
+              "int": "-92081"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMS16"
+            },
+            "f": {
+              "float64": "3fc0000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAwMi94eA==",
+          "values": {
+            "n": {
+              "int": "-84162"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMi16eg=="
+            },
+            "f": {
+              "float64": "3fd0000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAwMy94eHg=",
+          "values": {
+            "n": {
+              "int": "-76243"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMy16eno="
+            },
+            "f": {
+              "float64": "3fd8000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAwNC94eHh4",
+          "values": {
+            "n": {
+              "int": "-68324"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtNC16enp6"
+            },
+            "f": {
+              "float64": "3fe0000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAwNS94eHh4eA==",
+          "values": {
+            "n": {
+              "int": "-60405"
+            },
+            "s": {
+              "null": true
+            },
+            "f": {
+              "float64": "3fe4000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAwNi94eHh4eHg=",
+          "values": {
+            "n": {
+              "int": "-52486"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtNi16enp6eno="
+            },
+            "f": {
+              "float64": "3fe8000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAwNy8=",
+          "values": {
+            "n": {
+              "int": "-44567"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtNy16enp6enp6"
+            },
+            "f": {
+              "float64": "3fec000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAwOC94",
+          "values": {
+            "n": {
+              "int": "-36648"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtOC16enp6enp6eg=="
+            },
+            "f": {
+              "float64": "3ff0000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAwOS94eA==",
+          "values": {
+            "n": {
+              "int": "-28729"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtOS16enp6enp6eno="
+            },
+            "f": {
+              "float64": "3ff2000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAxMC94eHg=",
+          "values": {
+            "n": {
+              "int": "-20810"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMTAtenp6enp6enp6eg=="
+            },
+            "f": {
+              "float64": "3ff4000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAxMS94eHh4",
+          "values": {
+            "n": {
+              "int": "-12891"
+            },
+            "s": {
+              "null": true
+            },
+            "f": {
+              "float64": "3ff6000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAxMi94eHh4eA==",
+          "values": {
+            "n": {
+              "int": "-4972"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMTItenp6enp6enp6enp6"
+            },
+            "f": {
+              "float64": "3ff8000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAxMy94eHh4eHg=",
+          "values": {
+            "n": {
+              "int": "2947"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMTMtenp6enp6enp6enp6eg=="
+            },
+            "f": {
+              "float64": "3ffa000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAxNC8=",
+          "values": {
+            "n": {
+              "int": "10866"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMTQtenp6enp6enp6enp6eno="
+            },
+            "f": {
+              "float64": "3ffc000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAxNS94",
+          "values": {
+            "n": {
+              "int": "18785"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMTUtenp6enp6enp6enp6enp6"
+            },
+            "f": {
+              "float64": "3ffe000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAxNi94eA==",
+          "values": {
+            "n": {
+              "int": "26704"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMTYtenp6enp6enp6enp6enp6eg=="
+            },
+            "f": {
+              "float64": "4000000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAxNy94eHg=",
+          "values": {
+            "n": {
+              "int": "34623"
+            },
+            "s": {
+              "null": true
+            },
+            "f": {
+              "float64": "4001000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAxOC94eHh4",
+          "values": {
+            "n": {
+              "int": "42542"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMTgtenp6enp6enp6enp6enp6enp6"
+            },
+            "f": {
+              "float64": "4002000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAxOS94eHh4eA==",
+          "values": {
+            "n": {
+              "int": "50461"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMTktenp6enp6enp6enp6enp6enp6eg=="
+            },
+            "f": {
+              "float64": "4003000000000000"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": "data/part-00001.parquet",
+      "row_groups": [
+        20
+      ],
+      "writer": {
+        "max_rows_per_page": 6,
+        "compression": "lz4",
+        "use_dictionary": false,
+        "data_page_version": "2.0",
+        "expect_codecs": {
+          "key": "LZ4_RAW",
+          "n": "LZ4_RAW",
+          "s": "LZ4_RAW",
+          "f": "LZ4_RAW"
+        }
+      },
+      "rows": [
+        {
+          "key_base64": "bHo0LzAyMC94eHh4eHg=",
+          "values": {
+            "n": {
+              "int": "58380"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMjAtenp6enp6enp6enp6enp6enp6eno="
+            },
+            "f": {
+              "float64": "4004000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAyMS8=",
+          "values": {
+            "n": {
+              "int": "66299"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMjEtenp6enp6enp6enp6enp6enp6enp6"
+            },
+            "f": {
+              "float64": "4005000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAyMi94",
+          "values": {
+            "n": {
+              "int": "74218"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMjItenp6enp6enp6enp6enp6enp6enp6eg=="
+            },
+            "f": {
+              "float64": "4006000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAyMy94eA==",
+          "values": {
+            "n": {
+              "int": "82137"
+            },
+            "s": {
+              "null": true
+            },
+            "f": {
+              "float64": "4007000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAyNC94eHg=",
+          "values": {
+            "n": {
+              "int": "90056"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMjQtenp6enp6enp6enp6enp6enp6enp6enp6"
+            },
+            "f": {
+              "float64": "4008000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAyNS94eHh4",
+          "values": {
+            "n": {
+              "int": "97975"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMjUtenp6enp6enp6enp6enp6enp6enp6enp6eg=="
+            },
+            "f": {
+              "float64": "4009000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAyNi94eHh4eA==",
+          "values": {
+            "n": {
+              "int": "105894"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMjYtenp6enp6enp6enp6enp6enp6enp6enp6eno="
+            },
+            "f": {
+              "float64": "400a000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAyNy94eHh4eHg=",
+          "values": {
+            "n": {
+              "int": "113813"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMjctenp6enp6enp6enp6enp6enp6enp6enp6enp6"
+            },
+            "f": {
+              "float64": "400b000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAyOC8=",
+          "values": {
+            "n": {
+              "int": "121732"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMjgtenp6enp6enp6enp6enp6enp6enp6enp6enp6eg=="
+            },
+            "f": {
+              "float64": "400c000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAyOS94",
+          "values": {
+            "n": {
+              "int": "129651"
+            },
+            "s": {
+              "null": true
+            },
+            "f": {
+              "float64": "400d000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAzMC94eA==",
+          "values": {
+            "n": {
+              "int": "137570"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMzAtenp6enp6enp6enp6enp6enp6enp6enp6enp6enp6"
+            },
+            "f": {
+              "float64": "400e000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAzMS94eHg=",
+          "values": {
+            "n": {
+              "int": "145489"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMzEtenp6enp6enp6enp6enp6enp6enp6enp6enp6enp6eg=="
+            },
+            "f": {
+              "float64": "400f000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAzMi94eHh4",
+          "values": {
+            "n": {
+              "int": "153408"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMzItenp6enp6enp6enp6enp6enp6enp6enp6enp6enp6eno="
+            },
+            "f": {
+              "float64": "4010000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAzMy94eHh4eA==",
+          "values": {
+            "n": {
+              "int": "161327"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMzMtenp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6"
+            },
+            "f": {
+              "float64": "4010800000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAzNC94eHh4eHg=",
+          "values": {
+            "n": {
+              "int": "169246"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMzQtenp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6eg=="
+            },
+            "f": {
+              "float64": "4011000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAzNS8=",
+          "values": {
+            "n": {
+              "int": "177165"
+            },
+            "s": {
+              "null": true
+            },
+            "f": {
+              "float64": "4011800000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAzNi94",
+          "values": {
+            "n": {
+              "int": "185084"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMzYtenp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6"
+            },
+            "f": {
+              "float64": "4012000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAzNy94eA==",
+          "values": {
+            "n": {
+              "int": "193003"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMzctenp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6eg=="
+            },
+            "f": {
+              "float64": "4012800000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAzOC94eHg=",
+          "values": {
+            "n": {
+              "int": "200922"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMzgtenp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6eno="
+            },
+            "f": {
+              "float64": "4013000000000000"
+            }
+          }
+        },
+        {
+          "key_base64": "bHo0LzAzOS94eHh4",
+          "values": {
+            "n": {
+              "int": "208841"
+            },
+            "s": {
+              "bytes_base64": "dmFsdWUtMzktenp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6"
+            },
+            "f": {
+              "float64": "4013800000000000"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "key": {
+    "column": "key",
+    "unique": true
+  }
+}

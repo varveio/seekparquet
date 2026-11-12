@@ -138,6 +138,51 @@
       }
     },
     {
+      "id": "refusals-read/invalid-parquet-lz4-raw-page",
+      "description": "Part 1 (data page v2): the body of key page 1 in row group 0, LZ4_RAW-compressed, is overwritten with 0xFF and does not decompress.",
+      "family": "refusals-read/fault",
+      "fault_id": "invalid-parquet-lz4-raw-page",
+      "requirements": [
+        "CHECK-5",
+        "CHECK-2",
+        "ENC-1"
+      ],
+      "dataset": "datasets/invalid/invalid-parquet-lz4-raw-page",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_parquet"
+      }
+    },
+    {
+      "id": "refusals-read/invalid-parquet-lz4-raw-size",
+      "description": "Part 0 (data page v1): the first data page of value column n in row group 1, LZ4_RAW-compressed, declares an uncompressed size one byte smaller than its body decompresses to: a reader must not accept output beyond the declared size.",
+      "family": "refusals-read/fault",
+      "fault_id": "invalid-parquet-lz4-raw-size",
+      "requirements": [
+        "CHECK-5",
+        "ENC-1",
+        "VAL-1"
+      ],
+      "dataset": "datasets/invalid/invalid-parquet-lz4-raw-size",
+      "detect": "read",
+      "request": {
+        "op": "range",
+        "limit": 100000,
+        "columns": [
+          "n"
+        ]
+      },
+      "expect": {
+        "status": "refused",
+        "code": "invalid_parquet"
+      }
+    },
+    {
       "id": "refusals-read/missing-column-index",
       "description": "Row group 1's key chunk has no ColumnIndex.",
       "family": "refusals-read/fault",

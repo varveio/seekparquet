@@ -22,8 +22,8 @@ def select(event, paths=(), full_label=False):
                     macos = True
             elif path.startswith('java/'):
                 java = True
-            elif path.startswith(('spec/', 'conformance/')):
-                contract = True
+            elif path.startswith(('spec/', 'conformance/', 'docs/examples/')):
+                contract = True  # docs/examples: the conformance job runs the recipes
             elif path not in ('README.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'LICENSE', 'NOTICE', '.gitignore') and not path.startswith('docs/'):
                 go = java = contract = macos = True
     return {'go': go or contract, 'java': java or go or contract,
@@ -57,7 +57,8 @@ def gate(needs):
     expected = {'go-lint': outputs['go'], 'go-race': outputs['go'],
                 'go-windows': outputs['go'], 'go-macos': outputs['macos'],
                 'java': outputs['java'], 'java-windows': outputs['java'],
-                'conformance': outputs['conformance']}
+                'conformance': outputs['conformance'],
+                'docs': 'true'}  # always selected: cheap, and generated docs follow code
     if set(needs) != set(expected) | {'changes'}:
         raise ValueError('gate dependencies differ from policy')
     failures = []

@@ -38,9 +38,9 @@ public record Row(Bytes key, long offset, List<String> columns, List<Value> valu
         }
     }
 
-    /** {@return a continuation after this row} */
-    public Continuation.RowPosition continuation() {
-        return new Continuation.RowPosition(key, offset);
+    /** {@return the cursor after this row, owning its key as the row does} */
+    public Cursor.RowPosition cursor() {
+        return new Cursor.RowPosition(key, offset);
     }
 
     /**

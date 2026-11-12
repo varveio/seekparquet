@@ -92,8 +92,8 @@ afresh, so that part checks kept by the earlier handle do not carry over.
 ```
 
 Checks every part of the dataset now, as the first read to touch each part would (the part checks of
-CHECK-1), and may check more (CHECK-3). It answers `ok`, or `refused` with the code of the first fault it
-found. The adapter opens the dataset first if it has not. `verify` is an optional capability: an adapter
+CHECK-1), and may check more (CHECK-3). It answers `ok`, `refused` with an applicable refusal code, or
+`unsupported` with an applicable unsupported-feature code. The adapter opens the dataset first if it has not. `verify` is an optional capability: an adapter
 whose `open` already checks every part has nothing more to do, and claiming it adds a step to every `touch`
 case (see below).
 
@@ -170,10 +170,12 @@ Validation runs the requested level and its prerequisites (spec §8) and reports
 
 `result` is `complete`, `failed` (with `code`) or `incomplete` (with `reason`, a non-empty string; the
 harness rejects an `incomplete` level without one, but never compares its wording). A level that needs an
-unsupported column, encoding or codec is `incomplete`, never an `unsupported` response; lower levels keep
-their results and higher levels are `incomplete` (VAL-1). A `validate` request never answers `refused`: at
-the structural, profile and full levels, a dataset that cannot be opened reports `structural` as `failed`
-with the refusal code, so validator targets include the open-stage faults. The `digest` level has no
+unsupported column, encoding or codec, or meets an encrypted part, is `incomplete`, never an `unsupported`
+response, and carries the unsupported `code` (for example `unsupported_encryption`), which the harness compares
+when the case expects one; lower levels keep their results and higher levels are `incomplete` (VAL-1). A
+`validate` request never answers `refused`. At the structural, profile and full levels, an open-stage refusal
+makes `structural` failed with its refusal code; an unsupported feature makes it incomplete with a reason.
+Dependent levels are incomplete. Validator targets so include the open-stage faults. The `digest` level has no
 prerequisite and does not open the dataset: it hashes the bytes of the parts the manifest lists, so a part
 that is not valid Parquet can still complete it. It adds `checked`, the number of digests it compared.
 `status` is `ok` whenever validation ran, whatever it found.
@@ -217,6 +219,15 @@ stages in order and stops at the first refusal:
    a refusal with an acceptable code, which completes the case), then `validate` at that level, whose
    report must show that level `failed` with an acceptable code.
 
+A fault declaration's `outcome` defaults to `refused`; `unsupported` selects an unsupported-feature response
+instead. Both outcomes use the declared detection stage and the same open/read/verify lifecycle. An acceptable
+outcome during open completes that path; otherwise a `touch` case checks the first routed read and, when
+claimed, verification on a fresh handle. Validation represents unsupported features as `incomplete` with a
+non-empty reason, never as a failed level. In a case, an unsupported outcome is an expectation of status
+`unsupported` with a `detect` stage; every stage above then expects `unsupported` with an acceptable code
+where it would expect a refusal, and a refusal fails the case. The validation expectation of such a fault
+gives the level `incomplete` with the unsupported `code`, which the validator must report.
+
 A `read` case's request must decode the faulty data under every correct access path: for example a range
 that starts before the faulty page and whose limit covers it. Faults that an index-guided reader may
 legitimately skip (CHECK-4) belong in `validate` cases. Fixtures carry one fault each where practical;
@@ -235,8 +246,8 @@ A capability that no target requires (`optional_capabilities` in capabilities.js
 is claimed or not at an adapter's choice. A case that requires one runs only when the adapter claims it, and
 is otherwise skipped without counting against its target's qualification.
 
-A case on a dataset that uses a feature outside the mandatory baseline (for example the LZ4_RAW or BROTLI
-codec, ENC-1) may list `accept_unsupported` codes in its expectation: the expected `ok` result passes, and so
+A case on a dataset that uses a feature outside the mandatory baseline (for example the BROTLI codec, ENC-1)
+may list `accept_unsupported` codes in its expectation: the expected `ok` result passes, and so
 does `unsupported` with one of those codes. A refusal never passes. In a validation expectation a level may
 list further acceptable results in `accept`, for example a `full` level that is `complete` or, for a
 validator without the codec, `incomplete` (never `failed`). Full validation of datasets with nested or

@@ -330,7 +330,10 @@ func TestSelectRowsDuplicateProjection(t *testing.T) {
 		if n, exact := dup.ProjectedBytes(); !eqBytes(n, exact, one) {
 			t.Fatalf("byKey=%v: duplicate columns priced %d %v, want %d %v", byKey, n, exact, one.bytes, !one.partial)
 		}
-		subset := []RowSpan{d.r.rowSpan(d.r.rows/3, d.r.rows/2)}
+		subset := []RowSpan{
+			d.r.rowSpan(d.r.rows/3, d.r.rows/2),
+			d.r.rowSpan(d.r.rows/3+1, d.r.rows/2+1),
+		}
 		a, err := one.SelectRows(subset)
 		must(t, err)
 		b, err := dup.SelectRows(subset)

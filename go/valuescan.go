@@ -60,9 +60,9 @@ const maxValueBatch = len(absentValues)
 // and decoding checks. Success does not certify unread key pages.
 //
 // st is reset and filled on every exit. A nil fn is ErrInvalidRequest.
-// Cancellation, callback errors, Stop, Dataset lifetime and cache-mode
-// defaults follow Plan.Scan. Each concurrent scan has independent
-// borrowed storage.
+// Cancellation, callback errors, Stop and Dataset lifetime follow Plan.Scan.
+// The caller's cache mode is honored; CacheDefault permits source-cache
+// lookup and admission. Each concurrent scan has independent borrowed storage.
 //
 // Value pages are located by their OffsetIndex row positions; a chunk
 // without one is walked by its page headers from its start. A plan with
@@ -75,7 +75,7 @@ func (plan *Plan) ScanValues(ctx context.Context, st *ReadStats, fn func(*ValueB
 		return invalidRequest("a nil batch callback")
 	}
 	r := plan.r
-	rctx, err := r.begin(bypassCache(ctx))
+	rctx, err := r.begin(ctx)
 	if err != nil {
 		return err
 	}

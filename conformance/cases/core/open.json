@@ -73,7 +73,7 @@
     },
     {
       "id": "open/optional-codecs",
-      "description": "Value columns use LZ4_RAW and BROTLI (outside ENC-1). The dataset is valid: open succeeds, or answers unsupported_encoding; a refusal is wrong.",
+      "description": "Value column brcol is BROTLI, outside ENC-1, and lz4col is LZ4_RAW, in the baseline. The dataset is valid and opening it needs neither codec: open succeeds; unsupported or a refusal is wrong.",
       "requirements": [
         "CHECK-1",
         "LAYOUT-1",
@@ -84,10 +84,7 @@
         "op": "open"
       },
       "expect": {
-        "status": "ok",
-        "accept_unsupported": [
-          "unsupported_encoding"
-        ]
+        "status": "ok"
       }
     },
     {

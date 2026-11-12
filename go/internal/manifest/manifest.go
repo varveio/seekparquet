@@ -41,6 +41,14 @@ var Supported = []Version{{FormatVersion: 0, DraftRevision: 1}}
 // allows: a limit of the reader, not a fault of the manifest.
 var ErrTooManyParts = errors.New("too many parts")
 
+// MaxDepth is the deepest nesting of objects and arrays a manifest may
+// have, the manifest object itself at depth 1, as in the Java reader: a
+// limit of the reader (CHECK-5), not a fault of the manifest.
+const MaxDepth = 512
+
+// ErrTooDeep reports a manifest nested deeper than MaxDepth.
+var ErrTooDeep = errors.New("nested too deep")
+
 // splitArray returns the elements of a JSON array, failing with
 // ErrTooManyParts as soon as there are more than max.
 func splitArray(raw json.RawMessage, max int) ([]json.RawMessage, error) {
@@ -99,6 +107,9 @@ type Part struct {
 	MaxKey []byte
 	// SHA256 is the lowercase hex digest, "" when absent.
 	SHA256 string
+	// Extensions is the part's extensions object exactly as written, nil
+	// when the part has none (EXT-2).
+	Extensions json.RawMessage
 }
 
 // Parse parses and validates raw. It checks, in this order: that raw is
@@ -116,6 +127,9 @@ func Parse(raw []byte, maxParts int) (*Manifest, error) {
 		return nil, invalid("the manifest is not valid UTF-8")
 	}
 	if err := checkSyntax(raw); err != nil {
+		if errors.Is(err, ErrTooDeep) {
+			return nil, err
+		}
 		return nil, invalid("%v", err)
 	}
 	var top map[string]json.RawMessage
@@ -255,7 +269,7 @@ func parsePart(raw json.RawMessage) (Part, error) {
 	}
 	for name := range fields {
 		switch name {
-		case "path", "rows", "bytes", "min_key_base64", "max_key_base64", "sha256":
+		case "path", "rows", "bytes", "min_key_base64", "max_key_base64", "sha256", "extensions":
 		default:
 			return Part{}, invalid("undefined member %q", name)
 		}
@@ -302,6 +316,12 @@ func parsePart(raw json.RawMessage) (Part, error) {
 		if !isLowerHex(p.SHA256, 64) {
 			return Part{}, invalid("sha256 is not 64 lowercase hexadecimal digits")
 		}
+	}
+	if ext, ok := fields["extensions"]; ok {
+		if err := checkExtensions(ext); err != nil {
+			return Part{}, err
+		}
+		p.Extensions = bytes.Clone(ext)
 	}
 	return p, nil
 }
@@ -384,6 +404,11 @@ func CheckPath(path string) error {
 	return nil
 }
 
+// checkExtensions requires an extensions object, top-level or a part's,
+// whose namespace names are not empty (EXT-4). Its values are not
+// interpreted: no accelerator is defined, and unknown namespaces and
+// members are ignored (EXT-3). Duplicate names and unpaired surrogates
+// inside it are refused with the rest of the manifest (checkSyntax).
 func checkExtensions(raw json.RawMessage) error {
 	var ext map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &ext); err != nil || ext == nil {
@@ -427,7 +452,7 @@ func checkSyntax(raw []byte) error {
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
-	if err := walk(dec); err != nil {
+	if err := walk(dec, 0); err != nil {
 		return err
 	}
 	if _, err := dec.Token(); err != io.EOF {
@@ -436,10 +461,16 @@ func checkSyntax(raw []byte) error {
 	return nil
 }
 
-func walk(dec *json.Decoder) error {
+// walk checks the value dec is at, nested depth containers deep, and
+// what it holds; a container beyond MaxDepth is ErrTooDeep, before it is
+// descended into, so that nesting never exhausts the stack.
+func walk(dec *json.Decoder, depth int) error {
 	tok, err := dec.Token()
 	if err != nil {
 		return fmt.Errorf("not valid JSON: %w", err)
+	}
+	if (tok == json.Delim('{') || tok == json.Delim('[')) && depth >= MaxDepth {
+		return ErrTooDeep
 	}
 	switch tok {
 	case json.Delim('{'):
@@ -457,7 +488,7 @@ func walk(dec *json.Decoder) error {
 				return fmt.Errorf("duplicate member name %q", key)
 			}
 			seen[key] = true
-			if err := walk(dec); err != nil {
+			if err := walk(dec, depth+1); err != nil {
 				return err
 			}
 		}
@@ -466,7 +497,7 @@ func walk(dec *json.Decoder) error {
 		}
 	case json.Delim('['):
 		for dec.More() {
-			if err := walk(dec); err != nil {
+			if err := walk(dec, depth+1); err != nil {
 				return err
 			}
 		}

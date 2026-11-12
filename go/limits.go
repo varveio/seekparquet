@@ -153,8 +153,8 @@ func (l Limits) withDefaults() Limits {
 	return l
 }
 
-// LimitName names the limit a *LimitError reports: a field of Limits, or
-// LimitDatasetRows.
+// LimitName names the limit a *LimitError reports: a field of Limits,
+// LimitManifestNesting or LimitDatasetRows.
 type LimitName string
 
 // The limits.
@@ -170,6 +170,10 @@ const (
 	LimitIndexMemory       LimitName = "IndexMemory"
 	LimitOffsetIndexMemory LimitName = "OffsetIndexMemory"
 	LimitGetRows           LimitName = "GetRows"
+	// LimitManifestNesting is the reader's fixed capacity of nested JSON
+	// objects and arrays in a manifest: 512, the manifest object itself
+	// counting 1, as in the Java reader. Extension values count too.
+	LimitManifestNesting LimitName = "ManifestNesting"
 	// LimitDatasetRows is the reader's capacity of signed 64-bit dataset
 	// ordinals: a total row count above 2^63-1.
 	LimitDatasetRows LimitName = "DatasetRows"

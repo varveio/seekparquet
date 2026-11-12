@@ -381,8 +381,15 @@ func (r *reader) cut(key []byte, inclusive bool) (ordinal int64, ok bool) {
 // shared; those it does not are reserved in the same budget, pinned by the
 // plan, and, past the budget, dropped, their chunk then priced as partial
 // by SelectRows.
-func (plan *Plan) planColumns(ctx context.Context, st *ReadStats) error {
+func (plan *Plan) planColumns(ctx context.Context, st *ReadStats) (err error) {
 	r := plan.r
+	defer func() {
+		if err != nil && plan.pin != nil {
+			r.locsMemory.Add(-plan.pin.size)
+			plan.pin = nil
+		}
+	}()
+	plan.bytes, plan.partial = 0, false
 	current := groupRef{-1, 0}
 	for _, sp := range plan.spans {
 		for i := r.partAt(sp.start); i < len(r.parts) && r.parts[i].start < sp.end; i++ {
@@ -416,18 +423,16 @@ func (plan *Plan) planColumns(ctx context.Context, st *ReadStats) error {
 							gb.chunks = append(gb.chunks, pc)
 						}
 					}
+					// Price while this group's locations are transient, then
+					// reserve or discard before retaining it and loading more.
+					gb.price(plan.spans)
+					plan.bytes += gb.bytes
+					plan.partial = plan.partial || gb.partial
+					plan.keep(&gb)
 					plan.groups = append(plan.groups, gb)
 				}
 			}
 		}
-	}
-	plan.bytes, plan.partial = 0, false
-	for k := range plan.groups {
-		gb := &plan.groups[k]
-		gb.price(plan.spans)
-		plan.bytes += gb.bytes
-		plan.partial = plan.partial || gb.partial
-		plan.keep(gb)
 	}
 	plan.release()
 	return nil

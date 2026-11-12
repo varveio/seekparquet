@@ -55,11 +55,8 @@ representative performance benchmark**. No files are written by this example.
   repeated keys, limits, and refusal errors. Run the quickstart's regression test
   with `go -C go test ./examples/quickstart` from the repository root.
 - Java users can start with the [Java build and usage guide](../java/README.md).
-- Neither the Go nor the Java implementation writes production datasets; the Go
-  module validates them ([Validating](../go/README.md#validating)). The format and
-  APIs are still pre-release. To produce
-  your own dataset, follow the [format specification](../spec/format-1.md);
-  arbitrary sorted Parquet files alone do not satisfy the profile.
-- This example reads local files. The repository does not include a remote-store
-  adapter; remote access requires implementing the reader's source interface
-  with stable object versions across reads. See [Go sources and ownership](../go/README.md#sources-contexts-and-ownership).
+- To write your own dataset, follow [producing datasets](guides/producing.md); arbitrary sorted Parquet
+  files alone do not satisfy the profile. To check one, see [validating](guides/validating.md).
+- This example reads local files. To read from other storage, implement the reader's source interface,
+  which must return the bytes of one object version for as long as a file is open. See
+  [Go sources and ownership](../go/README.md#sources-contexts-and-ownership).

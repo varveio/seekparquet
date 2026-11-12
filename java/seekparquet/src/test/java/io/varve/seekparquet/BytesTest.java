@@ -23,10 +23,10 @@ class BytesTest {
 
     @Test
     void successorDropsTrailingFfAndIncrements() {
-        assertEquals(Optional.of(Bytes.utf8("b")), Bytes.utf8("a").successor());
-        assertEquals(Optional.of(Bytes.of((byte) 'b')), Bytes.of((byte) 'a', (byte) 0xFF, (byte) 0xFF).successor());
-        assertEquals(Optional.empty(), Bytes.of((byte) 0xFF, (byte) 0xFF).successor());
-        assertEquals(Optional.empty(), Bytes.empty().successor());
+        assertEquals(Optional.of(Bytes.utf8("b")), Bytes.utf8("a").prefixEnd());
+        assertEquals(Optional.of(Bytes.of((byte) 'b')), Bytes.of((byte) 'a', (byte) 0xFF, (byte) 0xFF).prefixEnd());
+        assertEquals(Optional.empty(), Bytes.of((byte) 0xFF, (byte) 0xFF).prefixEnd());
+        assertEquals(Optional.empty(), Bytes.empty().prefixEnd());
     }
 
     @Test

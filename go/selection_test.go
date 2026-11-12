@@ -247,7 +247,7 @@ func checkPlan(t *testing.T, d *Dataset, src *extentSource, rows []oracleRow, ex
 	if sum != wantSum {
 		t.Fatalf("%s: sum %d, want %d", name, sum, wantSum)
 	}
-	served := chunkBytes(t, name, reads, extents)
+	served := scannedBytes(reads, extents)
 	if n, exact := plan.ProjectedBytes(); exact && n != served {
 		t.Fatalf("%s: projected %d bytes, Scan asked for %d", name, n, served)
 	} else if !exact && n != 0 {
@@ -311,6 +311,21 @@ func chunkBytes(t *testing.T, name string, reads []extentRead, extents []chunkEx
 					t.Fatalf("%s: a read of %d bytes at %d leaves the chunk [%d, %d)", name, read.len, read.off, e.start, e.end)
 				}
 				n += read.len
+			}
+		}
+	}
+	return n
+}
+
+// scannedBytes returns the bytes of a scan's reads inside extents: a
+// window may read the pages of several column chunks together, so a read
+// counts for the bytes of it each extent holds.
+func scannedBytes(reads []extentRead, extents []chunkExtent) int64 {
+	var n int64
+	for _, read := range reads {
+		for _, e := range extents {
+			if lo, hi := max(read.off, e.start), min(read.off+read.len, e.end); read.path == e.path && lo < hi {
+				n += hi - lo
 			}
 		}
 	}

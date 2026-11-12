@@ -7,28 +7,36 @@ import io.varve.seekparquet.storage.DatasetStorage;
 import io.varve.seekparquet.storage.LocalStorage;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.math.BigInteger;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 
 /**
  * An open SeekParquet dataset: a manifest and its parts, ready for range reads and delimited
- * listings.
+ * listings. The Go reader's {@code Dataset}.
  *
  * <pre>{@code
- * try (Dataset dataset = Dataset.open(LocalStorage.of(Path.of("/data/listing")))) {
- *     for (Row row : dataset.range(RangeQuery.prefix(Bytes.utf8("photos/"), 100))) {
+ * try (Dataset dataset = Dataset.open(Path.of("/data/listing"))) {
+ *     for (Row row : dataset.rows(Query.builder(Span.prefix(Bytes.utf8("photos/"))).limit(100).build())) {
  *         System.out.println(row.key().toStringUtf8());
  *     }
  * }
  * }</pre>
+ *
+ * <h2>Operations</h2>
+ *
+ * {@link #rows} collects a bounded page of a range; {@link #scan} streams a range as borrowed {@link
+ * Batch}es, bounded or to the end of its span; {@link #get} reads one whole group of equal keys; {@link
+ * #plan} plans several selections for counting, splitting and scanning ({@link Plan}); {@link #list} lists
+ * keys with delimiter rollups. Each takes {@link ReadOptions}: a cancellation, and a consumer that receives
+ * the operation's {@link ReadStats} once, on every exit. A malformed request fails with {@link
+ * IllegalArgumentException} before anything is read.
  *
  * <h2>What opening checks</h2>
  *
@@ -57,10 +65,10 @@ import java.util.function.Consumer;
  * page indexes, and safe for concurrent requests from many threads. Results are immutable. {@link
  * #close()} cancels the requests in progress (they end with {@link CancellationException}), waits for
  * them to return, and closes every part source it opened; requests after it fail with {@link
- * IllegalStateException}. A scan's action must not close the dataset itself: see {@link #close()}.
+ * IllegalStateException}. A scan's visitor must not close the dataset itself: see {@link #close()}.
  *
  * <p>Each part a request touches stays open, with its checked footer in memory, until the dataset
- * closes; no limit bounds how many. {@link Limits#maxParts()} bounds the manifest and the index memory
+ * closes; no limit bounds how many. {@link Limits#parts()} bounds the manifest and the index memory
  * budget the retained page indexes, while {@code verifyConcurrency} bounds how many parts {@link
  * #verify()} checks at a time, not how many stay open. A long-lived dataset that touches many parts,
  * or {@code verify()}, which touches them all, holds a source for each ({@link
@@ -90,7 +98,8 @@ public final class Dataset implements AutoCloseable {
     }
 
     /**
-     * Opens the dataset in the local directory {@code root}, with default options.
+     * Opens the dataset in the local directory {@code root}, with default options. The Go reader's {@code
+     * OpenDir}.
      *
      * @param root the dataset root
      * @return the open dataset
@@ -101,6 +110,24 @@ public final class Dataset implements AutoCloseable {
      */
     public static Dataset open(Path root) {
         return open(LocalStorage.of(root));
+    }
+
+    /**
+     * Opens the dataset in the local directory {@code root}; see {@link #open(DatasetStorage, OpenOptions,
+     * Cancellation)}.
+     *
+     * @param root the dataset root
+     * @param options the options
+     * @param cancellation ends the opening early when cancelled
+     * @return the open dataset
+     * @throws RefusalException if the dataset breaks the specification
+     * @throws UnsupportedFeatureException if it uses a feature this reader does not implement
+     * @throws LimitExceededException if it declares a size above the configured limits
+     * @throws StorageException if reading the directory fails
+     * @throws CancellationException if cancelled or interrupted
+     */
+    public static Dataset open(Path root, OpenOptions options, Cancellation cancellation) {
+        return open(LocalStorage.of(root), options, cancellation);
     }
 
     /**
@@ -118,7 +145,11 @@ public final class Dataset implements AutoCloseable {
     }
 
     /**
-     * Opens a dataset, checking its manifest (CHECK-1). No part is opened until a request touches it.
+     * Opens a dataset, checking its manifest (CHECK-1) within the limits ({@link Manifest#parse(byte[],
+     * Limits)}). No part is opened until a request touches it. The reader counts rows in signed 64-bit
+     * dataset ordinals: a manifest whose row total exceeds 2^63-1 fails with {@link LimitExceededException}
+     * ({@link LimitName#DATASET_ROWS}), as in the Go reader, even when each part's count fits. The Go
+     * reader's {@code OpenDataset}.
      *
      * @param storage the dataset root
      * @param options the options
@@ -135,7 +166,7 @@ public final class Dataset implements AutoCloseable {
         cancellation.throwIfCancelled();
         byte[] raw;
         try {
-            raw = storage.readManifest(limits.maxManifestBytes(), cancellation);
+            raw = storage.readManifest(limits.manifestBytes(), cancellation);
         } catch (NoSuchFileException e) {
             throw new RefusalException(RefusalCode.NO_MANIFEST, null, "the dataset root has no manifest.json");
         } catch (InterruptedIOException e) {
@@ -146,23 +177,16 @@ public final class Dataset implements AutoCloseable {
         } catch (IOException e) {
             throw new StorageException("read manifest.json", e);
         }
-        if (raw.length > limits.maxManifestBytes()) {
-            throw new LimitExceededException("maxManifestBytes", raw.length, limits.maxManifestBytes(), "manifest.json");
-        }
-        Manifest manifest = Manifest.parse(raw);
-        int n = manifest.parts().size();
-        if (n > limits.maxParts()) {
-            throw new LimitExceededException("maxParts", n, limits.maxParts(), "manifest.json");
+        Manifest manifest = Manifest.parse(raw, limits);
+        if (manifest.rowsExact().compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) {
+            throw new LimitExceededException(LimitName.DATASET_ROWS, -1, Long.MAX_VALUE,
+                    "manifest.json: the parts hold more rows than a signed 64-bit ordinal counts");
         }
         return new Dataset(manifest, new Parts(storage, manifest, limits), options);
     }
 
     /**
-     * Checks every part now, as the first request to touch each part would (CHECK-1), then decodes
-     * every row group's first key page and each part's last, and compares each part's first and last
-     * key with the manifest's bounds (CHECK-3). Parts already checked by a request are not checked
-     * again; {@link OpenOptions#verifyConcurrency()} parts are checked at once. It reads one footer per
-     * unchecked part, plus the key page index and one or two key pages per row group, never every row.
+     * Checks every part now, with default options; see {@link #verify(ReadOptions)}.
      *
      * @throws RefusalException if a part breaks the specification: the first such part in manifest
      *     order among those checked
@@ -172,29 +196,34 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public void verify() {
-        verify(Cancellation.none());
+        verify(ReadOptions.DEFAULT);
     }
 
     /**
-     * Checks every part now, ending early when {@code cancellation} is cancelled; see {@link
-     * #verify()}.
+     * Checks every part now, as the first request to touch each part would (CHECK-1), then decodes
+     * every row group's first key page and each part's last, and compares each part's first and last
+     * key with the manifest's bounds (CHECK-3). Parts already checked by a request are not checked
+     * again; {@link OpenOptions#verifyConcurrency()} parts are checked at once (one by default, as the
+     * Go reader does). It reads one footer per unchecked part, plus the key page index and one or two key
+     * pages per row group, never every row. It does not check digests (PART-5) and is not validation.
      *
-     * @param cancellation the request's cancellation
-     * @throws RefusalException if a part breaks the specification
+     * @param options the request's cancellation and statistics
+     * @throws RefusalException if a part breaks the specification: the first such part in manifest
+     *     order among those checked
      * @throws UnsupportedFeatureException if a part uses a feature this reader does not implement
      * @throws LimitExceededException if a part declares a size above the configured limits
      * @throws StorageException if reading storage fails
      * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
      * @throws IllegalStateException if the dataset is closed
      */
-    public void verify(Cancellation cancellation) {
-        try (Request request = begin(cancellation)) {
-            parts.checkAll(verifyConcurrency, request.cancellation);
-            ReadContext ctx = request.ctx;
+    public void verify(ReadOptions options) {
+        run(options, () -> {}, ctx -> {
+            parts.checkAll(verifyConcurrency, ctx);
             for (int i = 0; i < parts.size(); i++) {
                 verifyKeyPages(parts.get(i, ctx), ctx);
             }
-        }
+            return null;
+        });
     }
 
     /** CHECK-3: decodes each row group's first key page and the part's last, against the manifest bounds. */
@@ -224,6 +253,7 @@ public final class Dataset implements AutoCloseable {
     /**
      * Builds the optional slash listing index with default settings.
      * @return the build statistics
+     * @throws IllegalStateException if the dataset is closed
      */
     public ListIndexStats buildListIndex() {
         return buildListIndex(ListIndexOptions.DEFAULT, Cancellation.none());
@@ -242,6 +272,8 @@ public final class Dataset implements AutoCloseable {
      * and {@link ListIndexStats#optionsMismatch()} flag.
      * Empty outcomes are cached for the most recent options and rebuilt when those change.
      * {@link ListIndexStats#hasIndex()} reports whether any groups are indexed. Opening never builds it.
+     * Its own statistics are its result, so it takes a cancellation rather than {@link ReadOptions}: unlike
+     * the read operations, it delivers no {@link ReadStats}, and a failed or cancelled build reports nothing.
      *
      * @param options retained byte budget, worker count and per-page change cap
      * @param cancellation ends the build without publishing it
@@ -271,49 +303,22 @@ public final class Dataset implements AutoCloseable {
         }
     }
 
-    /** {@return the dataset's manifest} */
+    /** {@return the dataset's manifest, as parsed and validated on open} */
     public Manifest manifest() {
         return manifest;
     }
 
     /**
-     * Returns the number of rows recorded by the manifest as a signed 64-bit integer.
-     *
-     * @return the dataset row total
-     * @throws ArithmeticException if the total exceeds {@link Long#MAX_VALUE}; use
-     *     {@code manifest().rowsExact()} for the exact total
+     * {@return the number of rows the manifest records} It fits a {@code long}: opening refuses a dataset
+     * whose total does not. The Go reader sums {@code PartInfo.Rows}.
      */
-    public long rows() {
+    public long rowCount() {
         return manifest.rows();
     }
 
     /**
-     * {@return the top-level columns of the parts checked so far, the key included} They are in the
-     * order they first appear, parts taken in manifest order, with the logical type of the first checked
-     * part that has the column (COL-5 does not compare logical types). It checks no part: after {@link
-     * #verify()} every part is checked. {@link #columns(int)} describes one part from its own footer,
-     * checking it first if no read has.
-     */
-    public List<Column> columns() {
-        Map<String, Column> columns = new LinkedHashMap<>();
-        String key = manifest.key().column();
-        for (int i = 0; i < parts.size(); i++) {
-            PartFile part = parts.checked(i);
-            if (part == null) {
-                continue;
-            }
-            for (PartSchema.Field f : part.schema.byName.values()) {
-                Column prior = columns.get(f.name());
-                Column c = prior != null ? prior : PartSchema.column(f, key);
-                columns.put(f.name(), new Column(c.name(), c.type(), c.typeLength(), c.logicalType(), c.repetition(), c.key(),
-                        prior == null ? 1 : prior.parts() + 1));
-            }
-        }
-        return List.copyOf(columns.values());
-    }
-
-    /**
-     * Returns the top-level columns of part {@code part}; see {@link #columns(int, Cancellation)}.
+     * Returns the top-level columns of part {@code part}, with default options; see {@link #columns(int,
+     * ReadOptions)}.
      *
      * @param part an index into {@code manifest().parts()}
      * @return the part's columns, in schema order
@@ -325,20 +330,21 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<Column> columns(int part) {
-        return columns(part, Cancellation.none());
+        return columns(part, ReadOptions.DEFAULT);
     }
 
     /**
      * Returns the top-level columns of part {@code part}, an index into {@code manifest().parts()}, in
      * schema order, from the footer the dataset checked and holds for that part: if no read has checked
      * the part yet, this checks it as the first read to touch it would (CHECK-1), so the answer always
-     * comes from a checked part, and every later read of the part reads that same file. Each column has
-     * {@code parts} 1. COL-5 holds a column's physical type, repetition and nesting equal in every
-     * checked part that has it; a part may lack a column (COL-2), and logical annotations are not
-     * compared, so a caller that needs a column in every part asks for each part.
+     * comes from a checked part, and every later read of the part reads that same file. COL-5 holds a
+     * column's physical type, repetition and nesting equal in every checked part that has it; a part may
+     * lack a column (COL-2), and logical annotations are not compared, so a caller that needs a column in
+     * every part asks for each part. There is no dataset-wide schema operation: the parts' schemas are
+     * their own.
      *
      * @param part an index into {@code manifest().parts()}
-     * @param cancellation the request's cancellation
+     * @param options the request's cancellation and statistics
      * @return the part's columns, in schema order
      * @throws IndexOutOfBoundsException if {@code part} is not an index of the manifest's parts
      * @throws RefusalException if the part breaks the specification
@@ -348,198 +354,172 @@ public final class Dataset implements AutoCloseable {
      * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
      * @throws IllegalStateException if the dataset is closed
      */
-    public List<Column> columns(int part, Cancellation cancellation) {
-        java.util.Objects.checkIndex(part, parts.size());
-        try (Request request = begin(cancellation)) {
-            PartFile p = parts.get(part, request.ctx);
+    public List<Column> columns(int part, ReadOptions options) {
+        return run(options, () -> Objects.checkIndex(part, parts.size()), ctx -> {
+            PartFile p = parts.get(part, ctx);
             String key = manifest.key().column();
             return p.schema.fields.stream().map(f -> PartSchema.column(f, key)).toList();
-        }
+        });
     }
 
     /**
-     * Returns the description of a top-level column, when some part checked so far has it.
+     * Returns the rows of {@code query}, with default options; see {@link #rows(Query, ReadOptions)}.
      *
-     * @param name the column name
-     * @return the column, or empty when no checked part has it
+     * @param query the query, with a positive limit
+     * @return the rows, in ascending key order, at most {@code query.limit()}
+     * @throws IllegalArgumentException if the limit is not positive
+     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
+     * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
+     *     codec or encoding this reader does not implement
+     * @throws LimitExceededException if a page declares a size above the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws IllegalStateException if the dataset is closed
      */
-    public Optional<Column> column(String name) {
-        for (Column c : columns()) {
-            if (c.name().equals(name)) {
-                return Optional.of(c);
+    public List<Row> rows(Query query) {
+        return rows(query, ReadOptions.DEFAULT);
+    }
+
+    /**
+     * Returns the rows of {@code query} (spec §6.2), owning their keys and values: at most {@code
+     * query.limit()}, which must be positive (QUERY-1) and at most {@link Integer#MAX_VALUE}, a {@link List}'s
+     * capacity (a representation limit, as Go checks its slice length; a {@link #scan} takes any limit). It decodes key pages only from the page that can
+     * hold its start, or the cursor's row, and value pages only for the rows it returns. On an error it
+     * returns no rows. The Go reader's {@code Rows}.
+     *
+     * @param query the query, with a positive limit
+     * @param options the request's cancellation and statistics
+     * @return the rows, in ascending key order and equal keys in file order, immutable
+     * @throws IllegalArgumentException if the limit is not between 1 and {@link Integer#MAX_VALUE}
+     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
+     * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
+     *     codec or encoding this reader does not implement
+     * @throws LimitExceededException if a page declares a size above the configured limits
+     * @throws StorageException if reading storage fails
+     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public List<Row> rows(Query query, ReadOptions options) {
+        return run(options, () -> {
+            Objects.requireNonNull(query, "query");
+            if (query.limit() <= 0 || query.limit() > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("rows limit must be between 1 and Integer.MAX_VALUE, not " + query.limit());
             }
-        }
-        return Optional.empty();
-    }
-
-    /**
-     * Reads a range (spec §6.2).
-     *
-     * @param query the query
-     * @return the rows, in ascending key order, at most {@code query.limit()}
-     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
-     * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
-     *     codec or encoding this reader does not implement
-     * @throws LimitExceededException if a page declares a size above the configured limits
-     * @throws StorageException if reading storage fails
-     * @throws IllegalStateException if the dataset is closed
-     */
-    public List<Row> range(RangeQuery query) {
-        return range(query, Cancellation.none());
-    }
-
-    /**
-     * Reads a range (spec §6.2), ending early when {@code cancellation} is cancelled.
-     *
-     * @param query the query
-     * @param cancellation the request's cancellation
-     * @return the rows, in ascending key order, at most {@code query.limit()}
-     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
-     * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
-     *     codec or encoding this reader does not implement
-     * @throws LimitExceededException if a page declares a size above the configured limits
-     * @throws StorageException if reading storage fails
-     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
-     * @throws IllegalStateException if the dataset is closed
-     */
-    public List<Row> range(RangeQuery query, Cancellation cancellation) {
-        return range(query, cancellation, stats -> {});
-    }
-
-    /**
-     * Reads a range (spec §6.2), ending early when {@code cancellation} is cancelled, and hands the
-     * request's read statistics to {@code stats} when it ends, whether it succeeds or fails. A
-     * request that fails before it reads (a limit or projection error, a cancellation, a closed dataset)
-     * delivers zero counts.
-     *
-     * @param query the query
-     * @param cancellation the request's cancellation
-     * @param stats receives the request's read statistics
-     * @return the rows, in ascending key order, at most {@code query.limit()}
-     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
-     * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
-     *     codec or encoding this reader does not implement
-     * @throws LimitExceededException if a page declares a size above the configured limits
-     * @throws StorageException if reading storage fails
-     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
-     * @throws IllegalStateException if the dataset is closed
-     */
-    public List<Row> range(RangeQuery query, Cancellation cancellation, Consumer<? super ReadStats> stats) {
-        Request started;
-        try {
-            checkResultLimit(query.limit());
             checkProjection(query.columns());
-            started = begin(cancellation);
-        } catch (RuntimeException e) {
-            throw notStarted(stats, e);
-        }
-        try (Request request = started) {
-            try {
-                return Queries.range(parts, query, request.ctx);
-            } finally {
-                stats.accept(request.ctx.stats.snapshot());
-            }
-        }
+        }, ctx -> Queries.range(parts, query, ctx));
     }
 
     /**
-     * Hands {@code action} the rows of a range read as borrowed batches; see {@link #rangeBatches(RangeQuery,
-     * Cancellation, Consumer, Consumer)}.
+     * Returns every row of {@code key}'s group of equal keys, with default options; see {@link #get(Bytes,
+     * List, ReadOptions)}.
      *
-     * @param query the query
-     * @param action receives each batch, borrowed until it returns
-     * @throws RefusalException if the data breaks the specification
-     * @throws UnsupportedFeatureException if a projected column is nested, repeated or {@code INT96}, or a page uses a
-     *     codec or encoding this reader does not implement
-     * @throws LimitExceededException if the limit or a declared size exceeds the configured limits
-     * @throws StorageException if reading storage fails
-     * @throws CancellationException if the dataset is closed meanwhile, or the thread interrupted
+     * @param key the key
+     * @param columns the columns to project, in order
+     * @return the group's rows, in file order
+     * @throws LimitExceededException if the group has more than {@link Limits#getRows()} rows
      * @throws IllegalStateException if the dataset is closed
      */
-    public void rangeBatches(RangeQuery query, Consumer<? super Batch> action) {
-        rangeBatches(query, Cancellation.none(), stats -> {}, action);
+    public List<Row> get(Bytes key, List<String> columns) {
+        return get(key, columns, ReadOptions.DEFAULT);
     }
 
     /**
-     * Hands {@code action} the rows of a range read as borrowed batches, ending early when {@code
-     * cancellation} is cancelled; see {@link #rangeBatches(RangeQuery, Cancellation, Consumer, Consumer)}.
+     * Returns every row of {@code key}'s group of equal keys, owning their keys and the values of {@code
+     * columns}: none when no row has the key, at most one when keys are unique, the whole group otherwise,
+     * in file order. It finds the group's keys before it reads any value page, and a group of more than
+     * {@link Limits#getRows()} rows fails, with no rows and before any value page is read, with {@link
+     * LimitExceededException} naming {@link LimitName#GET_ROWS}: read such a group with {@link #rows} over
+     * {@link Span#key}, page by page, continuing after each page's last row. The limit bounds rows, not
+     * bytes. Errors are otherwise those of {@link #rows}. The Go reader's {@code Get}.
      *
-     * @param query the query
-     * @param cancellation the request's cancellation
-     * @param action receives each batch, borrowed until it returns
-     * @throws RefusalException if the data breaks the specification
-     * @throws UnsupportedFeatureException if a projected column is nested, repeated or {@code INT96}, or a page uses a
-     *     codec or encoding this reader does not implement
-     * @throws LimitExceededException if the limit or a declared size exceeds the configured limits
+     * @param key the key
+     * @param columns the columns to project, by exact top-level name, in order
+     * @param options the request's cancellation and statistics
+     * @return the group's rows, in file order, immutable
+     * @throws LimitExceededException if the group has more than {@link Limits#getRows()} rows, or a page
+     *     declares a size above the configured limits
+     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
+     * @throws UnsupportedFeatureException if a projected column cannot be projected
      * @throws StorageException if reading storage fails
      * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
      * @throws IllegalStateException if the dataset is closed
      */
-    public void rangeBatches(RangeQuery query, Cancellation cancellation, Consumer<? super Batch> action) {
-        rangeBatches(query, cancellation, stats -> {}, action);
+    public List<Row> get(Bytes key, List<String> columns, ReadOptions options) {
+        return run(options, () -> {
+            Objects.requireNonNull(key, "key");
+            List<String> projected = List.copyOf(columns);
+            checkProjection(projected);
+            return projected;
+        }, (ctx, projected) -> Queries.get(parts, key, projected, limits.getRows(), ctx));
     }
 
     /**
-     * Hands {@code action}, in serial calls on this thread, the rows {@link #range(RangeQuery, Cancellation,
-     * Consumer)} returns for {@code query}, as borrowed {@link Batch}es instead of {@link Row}s: its bounds,
-     * cursor, columns and limit mean what they mean to a range read, and its errors are a range read's. It
-     * plans nothing: it opens each projected column chunk when it reaches its row group, reads a dictionary
-     * only for a page that uses it, and reads no OffsetIndex beyond the rows it hands over. It stops at the
-     * limit without moving past it; a range with no rows never calls {@code action}.
+     * Visits the rows of {@code query} as borrowed batches, with default options; see {@link #scan(Query,
+     * ReadOptions, BatchVisitor)}.
+     *
+     * @param <E> the checked exception the visitor may throw
+     * @param query the query; limit 0 for every row of its span
+     * @param visitor receives each batch, borrowed until it returns
+     * @throws E when the visitor throws it
+     * @throws IllegalStateException if the dataset is closed
+     */
+    public <E extends Exception> void scan(Query query, BatchVisitor<E> visitor) throws E {
+        scan(query, ReadOptions.DEFAULT, visitor);
+    }
+
+    /**
+     * Hands {@code visitor}, in serial calls on this thread, the rows of {@code query} as borrowed {@link
+     * Batch}es: the rows {@link #rows} returns. Bounds, cursor and columns mean what they mean to {@code
+     * rows}, and its errors are {@code rows}'. A positive limit stops it after that many rows without
+     * moving to the next row; a limit of 0 reads to the end of the span, a streaming extension of this
+     * library (the specification's range has a positive limit, QUERY-1). No result limit applies: a scan
+     * holds one batch at a time. It plans nothing: it opens each projected column chunk when it reaches its
+     * row group, reads a dictionary only for a page that uses it, and reads no OffsetIndex beyond the rows
+     * it hands over. A span with no rows never calls the visitor. The Go reader's {@code Scan}.
      *
      * <p>{@link Batch} sets out the boundaries (never crossing a row group, a key page or a projected page;
      * the last batch ends at the limit or the upper bound) and the lifetime: a batch is read-only and
-     * borrowed until {@code action} returns, and {@link Batch#row}, {@link Batch#continuation} make the
-     * owning rows and continuations a range read returns. {@code stats} receives the request's read
-     * statistics when it ends, whether it succeeds or fails (zero counts when it fails to start); when every
-     * call of {@code action} returns normally they are those of the same range read against the same caches.
+     * borrowed until the visit returns, and {@link Batch#row}, {@link Batch#cursor} make the owning rows
+     * and cursors {@code rows} returns.
      *
-     * <p>An exception {@code action} throws ends the request and propagates unchanged; batches already handed
-     * over stand, as they do before a read error or a refusal. Cancellation is checked as a range read checks
-     * it, and also before every call of {@code action}. The request holds the dataset open while {@code
-     * action} runs: {@link #close()} cancels it and waits for {@code action} to return. Closing the dataset
-     * from inside {@code action} fails with {@link IllegalStateException}, and {@code action} must not wait
-     * for another thread that is closing it. Concurrent and nested requests have storage of their own.
+     * <p>The visitor returning {@code false} stops the scan successfully. An exception it throws ends the
+     * request and propagates unchanged; batches already handed over stand, as they do before a read error
+     * or a refusal. Cancellation is checked as {@code rows} checks it, and also before every visit. The
+     * request holds the dataset open while the visitor runs: {@link #close()} cancels it and waits for the
+     * visitor to return. Closing the dataset from inside the visitor fails with {@link
+     * IllegalStateException}, and the visitor must not wait for another thread that is closing it.
+     * Concurrent and nested requests have storage of their own.
      *
-     * @param query the query
-     * @param cancellation the request's cancellation
-     * @param stats receives the request's read statistics
-     * @param action receives each batch, borrowed until it returns
+     * @param <E> the checked exception the visitor may throw
+     * @param query the query; limit 0 for every row of its span
+     * @param options the request's cancellation and statistics
+     * @param visitor receives each batch, borrowed until it returns
+     * @throws E when the visitor throws it
      * @throws RefusalException if the data breaks the specification
-     * @throws UnsupportedFeatureException if a projected column is nested, repeated or {@code INT96}, or a page uses a
+     * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
      *     codec or encoding this reader does not implement
-     * @throws LimitExceededException if the limit or a declared size exceeds the configured limits
+     * @throws LimitExceededException if a declared size exceeds the configured limits
      * @throws StorageException if reading storage fails
      * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
      * @throws IllegalStateException if the dataset is closed
      */
-    public void rangeBatches(RangeQuery query, Cancellation cancellation, Consumer<? super ReadStats> stats,
-            Consumer<? super Batch> action) {
-        java.util.Objects.requireNonNull(action, "action");
-        Request started;
-        try {
-            checkResultLimit(query.limit());
+    public <E extends Exception> void scan(Query query, ReadOptions options, BatchVisitor<E> visitor) throws E {
+        run(options, () -> {
+            Objects.requireNonNull(query, "query");
+            Objects.requireNonNull(visitor, "visitor");
             checkProjection(query.columns());
-            started = begin(cancellation);
-        } catch (RuntimeException e) {
-            throw notStarted(stats, e);
-        }
-        try (Request request = started) {
-            try {
-                Queries.rangeBatches(parts, query, request.ctx, action);
-            } finally {
-                stats.accept(request.ctx.stats.snapshot());
-            }
-        }
+        }, ctx -> {
+            Queries.scan(parts, query, ctx, visitor);
+            return null;
+        });
     }
 
     /**
-     * Plans reading the rows of {@code ranges}; see {@link #planRanges(List, List, Cancellation)}.
+     * Plans reading the rows of {@code selections}, with default options; see {@link #plan(List, List,
+     * ReadOptions)}.
      *
-     * @param ranges the ranges, read whole
+     * @param selections the selections
      * @param columns the columns to project, by exact top-level name, in order
      * @return the plan
-     * @throws IllegalArgumentException if a range projects columns of its own
      * @throws RefusalException if data planning decodes, or a part it touches, breaks the specification
      * @throws UnsupportedFeatureException if a projected column cannot be projected, or uses a codec this
      *     reader does not implement
@@ -547,51 +527,46 @@ public final class Dataset implements AutoCloseable {
      * @throws StorageException if reading storage fails
      * @throws IllegalStateException if the dataset is closed
      */
-    public RangePlan planRanges(List<RangeQuery> ranges, List<String> columns) {
-        return planRanges(ranges, columns, Cancellation.none());
+    public Plan plan(List<Selection> selections, List<String> columns) {
+        return plan(selections, columns, ReadOptions.DEFAULT);
     }
 
     /**
-     * Plans reading the rows of {@code ranges}, with the values of {@code columns} (as a range read's
-     * columns). It reads each range's prefix, bounds and cursor; a planned range is read whole, so its
-     * limit is not applied, and a range with columns of its own is rejected, the plan's columns applying
-     * to every range. Rows that several ranges select are one row of the plan.
+     * Plans reading the rows of {@code selections}, with the values of {@code columns} (as a {@link Query}'s
+     * columns). Each selection is read whole, from its start or after its cursor, inside a group of equal
+     * keys too; rows that several selections select are one row of the plan. The Go reader's {@code Plan}.
      *
-     * <p>Planning decodes what a range read starting at each end would: the key pages that locate the
-     * first row of the range and the first row after it, through the routing and the key page index,
-     * and no part known from the manifest bounds to begin after the range. With columns, it also checks
+     * <p>Planning decodes what {@link #rows} starting at each end would: the key pages that locate the
+     * first row of the selection and the first row after it, through the routing and the key page index,
+     * and no part known from the manifest bounds to begin after the selection. With columns, it also checks
      * every part holding a selected row and reads the OffsetIndex of each projected column chunk the rows
-     * span, but no data page. Errors are those of a range read.
+     * span, unless an earlier request kept its page locations ({@link Limits#offsetIndexMemory()}), but no
+     * data page. Errors are those of {@code rows}. The statistics of planning go to {@code options}, on
+     * success and failure alike.
      *
-     * @param ranges the ranges, read whole
+     * @param selections the selections
      * @param columns the columns to project, by exact top-level name, in order
-     * @param cancellation the request's cancellation
+     * @param options the request's cancellation and statistics
      * @return the plan, bound to this dataset
-     * @throws IllegalArgumentException if a range projects columns of its own
      * @throws RefusalException if data planning decodes, or a part it touches, breaks the specification
      * @throws UnsupportedFeatureException if a projected column cannot be projected, or uses a codec this
      *     reader does not implement
      * @throws LimitExceededException if a page or index declares a size above the configured limits
      * @throws StorageException if reading storage fails
-     * @throws ArithmeticException if the dataset holds more than {@link Long#MAX_VALUE} rows
      * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
      * @throws IllegalStateException if the dataset is closed
      */
-    public RangePlan planRanges(List<RangeQuery> ranges, List<String> columns, Cancellation cancellation) {
-        for (RangeQuery q : ranges) {
-            if (!q.columns().isEmpty()) {
-                throw new IllegalArgumentException("a planned range takes no columns: the plan's columns apply to every range");
-            }
-        }
-        List<String> projected = List.copyOf(columns);
-        checkProjection(projected);
-        try (Request request = begin(cancellation)) {
-            return RangePlan.plan(this, parts, List.copyOf(ranges), projected, request.ctx);
-        }
+    public Plan plan(List<Selection> selections, List<String> columns, ReadOptions options) {
+        record Planned(List<Selection> selections, List<String> columns) {}
+        return run(options, () -> {
+            Planned p = new Planned(List.copyOf(selections), List.copyOf(columns));
+            checkProjection(p.columns());
+            return p;
+        }, (ctx, p) -> Plan.plan(this, parts, p.selections(), p.columns(), ctx));
     }
 
     /**
-     * Lists keys with delimiter rollups (spec §6.3).
+     * Lists keys with delimiter rollups, with default options; see {@link #list(ListQuery, ReadOptions)}.
      *
      * @param query the query
      * @return the entries, in ascending byte order, at most {@code query.limit()}
@@ -603,16 +578,19 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<ListEntry> list(ListQuery query) {
-        return list(query, Cancellation.none());
+        return list(query, ReadOptions.DEFAULT);
     }
 
     /**
-     * Lists keys with delimiter rollups (spec §6.3), ending early when {@code cancellation} is
-     * cancelled.
+     * Lists keys with delimiter rollups (spec §6.3). After a common prefix it continues at the prefix's
+     * successor through the routing index and the page index instead of decoding the keys under it. Value
+     * pages are read only for row entries and exact rows. {@link #buildListIndex} optionally replaces
+     * slash-prefix resumes with exact directory-run anchors. Errors are those of {@link #rows}. The Go
+     * reader's {@code List}.
      *
      * @param query the query
-     * @param cancellation the request's cancellation
-     * @return the entries, in ascending byte order, at most {@code query.limit()}
+     * @param options the request's cancellation and statistics
+     * @return the entries, in ascending byte order, at most {@code query.limit()}, immutable
      * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
      * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
      *     codec or encoding this reader does not implement
@@ -621,71 +599,77 @@ public final class Dataset implements AutoCloseable {
      * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
      * @throws IllegalStateException if the dataset is closed
      */
-    public List<ListEntry> list(ListQuery query, Cancellation cancellation) {
-        return list(query, cancellation, stats -> {});
+    public List<ListEntry> list(ListQuery query, ReadOptions options) {
+        return run(options, () -> checkProjection(Objects.requireNonNull(query, "query").columns()), ctx -> Queries.list(parts, query, ctx));
     }
 
     /**
-     * Lists keys with delimiter rollups (spec §6.3), ending early when {@code cancellation} is cancelled,
-     * and hands the request's read statistics to {@code stats} when it ends, whether it succeeds or
-     * fails; a request that fails before it reads delivers zero counts.
-     *
-     * @param query the query
-     * @param cancellation the request's cancellation
-     * @param stats receives the request's read statistics
-     * @return the entries, in ascending byte order, at most {@code query.limit()}
-     * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
-     * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
-     *     codec or encoding this reader does not implement
-     * @throws LimitExceededException if a page declares a size above the configured limits
-     * @throws StorageException if reading storage fails
-     * @throws CancellationException if cancelled, interrupted, or the dataset is closed meanwhile
-     * @throws IllegalStateException if the dataset is closed
-     */
-    public List<ListEntry> list(ListQuery query, Cancellation cancellation, Consumer<? super ReadStats> stats) {
-        Request started;
-        try {
-            checkResultLimit(query.limit());
-            checkProjection(query.columns());
-            started = begin(cancellation);
-        } catch (RuntimeException e) {
-            throw notStarted(stats, e);
-        }
-        try (Request request = started) {
-            try {
-                return Queries.list(parts, query, request.ctx);
-            } finally {
-                stats.accept(request.ctx.stats.snapshot());
-            }
-        }
-    }
-
-    private void checkResultLimit(int limit) {
-        if (limit > limits.maxResultEntries()) {
-            throw new LimitExceededException("maxResultEntries", limit, limits.maxResultEntries(), "query");
-        }
-    }
-
-    /** Looks up the equal-key group, returning at most {@code limit} rows in file order.
-     * Use {@link RangeQuery#next(Row)} to continue a lookup range after a page.
-     * @param key the exact key
-     * @param limit the maximum rows returned
-     * @param columns the columns to project
-     * @return the group's rows, possibly limited
-     */
-    public List<Row> lookup(Bytes key, int limit, String... columns) {
-        return range(RangeQuery.lookup(key, limit).toBuilder().columns(columns).build());
-    }
-
-    /**
-     * COL-3: a nested, repeated or INT96 column of a checked part is rejected, never answered as
-     * absent. A part checked later is held to the same rule when a row of it is projected.
+     * COL-3: a nested or repeated column of a checked part is rejected, never answered
+     * as absent. A part checked later is held to the same rule when a row of it is projected.
      */
     private void checkProjection(List<String> names) {
         for (int i = 0; i < parts.size(); i++) {
             PartFile part = parts.checked(i);
             if (part != null) {
                 part.checkProjection(names);
+            }
+        }
+    }
+
+    /** The work of an operation inside its request. */
+    @FunctionalInterface
+    interface Body<T, E extends Exception> {
+        T apply(ReadContext ctx) throws E;
+    }
+
+    /** The work of an operation inside its request, with the arguments its preparation checked and copied. */
+    @FunctionalInterface
+    interface Prepared<A, T, E extends Exception> {
+        T apply(ReadContext ctx, A args) throws E;
+    }
+
+    /** {@link #run(ReadOptions, java.util.function.Supplier, Prepared)} with nothing prepared but checks. */
+    <T, E extends Exception> T run(ReadOptions options, Runnable checks, Body<T, E> body) throws E {
+        return run(options, () -> {
+            checks.run();
+            return null;
+        }, (ctx, none) -> body.apply(ctx));
+    }
+
+    /**
+     * Runs one operation: {@code prepare} (the request's own validity, and defensive copies of its
+     * arguments), then {@code body} inside a request, and delivers the operation's statistics to {@code
+     * options} exactly once on every exit, an invalid argument included, after the request is released. A
+     * statistics consumer that throws while the operation fails is added to the operation's exception as
+     * suppressed; while it succeeds, its exception propagates.
+     */
+    <A, T, E extends Exception> T run(ReadOptions options, java.util.function.Supplier<? extends A> prepare, Prepared<A, T, E> body) throws E {
+        Objects.requireNonNull(options, "options");
+        ReadStats.Counter counter = null;
+        Throwable failure = null;
+        try {
+            A args = prepare.get();
+            try (Request request = begin(options.cancellation())) {
+                counter = request.ctx.stats;
+                return body.apply(request.ctx, args);
+            }
+        } catch (Throwable t) {
+            failure = t;
+            throw t;
+        } finally {
+            report(options.statistics(), counter == null ? ReadStats.NONE : counter.snapshot(), failure);
+        }
+    }
+
+    private static void report(Consumer<? super ReadStats> statistics, ReadStats stats, Throwable failure) {
+        try {
+            statistics.accept(stats);
+        } catch (RuntimeException | Error e) {
+            if (failure == null) {
+                throw e;
+            }
+            if (e != failure) {
+                failure.addSuppressed(e);
             }
         }
     }
@@ -710,28 +694,6 @@ public final class Dataset implements AutoCloseable {
     /** {@return the dataset's parts} */
     Parts parts() {
         return parts;
-    }
-
-    /**
-     * Begins a request that reports its read statistics to {@code stats}: a request that fails to start
-     * (cancelled already, or on a closed dataset) reports zero counts, and throws as {@link #begin} does.
-     */
-    Request begin(Cancellation caller, Consumer<? super ReadStats> stats) {
-        try {
-            return begin(caller);
-        } catch (RuntimeException e) {
-            throw notStarted(stats, e);
-        }
-    }
-
-    /** Reports zero counts for a request that failed to start with {@code e}, and {@return e}. */
-    private static RuntimeException notStarted(Consumer<? super ReadStats> stats, RuntimeException e) {
-        try {
-            stats.accept(ReadStats.NONE);
-        } catch (RuntimeException suppressed) {
-            e.addSuppressed(suppressed);
-        }
-        return e;
     }
 
     Request begin(Cancellation caller) {
@@ -763,9 +725,10 @@ public final class Dataset implements AutoCloseable {
      * part source it opened. Calling it again does nothing.
      *
      * <p>A request cannot wait for itself: closing the dataset from inside one of its own requests on the
-     * same thread (from a {@link RangePlan#scan scan}'s action or statistics consumer) would wait forever,
-     * and fails instead, changing nothing. End the scan by throwing from the action, and close the dataset
-     * once the scan has returned.
+     * same thread (from a {@link Plan#scan scan}'s visitor, or from the statistics consumer of an operation
+     * started inside one) would wait forever, and fails instead, changing nothing. End the scan by returning
+     * {@code false} from the visitor, and close the dataset once the scan has returned. A statistics consumer
+     * of a top-level operation runs after the operation released the dataset, and may close it.
      *
      * @throws StorageException if closing a part source fails (every source is still closed)
      * @throws IllegalStateException if called from inside a request of this dataset on the same thread

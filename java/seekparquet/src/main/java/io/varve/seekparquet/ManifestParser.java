@@ -20,7 +20,7 @@ final class ManifestParser {
     private static final Set<String> TOP_MEMBERS =
             Set.of("format", "format_version", "draft_revision", "schema_id", "key", "parts", "extensions");
     private static final Set<String> PART_MEMBERS =
-            Set.of("path", "rows", "bytes", "min_key_base64", "max_key_base64", "sha256");
+            Set.of("path", "rows", "bytes", "min_key_base64", "max_key_base64", "sha256", "extensions");
     private static final Pattern INTEGER = Pattern.compile("0|[1-9][0-9]*");
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
     private static final Pattern BASE64 =
@@ -32,7 +32,7 @@ final class ManifestParser {
         return new RefusalException(RefusalCode.INVALID_MANIFEST, null, detail);
     }
 
-    static Manifest parse(byte[] raw) {
+    static Manifest parse(byte[] raw, int maxParts) {
         if (raw.length >= 3 && (raw[0] & 0xFF) == 0xEF && (raw[1] & 0xFF) == 0xBB && (raw[2] & 0xFF) == 0xBF) {
             throw invalid("the manifest begins with a byte order mark");
         }
@@ -41,7 +41,7 @@ final class ManifestParser {
         }
         Json.Node root;
         try {
-            root = Json.parse(raw);
+            root = Json.parse(raw, maxParts);
         } catch (Json.SyntaxException e) {
             throw invalid(e.getMessage());
         }
@@ -98,20 +98,7 @@ final class ManifestParser {
             throw invalid("key must contain exactly a non-empty column name and a boolean unique");
         }
         KeyDefinition key = new KeyDefinition(keyColumn.value(), unique.value());
-        Map<String, String> extensions = new LinkedHashMap<>();
-        Json.Node ext = m.get("extensions");
-        if (ext != null) {
-            if (!(ext instanceof Json.Obj extObj)) {
-                throw invalid("extensions is not an object");
-            }
-            for (Map.Entry<String, Json.Node> e : extObj.members().entrySet()) {
-                if (e.getKey().isEmpty()) {
-                    throw invalid("an extension namespace is empty");
-                }
-                Json.Node v = e.getValue();
-                extensions.put(e.getKey(), new String(raw, v.start(), v.end() - v.start(), StandardCharsets.UTF_8));
-            }
-        }
+        Map<String, String> extensions = extensions(m.get("extensions"), raw, "");
         Json.Node partsNode = m.get("parts");
         if (partsNode == null) {
             throw invalid("parts is missing");
@@ -119,10 +106,14 @@ final class ManifestParser {
         if (!(partsNode instanceof Json.Arr partsArr)) {
             throw invalid("parts is not an array");
         }
+        if (partsArr.total() > maxParts) {
+            // The parser kept only maxParts entries of the array: the excess was checked and counted, not held.
+            throw new LimitExceededException(LimitName.PARTS, partsArr.total(), maxParts, "manifest.json");
+        }
         List<ManifestPart> parts = new ArrayList<>(partsArr.items().size());
         Map<String, Integer> paths = new HashMap<>();
         for (int i = 0; i < partsArr.items().size(); i++) {
-            ManifestPart part = part(partsArr.items().get(i), i);
+            ManifestPart part = part(partsArr.items().get(i), i, raw);
             Integer previous = paths.putIfAbsent(part.path(), i);
             if (previous != null) {
                 throw invalid("parts " + previous + " and " + i + " have the same path \"" + part.path() + "\"");
@@ -142,7 +133,31 @@ final class ManifestParser {
         return new Manifest(version, schemaId.value(), key, parts, extensions);
     }
 
-    private static ManifestPart part(Json.Node node, int i) {
+    /**
+     * EXT-4: an extensions object, top-level or a part's, with non-empty namespace names; each namespace
+     * maps to its value's JSON text exactly as written. Values are not interpreted: no accelerator is
+     * defined, and unknown namespaces and members are ignored (EXT-3). Duplicate names and unpaired
+     * surrogates inside it were refused with the rest of the manifest.
+     */
+    private static Map<String, String> extensions(Json.Node ext, byte[] raw, String where) {
+        Map<String, String> extensions = new LinkedHashMap<>();
+        if (ext == null) {
+            return extensions;
+        }
+        if (!(ext instanceof Json.Obj extObj)) {
+            throw invalid(where + "extensions is not an object");
+        }
+        for (Map.Entry<String, Json.Node> e : extObj.members().entrySet()) {
+            if (e.getKey().isEmpty()) {
+                throw invalid(where + "an extension namespace is empty");
+            }
+            Json.Node v = e.getValue();
+            extensions.put(e.getKey(), new String(raw, v.start(), v.end() - v.start(), StandardCharsets.UTF_8));
+        }
+        return extensions;
+    }
+
+    private static ManifestPart part(Json.Node node, int i, byte[] raw) {
         String where = "part " + i;
         if (!(node instanceof Json.Obj obj)) {
             throw invalid(where + " is not an object");
@@ -175,7 +190,7 @@ final class ManifestParser {
             }
             sha = Optional.of(s.value());
         }
-        return new ManifestPart(path.value(), rows, bytes, min, max, sha);
+        return new ManifestPart(path.value(), rows, bytes, min, max, sha, extensions(m.get("extensions"), raw, where + ": "));
     }
 
     private static long requiredInteger(Map<String, Json.Node> m, String name, String where) {

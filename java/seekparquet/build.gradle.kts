@@ -18,7 +18,7 @@ java {
 }
 
 dependencies {
-    // InputFile and SeekableInputStream are part of the public storage contract.
+    // InputFile and SeekableInputStream appear in the public API of storage.ParquetJavaInterop only.
     api(libs.parquet.common)
     // Parquet metadata (footer, ColumnIndex, OffsetIndex, page headers) and
     // value decoding come from parquet-java's Hadoop-free modules. See

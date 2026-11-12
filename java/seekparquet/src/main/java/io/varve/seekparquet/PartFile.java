@@ -46,6 +46,9 @@ final class PartFile implements AutoCloseable {
     /** The most of a part's end the first footer read fetches, to get the footer in one read ({@link #footerWindow}). */
     static final int TAIL_WINDOW = 64 * 1024;
 
+    /** The signature after a plaintext footer that declares encryption (Parquet modular encryption). */
+    private static final int SIGNATURE_BYTES = 28;
+
     private static final String STAMP_VERSION = "seekparquet.format_version";
     private static final String STAMP_DRAFT = "seekparquet.draft_revision";
     private static final String STAMP_KEY_COLUMN = "seekparquet.key_column";
@@ -77,7 +80,7 @@ final class PartFile implements AutoCloseable {
     private final AtomicReferenceArray<byte[]> firstKeys;
     /**
      * The checked OffsetIndexes of value column chunks, by physical row group and leaf ({@link #slot}),
-     * published on first use within {@link Limits#maxOffsetIndexMemoryBytes()} ({@link OffsetIndexMemory#keep}).
+     * published on first use within {@link Limits#offsetIndexMemory()} ({@link OffsetIndexMemory#keep}).
      */
     private final AtomicReferenceArray<ValueIndex> valueIndexes;
 
@@ -167,7 +170,7 @@ final class PartFile implements AutoCloseable {
 
         // FILE-2 and FILE-1, before following any reference.
         if (meta.isSetEncryption_algorithm() || meta.isSetFooter_signing_key_metadata()) {
-            throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCRYPTION, "part " + name + " uses Parquet modular encryption");
+            throw new UnsupportedFeatureException(UnsupportedCode.ENCRYPTION, "part " + name + " uses Parquet modular encryption");
         }
         List<RowGroup> rowGroups = meta.getRow_groups();
         if (rowGroups == null) {
@@ -184,7 +187,7 @@ final class PartFile implements AutoCloseable {
                             + cc.getFile_path() + ")");
                 }
                 if (cc.isSetCrypto_metadata() || cc.isSetEncrypted_column_metadata()) {
-                    throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCRYPTION, "part " + name + " has an encrypted column");
+                    throw new UnsupportedFeatureException(UnsupportedCode.ENCRYPTION, "part " + name + " has an encrypted column");
                 }
             }
         }
@@ -284,7 +287,7 @@ final class PartFile implements AutoCloseable {
 
         Map<String, ColumnSpec> projectable = new LinkedHashMap<>();
         for (PartSchema.Field f : schema.fields) {
-            if (f.leaf() < 0 || f.repetition() == Column.Repetition.REPEATED || f.type() == Column.Type.INT96
+            if (f.leaf() < 0 || f.repetition() == Column.Repetition.REPEATED
                     || schema.duplicates.contains(f.name())) {
                 continue;
             }
@@ -297,42 +300,45 @@ final class PartFile implements AutoCloseable {
     /**
      * {@return how many bytes of a part's end {@link #readFooter} reads first} The last {@link #TAIL_WINDOW}
      * bytes, or the whole part when it is smaller, but never more than the largest footer {@link
-     * Limits#maxFooterBytes()} admits with its 8-byte trailer.
+     * Limits#footerBytes()} admits with its 8-byte trailer.
      */
     static int footerWindow(long size, Limits limits) {
-        return (int) Math.min(Math.min(size, TAIL_WINDOW), limits.maxFooterBytes() + 8L);
+        return (int) Math.min(Math.min(size, TAIL_WINDOW), limits.footerBytes() + 8L);
     }
 
     /**
      * Reads and decodes a part's footer: one read of the part's end ({@link #footerWindow}), which holds the
      * trailer and, when it fits, the footer; a footer larger than the window costs one more read, of exactly
-     * the footer bytes before it. The trailer is checked, and the footer length against the part's size and
-     * {@link Limits#maxFooterBytes()}, before anything is allocated from it. Only the footer's own bytes are
-     * kept, in an array of their own, never the window.
+     * the footer bytes before it. Both magics are checked (CHECK-1): a part no larger than the window holds
+     * its leading magic in the window, and a larger part costs one more read, of its first 4 bytes, made
+     * first. {@code PARE} at either end is an encrypted part; any other magic but {@code PAR1} is
+     * {@code invalid_footer}. The footer length is checked against the part's size and {@link
+     * Limits#footerBytes()} before anything is allocated from it. Only the footer's own bytes are kept,
+     * in an array of their own, never the window.
      */
     static FileMetaData readFooter(PartSource source, String name, long size, ReadContext ctx) {
         if (size < 12) {
             throw refuse(RefusalCode.INVALID_FOOTER, name, "the part is too short to be Parquet");
         }
         int window = footerWindow(size, ctx.limits);
+        ByteBuffer head = window < size ? read(source, name, 0, 4, ctx) : null;
         ByteBuffer tail = read(source, name, size - window, window, ctx);
         int start = tail.position();
         int end = start + window;
-        byte[] magic = new byte[4];
-        tail.duplicate().position(end - 4).get(magic);
-        String m = new String(magic, StandardCharsets.ISO_8859_1);
-        if (m.equals("PARE")) {
-            throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCRYPTION, "part " + name + " has an encrypted footer");
+        String leading = head == null ? magic(tail, start) : magic(head, head.position());
+        String trailing = magic(tail, end - 4);
+        if (leading.equals("PARE") || trailing.equals("PARE")) {
+            throw new UnsupportedFeatureException(UnsupportedCode.ENCRYPTION, "part " + name + " uses Parquet modular encryption");
         }
-        if (!m.equals("PAR1")) {
-            throw refuse(RefusalCode.INVALID_FOOTER, name, "the part does not end with PAR1");
+        if (!leading.equals("PAR1") || !trailing.equals("PAR1")) {
+            throw refuse(RefusalCode.INVALID_FOOTER, name, "the file does not begin and end with PAR1");
         }
         long footerLength = Integer.toUnsignedLong(tail.duplicate().order(ByteOrder.LITTLE_ENDIAN).getInt(end - 8));
         if (footerLength > size - 12) {
             throw refuse(RefusalCode.INVALID_FOOTER, name, "the footer length " + footerLength + " does not fit in the part");
         }
-        if (footerLength > ctx.limits.maxFooterBytes()) {
-            throw new LimitExceededException("maxFooterBytes", footerLength, ctx.limits.maxFooterBytes(), "part " + name);
+        if (footerLength > ctx.limits.footerBytes()) {
+            throw new LimitExceededException(LimitName.FOOTER_BYTES, footerLength, ctx.limits.footerBytes(), "part " + name);
         }
         byte[] footer = new byte[(int) footerLength];
         if (footerLength + 8 <= window) {
@@ -344,11 +350,30 @@ final class PartFile implements AutoCloseable {
             read(source, name, size - 8 - footerLength, before, ctx).get(footer, 0, before);
             tail.duplicate().position(start).get(footer, before, inWindow);
         }
+        Thrift.Decoded<FileMetaData> decoded;
         try {
-            return Thrift.fileMetaData(footer);
+            decoded = Thrift.read(footer, 0, footer.length, new FileMetaData(), ctx.limits.metadataMemory());
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_FOOTER, name, "the footer does not parse: " + e.getMessage());
         }
+        FileMetaData meta = decoded.value();
+        int after = footer.length - decoded.length();
+        // FILE-2, plaintext footer mode: metadata declaring encryption, then exactly its 28-byte signature, as Go
+        // decides. Any other trailing bytes are a malformed footer.
+        if (after == SIGNATURE_BYTES && (meta.isSetEncryption_algorithm() || meta.isSetFooter_signing_key_metadata())) {
+            throw new UnsupportedFeatureException(UnsupportedCode.ENCRYPTION, "part " + name + " uses Parquet modular encryption");
+        }
+        if (after != 0) {
+            throw refuse(RefusalCode.INVALID_FOOTER, name, "the footer does not parse: trailing bytes after the Thrift structure");
+        }
+        return meta;
+    }
+
+    /** {@return the 4 bytes of {@code b} at {@code at}, as ISO-8859-1 text} */
+    private static String magic(ByteBuffer b, int at) {
+        byte[] magic = new byte[4];
+        b.duplicate().position(at).get(magic);
+        return new String(magic, StandardCharsets.ISO_8859_1);
     }
 
     /** Checks a column chunk's metadata against its schema leaf, and its byte range against the file. */
@@ -470,12 +495,12 @@ final class PartFile implements AutoCloseable {
         return out;
     }
 
-    /** COL-3: a nested, repeated or INT96 column of this part is rejected, never answered as absent. */
+    /** COL-3: a nested or repeated column of this part is rejected, never answered as absent. */
     void checkProjection(List<String> columns) {
         for (String column : columns) {
             if (schema.byName.containsKey(column) && !projectable.containsKey(column)) {
-                throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_PROJECTION,
-                        "column " + column + " is nested, repeated, of type INT96, or not unique in part " + name);
+                throw new UnsupportedFeatureException(UnsupportedCode.PROJECTION,
+                        "column " + column + " is nested, repeated, or not unique in part " + name);
             }
         }
     }
@@ -523,12 +548,12 @@ final class PartFile implements AutoCloseable {
         ColumnIndex ci;
         OffsetIndex oi;
         try {
-            ci = Thrift.columnIndex(raw[0]);
+            ci = Thrift.columnIndex(raw[0], ctx.limits.metadataMemory());
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "the key ColumnIndex does not parse: " + e.getMessage());
         }
         try {
-            oi = Thrift.offsetIndex(raw[1]);
+            oi = Thrift.offsetIndex(raw[1], ctx.limits.metadataMemory());
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "the key OffsetIndex does not parse: " + e.getMessage());
         }
@@ -584,9 +609,9 @@ final class PartFile implements AutoCloseable {
 
     /** Coalesces only when the unused gap is no larger than the useful index bytes. */
     private byte[][] readTwo(long aOff, int aLen, long bOff, int bLen, ReadContext ctx) {
-        if (aLen > ctx.limits.maxIndexBytes() || bLen > ctx.limits.maxIndexBytes()) {
+        if (aLen > ctx.limits.pageIndexBytes() || bLen > ctx.limits.pageIndexBytes()) {
             int len = Math.max(aLen, bLen);
-            throw new LimitExceededException("maxIndexBytes", len, ctx.limits.maxIndexBytes(), "part " + name);
+            throw new LimitExceededException(LimitName.PAGE_INDEX_BYTES, len, ctx.limits.pageIndexBytes(), "part " + name);
         }
         long from = Math.min(aOff, bOff);
         long to = Math.max(aOff + aLen, bOff + bLen);
@@ -622,7 +647,7 @@ final class PartFile implements AutoCloseable {
         PageHeader header;
         int headerLength;
         try {
-            Thrift.Decoded<PageHeader> h = Thrift.pageHeader(raw, 0, raw.length);
+            Thrift.Decoded<PageHeader> h = Thrift.pageHeader(raw, 0, raw.length, ctx.limits.metadataMemory());
             header = h.value();
             headerLength = h.length();
         } catch (DataException e) {
@@ -669,8 +694,8 @@ final class PartFile implements AutoCloseable {
     }
 
     private void checkPageSize(long sz, ReadContext ctx) {
-        if (sz > ctx.limits.maxPageBytes()) {
-            throw new LimitExceededException("maxPageBytes", sz, ctx.limits.maxPageBytes(), "part " + name);
+        if (sz > ctx.limits.pageBytes()) {
+            throw new LimitExceededException(LimitName.PAGE_BYTES, sz, ctx.limits.pageBytes(), "part " + name);
         }
     }
 
@@ -714,7 +739,7 @@ final class PartFile implements AutoCloseable {
             // The OffsetIndex locates the first data page: what precedes it is the dictionary, read at once.
             checkPageSize(extent, ctx);
             byte[] raw = readBytes(range[0], (int) extent, ctx);
-            Thrift.Decoded<PageHeader> h = Thrift.pageHeader(raw, 0, raw.length);
+            Thrift.Decoded<PageHeader> h = Thrift.pageHeader(raw, 0, raw.length, ctx.limits.metadataMemory());
             header = h.value();
             if (header.getType() != PageType.DICTIONARY_PAGE) {
                 throw new DataException("the column chunk has no dictionary page");
@@ -749,17 +774,22 @@ final class PartFile implements AutoCloseable {
 
     private record Header(PageHeader header, int length) {}
 
-    /** Reads the page header at {@code at}, whose length is unknown, within {@code [at, end)}. */
+    /**
+     * Reads the page header at {@code at}, whose length is unknown, within {@code [at, end)}: in windows of
+     * 8 KiB, 256 KiB and {@link Limits#headerBytes()}, each clamped to that ceiling and to the bytes left, as
+     * the Go reader probes.
+     */
     private Header header(long at, long end, ReadContext ctx) throws DataException {
         long available = end - at;
-        for (long window : new long[] {8 * 1024, 256 * 1024, ctx.limits.maxPageBytes()}) {
-            int n = (int) Math.min(available, window);
+        long ceiling = Math.min(available, ctx.limits.headerBytes());
+        for (long window : new long[] {8 * 1024, 256 * 1024, ceiling}) {
+            int n = (int) Math.min(ceiling, window);
             byte[] raw = readBytes(at, n, ctx);
             try {
-                Thrift.Decoded<PageHeader> h = Thrift.pageHeader(raw, 0, n);
+                Thrift.Decoded<PageHeader> h = Thrift.pageHeader(raw, 0, n, ctx.limits.metadataMemory());
                 return new Header(h.value(), h.length());
             } catch (DataException e) {
-                if (n == available || window >= ctx.limits.maxPageBytes()) {
+                if (n == ceiling) {
                     throw new DataException("no page header at offset " + at, e);
                 }
             }
@@ -792,7 +822,7 @@ final class PartFile implements AutoCloseable {
 
     /**
      * {@return the checked OffsetIndex of a value column chunk, or empty when it has none (COL-4)} A checked
-     * index is kept for later requests while {@link Limits#maxOffsetIndexMemoryBytes()} has room; past it,
+     * index is kept for later requests while {@link Limits#offsetIndexMemory()} has room; past it,
      * the caller's request uses it alone, never failing for the budget. One that fails to read or check is
      * never kept, so every request that needs it is refused. A kept index is not read again, so it is in no
      * later request's {@code sourceReads} or {@code sourceBytes}.
@@ -813,14 +843,14 @@ final class PartFile implements AutoCloseable {
         if (off <= 0 || len < 0 || off > size - len) {
             throw refuse(RefusalCode.INVALID_PARQUET, physical, where + "its OffsetIndex lies outside the part");
         }
-        if (len > ctx.limits.maxIndexBytes()) {
-            throw new LimitExceededException("maxIndexBytes", len, ctx.limits.maxIndexBytes(), "part " + name);
+        if (len > ctx.limits.pageIndexBytes()) {
+            throw new LimitExceededException(LimitName.PAGE_INDEX_BYTES, len, ctx.limits.pageIndexBytes(), "part " + name);
         }
         long[] range = chunkRange(cc.getMeta_data());
         byte[] raw = readBytes(off, len, ctx);
         ValueIndex index;
         try {
-            index = ValueIndex.check(Thrift.offsetIndex(raw), groupRows[physical], range[0], range[1]);
+            index = ValueIndex.check(Thrift.offsetIndex(raw, ctx.limits.metadataMemory()), groupRows[physical], range[0], range[1]);
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_PARQUET, physical, where + "its OffsetIndex is invalid: " + e.getMessage());
         }
@@ -877,7 +907,7 @@ final class PartFile implements AutoCloseable {
         if (vi == null) {
             vi = valueIndex(physical, col.leaf(), ctx).orElse(null);
             if (vi != null && !keptValueIndex(physical, col.leaf())) {
-                // Past maxOffsetIndexMemoryBytes: keep it for the rest of this row group, for this request alone.
+                // Past offsetIndexMemory: keep it for the rest of this row group, for this request alone.
                 ctx.putValueIndex(key, vi);
             }
         }
@@ -896,7 +926,7 @@ final class PartFile implements AutoCloseable {
             PageHeader header;
             int headerLength;
             try {
-                Thrift.Decoded<PageHeader> h = Thrift.pageHeader(raw, 0, raw.length);
+                Thrift.Decoded<PageHeader> h = Thrift.pageHeader(raw, 0, raw.length, ctx.limits.metadataMemory());
                 header = h.value();
                 headerLength = h.length();
             } catch (DataException e) {

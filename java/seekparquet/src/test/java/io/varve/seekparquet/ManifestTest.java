@@ -24,7 +24,7 @@ class ManifestTest {
     }
 
     private static Manifest parse(String json) {
-        return Manifest.parse(json.getBytes(StandardCharsets.UTF_8));
+        return Manifest.parse(json.getBytes(StandardCharsets.UTF_8), Limits.DEFAULT);
     }
 
     private static RefusalCode refusal(String json) {
@@ -36,9 +36,53 @@ class ManifestTest {
         Manifest m = parse(manifest(PART, ",\"extensions\":{\"tool\": {\"n\": 1.50e3, \"list\":[1, 2]}}"));
         assertEquals(FormatVersion.DRAFT_1, m.version());
         assertEquals("s/v1", m.schemaId());
-        assertEquals(List.of(new ManifestPart("data/p.parquet", 3, 100, Bytes.utf8("a"), Bytes.utf8("c"), Optional.empty())), m.parts());
+        assertEquals(List.of(new ManifestPart("data/p.parquet", 3, 100, Bytes.utf8("a"), Bytes.utf8("c"), Optional.empty(), java.util.Map.of())), m.parts());
         assertEquals(Map.of("tool", "{\"n\": 1.50e3, \"list\":[1, 2]}"), m.extensions());
         assertEquals(3, m.rows());
+    }
+
+    @Test
+    void keepsPartExtensionsAsWrittenAndIgnoresTheirContent() {
+        String ext = "{\"tool\": {\"n\": 1.50e3, \"deep\": [{\"x\": null}]}, \"seekparquet\": {\"unknown\": {\"version\": 99}}}";
+        Manifest m = parse(manifest(PART.replace("}", ",\"extensions\":" + ext + "}"), ""));
+        ManifestPart part = m.parts().get(0);
+        assertEquals(Map.of("tool", "{\"n\": 1.50e3, \"deep\": [{\"x\": null}]}", "seekparquet", "{\"unknown\": {\"version\": 99}}"),
+                part.extensions());
+        assertEquals(List.of("tool", "seekparquet"), List.copyOf(part.extensions().keySet()));
+        assertEquals(Map.of(), m.extensions());
+        assertEquals(Map.of(), parse(manifest(PART, "")).parts().get(0).extensions());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"x\"", "[]", "null", "1", "{\"\":1}", "{\"t\":{\"a\":1,\"a\":2}}", "{\"t\":1,\"t\":2}", "{\"t\":\"\\udfff\"}"})
+    void malformedPartExtensionsAreInvalid(String ext) {
+        assertEquals(RefusalCode.INVALID_MANIFEST, refusal(manifest(PART.replace("}", ",\"extensions\":" + ext + "}"), "")));
+    }
+
+    @Test
+    void anUndefinedPartMemberBesidePartExtensionsIsInvalid() {
+        assertEquals(RefusalCode.INVALID_MANIFEST, refusal(manifest(PART.replace("}", ",\"extensions\":{},\"checksum\":\"x\"}"), "")));
+    }
+
+    /**
+     * Nesting deeper than 512 objects and arrays, the manifest object counting 1, is a limit of the reader
+     * ({@code manifestNesting}), not invalid_manifest, wherever it is; depth 512 is read. The Go reader has
+     * the same boundary.
+     */
+    @Test
+    void nestingDeeperThan512IsALimitAtEveryLocation() {
+        java.util.function.IntFunction<String> nest = n -> "[".repeat(n) + "]".repeat(n);
+        // The top-level extensions' value is at depth 2, a part's at 4.
+        java.util.function.IntFunction<String> top = d -> manifest(PART, ",\"extensions\":{\"t\":" + nest.apply(d - 2) + "}");
+        java.util.function.IntFunction<String> part = d -> manifest(PART.replace("}", ",\"extensions\":{\"t\":" + nest.apply(d - 4) + "}}"), "");
+        for (var at : List.of(top, part)) {
+            parse(at.apply(512));
+            LimitExceededException e = assertThrows(LimitExceededException.class, () -> parse(at.apply(513)));
+            assertEquals(true, e.getMessage().contains("MANIFEST_NESTING"), e.getMessage());
+        }
+        String core = manifest(PART, "").replace("\"s/v1\"", nest.apply(511));
+        assertEquals(RefusalCode.INVALID_MANIFEST, refusal(core));
+        assertThrows(LimitExceededException.class, () -> parse(manifest(PART, "").replace("\"s/v1\"", nest.apply(512))));
     }
 
     @Test
@@ -134,6 +178,6 @@ class ManifestTest {
         assertEquals(RefusalCode.INVALID_MANIFEST, refusal("\uFEFF" + manifest(PART, "")));
         byte[] bad = manifest(PART, ",\"extensions\":{\"t\":\"\u00e9\"}").getBytes(StandardCharsets.UTF_8);
         bad[bad.length - 5] = (byte) 0xC0;
-        assertEquals(RefusalCode.INVALID_MANIFEST, assertThrows(RefusalException.class, () -> Manifest.parse(bad)).code());
+        assertEquals(RefusalCode.INVALID_MANIFEST, assertThrows(RefusalException.class, () -> Manifest.parse(bad, Limits.DEFAULT)).code());
     }
 }

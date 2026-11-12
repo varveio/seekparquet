@@ -21,6 +21,16 @@ import java.time.Duration;
  */
 public record ListIndexStats(long groupsIndexed, long groupsSkipped, long groupsFailed,
         long partsFailed, long pages, long entries, long bytes, boolean budgetExhausted, Duration duration, ListIndexOptions options, boolean optionsMismatch) {
+    /**
+     * Creates build statistics.
+     *
+     * @throws NullPointerException if {@code duration} or {@code options} is null
+     */
+    public ListIndexStats {
+        java.util.Objects.requireNonNull(duration, "duration");
+        java.util.Objects.requireNonNull(options, "options");
+    }
+
     /** {@return whether the completed snapshot indexes any groups} */
     public boolean hasIndex() { return groupsIndexed > 0; }
     ListIndexStats forOptions(ListIndexOptions requested) {
@@ -32,22 +42,5 @@ public record ListIndexStats(long groupsIndexed, long groupsSkipped, long groups
     ListIndexStats(long groupsIndexed, long groupsSkipped, long groupsFailed, long partsFailed,
             long pages, long entries, long bytes, boolean budgetExhausted, Duration duration, ListIndexOptions options) {
         this(groupsIndexed, groupsSkipped, groupsFailed, partsFailed, pages, entries, bytes, budgetExhausted, duration, options, false);
-    }
-
-    /**
-     * Compatibility constructor using default options.
-     * @param groupsIndexed retained groups
-     * @param groupsSkipped omitted groups
-     * @param groupsFailed refused groups
-     * @param partsFailed refused parts
-     * @param pages decoded pages
-     * @param entries run starts
-     * @param bytes retained bytes
-     * @param budgetExhausted admission stopped at the budget
-     * @param duration elapsed build time
-     */
-    public ListIndexStats(long groupsIndexed, long groupsSkipped, long groupsFailed, long partsFailed,
-            long pages, long entries, long bytes, boolean budgetExhausted, Duration duration) {
-        this(groupsIndexed, groupsSkipped, groupsFailed, partsFailed, pages, entries, bytes, budgetExhausted, duration, ListIndexOptions.DEFAULT);
     }
 }
