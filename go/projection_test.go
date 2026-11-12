@@ -45,7 +45,7 @@ func typedDataset() testutil.Dataset {
 	for i := range 6 {
 		r := typed{Key: []byte(fmt.Sprintf("t%d", i)), Fixed: [4]byte{byte(i), 0, 0xff, 0x7f}, Dotted: int64(i)}
 		if i%2 == 0 {
-			r.Flag, r.I32, r.I64 = ptr(i == 0), ptr(int32(-i)), ptr(int64(math.MaxInt64-i))
+			r.Flag, r.I32, r.I64 = ptr(i == 0), ptr(int32(-i)), ptr(math.MaxInt64-int64(i))
 			r.F32, r.F64, r.Blob = ptr(float32(math.Copysign(0, -1))), ptr(math.Inf(1)), []byte{byte(i)}
 		}
 		rows = append(rows, r)

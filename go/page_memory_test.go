@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"unsafe"
@@ -23,7 +24,9 @@ import (
 // refuses no page those limits admit: 832 MiB at their defaults, and it
 // follows them when they are set.
 func TestPageMemoryDefault(t *testing.T) {
-	if size := unsafe.Sizeof(parquet.Value{}); size != valueBytes {
+	// The estimate is a 64-bit Value's size; a 32-bit one is smaller, so the
+	// estimate is conservative there.
+	if size := unsafe.Sizeof(parquet.Value{}); size != valueBytes && (strconv.IntSize == 64 || size > valueBytes) {
 		t.Fatalf("a parquet.Value is %d bytes, the estimate counts %d", size, valueBytes)
 	}
 	if got := (Limits{}).withDefaults().PageMemory; got != 832<<20 {
@@ -89,7 +92,7 @@ func TestPageMemoryBoundsDecoding(t *testing.T) {
 			if len(values) != n || !values[0].Boolean() || !values[n-1].Boolean() {
 				t.Fatalf("%d values", len(values))
 			}
-			if used < n*valueBytes {
+			if used < n*uint64(unsafe.Sizeof(parquet.Value{})) {
 				t.Fatalf("the page decoded in %d bytes: the test does not reach the bound", used)
 			}
 		})

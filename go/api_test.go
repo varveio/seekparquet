@@ -11,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/parquet-go/parquet-go/format"
@@ -80,8 +81,18 @@ func TestRequestLimits(t *testing.T) {
 	if _, err := d.List(ctx, ListQuery{Delimiter: '/'}, nil); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("List limit 0: %v", err)
 	}
-	if rows, err := d.Rows(ctx, Query{Limit: math.MaxInt64}, nil); err != nil || len(rows) != 20 {
-		t.Fatalf("Rows MaxInt64: %d rows, %v", len(rows), err)
+	// A limit fits a slice's length or is invalid: on 64-bit platforms every
+	// positive int64 fits; on 32-bit ones math.MaxInt64 does not.
+	for _, limit := range []int64{math.MaxInt, math.MaxInt64} {
+		st := ReadStats{KeysDecoded: 9}
+		rows, err := d.Rows(ctx, Query{Limit: limit}, &st)
+		if limit <= math.MaxInt {
+			if err != nil || len(rows) != 20 {
+				t.Fatalf("Rows limit %d: %d rows, %v", limit, len(rows), err)
+			}
+		} else if !errors.Is(err, ErrInvalidRequest) || rows != nil || st != (ReadStats{}) {
+			t.Fatalf("Rows limit %d on a %d-bit platform: %d rows, %v, %+v", limit, strconv.IntSize, len(rows), err, st)
+		}
 	}
 }
 

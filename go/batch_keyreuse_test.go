@@ -418,7 +418,7 @@ func TestScanBatchesKeyPageAllocations(t *testing.T) {
 	const n = 40_000
 	records := make([]reuseRecord, n)
 	for i := range records {
-		records[i].Key = fmt.Appendf(nil, "crawl-data/CC-MAIN-2024-10/segments/1707947470000.%02d/warc/CC-MAIN-20240220211055-%014d-%05d.warc.gz", i/4000, 20240221001055+i, i)
+		records[i].Key = fmt.Appendf(nil, "crawl-data/CC-MAIN-2024-10/segments/1707947470000.%02d/warc/CC-MAIN-20240220211055-%014d-%05d.warc.gz", i/4000, int64(20240221001055)+int64(i), i)
 	}
 	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{
 		{Rows: records[:n/2], GroupRows: 10_000, PageBytes: 16 << 10, Compression: parquet.Compression(&zstd.Codec{})},
