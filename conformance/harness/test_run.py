@@ -570,6 +570,48 @@ class ReferenceRulings(unittest.TestCase):
         self.assertEqual(answer, {'status': 'ok', 'entries': [{'kind': 'row', 'key_base64': 'YQ==',
                           'offset': 0, 'values': [{'bytes_base64': 'AQAAAAAAAAAAAAAA'}]}]})
 
+    def test_v1_level_encodings_are_needed_only_with_levels(self):
+        p = self.f.p
+        for repeated, fid in ((False, 3), (True, 3), (True, 4)):
+            with self.subTest(repeated=repeated, field=fid):
+                ra.DATASETS.clear()
+                self.f.fixture(self.root, version='1.0', repeated=repeated)
+                self.f.rewrite_test_header(self.root, 1, lambda h: h.get(p.PH_DATA_V1).set(fid, p.CT_I32, 99))
+                self.assertEqual(self.request()['status'], 'ok')
+                if not repeated:
+                    answer = self.request(columns=['value'])
+                    self.assertEqual((answer['status'], answer['code']), ('unsupported', 'unsupported_encoding'))
+                levels = self.request(op='validate', level='full')['levels']
+                self.assertEqual(levels['structural']['result'], 'complete', levels)
+                self.assertEqual(levels['profile']['result'], 'complete', levels)
+                self.assertEqual(levels['full']['result'], 'incomplete', levels)
+                self.assertEqual(levels['full']['code'], 'unsupported_encoding', levels)
+        ra.DATASETS.clear()
+        self.f.fixture(self.root, version='1.0')
+        self.f.rewrite_test_header(self.root, 0, lambda h: h.get(p.PH_DATA_V1).set(3, p.CT_I32, 99))
+        self.assertEqual(self.request(columns=['value'])['status'], 'ok')
+
+    def test_group_only_annotations_on_leaves(self):
+        p = self.f.p
+        for kind in (19, 20):
+            for nested in (False, True):
+                with self.subTest(kind=kind, nested=nested):
+                    ra.DATASETS.clear()
+                    m = self.f.fixture(self.root)
+                    def annotate(meta):
+                        leaf = meta.items_of(p.FMD_SCHEMA)[2]
+                        params = p.Struct([(1, p.CT_I32, 3)]) if kind == 20 else p.Struct()
+                        leaf.set(10, p.CT_STRUCT, p.Struct([(kind, p.CT_STRUCT, params)]))
+                        if nested:
+                            leaf.set(p.SE_NAME, p.CT_BINARY, b'child')
+                            meta.get(p.FMD_SCHEMA).items.insert(2, p.Struct([
+                                (p.SE_NAME, p.CT_BINARY, b'value'), (p.SE_REPETITION, p.CT_I32, 0),
+                                (p.SE_NUM_CHILDREN, p.CT_I32, 1)]))
+                    self.f.rewrite_test_footer(self.root, m, annotate)
+                    self.assertEqual(self.request()['code'], 'invalid_footer')
+                    levels = self.request(op='validate', level='structural')['levels']
+                    self.assertEqual(levels['structural']['code'], 'invalid_footer', levels)
+
     def test_unknown_value_features_are_projection_dependent(self):
         p = self.f.p
         for version in ('1.0', '2.0'):

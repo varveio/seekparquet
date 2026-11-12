@@ -25,10 +25,10 @@ Exit status is 0 when every reported level is complete, 1 when one failed, 2 whe
 - **digest**: streams the declared parts without opening them as Parquet, so it runs even when structural
   validation fails. With no declared hashes it reports complete with zero checked.
 
-Resource limits (`Limits`) and unsupported features (LZO, build codecs PyArrow lacks, legacy
-GROUP_VAR_INT and BIT_PACKED value encodings) make a level incomplete, not failed. Unknown codec or encoding
-enums are `unsupported_encoding` when needed (ENC-1); a decoder error on a supported feature is
-`invalid_parquet`. Unused enum values follow ENC-1/RG-6 while their required fields remain checked.
+Resource limits (`Limits`) and unsupported features (LZO, deprecated `LZ4` codec 5, build codecs PyArrow
+lacks, and legacy GROUP_VAR_INT and BIT_PACKED value encodings) make a level incomplete, not failed.
+Both Python tools report unsupported features and unknown codec or encoding enums as `unsupported_encoding`
+when needed (ENC-1); a decoder error on a supported feature is `invalid_parquet`. Unused enum values follow ENC-1/RG-6 while their required fields remain checked.
 Valueless non-stamp metadata is ignored; valueless listed stamps are `stamp_mismatch` (STAMP-2).
 
 ## Independence

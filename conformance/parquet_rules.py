@@ -58,7 +58,7 @@ def annotations(pf):
             need(wire == p.CT_STRUCT, code, 'logical union wire type')
             if kind in (1, 4, 12, 13, 17, 18):
                 need(t == 6, code, 'binary annotation carrier')
-            elif kind in (2, 3, 16):
+            elif kind in (2, 3, 16, 19, 20):
                 need(False, code, 'group annotation on leaf')
             elif kind == 5:
                 decimal(field(params, 2, p.CT_I32, code), field(params, 1, p.CT_I32, code))
@@ -180,9 +180,19 @@ def encoding_support(pf, cc, pages):
     codec_names = {1: 'snappy', 2: 'gzip', 4: 'brotli', 6: 'zstd', 7: 'lz4_raw'}
     if codec and not pa.Codec.is_available(codec_names[codec]):
         raise RuleError('unsupported_encoding', f'compression codec {codec}')
+    path = tuple(name.decode('utf-8', 'replace') for name in cc.get(p.CC_META).items_of(p.CMD_PATH))
+    _, _, max_def, max_rep = next(leaf for leaf in pf.leaf_columns() if leaf[0] == path)
     for page in pages:
         # Includes raw required-field checks for ignored repetition encoding.
-        page_header(pf, page.offset, pf.footer_start)
+        header, _, _ = page_header(pf, page.offset, pf.footer_start)
+        if page.type == 0:
+            v1 = header.get(p.PH_DATA_V1)
+            for needed, fid, label in ((max_def, 3, 'definition'), (max_rep, 4, 'repetition')):
+                if needed:
+                    encoding = v1.get(fid)
+                    if encoding == 4 or encoding not in (0, 2, 3, 5, 6, 7, 8, 9):
+                        raise RuleError('unsupported_encoding', f'{label} level encoding {encoding}')
+                    need(encoding == 3, 'invalid_parquet', f'{label} levels require RLE or BIT_PACKED')
         if page.encoding is not None and page.encoding not in (0, 2, 3, 5, 6, 7, 8, 9):
             raise RuleError('unsupported_encoding', f'page encoding {page.encoding}')
 

@@ -17,14 +17,17 @@ import parquet_meta as p  # noqa: E402
 from validate import Limits, validate_dataset  # noqa: E402
 
 
-def fixture(root, *, version='2.0', codec='NONE', unique=True, keys=None, values=None):
+def fixture(root, *, version='2.0', codec='NONE', unique=True, keys=None, values=None, repeated=False):
     keys = keys if keys is not None else [f'k{i:05}'.encode() for i in range(4000)]
     values = values if values is not None else list(range(len(keys)))
+    if repeated:
+        values = [[v, v] for v in values]
+    value_type = pa.list_(pa.int64()) if repeated else pa.int64()
     stamps = {b'seekparquet.format_version': b'0', b'seekparquet.draft_revision': b'1',
               b'seekparquet.schema_id': b'test', b'seekparquet.key_column': b'key',
               b'seekparquet.key_unique': str(unique).lower().encode()}
-    schema = pa.schema([pa.field('key', pa.binary(), nullable=False), pa.field('value', pa.int64())], metadata=stamps)
-    table = pa.Table.from_arrays([pa.array(keys), pa.array(values, type=pa.int64())], schema=schema)
+    schema = pa.schema([pa.field('key', pa.binary(), nullable=False), pa.field('value', value_type)], metadata=stamps)
+    table = pa.Table.from_arrays([pa.array(keys), pa.array(values, type=value_type)], schema=schema)
     path = root / 'part.parquet'
     pq.write_table(table, path, data_page_version=version, compression=codec, use_dictionary=False,
                    data_page_size=1024, write_batch_size=128, write_page_index=True,
@@ -218,6 +221,37 @@ class RulingsTest(unittest.TestCase):
     def test_timestamp_fixed_carrier(self):
         timestamp_fixed_fixture(self.root)
         self.assertTrue(all(x['result'] == 'complete' for x in validate_dataset(self.root).values()))
+
+    def test_v1_level_encodings(self):
+        for repeated, fid in ((False, 3), (True, 3), (True, 4)):
+            with self.subTest(repeated=repeated, field=fid):
+                fixture(self.root, version='1.0', repeated=repeated)
+                rewrite_test_header(self.root, 1, lambda h: h.get(p.PH_DATA_V1).set(fid, p.CT_I32, 99))
+                report = validate_dataset(self.root)
+                self.assertEqual(report['structural']['result'], 'complete', report)
+                self.assertEqual(report['profile']['result'], 'complete', report)
+                self.assertEqual(report['full']['result'], 'incomplete', report)
+                self.assertEqual(report['full']['code'], 'unsupported_encoding', report)
+        fixture(self.root, version='1.0')
+        rewrite_test_header(self.root, 0, lambda h: h.get(p.PH_DATA_V1).set(3, p.CT_I32, 99))
+        self.assertTrue(all(x['result'] == 'complete' for x in validate_dataset(self.root).values()))
+
+    def test_group_only_annotations_on_leaves(self):
+        for kind in (19, 20):
+            for nested in (False, True):
+                with self.subTest(kind=kind, nested=nested):
+                    m = fixture(self.root)
+                    def annotate(meta):
+                        leaf = meta.items_of(p.FMD_SCHEMA)[2]
+                        params = p.Struct([(1, p.CT_I32, 3)]) if kind == 20 else p.Struct()
+                        leaf.set(10, p.CT_STRUCT, p.Struct([(kind, p.CT_STRUCT, params)]))
+                        if nested:
+                            leaf.set(p.SE_NAME, p.CT_BINARY, b'child')
+                            meta.get(p.FMD_SCHEMA).items.insert(2, p.Struct([
+                                (p.SE_NAME, p.CT_BINARY, b'value'), (p.SE_REPETITION, p.CT_I32, 0),
+                                (p.SE_NUM_CHILDREN, p.CT_I32, 1)]))
+                    rewrite_test_footer(self.root, m, annotate)
+                    self.assertEqual(validate_dataset(self.root)['structural']['code'], 'invalid_footer')
 
     def test_unknown_encoding_and_codec_levels(self):
         for version in ('1.0', '2.0'):
