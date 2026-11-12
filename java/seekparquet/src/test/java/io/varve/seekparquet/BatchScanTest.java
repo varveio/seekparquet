@@ -32,7 +32,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * Borrowed batch scans ({@link Plan#scanBatches}, {@link Dataset#rangeBatches}) against the
+ * Borrowed batch scans ({@link Plan#scan}, {@link Dataset#scan}) against the
  * row-returning paths: the same rows, offsets and values, read statistics and errors; batch boundaries;
  * the accessors against the owning values; lifetime, cancellation and close.
  */

@@ -5,6 +5,55 @@ independent of the specification's draft revisions.
 
 ## Unreleased
 
+### Changed: the read API is aligned with the Go reader's
+
+Pre-release, without deprecated aliases. Java now has the Go reader's operations, names, semantics and
+defaults, in Java idiom; see the correspondence table in README.md.
+
+- Requests: `Span` (`all`, `prefix`, `key`, builder), `Selection` (a span and an optional row cursor) and an
+  immutable `Query` (span or selection, `long` limit, columns, cursor set and clear, `next(Row)`) replace
+  `RangeQuery`.
+- Reads: `Dataset.rows(query)` (positive limit), `scan(query, visitor)` (limit 0 reads to the end of the span),
+  `get(key, columns)` (one whole group, capped by `Limits.getRows()`, checked before any value page is read),
+  `plan(selections, columns)` and `list(query)`, each also with `ReadOptions`. `range`, `rangeBatches`,
+  `lookup` and `planRanges` are removed; so are the row-callback plan scan and `scanBatches`.
+- `Plan` (was `RangePlan`): `count()` and `projectedBytes()` return `Estimate(value, exact)`; `columns()`,
+  `scan(ReadOptions, BatchVisitor)`, `split(n, ReadOptions)` (`n` below 1 is `IllegalArgumentException`).
+  A planned selection takes no limit. `Plan.stats()` is removed: planning and splitting report through
+  `ReadOptions`, including when they fail.
+- `ReadOptions(cancellation, statistics)` for every operation, `verify` and `columns(part)` included. The
+  statistics are delivered once, on every exit, after the request is released. Fixed: a statistics consumer
+  that threw while the operation (or the batch callback) failed replaced the operation's exception; it is now
+  added to it as suppressed. `ReadStats.plus` sums two.
+- `BatchVisitor<E extends Exception>` (`true` continues, `false` stops successfully) replaces
+  `Consumer<Batch>`. `Batch.key(i)` is the borrowed read-only `ByteBuffer` (was `keyBuffer`), `copyKey(i)` the
+  owning `Bytes` (was `key`), `cursor(i)` (was `continuation`); `BatchColumn.isPresent()` (was `isAbsent`),
+  `byteLength` (was `length`), borrowed `bytes(i)` (was `byteBuffer`), owning `copyBytes(i)` (was `bytes`).
+- `Cursor` (sealed: `RowPosition(key, offset)`, `CommonPrefix(prefix)`) replaces `Continuation`;
+  `Row.cursor()`, `ListEntry.cursor()`. `Cursor.encode()` and `Cursor.parse(token)` implement the shared
+  cursor token (spec/cursor-token-1.md), tested against its golden vectors. `ListQuery.Builder.cursor(c)` and
+  `clearCursor()` replace `after(c)`.
+- `Limits` is an immutable class with `builder()`/`toBuilder()` and named settings, with the Go reader's
+  defaults: footer 16 MiB (was 64), page 64 MiB (was 256), 16,777,216 page values (was 4,194,304), index memory
+  1 GiB (was 256 MiB), page memory derived as Go derives it (48 × page values + page bytes, 832 MiB), and the
+  new `metadataMemory` (256 MiB), charged while footers, page indexes and page headers decode, and `getRows`
+  (1,000). Zero means the default; a negative setting is `IllegalArgumentException`. `maxResultEntries` is
+  removed: `rows` and `list` are bounded by the caller's limit, `scan` by nothing.
+- `LimitExceededException.limit()` is a `LimitName` enum. A manifest whose row total exceeds 2^63-1 is refused
+  at open (`DATASET_ROWS`). `Manifest.parse(bytes, limits)` enforces the manifest size and part limits while
+  parsing. `OpenOptions.DEFAULT` verifies one part at a time (was 8), as the Go reader does.
+- Schema: `Dataset.columns()` and `column(name)`, which described only the parts checked so far, and
+  `Column.parts()` are removed; `columns(part)` remains. `Dataset.rows()` (the row total) is `rowCount()`.
+- Storage: `PartSource` no longer extends parquet-java's `InputFile`; `storage.ParquetJavaInterop` holds the
+  conversions (`partSource(path, inputFile, version)`, was `PartSource.of`; `inputFile(source)`). `read`
+  documents the returned buffer's lifetime.
+- Smaller: `Bytes.successor()` is `prefixEnd()`; `Bytes.utf8` rejects unpaired surrogates;
+  `UnsupportedCode` constants are `ENCODING`, `PROJECTION`, `ENCRYPTION`; the compatibility constructors of
+  `ReadStats`, `ListIndexStats`, `ListQuery` and `ManifestPart` are removed; `LocalStorage.MAX_STRANDED_OPENS`,
+  `Cancellation.linkedTo`, `detach` and `Registration.NOOP` are no longer public.
+
+The entries below predate the alignment and use the names of their time.
+
 ### Added
 
 - `ManifestPart.extensions()`: a part's `extensions` object (spec §3.4, EXT-1 to EXT-5), each namespace mapped
