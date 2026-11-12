@@ -18,8 +18,9 @@ the profile can also, with no query engine and no catalog:
   keys under them;
 - page through results and resume exactly where a page ended.
 
-It reads the manifest, the footer of each part a read touches, a page index and a few pages, so it works on
-object storage as well as on local disk.
+Selective reads use manifest bounds, part footers and page indexes to avoid unrelated data. The pages and
+requests needed depend on the query, file geometry, bounds and projected columns; broad reads can scan the
+dataset. The storage interface supports local disk and object storage.
 
 ## What it looks like
 
@@ -106,9 +107,12 @@ Both print the same lines. To run the Go version yourself, follow the [five-minu
 | Parquet offers | SeekParquet requires |
 |---|---|
 | `sorting_columns`, which a file may declare without being sorted | one key column, in unsigned byte order across the whole dataset: strictly ascending when the manifest declares keys unique, otherwise in key groups of equal keys that never cross parts |
-| an optional page index | a ColumnIndex and OffsetIndex on the key column of every row group |
+| an optional page index | a ColumnIndex and OffsetIndex on the key column of every non-empty row group |
 | nothing across files | key-disjoint parts, in order, committed by a manifest with exact bounds, row counts and sizes |
 | no query semantics | range, prefix and delimited-listing semantics, pagination, and named refusal codes when a dataset does not meet the profile |
+
+These are format requirements, not checks all performed on open. Readers check the manifest on open, parts
+on first touch and key pages as they decode them; see [what is checked, and when](docs/concepts.md#what-is-checked-and-when).
 
 ## When not to use it
 

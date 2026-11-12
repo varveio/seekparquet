@@ -74,7 +74,7 @@ The mandatory target is `reader`. A validator claims `validator-structural`, `va
 `validator-full` and `validator-digest`. Details, including how refusal stages are judged, are in the
 [conformance README](../conformance/README.md).
 
-Passing the suite shows your results are right. It does not yet show indexed access: a reader that scans
+Passing the suite shows that the implementation passes its tested cases; it does not prove correctness for every input. It does not yet show indexed access: a reader that scans
 everything also passes. The freeze of format 1 needs two independent readers that also pass an
 indexed-access suite ([GOVERNANCE.md](../GOVERNANCE.md)).
 
