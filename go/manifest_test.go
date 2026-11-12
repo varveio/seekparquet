@@ -5,6 +5,7 @@ package seekparquet
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -134,6 +135,70 @@ func TestManifestExtensionsPreserved(t *testing.T) {
 	}
 }
 
+// TestManifestPartExtensionsPreserved: a part's extensions round-trip
+// through MarshalManifest and ParseManifest as the top-level object does,
+// unknown namespaces and the reserved seekparquet namespace alike (EXT-2,
+// EXT-3), and reach Dataset.Metadata unchanged.
+func TestManifestPartExtensionsPreserved(t *testing.T) {
+	ext := `{"swath":{"source":{"n":[1.50,-0.0,null,1e400]}},"seekparquet":{"unknown":{"version":99}}}`
+	m := Manifest{Key: Key{Column: "key", Unique: true}, Version: Version{FormatVersion, DraftRevision}, SchemaID: "s",
+		Parts: []PartInfo{
+			{Path: "data/a.parquet", Rows: 1, Bytes: 1, MinKey: []byte("a"), MaxKey: []byte("a"), Extensions: json.RawMessage(ext)},
+			{Path: "data/b.parquet", Rows: 1, Bytes: 1, MinKey: []byte("b"), MaxKey: []byte("b")},
+		}}
+	out, err := MarshalManifest(m)
+	must(t, err)
+	got, err := ParseManifest(out, Limits{})
+	must(t, err)
+	var compact bytes.Buffer
+	must(t, json.Compact(&compact, got.Parts[0].Extensions))
+	if compact.String() != ext || got.Parts[1].Extensions != nil {
+		t.Errorf("part extensions became %s and %q", compact.String(), got.Parts[1].Extensions)
+	}
+	again, err := MarshalManifest(got)
+	must(t, err)
+	if !bytes.Equal(again, out) {
+		t.Errorf("second marshal differs:\n%s\n%s", again, out)
+	}
+	m.Parts[0].Extensions = json.RawMessage(" {} ")
+	if out, err := MarshalManifest(m); err != nil || bytes.Contains(out, []byte("extensions")) {
+		t.Errorf("empty part extensions: %v\n%s", err, out)
+	}
+}
+
+// TestMetadataPartExtensions: an opened dataset exposes each part's
+// extensions as written and answers as without them (EXT-2, EXT-3).
+func TestMetadataPartExtensions(t *testing.T) {
+	ctx := context.Background()
+	with := open(t, "../conformance/datasets/part-extensions", OpenOptions{})
+	without := open(t, "../conformance/datasets/multipart", OpenOptions{})
+	parts := with.Metadata().Parts
+	if len(parts) != 3 || !bytes.Contains(parts[1].Extensions, []byte(`"future_accelerator"`)) {
+		t.Fatalf("part extensions: %+v", parts)
+	}
+	for i, p := range without.Metadata().Parts {
+		if p.Extensions != nil {
+			t.Errorf("multipart part %d has extensions %s", i, p.Extensions)
+		}
+		p.Extensions = parts[i].Extensions
+		if !reflect.DeepEqual(p, parts[i]) {
+			t.Errorf("part %d differs beyond its extensions", i)
+		}
+	}
+	parts[1].Extensions[0] = 'x'
+	if with.Metadata().Parts[1].Extensions[0] != '{' {
+		t.Error("Metadata shares the part extensions' bytes")
+	}
+	q := Query{Limit: 1000, Columns: []string{"size", "storage_class"}}
+	a, err := with.Rows(ctx, q, nil)
+	must(t, err)
+	b, err := without.Rows(ctx, q, nil)
+	must(t, err)
+	if len(a) != 134 || !reflect.DeepEqual(a, b) {
+		t.Errorf("%d rows with part extensions, %d without, or they differ", len(a), len(b))
+	}
+}
+
 func mustExtension(t *testing.T, raw []byte) json.RawMessage {
 	t.Helper()
 	m, err := ParseManifest(raw, Limits{})
@@ -181,18 +246,21 @@ func TestMarshalManifestRefuses(t *testing.T) {
 		edit func(*Manifest)
 		code RefusalCode
 	}{
-		"zero version":      {func(m *Manifest) { m.Version = Version{} }, CodeInvalidManifest},
-		"later revision":    {func(m *Manifest) { m.Version.DraftRevision = 2 }, CodeUnsupportedVersion},
-		"empty schema id":   {func(m *Manifest) { m.SchemaID = "" }, CodeInvalidManifest},
-		"invalid UTF-8":     {func(m *Manifest) { m.SchemaID = "\xff" }, CodeInvalidManifest},
-		"empty key column":  {func(m *Manifest) { m.Key.Column = "" }, CodeInvalidManifest},
-		"empty key":         {func(m *Manifest) { m.Parts[0].MinKey = nil }, CodeInvalidManifest},
-		"inverted bounds":   {func(m *Manifest) { m.Parts[0].MinKey = []byte("b") }, CodeInvalidManifest},
-		"zero rows":         {func(m *Manifest) { m.Parts[0].Rows = 0 }, CodeInvalidManifest},
-		"escaping path":     {func(m *Manifest) { m.Parts[0].Path = "../a.parquet" }, CodeInvalidManifest},
-		"uppercase sha256":  {func(m *Manifest) { m.Parts[0].SHA256 = strings.Repeat("A", 64) }, CodeInvalidManifest},
-		"duplicate path":    {func(m *Manifest) { m.Parts = append(m.Parts, m.Parts[0]) }, CodeInvalidManifest},
-		"invalid extension": {func(m *Manifest) { m.Extensions = json.RawMessage(`{"a":`) }, CodeInvalidManifest},
+		"zero version":           {func(m *Manifest) { m.Version = Version{} }, CodeInvalidManifest},
+		"later revision":         {func(m *Manifest) { m.Version.DraftRevision = 2 }, CodeUnsupportedVersion},
+		"empty schema id":        {func(m *Manifest) { m.SchemaID = "" }, CodeInvalidManifest},
+		"invalid UTF-8":          {func(m *Manifest) { m.SchemaID = "\xff" }, CodeInvalidManifest},
+		"empty key column":       {func(m *Manifest) { m.Key.Column = "" }, CodeInvalidManifest},
+		"empty key":              {func(m *Manifest) { m.Parts[0].MinKey = nil }, CodeInvalidManifest},
+		"inverted bounds":        {func(m *Manifest) { m.Parts[0].MinKey = []byte("b") }, CodeInvalidManifest},
+		"zero rows":              {func(m *Manifest) { m.Parts[0].Rows = 0 }, CodeInvalidManifest},
+		"escaping path":          {func(m *Manifest) { m.Parts[0].Path = "../a.parquet" }, CodeInvalidManifest},
+		"uppercase sha256":       {func(m *Manifest) { m.Parts[0].SHA256 = strings.Repeat("A", 64) }, CodeInvalidManifest},
+		"duplicate path":         {func(m *Manifest) { m.Parts = append(m.Parts, m.Parts[0]) }, CodeInvalidManifest},
+		"invalid extension":      {func(m *Manifest) { m.Extensions = json.RawMessage(`{"a":`) }, CodeInvalidManifest},
+		"invalid part extension": {func(m *Manifest) { m.Parts[0].Extensions = json.RawMessage(`{"a":`) }, CodeInvalidManifest},
+		"part extension array":   {func(m *Manifest) { m.Parts[0].Extensions = json.RawMessage(`[1]`) }, CodeInvalidManifest},
+		"part extension dup":     {func(m *Manifest) { m.Parts[0].Extensions = json.RawMessage(`{"a":1,"a":2}`) }, CodeInvalidManifest},
 	} {
 		m := good()
 		c.edit(&m)

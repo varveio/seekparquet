@@ -99,6 +99,9 @@ type Part struct {
 	MaxKey []byte
 	// SHA256 is the lowercase hex digest, "" when absent.
 	SHA256 string
+	// Extensions is the part's extensions object exactly as written, nil
+	// when the part has none (EXT-2).
+	Extensions json.RawMessage
 }
 
 // Parse parses and validates raw. It checks, in this order: that raw is
@@ -255,7 +258,7 @@ func parsePart(raw json.RawMessage) (Part, error) {
 	}
 	for name := range fields {
 		switch name {
-		case "path", "rows", "bytes", "min_key_base64", "max_key_base64", "sha256":
+		case "path", "rows", "bytes", "min_key_base64", "max_key_base64", "sha256", "extensions":
 		default:
 			return Part{}, invalid("undefined member %q", name)
 		}
@@ -302,6 +305,12 @@ func parsePart(raw json.RawMessage) (Part, error) {
 		if !isLowerHex(p.SHA256, 64) {
 			return Part{}, invalid("sha256 is not 64 lowercase hexadecimal digits")
 		}
+	}
+	if ext, ok := fields["extensions"]; ok {
+		if err := checkExtensions(ext); err != nil {
+			return Part{}, err
+		}
+		p.Extensions = bytes.Clone(ext)
 	}
 	return p, nil
 }
@@ -384,6 +393,11 @@ func CheckPath(path string) error {
 	return nil
 }
 
+// checkExtensions requires an extensions object, top-level or a part's,
+// whose namespace names are not empty (EXT-4). Its values are not
+// interpreted: no accelerator is defined, and unknown namespaces and
+// members are ignored (EXT-3). Duplicate names and unpaired surrogates
+// inside it are refused with the rest of the manifest (checkSyntax).
 func checkExtensions(raw json.RawMessage) error {
 	var ext map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &ext); err != nil || ext == nil {

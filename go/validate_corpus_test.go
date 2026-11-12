@@ -5,6 +5,7 @@ package seekparquet
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,7 +18,9 @@ var corpus = filepath.Join("..", "conformance")
 // TestValidateCorpus validates every fixture dataset of the conformance
 // suite: each valid one completes at the full level, and each invalid one
 // fails at the lowest level its fault declares (generators/faults.json),
-// with one of its codes, every level below completing.
+// with one of its codes, every level below completing; a fault whose
+// outcome is unsupported (an encrypted part) leaves that level incomplete
+// with its unsupported code.
 func TestValidateCorpus(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(corpus, "datasets"))
 	must(t, err)
@@ -35,8 +38,8 @@ func TestValidateCorpus(t *testing.T) {
 			}
 		})
 	}
-	if valid != 21 {
-		t.Errorf("%d valid datasets, want 21", valid)
+	if valid != 23 {
+		t.Errorf("%d valid datasets, want 23", valid)
 	}
 	raw, err := os.ReadFile(filepath.Join(corpus, "generators", "faults.json"))
 	must(t, err)
@@ -45,6 +48,7 @@ func TestValidateCorpus(t *testing.T) {
 			ID              string   `json:"id"`
 			Dataset         string   `json:"dataset"`
 			ValidationLevel Level    `json:"validation_level"`
+			Outcome         string   `json:"outcome"`
 			Codes           []string `json:"codes"`
 			Secondary       []struct {
 				Code string `json:"code"`
@@ -52,8 +56,8 @@ func TestValidateCorpus(t *testing.T) {
 		} `json:"faults"`
 	}
 	must(t, json.Unmarshal(raw, &faults))
-	if len(faults.Faults) != 124 {
-		t.Errorf("%d invalid datasets, want 124", len(faults.Faults))
+	if len(faults.Faults) != 131 {
+		t.Errorf("%d invalid datasets, want 131", len(faults.Faults))
 	}
 	for _, f := range faults.Faults {
 		t.Run("invalid/"+f.ID, func(t *testing.T) {
@@ -64,7 +68,12 @@ func TestValidateCorpus(t *testing.T) {
 				codes = append(codes, s.Code)
 			}
 			for _, lr := range report.Levels {
-				if lr.Level == f.ValidationLevel {
+				var unsupported *UnsupportedError
+				if lr.Level == f.ValidationLevel && f.Outcome == "unsupported" {
+					if lr.Result != Incomplete || !errors.As(lr.Err, &unsupported) || string(unsupported.Code) != codes[0] {
+						t.Fatalf("want %s incomplete with %v, got %s", f.ValidationLevel, codes, describeReport(report))
+					}
+				} else if lr.Level == f.ValidationLevel {
 					if lr.Result != Failed || !slices.Contains(codes, string(lr.Failure.Code)) {
 						t.Fatalf("want %s failed with %v, got %s", f.ValidationLevel, codes, describeReport(report))
 					}
