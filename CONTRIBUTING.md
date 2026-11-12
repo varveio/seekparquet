@@ -50,7 +50,7 @@ python3 scripts/docs/check_docs.py
 ## Continuous integration
 
 `ci-ok` is the required aggregate check. For affected Go code, PRs run format/vet/module checks,
-all tests and fuzz seeds in three Linux race shards, and the complete Windows suite without the
+all tests and fuzz seeds in Linux race shards (one per heavy test listed in `scripts/ci/go-shards.py`, then the rest), and the complete Windows suite without the
 race detector. Java still reads Go-written datasets on every Go change. Conformance and Java
 checks retain their full assertions when selected; source selection does not select individual tests.
 
