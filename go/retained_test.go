@@ -78,17 +78,17 @@ func TestRetainedMetadataReads(t *testing.T) {
 	}
 }
 
-// TestRetainedMetadataEviction: a MetadataCacheMemory that holds about one
+// TestRetainedMetadataEviction: a PageIndexCacheMemory that holds about one
 // part's index region keeps at most that much, evicting the part used least
 // recently, and changes no answer; one too small for any keeps none.
 func TestRetainedMetadataEviction(t *testing.T) {
 	dir, keys := retainedFixture(t)
 	want := retainedRequests(t, open(t, dir, OpenOptions{Read: ReadPolicy{DisableSpeculation: true}}), keys)
-	probe := open(t, dir, OpenOptions{})
-	must(t, probe.Verify(ctx))
+	probe := open(t, dir, remote)
+	must(t, probe.Verify(ctx, nil))
 	one := int64(len(probe.r.parts[0].meta.Load().data))
 	for _, budget := range []int64{1, one, one + one/2, 1 << 30} {
-		d := open(t, dir, OpenOptions{Limits: Limits{MetadataCacheMemory: budget}})
+		d := open(t, dir, OpenOptions{Limits: Limits{PageIndexCacheMemory: budget}, Read: remote.Read})
 		if got := retainedRequests(t, d, keys); !reflect.DeepEqual(got, want) {
 			t.Fatalf("budget %d:\n%q\nwant\n%q", budget, got, want)
 		}
@@ -136,7 +136,7 @@ func TestRetainedMetadataHostile(t *testing.T) {
 		}
 	})
 	k := []byte(keys[450])
-	for _, opt := range []OpenOptions{{}, {Read: ReadPolicy{DisableSpeculation: true}}} {
+	for _, opt := range []OpenOptions{remote, {Read: ReadPolicy{DisableSpeculation: true}}} {
 		d := open(t, dir, opt)
 		if rows, err := d.Rows(ctx, Query{Selection: Selection{Span: KeySpan(k)}, Limit: 1, Columns: []string{"size"}}, nil); err != nil || len(rows) != 1 {
 			t.Fatalf("%+v: a request not projecting name: %v", opt.Read, err)
@@ -155,9 +155,13 @@ func TestReadPolicyInvalid(t *testing.T) {
 			t.Fatalf("%+v: %v", p, err)
 		}
 	}
-	if _, err := OpenDir(ctx, dir, OpenOptions{Limits: Limits{MetadataCacheMemory: -1}}); !isInvalid(err) {
+	if _, err := OpenDir(ctx, dir, OpenOptions{Limits: Limits{PageIndexCacheMemory: -1}}); !isInvalid(err) {
 		t.Fatal(err)
 	}
 }
 
 func isInvalid(err error) bool { return errors.Is(err, ErrInvalidRequest) }
+
+// remote is OpenDir with the policy of OpenDataset: its zero policy reads
+// as suits a local file, keeping no index bytes (reader.local).
+var remote = OpenOptions{Read: ReadPolicy{MetadataPrefetchBytes: 2 << 20}}

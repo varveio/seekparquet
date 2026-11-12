@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -27,8 +28,13 @@ import (
 // virtual clock; must leave no request in flight and no goroutine behind
 // when it returns. A failed request (Fail, FailAfter) must surface as the
 // source's error, never as a refusal (CHECK-5), and a hung one as the
-// deadline. A short read with no error breaks io.ReaderAt's contract, so
-// the data is taken to have lied: a refusal is a correct answer to it.
+// deadline. A short read with no error breaks io.ReaderAt's contract: it
+// is the source's failure, an environment error carrying
+// io.ErrUnexpectedEOF, never a refusal; so is a read that returned every
+// byte with an error (FullThenFail). The one exception is a whole manifest
+// read short with no error (ManifestReader), which the reader cannot tell
+// from a short manifest. A retried request (RetryOnce) gives the correct
+// result.
 // Today's reader passes every cell; the later scheduling work must keep
 // it so.
 
@@ -39,7 +45,7 @@ const faultPositions = 12
 // faultDeadline ends a hung operation on the virtual clock.
 const faultDeadline = time.Hour
 
-var faultKinds = []fakestore.FaultKind{fakestore.Fail, fakestore.ShortRead, fakestore.FailAfter, fakestore.Hang}
+var faultKinds = []fakestore.FaultKind{fakestore.Fail, fakestore.ShortRead, fakestore.FailAfter, fakestore.Hang, fakestore.FullThenFail, fakestore.RetryOnce}
 
 // faultOp is one operation: setup prepares it on a dataset, unrecorded
 // and fault-free, and returns the run that is faulted.
@@ -145,7 +151,7 @@ func faultOps(fx *ioFixture, cursor *seekparquet.Cursor) []faultOp {
 			return func(ctx context.Context) (string, error) { return shardsText(ctx, shards) }
 		}},
 		{"verify/cold", func(_ context.Context, d *seekparquet.Dataset) func(context.Context) (string, error) {
-			return func(ctx context.Context) (string, error) { return "", d.Verify(ctx) }
+			return func(ctx context.Context) (string, error) { return "", d.Verify(ctx, nil) }
 		}},
 	}
 }
@@ -297,8 +303,13 @@ func TestFaultMatrix(t *testing.T) {
 							t.Errorf("%s: %d requests in flight after the operation returned (%v)", where, got.inFlight, got.err)
 						case got.leaked != 0:
 							t.Errorf("%s: %d goroutines left after the operation returned (%v)", where, got.leaked, got.err)
-						case (kind == fakestore.Fail || kind == fakestore.FailAfter) && got.err != nil && (!errors.Is(got.err, fakestore.ErrInjected) || seekparquet.RefusalCodeOf(got.err) != ""):
+						case (kind == fakestore.Fail || kind == fakestore.FailAfter || kind == fakestore.FullThenFail) && got.err != nil && (!errors.Is(got.err, fakestore.ErrInjected) || seekparquet.RefusalCodeOf(got.err) != ""):
 							t.Errorf("%s: %v (refusal %q), want the source's error", where, got.err, seekparquet.RefusalCodeOf(got.err))
+						case kind == fakestore.ShortRead && got.err != nil && !(op == nil && store.name != "plain") &&
+							(!errors.Is(got.err, io.ErrUnexpectedEOF) && !errors.Is(got.err, fakestore.ErrInjected) || seekparquet.RefusalCodeOf(got.err) != ""): // a metadata request's fault fails the open
+							t.Errorf("%s: %v (refusal %q), want the environment's short read", where, got.err, seekparquet.RefusalCodeOf(got.err))
+						case kind == fakestore.RetryOnce && (got.err != nil || got.text != clean.text):
+							t.Errorf("%s: a retried request: %v", where, got.err)
 						case kind == fakestore.Hang && got.err != nil && !errors.Is(got.err, context.DeadlineExceeded):
 							t.Errorf("%s: %v, want the context's deadline", where, got.err)
 						}
@@ -382,7 +393,7 @@ func TestStorageFaults(t *testing.T) {
 				if err := get(ctx, d); err == nil {
 					return errors.New("no error")
 				}
-				return d.Verify(ctx) // the refusal is kept
+				return d.Verify(ctx, nil) // the refusal is kept
 			})
 			if got := refusal(err); got != (outcome{code: seekparquet.CodePartMismatch, part: part}) {
 				t.Errorf("resized part: %v", err)
@@ -494,4 +505,95 @@ func TestPhysicalStats(t *testing.T) {
 	if st.PhysicalRequests != 0 || st.UnreportedIOCalls != st.SourceReads+st.PartsOpened { // each read and the part's Open
 		t.Fatalf("local: %+v", st)
 	}
+}
+
+// reportSource is fakeSource reporting, or not, as source and file say.
+type reportSource struct {
+	fakeSource
+	source, file bool
+}
+
+func (s reportSource) ReportsIO() bool { return s.source }
+
+func (s reportSource) Open(ctx context.Context, path string) (seekparquet.SourceFile, error) {
+	f, err := s.fakeSource.Open(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	return reportFile{f.(fakeFile), s.file}, nil
+}
+
+type reportFile struct {
+	fakeFile
+	reports bool
+}
+
+func (f reportFile) ReportsIO() bool { return f.reports }
+
+// TestPhysicalReportingCombinations: a Source and its files report their
+// physical requests independently. Counts are complete, with no
+// unreported call, only where every receiver reports; a file that reports
+// under a Source that does not is counted once the Dataset knows of it (a
+// warm handle), and before that its calls count as unreported, never as
+// zero work.
+func TestPhysicalReportingCombinations(t *testing.T) {
+	fx := ioFixtureOf(t, ioTiny)
+	for _, c := range []struct{ source, file bool }{{true, true}, {true, false}, {false, true}, {false, false}} {
+		t.Run(fmt.Sprintf("source=%v/file=%v", c.source, c.file), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				src := fakestore.New(fx.objects, ioOptions)
+				d, err := seekparquet.OpenDataset(context.Background(), reportSource{fakeSource{src}, c.source, c.file}, seekparquet.OpenOptions{})
+				must(t, err)
+				defer d.Close()
+				for _, temp := range []string{"cold", "warm"} {
+					var st seekparquet.ReadStats
+					rec := src.Begin(temp)
+					_, err := d.Get(context.Background(), fx.mid, &st, ioColumns...)
+					must(t, err)
+					made := int64(len(rec.End().Requests))
+					switch {
+					case made == 0:
+						t.Fatalf("%s: no request", temp)
+					case st.UnreportedIOCalls == 0 && st.PhysicalRequests != made:
+						t.Fatalf("%s: %d physical requests counted, %d made, none unreported", temp, st.PhysicalRequests, made)
+					case c.source && c.file && st.UnreportedIOCalls != 0:
+						t.Fatalf("%s: %d unreported calls with every receiver reporting", temp, st.UnreportedIOCalls)
+					case !c.file && st.UnreportedIOCalls == 0:
+						t.Fatalf("%s: a file that does not report left no unreported call", temp)
+					case c.file && !c.source && temp == "warm" && (st.UnreportedIOCalls != 0 || st.PhysicalRequests != made):
+						t.Fatalf("warm: %+v, %d requests made", st, made)
+					}
+				}
+			})
+		})
+	}
+}
+
+// TestScanBypassesCache: through a store with a byte cache, a repeated
+// lookup is served from it, a repeated Scan is not (CacheBypass).
+func TestScanBypassesCache(t *testing.T) {
+	fx := ioFixtureOf(t, ioTiny)
+	synctest.Test(t, func(t *testing.T) {
+		opt := ioOptions
+		opt.Cache = true
+		src := fakestore.New(fx.objects, opt)
+		d, err := seekparquet.OpenDataset(context.Background(), capableSource{fakeSource{src}}, seekparquet.OpenOptions{})
+		must(t, err)
+		defer d.Close()
+		var st seekparquet.ReadStats
+		for range 2 {
+			_, err = d.Get(context.Background(), fx.mid, &st, ioColumns...)
+			must(t, err)
+		}
+		if st.ByteCacheHitBytes == 0 {
+			t.Fatal("a repeated lookup hit no cached byte")
+		}
+		q := seekparquet.Query{Selection: seekparquet.Selection{Span: seekparquet.Span{Start: fx.first, End: succ(fx.last)}}, Columns: []string{"size"}}
+		for range 2 {
+			must(t, d.Scan(context.Background(), q, &st, func(*seekparquet.Batch) error { return nil }))
+		}
+		if st.ByteCacheHitBytes != 0 {
+			t.Fatalf("a scan hit %d cached bytes", st.ByteCacheHitBytes)
+		}
+	})
 }

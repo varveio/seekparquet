@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -354,5 +355,69 @@ func TestCapabilities(t *testing.T) {
 			t.Fatalf("batch fault: %v", err)
 		}
 		op.End()
+	})
+}
+
+type countingObserver struct{ begun, retries, hits, planned atomic.Int64 }
+
+func (o *countingObserver) Begin(_ Kind, _ string, _, _ int64, retry bool) func(int64, error) {
+	o.begun.Add(1)
+	if retry {
+		o.retries.Add(1)
+	}
+	return func(int64, error) {}
+}
+func (o *countingObserver) CacheHit(n int64)                { o.hits.Add(n) }
+func (o *countingObserver) BatchPlanned(ranges, _, _ int64) { o.planned.Add(ranges) }
+
+// TestHarnessFaults: FullThenFail returns every byte with an error;
+// RetryOnce is two requests, the second a retry, and succeeds; the cache
+// serves a repeated extent without a request unless bypassed; the reads
+// of a sized handle not yet pinned wait for the first, which pins it.
+func TestHarnessFaults(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var o countingObserver
+		ctx := WithObserver(context.Background(), &o)
+		s := newSource(Options{Latency: time.Millisecond, Cache: true})
+		f := open(t, s, ctx, "a")
+		op := s.Begin("faults", Fault{At: 1, Kind: FullThenFail}, Fault{At: 2, Kind: RetryOnce})
+		buf := make([]byte, 10)
+		if n, err := f.WithContext(ctx).ReadAt(buf, 0); n != 10 || !errors.Is(err, ErrInjected) {
+			t.Fatalf("full then fail: %d, %v", n, err)
+		}
+		if n, err := f.WithContext(ctx).ReadAt(buf, 20); n != 10 || err != nil {
+			t.Fatalf("retry once: %d, %v", n, err)
+		}
+		rep := op.End()
+		if len(rep.Requests) != 3 || !rep.Requests[2].Retry || o.retries.Load() != 1 {
+			t.Fatalf("%d requests, retries %d\n%s", len(rep.Requests), o.retries.Load(), rep.Trace(0))
+		}
+		op = s.Begin("cache")
+		if _, err := f.WithContext(ctx).ReadAt(buf, 20); err != nil || o.hits.Load() != 10 {
+			t.Fatalf("cached: %v, %d bytes hit", err, o.hits.Load())
+		}
+		if _, err := f.WithContext(WithBypass(ctx)).ReadAt(buf, 20); err != nil || o.hits.Load() != 10 {
+			t.Fatalf("bypassed: %v, %d bytes hit", err, o.hits.Load())
+		}
+		if got := op.End().Summary(); got.Requests != 1 {
+			t.Fatalf("cache: %+v", got)
+		}
+		sized, err := s.OpenSized(ctx, "a", 1000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		op = s.Begin("pin")
+		var wg sync.WaitGroup
+		for i := range 3 {
+			wg.Go(func() { _, _ = sized.WithContext(WithBypass(ctx)).ReadAt(make([]byte, 10), int64(100*i)) })
+		}
+		wg.Wait()
+		if got := op.End().Summary(); got.Requests != 3 || got.Rounds != 2 {
+			t.Fatalf("pin: %+v, want the first read alone, then the others together", got)
+		}
+		g := open(t, s, ctx, "b")
+		if err := g.ReadRanges(ctx, []Extent{{Off: 0, Buf: make([]byte, 5)}, {Off: 10, Buf: make([]byte, 5)}}); err != nil || o.planned.Load() != 2 {
+			t.Fatalf("batch: %v, %d planned", err, o.planned.Load())
+		}
 	})
 }

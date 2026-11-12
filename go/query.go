@@ -194,7 +194,9 @@ type ListQuery struct {
 	// not on a local file. Zero, the default, reads no page ahead; a
 	// negative value is an invalid request. A listing with delimiter '/'
 	// reads no page ahead when a list index (Dataset.BuildListIndex) is
-	// built, whether or not the index serves a given row group.
+	// built, whether or not the index serves a given row group. Read-ahead
+	// is speculation: ReadPolicy.DisableSpeculation turns it off, and it
+	// reads at most ReadPolicy.Concurrency-1 pages ahead at once.
 	ReadAhead int
 }
 

@@ -224,7 +224,7 @@ func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte,
 		data = raw[n : n+size : n+size]
 	} else {
 		data = c.scratch.readBuffer(int(size))
-		if err := readFull(c.p.at(c.ctx, c.stats), data, off+n); err != nil {
+		if err := c.p.at(c.ctx, c.stats).readFull(data, off+n); err != nil {
 			return nil, c.corrupt(err)
 		}
 	}
@@ -249,7 +249,7 @@ type crcField struct {
 func (c *chunk) hasCRC(off, n int64, raw []byte) bool {
 	if int64(len(raw)) < n {
 		raw = make([]byte, n)
-		if err := readFull(c.p.at(c.ctx, c.stats), raw, off); err != nil {
+		if err := c.p.at(c.ctx, c.stats).readFull(raw, off); err != nil {
 			return false // the header was read before; a failing reread is not the page's
 		}
 	}
@@ -1193,7 +1193,7 @@ func (p *part) badPage(physical, column int, off int64) func(string, ...any) err
 // readPage reads n bytes of a column chunk at off.
 func (p *part) readPage(ctx context.Context, off, n int64, st *ReadStats, bad func(string, ...any) error, scratch *pageScratch) ([]byte, error) {
 	raw := scratch.readBuffer(int(n))
-	if err := readFull(p.at(ctx, st), raw, off); err != nil {
+	if err := p.at(ctx, st).readFull(raw, off); err != nil {
 		var refusal *RefusalError
 		if isEnvironment(ctx, err) || errors.As(err, &refusal) { // the source's own, or a part it found missing or resized
 			return nil, err
@@ -1308,7 +1308,20 @@ func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, leng
 		return raw, nil
 	}
 	raw := make([]byte, length)
-	if err := readFull(p.at(ctx, st), raw, off); err != nil {
+	// An index that begins before the retained bytes and ends in them:
+	// only its missing beginning is read.
+	if n, kept := p.retainedSuffix(off, int64(length)); n > 0 {
+		missing := int64(length) - n
+		if err := p.at(ctx, st).readFull(raw[:missing], off); err != nil {
+			return nil, err
+		}
+		copy(raw[missing:], kept)
+		if st != nil {
+			st.MetadataHitBytes += n
+		}
+		return raw, nil
+	}
+	if err := p.at(ctx, st).readFull(raw, off); err != nil {
 		return nil, err
 	}
 	return raw, nil

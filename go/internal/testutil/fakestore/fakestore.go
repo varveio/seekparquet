@@ -95,6 +95,11 @@ type Options struct {
 	// source; more wait for a slot, and their wait is not part of the
 	// request. 0 is unbounded.
 	MaxInFlight int
+	// Cache keeps the bytes of every successful Range request and serves
+	// a later read of the same extent from them, with no request, telling
+	// the observer (Observer.CacheHit), unless the read's context asks for
+	// a bypass (WithBypass).
+	Cache bool
 }
 
 // FaultKind is a fault a request can be made to suffer.
@@ -116,6 +121,13 @@ const (
 	// the source is closed (in a synctest bubble, a deadlock the test
 	// reports).
 	Hang
+	// FullThenFail returns every byte asked for, and ErrInjected: a body
+	// that arrived whole but failed its validation.
+	FullThenFail
+	// RetryOnce fails the request's first attempt, which the source
+	// retries at once: two physical requests, the second a retry
+	// (Request.Retry), as a source that retries a transient failure.
+	RetryOnce
 )
 
 func (k FaultKind) String() string {
@@ -130,6 +142,10 @@ func (k FaultKind) String() string {
 		return "fail-after"
 	case Hang:
 		return "hang"
+	case FullThenFail:
+		return "full-then-fail"
+	case RetryOnce:
+		return "retry-once"
 	}
 	return fmt.Sprintf("FaultKind(%d)", k)
 }
@@ -201,6 +217,7 @@ type Source struct {
 	op      *Operation // the operation being recorded, nil for none
 	seq     int64      // requests made by the source
 	batches int        // ReadRanges calls made
+	cache   map[cacheKey][]byte
 
 	inFlight, openFiles atomic.Int64
 }
@@ -339,10 +356,13 @@ type File struct {
 	closed atomic.Bool
 
 	// In memory: the object the file is pinned to, its generation (0
-	// until pinned) and its data.
-	pin  sync.Mutex
-	gen  int
-	data []byte
+	// until pinned) and its data; sized for OpenSized, establishing while
+	// a read establishes its pin.
+	pin          sync.Mutex
+	gen          int
+	data         []byte
+	sized        bool
+	establishing chan struct{}
 }
 
 // Open opens the object at name. With Options.MetadataOnOpen it makes one
@@ -403,7 +423,7 @@ func (s *Source) OpenSized(ctx context.Context, name string, expected int64) (*F
 		return s.Open(ctx, name)
 	}
 	s.openFiles.Add(1)
-	return &File{s: s, name: name, size: expected}, nil
+	return &File{s: s, name: name, size: expected, sized: true}, nil
 }
 
 // establish pins an unpinned in-memory file to its object, or checks that
@@ -491,6 +511,9 @@ func (f *File) ReadRanges(ctx context.Context, ranges []Extent) error {
 	f.s.batches++
 	batch := f.s.batches
 	f.s.mu.Unlock()
+	if o := observerOf(ctx); o != nil {
+		o.BatchPlanned(int64(len(ranges)), int64(len(ranges)), 0)
+	}
 	errs := make([]error, len(ranges))
 	var wg sync.WaitGroup
 	for i, rg := range ranges {
@@ -560,7 +583,94 @@ func (f *File) readBatch(ctx context.Context, p []byte, off int64, batch int) (i
 	if len(p) == 0 {
 		return 0, nil
 	}
-	return f.s.do(ctx, Range, f.name, off, p, batch, func(fault Fault) (int, error) { return f.serveRange(fault, p, off) })
+	s := f.s
+	if s.opt.Cache && !bypassed(ctx) {
+		if hit := s.cached(f, off, len(p)); hit != nil {
+			if o := observerOf(ctx); o != nil {
+				o.CacheHit(int64(len(p)))
+			}
+			return copy(p, hit), nil
+		}
+	}
+	// The first read of a sized handle establishes its pin alone, as a
+	// store must: reads issued with it wait for it to end.
+	if done, err := f.awaitPin(ctx); err != nil {
+		return 0, err
+	} else if done != nil {
+		defer done()
+	}
+	n, err := s.do(ctx, Range, f.name, off, p, batch, func(fault Fault) (int, error) { return f.serveRange(fault, p, off) })
+	if err == nil && n == len(p) && s.opt.Cache && !bypassed(ctx) {
+		s.keep(f, off, p)
+	}
+	return n, err
+}
+
+// awaitPin makes a read of a sized handle not yet pinned wait for the read
+// establishing its pin, or become that read: it then returns the function
+// that ends the establishment.
+func (f *File) awaitPin(ctx context.Context) (func(), error) {
+	var done <-chan struct{}
+	if ctx != nil {
+		done = ctx.Done()
+	}
+	for {
+		f.pin.Lock()
+		if !f.sized || f.gen != 0 {
+			f.pin.Unlock()
+			return nil, nil
+		}
+		if f.establishing == nil {
+			ch := make(chan struct{})
+			f.establishing = ch
+			f.pin.Unlock()
+			return func() {
+				f.pin.Lock()
+				f.establishing = nil
+				f.pin.Unlock()
+				close(ch)
+			}, nil
+		}
+		ch := f.establishing
+		f.pin.Unlock()
+		select {
+		case <-ch:
+		case <-done:
+			return nil, ctx.Err()
+		}
+	}
+}
+
+type cacheKey struct {
+	name     string
+	gen      int
+	off, len int64
+}
+
+// cached returns the cached bytes of the extent of f's pinned object.
+func (s *Source) cached(f *File, off int64, n int) []byte {
+	f.pin.Lock()
+	gen := f.gen
+	f.pin.Unlock()
+	if gen == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cache[cacheKey{f.name, gen, off, int64(n)}]
+}
+
+// keep caches p, the bytes at off of f's pinned object.
+func (s *Source) keep(f *File, off int64, p []byte) {
+	f.pin.Lock()
+	gen := f.gen
+	f.pin.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cache == nil {
+		s.cache = map[cacheKey][]byte{}
+	}
+	s.cache[cacheKey{f.name, gen, off, int64(len(p))}] = bytes.Clone(p)
 }
 
 // serveRange fills p from the object at off, as fault says, once the
@@ -583,6 +693,9 @@ func (f *File) serveRange(fault Fault, p []byte, off int64) (int, error) {
 		return n, nil
 	case FailAfter:
 		n, _ := f.fill(p[:short], off)
+		return n, ErrInjected
+	case FullThenFail:
+		n, _ := f.fill(p, off)
 		return n, ErrInjected
 	}
 	return f.fill(p, off)
@@ -608,10 +721,35 @@ func (f *File) fill(p []byte, off int64) (int, error) {
 // function Begin returns when it ends, with the bytes it returned and its
 // error.
 type Observer interface {
-	Begin(kind Kind, name string, off, length int64) func(got int64, err error)
+	Begin(kind Kind, name string, off, length int64, retry bool) func(got int64, err error)
+	// CacheHit counts bytes served from the source's cache (Options.Cache).
+	CacheHit(bytes int64)
+	// BatchPlanned is told of each ReadRanges call: its ranges, the
+	// requests it plans for them (one each) and no over-read.
+	BatchPlanned(ranges, requests, overRead int64)
 }
 
 type observerKey struct{}
+
+type bypassKey struct{}
+
+// WithBypass returns ctx whose reads neither use nor fill the source's
+// cache (Options.Cache).
+func WithBypass(ctx context.Context) context.Context {
+	return context.WithValue(ctx, bypassKey{}, true)
+}
+
+func observerOf(ctx context.Context) Observer {
+	if ctx == nil {
+		return nil
+	}
+	o, _ := ctx.Value(observerKey{}).(Observer)
+	return o
+}
+
+func bypassed(ctx context.Context) bool {
+	return ctx != nil && ctx.Value(bypassKey{}) != nil
+}
 
 // WithObserver returns ctx whose requests are reported to o.
 func WithObserver(ctx context.Context, o Observer) context.Context {
@@ -659,15 +797,41 @@ func (s *Source) do(ctx context.Context, kind Kind, name string, off int64, p []
 	}
 	s.mu.Unlock()
 
+	o := observerOf(ctx)
 	var observed func(int64, error)
-	if ctx != nil {
-		if o, ok := ctx.Value(observerKey{}).(Observer); ok {
-			observed = o.Begin(kind, name, off, int64(len(p)))
-		}
+	if o != nil {
+		observed = o.Begin(kind, name, off, int64(len(p)), false)
 	}
-	n, err := s.serve(ctx, done, r, fault, p, fill)
+	attempt := fault
+	if fault.Kind == RetryOnce {
+		attempt = Fault{Kind: Fail}
+	}
+	n, err := s.serve(ctx, done, r, attempt, p, fill)
 	if observed != nil {
 		observed(int64(n), err)
+	}
+	if fault.Kind == RetryOnce && errors.Is(err, ErrInjected) {
+		s.mu.Lock()
+		if op != nil {
+			r.End = time.Since(op.began)
+		}
+		r.Got, r.Err = int64(n), err
+		s.seq++
+		retry := &Request{Global: s.seq, Object: name, Kind: kind, Off: off, Len: int64(len(p)), Ctx: stateOf(ctx), End: -1, Batch: batch, Retry: true}
+		if op != nil {
+			op.n++
+			retry.Seq, retry.Start = op.n, time.Since(op.began)
+			op.requests = append(op.requests, retry)
+		}
+		s.mu.Unlock()
+		r = retry
+		if o != nil {
+			observed = o.Begin(kind, name, off, int64(len(p)), true)
+		}
+		n, err = s.serve(ctx, done, r, Fault{}, p, fill)
+		if observed != nil {
+			observed(int64(n), err)
+		}
 	}
 
 	s.mu.Lock()
@@ -882,7 +1046,8 @@ type Request struct {
 	// Start and End are times on the clock since the operation began; End
 	// is -1 for a request in flight when the operation ended.
 	Start, End time.Duration
-	Round      int // 1 + the most rounds of the requests that ended by Start
+	Round      int  // 1 + the most rounds of the requests that ended by Start
+	Retry      bool // another attempt of the request before it (RetryOnce)
 	Ctx        CtxState
 	Fault      FaultKind
 	Err        error

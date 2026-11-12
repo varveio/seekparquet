@@ -75,6 +75,8 @@ type listIndex struct {
 // Stats.OptionsMismatch flags differing requests. Empty outcomes
 // are cached for the most recent options and rebuilt when those options change.
 // Stats.HasIndex reports whether any groups are indexed. Close cancels the build.
+// It asks a Source's byte cache to be bypassed (CacheBypass), unless ctx sets
+// a cache mode.
 func (d *Dataset) BuildListIndex(ctx context.Context, opt ListIndexOptions) (stats ListIndexStats, err error) {
 	if opt.MaxBytes < 0 || opt.Workers < 0 || opt.MaxChangesPerPage < 0 {
 		return stats, invalidRequest("negative list index option")
@@ -89,7 +91,7 @@ func (d *Dataset) BuildListIndex(ctx context.Context, opt ListIndexOptions) (sta
 		opt.MaxChangesPerPage = 8
 	}
 	r := d.r
-	rctx, end, err := r.begin(ctx, nil)
+	rctx, end, err := r.begin(bypassCache(ctx), nil)
 	if err != nil {
 		return stats, err
 	}

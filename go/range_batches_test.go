@@ -100,7 +100,7 @@ func checkRangeBatches(t *testing.T, label string, d *Dataset, rng Query, ordina
 			t.Fatalf("%s: cursor %d", label, i)
 		}
 	}
-	if memoNeutral(got.stats) != memoNeutral(warm) { // Range reuses pages its request read; a scan's scratch cannot
+	if got.stats != warm {
 		t.Fatalf("%s: stats\nRangeBatches %+v\nRange        %+v", label, got.stats, warm)
 	}
 	if len(want) == 0 && len(got.lengths) != 0 {
@@ -408,7 +408,7 @@ func checkRangeBatchesCold(t *testing.T, label, dir string, rng Query) {
 	if !reflect.DeepEqual(got.rows, want) {
 		t.Fatalf("%s: %d rows, Query %d", label, len(got.rows), len(want))
 	}
-	if memoNeutral(got.stats) != memoNeutral(cold) {
+	if got.stats != cold {
 		t.Fatalf("%s: cold stats\nRangeBatches %+v\nRange        %+v", label, got.stats, cold)
 	}
 }

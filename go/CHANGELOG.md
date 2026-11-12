@@ -5,29 +5,6 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
-- Optional storage capabilities for remote sources, each with a fallback to `Open` and `ReadAt`:
-  `ManifestReader` (one bounded whole-manifest read; `Metadata.ManifestIdentity`), `SizedSource` (part
-  opens with the manifest's size, proven by the first read; `SizeMismatchError` is refused `part_mismatch`
-  wherever it surfaces, a missing object `missing_part`), `RangeReader` with `ReadRange`, `BatchError`,
-  `MaxReadRanges` and `MaxReadBatchBytes`, and `ErrObjectChanged` and `ErrObjectTooLarge`. Physical
-  reporting: `IOReporter`, `IOObserver` (`WithIOObserver`, `IOObserverFromContext`) with `IORequest`,
-  `IORequestKind` and `IOResult`, counted in new `ReadStats` fields (`SourceBatches`, `ScalarFallbackReads`,
-  `Physical*`, `Planned*`, `ByteCacheHitBytes`, `MetadataHitBytes`, `UnreportedIOCalls`,
-  `PeakPhysicalRequests`; `Add` keeps the larger peak) and in `OpenOptions.OpenStats` for the open. Cache
-  control: `CacheMode` with `WithCacheMode` and `CacheModeFromContext`. `OpenOptions.Read` is a
-  `ReadPolicy` (`Concurrency`, default 64).
-- A part's first check reads its end in one `ReadPolicy.MetadataPrefetchBytes` window (default 2 MiB;
-  `OpenDir` 64 KiB), together with its 4-byte head, and keeps the page-index bytes it holds, within the new
-  `Limits.MetadataCacheMemory` (default 128 MiB, least recently used parts evicted, never a failure): later
-  ColumnIndex and OffsetIndex loads of the part read nothing. `ReadPolicy.DisableSpeculation` restores the
-  64 KiB window and keeps only the footer; answers are the same either way.
-- A key ColumnIndex and OffsetIndex not retained are read together. A request reads each key page once:
-  a page it reads again (a routing probe's page the walk reaches, a cursor's page) comes from what it kept
-  (new `ReadStats.RequestMemoHitBytes`, at most 4 MiB a request). `Verify` checks parts concurrently (at most
-  `ReadPolicy.Concurrency`), fetching each part's first key pages and last key page together, its head merged
-  into the first, and still reports the first fault in manifest and row-group order; checked first keys and last
-  pages are not checked again, so a repeated `Verify` reads nothing.
-
 - **Breaking: the read API is redesigned** before any stability promise (no deprecated aliases):
   - Requests: `Range`, `KeyRange` and `PrefixRange` are replaced by `Span` (`KeySpan`, exactly
     `[key, key+0x00)`, and `PrefixSpan`), `Selection` (a span and a row cursor) and `Query` (a selection,
@@ -58,6 +35,34 @@ versioning; while it is v0, minor versions may change the API.
     return copies of the projection.
   - `Cursor.Encode` and `ParseCursor` carry a cursor as a version 1 cursor token
     ([spec/cursor-token-1.md](../spec/cursor-token-1.md)), with shared golden vectors.
+
+- Optional storage capabilities for remote sources, each with a fallback to `Open` and `ReadAt`:
+  `ManifestReader` (one bounded whole-manifest read on the ordinary path; `Metadata.ManifestIdentity`),
+  `SizedSource` (part opens with the manifest's size, proven by the first read, for parts of 12 bytes or more),
+  `RangeReader` with `ReadRange`, `BatchError`, `MaxReadRanges` and `MaxReadBatchBytes`, and `ErrObjectChanged`,
+  `ErrObjectTooLarge` and `SizeMismatchError`. A size mismatch is refused `part_mismatch` and a missing object
+  `missing_part` wherever they surface; a broken pin (`ErrObjectChanged`) stays an environment error, also on the
+  manifest; a short read, or a read that returned every byte with an error, is the environment's error, never a
+  refusal. Physical reporting: `IOReporter`, `IOObserver` (`WithIOObserver`, `IOObserverFromContext`) with
+  `IORequest`, `IORequestKind` and `IOResult`, counted in new `ReadStats` fields (`SourceBatches`,
+  `ScalarFallbackReads`, `Physical*`, `Planned*`, `ByteCacheHitBytes`, `MetadataHitBytes`, `RequestMemoHitBytes`,
+  `UnreportedIOCalls`, `PeakPhysicalRequests`; `Add` takes the larger peak) and in `OpenOptions.OpenStats` for
+  `OpenDataset` and `OpenDir`. Cache control: `CacheMode` with `WithCacheMode` and `CacheModeFromContext`;
+  `Dataset.Scan`, `Plan.Scan` and `BuildListIndex` ask for `CacheBypass`. `OpenOptions.Read` is a `ReadPolicy`:
+  `Concurrency` (default 64) bounds an operation's outstanding ranges, read-ahead included;
+  `MetadataPrefetchBytes`; `DisableSpeculation`, which also turns off `ListQuery.ReadAhead`.
+- **Breaking:** `Dataset.Verify` takes a `*ReadStats`, reset on entry and filled on every exit.
+- A part's first check reads its end in one `ReadPolicy.MetadataPrefetchBytes` window (default 2 MiB), with its
+  4-byte head, and keeps the page-index bytes it holds within the new `Limits.PageIndexCacheMemory` (default
+  128 MiB, least recently used parts evicted, never a failure; footers and decoded indexes are outside it): later
+  ColumnIndex and OffsetIndex loads of the part read nothing, or only the missing beginning of an index that
+  starts before the window. A key ColumnIndex and OffsetIndex not retained are read together. Within a request,
+  complete key-page extents admitted to a bounded request memo are reused. `Verify` checks up to
+  `ReadPolicy.Concurrency` parts at once, reading each part's first key pages and last key page together, its
+  head merged into the first, and commits each check and its verdict in manifest order, so it reports what a
+  serial check reports; checked first keys and last pages are not checked again. `OpenDir` with a zero
+  `ReadPolicy` reads as before these capabilities: a 64 KiB window, one range at a time, no retained index bytes
+  and no memo.
 
 - `ListQuery.ReadAhead` (default 0, off; at most 64): a listing predicts from the checked key page index of the
   row group it is in the key pages it will decode next (after each common prefix, the first page whose

@@ -32,15 +32,22 @@ func isEnvironment(ctx context.Context, err error) bool {
 
 // readFull reads len(p) bytes at off, reporting a short read of the data
 // as io.ErrUnexpectedEOF.
+//
+// A complete read succeeds only with a nil error or io.EOF: any other error
+// invalidates the bytes, even when all of them arrived. Through a
+// storageReader a short read is already the environment's error.
 func readFull(at io.ReaderAt, p []byte, off int64) error {
+	if s, ok := at.(storageReader); ok {
+		return s.readFull(p, off)
+	}
 	n, err := at.ReadAt(p, off)
-	if n == len(p) {
+	switch {
+	case err != nil && (!errors.Is(err, io.EOF) || errors.Is(err, ErrObjectChanged)):
+		return err
+	case n == len(p):
 		return nil
 	}
-	if err == nil || errors.Is(err, io.EOF) {
-		err = io.ErrUnexpectedEOF
-	}
-	return err
+	return io.ErrUnexpectedEOF
 }
 
 // errEncrypted reports an encrypted part (FILE-2): a new error each time,
@@ -128,7 +135,7 @@ func decodeBounded(raw []byte, v any, budget int64) (int, error) {
 // declared footer length before it is checked.
 func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits, st *ReadStats, maxWindow int64, concurrency int, deferHead bool) (_ *parquet.File, tail footerTail, err error) {
 	reports := reportsIO(file)
-	at := storageReader{r: bind(ctx, file), st: st, src: &sourceInfo{name: name, unreported: !reports}}
+	at := storageReader{r: bind(ctx, file), st: st, src: &sourceInfo{name: name, unreported: unreported(ctx, reports)}}
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidFooter, name, -1, format, args...)
 	}
@@ -746,7 +753,7 @@ func magicFirst(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	if ctx.Err() != nil || errors.As(err, &se) || errors.Is(err, ErrClosed) {
 		return err
 	}
-	at := storageReader{r: bind(ctx, file), st: st, src: &sourceInfo{name: name, unreported: !reportsIO(file)}}
+	at := storageReader{r: bind(ctx, file), st: st, src: &sourceInfo{name: name, unreported: unreported(ctx, reportsIO(file))}}
 	head := make([]byte, 4)
 	if e := readFull(at, head, 0); e != nil {
 		return footerError(ctx, name, e)

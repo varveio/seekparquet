@@ -81,14 +81,14 @@ func verifyErr(dir string, opt OpenOptions) error {
 		return err
 	}
 	defer d.Close()
-	return d.Verify(ctx)
+	return d.Verify(ctx, nil)
 }
 
 // verified opens the dataset at dir and verifies it.
 func verified(t testing.TB, dir string, opt OpenOptions) *Dataset {
 	t.Helper()
 	d := open(t, dir, opt)
-	must(t, d.Verify(ctx))
+	must(t, d.Verify(ctx, nil))
 	return d
 }
 
@@ -371,16 +371,6 @@ func scanRows(ctx context.Context, plan *Plan, st *ReadStats, fn func(Row) error
 		}
 		return nil
 	})
-}
-
-// memoNeutral returns st with the key pages it reused from its request's
-// memo counted as read: for comparing the stats of paths that keep
-// different pages (a scan's scratch keeps none), by the bytes each
-// fetched or reused.
-func memoNeutral(st ReadStats) ReadStats {
-	st.SourceBytes += st.RequestMemoHitBytes
-	st.SourceReads, st.UnreportedIOCalls, st.RequestMemoHitBytes = 0, 0, 0
-	return st
 }
 
 // selectionOf returns the selection of a query, for planning it.

@@ -132,7 +132,7 @@
 // IOObserver (IOReporter), which ReadStats counts. A Source with none is
 // read through Open and ReadAt. A part's first check reads its end in one
 // window (ReadPolicy.MetadataPrefetchBytes) and keeps the page-index bytes
-// it holds (Limits.MetadataCacheMemory), so that later index loads of the
+// it holds (Limits.PageIndexCacheMemory), so that later index loads of the
 // part read nothing.
 //
 // # Read statistics

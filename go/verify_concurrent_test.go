@@ -73,11 +73,11 @@ func TestVerifyDeferredHead(t *testing.T) {
 			}
 			for _, opt := range []OpenOptions{smallWindow, {}} {
 				v := open(t, dir, opt)
-				if err := v.Verify(ctx); refusalOf(err) != refusalOf(want) {
+				if err := v.Verify(ctx, nil); refusalOf(err) != refusalOf(want) {
 					t.Fatalf("%+v: Verify: %v\nwant %v", opt.Read, err, want)
 				}
 				// The verdict is kept, as a check's is.
-				if err := v.Verify(ctx); refusalOf(err) != refusalOf(want) {
+				if err := v.Verify(ctx, nil); refusalOf(err) != refusalOf(want) {
 					t.Fatalf("%+v: Verify again: %v", opt.Read, err)
 				}
 			}
@@ -95,7 +95,7 @@ func TestVerifyOrder(t *testing.T) {
 	rewrite(t, dir, 2, func(m *format.FileMetaData) { m.KeyValueMetadata = nil })
 	for range 20 {
 		for _, opt := range []OpenOptions{smallWindow, {}, {Read: ReadPolicy{Concurrency: 1}}} {
-			err := open(t, dir, opt).Verify(ctx)
+			err := open(t, dir, opt).Verify(ctx, nil)
 			if RefusalCodeOf(err) != CodeStampMismatch || err.(*RefusalError).Part != testutil.PartPath(1) {
 				t.Fatalf("%+v: %v", opt.Read, err)
 			}
@@ -166,7 +166,7 @@ func TestVerifyConcurrency(t *testing.T) {
 		d, err := OpenDataset(ctx, src, OpenOptions{Read: ReadPolicy{Concurrency: n, MetadataPrefetchBytes: window}})
 		must(t, err)
 		t.Cleanup(func() { _ = d.Close() })
-		must(t, d.Verify(ctx))
+		must(t, d.Verify(ctx, nil))
 		if src.most.Load() > int64(n) {
 			t.Fatalf("Concurrency %d: %d reads at once", n, src.most.Load())
 		}
@@ -180,7 +180,7 @@ func TestVerifyConcurrency(t *testing.T) {
 			t.Fatalf("Concurrency %d: %d reads, want %d (%d row groups a part)", n, src.reads.Load(), want, groups)
 		}
 		before := src.reads.Load()
-		must(t, d.Verify(ctx))
+		must(t, d.Verify(ctx, nil))
 		if src.reads.Load() != before {
 			t.Fatalf("a second Verify read %d times", src.reads.Load()-before)
 		}
@@ -206,12 +206,12 @@ func TestVerifyHostileProbes(t *testing.T) {
 	_, err = f.WriteAt(junk, oi.OffsetIndexOffset)
 	must(t, err)
 	must(t, f.Close())
-	want := open(t, dir, OpenOptions{Read: ReadPolicy{DisableSpeculation: true}}).Verify(ctx)
+	want := open(t, dir, OpenOptions{Read: ReadPolicy{DisableSpeculation: true}}).Verify(ctx, nil)
 	if want == nil {
 		t.Fatal("the corrupt index went unnoticed")
 	}
 	for _, opt := range []OpenOptions{{}, smallWindow, {Limits: Limits{PageBytes: 64}}} {
-		if err := open(t, dir, opt).Verify(ctx); refusalOf(err) != refusalOf(want) && opt.Limits.PageBytes == 0 {
+		if err := open(t, dir, opt).Verify(ctx, nil); refusalOf(err) != refusalOf(want) && opt.Limits.PageBytes == 0 {
 			t.Fatalf("%+v: %v, want %v", opt, err, want)
 		}
 	}

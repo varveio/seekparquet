@@ -66,7 +66,8 @@ type ioFixture struct {
 	dir     string
 	objects map[string]fakestore.Object
 	keys    [][]byte // every row's key, in order
-	starts  []int    // each part's first row
+	spec    ioFixtureSpec
+	starts  []int // each part's first row
 	unique  bool
 
 	part                    int    // the part the per-part operations use
@@ -158,8 +159,9 @@ func objectRow(rng *rand.Rand, key string, row parquet.Row) parquet.Row {
 }
 
 // writeIOFixture writes spec's fixture into a new directory under parent.
-func writeIOFixture(t testing.TB, parent string, spec ioFixtureSpec) *ioFixture {
-	t.Helper()
+// ioRows generates spec's rows and their keys, from a fixed seed: the
+// same on every call, so that the oracle can generate them again.
+func ioRows(spec ioFixtureSpec) ([]parquet.Row, [][]byte) {
 	rng := rand.New(rand.NewPCG(42, 1))
 	weights := make([]float64, 1000)
 	sum := 0.0
@@ -184,7 +186,13 @@ func writeIOFixture(t testing.TB, parent string, spec ioFixtureSpec) *ioFixture 
 		}
 	}
 
-	f := &ioFixture{dir: filepath.Join(parent, "inventory"), keys: keys, unique: !spec.repeated, part: 1, listPrefix: fmt.Appendf(nil, "acct-%04d/", listTenant)}
+	return rows, keys
+}
+
+func writeIOFixture(t testing.TB, parent string, spec ioFixtureSpec) *ioFixture {
+	t.Helper()
+	rows, keys := ioRows(spec)
+	f := &ioFixture{dir: filepath.Join(parent, "inventory"), keys: keys, spec: spec, unique: !spec.repeated, part: 1, listPrefix: fmt.Appendf(nil, "acct-%04d/", listTenant)}
 	// Cut parts by row count, moving each cut past a group of equal keys.
 	for p := range spec.parts {
 		at := p * len(rows) / spec.parts
@@ -411,18 +419,25 @@ func fakeError(err error) error {
 }
 
 // observed returns ctx with the store reporting its requests to the
-// operation's IOObserver, when it has one.
+// operation's IOObserver, when it has one, and bypassing its cache when
+// the operation asks to (CacheBypass).
 func observed(ctx context.Context) context.Context {
 	if o := seekparquet.IOObserverFromContext(ctx); o != nil {
-		return fakestore.WithObserver(ctx, observer{o})
+		ctx = fakestore.WithObserver(ctx, observer{o})
+	}
+	if seekparquet.CacheModeFromContext(ctx) == seekparquet.CacheBypass {
+		ctx = fakestore.WithBypass(ctx)
 	}
 	return ctx
 }
 
 type observer struct{ o seekparquet.IOObserver }
 
-func (o observer) Begin(kind fakestore.Kind, name string, off, length int64) func(int64, error) {
-	req := seekparquet.IORequest{Path: name, Offset: off, Length: length}
+func (o observer) CacheHit(n int64)                     { o.o.CacheHit(n) }
+func (o observer) BatchPlanned(ranges, reqs, gap int64) { o.o.BatchPlanned(ranges, reqs, gap) }
+
+func (o observer) Begin(kind fakestore.Kind, name string, off, length int64, retry bool) func(int64, error) {
+	req := seekparquet.IORequest{Path: name, Offset: off, Length: length, Retry: retry}
 	switch kind {
 	case fakestore.Metadata:
 		req.Kind = seekparquet.IOMetadata

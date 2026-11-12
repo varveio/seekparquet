@@ -32,7 +32,14 @@ type reader struct {
 	// sourceReports is set when the Source reports its physical requests
 	// (IOReporter): each request then carries a collector for them.
 	sourceReports bool
-	parts         []*part
+	// fileReports is set once a checked part's file reports its physical
+	// requests: every request then carries a collector.
+	fileReports atomic.Bool
+	// local reads as suits a local file (OpenDir with a zero ReadPolicy):
+	// one range at a time, no part metadata kept beyond the footer, no
+	// request memo.
+	local bool
+	parts []*part
 	// rows is the dataset's row count.
 	rows int64
 	// bounded reports that every part has its key bounds, so reads are
@@ -56,7 +63,7 @@ type reader struct {
 	listBuild sync.Mutex
 
 	// metaMu guards metaParts, the parts that hold retained metadata, and
-	// metaMemory, their bytes within Limits.MetadataCacheMemory; metaClock
+	// metaMemory, their bytes within Limits.PageIndexCacheMemory; metaClock
 	// orders their uses for eviction.
 	metaMu     sync.Mutex
 	metaParts  []*part
@@ -109,6 +116,8 @@ type part struct {
 	check chan struct{}
 	err   error
 	ready atomic.Bool
+	// refused is set once err is kept, for readers not holding check.
+	refused atomic.Bool
 
 	// The fields below are set by the check, before ready; file and size
 	// are set from the start when the part was given open, and footer when
@@ -119,9 +128,10 @@ type part struct {
 	footer *parquet.File
 	// reports is set when file reports its physical requests, and src
 	// classifies its reads (storageReader).
-	reports bool
-	src     sourceInfo
-	key     leaf
+	reports        bool
+	src            sourceInfo
+	srcUncollected sourceInfo
+	key            leaf
 	// groups are the part's non-empty row groups.
 	groups []*group
 	// utf8Key reports a key column annotated STRING or UTF8 (KEY-6).
@@ -301,28 +311,32 @@ func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) 
 	return r.partWith(ctx, i, st, nil)
 }
 
-// partWith is part with a hook for a check that defers the part's head:
-// when finish is not nil, a part's end is read alone (readFooter's
-// deferHead), and finish, called before the rest of the check, must
-// establish the head (Verify merges it into its first page reads).
-func (r *reader) partWith(ctx context.Context, i int, st *ReadStats, finish func(*partInput) error) (*part, error) {
+// partWith is part completing the check from what Verify prefetched of
+// the part, when pre is not nil: the outcome is the one fetching the part
+// then would have reached. A prefetched part that a check by another read
+// made unnecessary is closed.
+func (r *reader) partWith(ctx context.Context, i int, st *ReadStats, pre *fetchedPart) (*part, error) {
 	p := r.parts[i]
 	if p.ready.Load() {
+		pre.close()
 		return p, nil
 	}
 	select {
 	case p.check <- struct{}{}:
 	case <-ctx.Done():
+		pre.close()
 		return nil, ctx.Err()
 	}
 	defer func() { <-p.check }()
 	switch {
 	case p.ready.Load():
+		pre.close()
 		return p, nil
 	case p.err != nil:
+		pre.close()
 		return nil, detach(p.err)
 	}
-	if err := r.checkPart(ctx, i, st, finish); err != nil {
+	if err := r.checkPart(ctx, i, st, pre); err != nil {
 		if ctx.Err() != nil { // a check cut short is not an outcome: the part stays unchecked
 			return nil, ctx.Err()
 		}
@@ -331,8 +345,10 @@ func (r *reader) partWith(ctx context.Context, i int, st *ReadStats, finish func
 		switch {
 		case errors.As(err, &refusal):
 			p.err = detach(refusal)
+			p.refused.Store(true)
 		case errors.As(err, &unsupported):
 			p.err = detach(unsupported)
+			p.refused.Store(true)
 		}
 		return nil, err
 	}
@@ -342,25 +358,25 @@ func (r *reader) partWith(ctx context.Context, i int, st *ReadStats, finish func
 
 // checkPart opens part i when the reader fetches its parts, checks it and
 // fills it in. The caller holds p.check.
-func (r *reader) checkPart(ctx context.Context, i int, st *ReadStats, finish func(*partInput) error) error {
+func (r *reader) checkPart(ctx context.Context, i int, st *ReadStats, pre *fetchedPart) error {
 	p := r.parts[i]
 	in := partInput{name: p.name, file: p.file, size: p.size, footer: p.footer}
-	if r.fetch != nil { // counts the part opened once the Source opens it
+	switch {
+	case pre != nil: // fetched by Verify, which counted it
+		if pre.err != nil {
+			return pre.err
+		}
+		in = pre.in
+	case r.fetch != nil: // counts the part opened once the Source opens it
 		var err error
-		if in, err = r.fetch(ctx, i, st, finish != nil); err != nil {
+		if in, err = r.fetch(ctx, i, st, false); err != nil {
 			return err
 		}
-		if in.tail.headDeferred {
-			if err := finish(&in); err != nil {
-				closeFile(in.file)
-				return err
-			}
-		}
-	} else {
+	default:
 		st.PartsOpened++
 	}
 	err := r.fill(ctx, p, in, st)
-	if err != nil && r.fetch != nil {
+	if err != nil && (r.fetch != nil || pre != nil) {
 		closeFile(in.file)
 	}
 	return err
@@ -371,7 +387,7 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 	footer := in.footer
 	if footer == nil {
 		var err error
-		if footer, in.tail, err = readFooter(ctx, in.name, in.file, in.size, &r.limits, st, r.policy.tailWindow(), r.policy.Concurrency, false); err != nil {
+		if footer, in.tail, err = readFooter(ctx, in.name, in.file, in.size, &r.limits, st, r.policy.tailWindow(), r.width(), false); err != nil {
 			return err
 		}
 	}
@@ -450,6 +466,10 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 	}
 	p.file, p.size, p.groups, p.reports = in.file, in.size, groups, reportsIO(in.file)
 	p.src = sourceInfo{name: p.name, unreported: !p.reports}
+	p.srcUncollected = sourceInfo{name: p.name, unreported: true}
+	if p.reports {
+		r.fileReports.Store(true)
+	}
 	r.retainTail(p, in.tail)
 	return nil
 }
@@ -466,26 +486,26 @@ func (r *reader) checkParts(ctx context.Context, st *ReadStats) error {
 
 // verify checks every part, then decodes every row group's first key page
 // and each bounded part's last key page, in dataset order, as one request
-// (CHECK-3). Parts are checked, and the pages it needs fetched, by at most
-// ReadPolicy.Concurrency parts at once (verifyFetch); then the checks and
-// decodes run in order, the pages taken from the request's memo, so that
-// the first fault reported is the first in dataset and check order,
-// whatever order the reads completed in. A part whose last page it
-// checked once is not checked again.
-func (r *reader) verify(ctx context.Context) error {
-	var st ReadStats
+// (CHECK-3), counting into st. Parts are fetched, and the pages it needs
+// read, by at most ReadPolicy.Concurrency parts at once (verifyParts); the
+// checks that depend on other parts, the verdicts kept, and the decodes run
+// in manifest order, the pages taken from the request's memo, so that
+// Verify reports the first failure in the same part and check order as
+// serial verification, independently of I/O completion order. A part whose
+// last page it checked once is not checked again.
+func (r *reader) verify(ctx context.Context, st *ReadStats) error {
 	log := pageLog{unique: r.key.Unique}
-	if err := r.verifyFetch(ctx, log.pageMemo()); err != nil {
+	if err := r.verifyParts(ctx, log.pageMemo(), st); err != nil {
 		return err
 	}
 	for i, p := range r.parts {
 		for j := range p.groups {
 			g := groupRef{i, j}
-			if _, err := r.first(ctx, g, &log, &st); err != nil {
+			if _, err := r.first(ctx, g, &log, st); err != nil {
 				return err
 			}
 			if j == len(p.groups)-1 && p.maxKey != nil && !p.lastChecked.Load() {
-				k, err := r.keyPages(ctx, g, &log, &st)
+				k, err := r.keyPages(ctx, g, &log, st)
 				if err != nil {
 					return err
 				}
@@ -499,48 +519,112 @@ func (r *reader) verify(ctx context.Context) error {
 	return nil
 }
 
-// verifyFetch checks the parts no read has checked, and fetches the key
-// pages Verify will decode into memo, by at most Concurrency parts at once,
-// their reads together within the operation's limit. A part's end is read
-// first, alone; its head is read with its first row group's first key
-// page, as one range when that page begins within 64 KiB of the head
-// (verifyHead). It returns the check failure of the first part in
-// manifest order that failed; a page it could not fetch is read again,
-// and fails, when Verify reaches it.
-func (r *reader) verifyFetch(ctx context.Context, memo *pageMemo) error {
-	ctx = withOpLimit(ctx, r.policy.Concurrency)
-	errs := make([]error, len(r.parts))
+// fetchedPart is what Verify fetched of a part ahead of its check: the part
+// opened, its footer read and checked against its manifest entry and its
+// head established, or the error doing so.
+type fetchedPart struct {
+	in  partInput
+	err error
+}
+
+// close closes a prefetched part that will not be used.
+func (pre *fetchedPart) close() {
+	if pre != nil && pre.err == nil {
+		closeFile(pre.in.file)
+	}
+}
+
+// verifyParts checks every part no read has checked. The parts are opened
+// and their ends and heads read, with the key pages Verify will decode
+// fetched into memo, by at most Concurrency parts at once, every logical
+// range within the operation's limit (prefetchPart); this work depends on
+// no other part. The rest of each check (key column, row groups, the
+// consistency of columns with the parts before it), and keeping its
+// verdict, runs in manifest order, which stops at the first failure.
+func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats) error {
+	lctx := withOpLimit(ctx, r.policy.Concurrency)
+	pre := make([]*fetchedPart, len(r.parts))
+	stats := make([]ReadStats, len(r.parts))
 	slots := make(chan struct{}, r.policy.Concurrency)
 	var wg sync.WaitGroup
 	for i, p := range r.parts {
-		if p.ready.Load() && !r.wantsProbes(p) {
+		check := r.fetch != nil && !p.ready.Load() && !p.refused.Load()
+		probes := !r.local && p.ready.Load() && r.wantsProbes(p)
+		if !check && !probes {
 			continue
 		}
 		select {
 		case slots <- struct{}{}:
 		case <-ctx.Done():
-			errs[i] = ctx.Err()
-			continue
+		}
+		if ctx.Err() != nil {
+			break
 		}
 		wg.Go(func() {
 			defer func() { <-slots }()
-			var st ReadStats // counted nowhere: Verify reports none
-			if p.ready.Load() {
-				_ = r.fetchProbes(ctx, p, p.file, p.size, p.footer, p.retainedBytes, nil, memo, &st)
-				return
+			if check {
+				pre[i] = r.prefetchPart(lctx, i, &stats[i], memo)
+			} else {
+				_, _ = r.fetchProbes(lctx, p, p.file, p.size, p.footer, p.retainedBytes, false, memo, &stats[i])
 			}
-			_, errs[i] = r.partWith(ctx, i, &st, func(in *partInput) error {
-				return r.verifyHead(ctx, p, in, memo, &st)
-			})
 		})
 	}
 	wg.Wait()
-	for _, err := range errs {
-		if err != nil {
+	for i := range stats {
+		st.Add(stats[i])
+	}
+	if err := ctx.Err(); err != nil {
+		for _, q := range pre {
+			q.close()
+		}
+		return err
+	}
+	for i := range r.parts {
+		if _, err := r.partWith(ctx, i, st, pre[i]); err != nil {
+			for _, q := range pre[i+1:] {
+				q.close()
+			}
 			return err
 		}
 	}
 	return nil
+}
+
+// prefetchPart opens part i, reads its end and checks its footer against
+// its manifest entry, then reads its head with the key pages Verify will
+// decode (fetchProbes) and judges the head as readFooter would have. Its
+// scalar reads count against the operation's limit, one at a time.
+func (r *reader) prefetchPart(ctx context.Context, i int, st *ReadStats, memo *pageMemo) *fetchedPart {
+	p := r.parts[i]
+	limit := opLimitOf(ctx)
+	if err := limit.acquire(ctx, 1); err != nil {
+		return &fetchedPart{err: err}
+	}
+	in, err := r.fetch(ctx, i, st, !r.local)
+	limit.release(1)
+	if err != nil {
+		return &fetchedPart{err: err}
+	}
+	if r.local {
+		return &fetchedPart{in: in}
+	}
+	tail := in.tail
+	lookup := func(off, length int64) []byte {
+		if length <= 0 || off < tail.off || off-tail.off > int64(len(tail.data))-length {
+			return nil
+		}
+		return tail.data[off-tail.off : off-tail.off+length]
+	}
+	head, headErr := r.fetchProbes(ctx, p, in.file, in.size, in.footer, lookup, tail.headDeferred, memo, st)
+	if tail.headDeferred && headErr == nil {
+		at := storageReader{r: bind(ctx, in.file), st: st, src: &sourceInfo{name: in.name, unreported: unreported(ctx, reportsIO(in.file))}}
+		headErr = headVerdict(ctx, in.name, at, in.size, head, tail, nil)
+	}
+	if headErr != nil {
+		closeFile(in.file)
+		return &fetchedPart{err: footerError(ctx, in.name, headErr)}
+	}
+	return &fetchedPart{in: in}
 }
 
 // wantsProbes reports whether Verify would read a page of checked part p:
@@ -557,25 +641,6 @@ func (r *reader) wantsProbes(p *part) bool {
 	return false
 }
 
-// verifyHead establishes part p's deferred head while its check is in
-// progress: it reads the head with the key pages Verify will decode
-// (fetchProbes), and judges the head as readFooter would have.
-func (r *reader) verifyHead(ctx context.Context, p *part, in *partInput, memo *pageMemo, st *ReadStats) error {
-	tail := in.tail
-	lookup := func(off, length int64) []byte {
-		if off < tail.off || off-tail.off > int64(len(tail.data))-length || length < 0 {
-			return nil
-		}
-		return tail.data[off-tail.off : off-tail.off+length]
-	}
-	head := make([]byte, 4)
-	if err := r.fetchProbes(ctx, p, in.file, in.size, in.footer, lookup, head, memo, st); err != nil {
-		return footerError(ctx, in.name, err)
-	}
-	at := storageReader{r: bind(ctx, in.file), st: st, src: &sourceInfo{name: in.name, unreported: !reportsIO(in.file)}}
-	return headVerdict(ctx, in.name, at, in.size, head, tail, nil)
-}
-
 // headMergeGap is how far into a part its first key page may begin for
 // Verify to read the head with it in one range.
 const headMergeGap = 64 << 10
@@ -583,14 +648,17 @@ const headMergeGap = 64 << 10
 // fetchProbes reads together, into memo, the key pages Verify will decode
 // in part p whose footer is footer: the first page of each row group whose
 // first key is not known and, when p has bounds and they were not checked,
-// its last page; and, when head is not nil, the part's 4-byte head into
-// head, merged into the first group's page when it begins within
-// headMergeGap. Page locations come from the key OffsetIndexes that lookup
-// finds in retained bytes, decoded but not checked: a page whose location
-// cannot be found this way is not fetched, and Verify reads it itself,
-// checking its index first. Only the pages within requestMemoBytes are
-// fetched. It returns the head's error; a page that fails is not kept.
-func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, size int64, footer *parquet.File, lookup func(off, length int64) []byte, head []byte, memo *pageMemo, st *ReadStats) error {
+// its last page; and, with wantHead, the part's 4-byte head, merged into
+// the first group's page when it begins within headMergeGap. Page
+// locations come from the key OffsetIndexes that lookup finds in retained
+// bytes, decoded but not checked: a page whose location cannot be found
+// this way, or lies outside the file or the page limits, is not fetched,
+// and Verify reads it itself, checking its index first. Only the pages
+// within the part's share of requestMemoBytes are fetched; each is kept in
+// an allocation of its own. A page that fails is not kept, and fails when
+// Verify reads it; a failed merged range is followed by an exact 4-byte
+// head read, so that only a failure of the head itself is returned.
+func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, size int64, footer *parquet.File, lookup func(off, length int64) []byte, wantHead bool, memo *pageMemo, st *ReadStats) (head []byte, err error) {
 	type probe struct{ off, size int64 }
 	var probes []probe
 	leaf, ok := footer.Schema().Lookup(r.key.Column)
@@ -606,6 +674,10 @@ func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, siz
 			return probe{}, false
 		}
 		c := &groups[g].Columns[leaf.ColumnIndex]
+		if c.OffsetIndexOffset <= 0 || c.OffsetIndexLength <= 0 || int64(c.OffsetIndexLength) > r.limits.PageIndexBytes ||
+			c.OffsetIndexOffset > size-int64(c.OffsetIndexLength) {
+			return probe{}, false
+		}
 		raw := lookup(c.OffsetIndexOffset, int64(c.OffsetIndexLength))
 		if raw == nil {
 			return probe{}, false
@@ -635,7 +707,6 @@ func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, siz
 		}
 		return true
 	}
-	budget := requestMemoBytes / max(1, int64(len(r.parts)))
 	for g := range groups {
 		if groups[g].NumRows == 0 || known(g) {
 			continue
@@ -649,49 +720,66 @@ func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, siz
 			probes = append(probes, pr)
 		}
 	}
+	budget := requestMemoBytes / max(1, int64(len(r.parts)))
 	var ranges []ReadRange
 	var kept []probe
-	headRange := -1
-	if head != nil {
+	if wantHead {
+		head = make([]byte, 4)
 		ranges = append(ranges, ReadRange{Off: 0, Buf: head})
-		headRange = 0
 	}
+	merged := false
 	total := int64(0)
 	for i, pr := range probes {
 		if total+pr.size > budget || memo.get(p, pr.off, pr.size) != nil {
 			continue
 		}
 		total += pr.size
-		if i == 0 && head != nil && pr.off >= 4 && pr.off+pr.size <= headMergeGap {
-			ranges[0].Buf = make([]byte, pr.off+pr.size)
+		if i == 0 && wantHead && pr.off >= 4 && pr.off+pr.size <= headMergeGap {
+			ranges[0].Buf, merged = make([]byte, pr.off+pr.size), true
 		} else {
 			ranges = append(ranges, ReadRange{Off: pr.off, Buf: make([]byte, pr.size)})
 		}
 		kept = append(kept, pr)
 	}
 	if len(ranges) == 0 {
-		return nil
+		return head, nil
 	}
-	errs := readRanges(ctx, rangeFile{file: file, name: p.name, reports: reportsIO(file), concurrency: r.policy.Concurrency}, ranges, st)
-	if headRange == 0 && (errs == nil || errs[0] == nil) {
-		copy(head, ranges[0].Buf[:4])
-	}
-	// Keep each fetched page by its extent.
+	errs := readRanges(ctx, rangeFile{file: file, name: p.name, reports: reportsIO(file), concurrency: r.width()}, ranges, st)
 	for _, pr := range kept {
 		for j, rg := range ranges {
-			if errs != nil && errs[j] != nil {
+			if errs != nil && errs[j] != nil || rg.Off > pr.off || pr.off+pr.size > rg.Off+int64(len(rg.Buf)) {
 				continue
 			}
-			if rg.Off <= pr.off && pr.off+pr.size <= rg.Off+int64(len(rg.Buf)) {
-				memo.put(p, pr.off, rg.Buf[pr.off-rg.Off:pr.off-rg.Off+pr.size:pr.off-rg.Off+pr.size])
-				break
+			page := rg.Buf[pr.off-rg.Off : pr.off-rg.Off+pr.size]
+			if int64(len(rg.Buf)) != pr.size {
+				page = ownCopy(page) // keep the page, not the head before it
 			}
+			memo.put(p, pr.off, page)
+			break
 		}
 	}
-	if headRange == 0 && errs != nil && errs[0] != nil {
-		return errs[0]
+	if !wantHead {
+		return nil, nil
 	}
-	return nil
+	if errs == nil || errs[0] == nil {
+		copy(head, ranges[0].Buf[:4])
+		return head, nil
+	}
+	if !merged {
+		return nil, errs[0]
+	}
+	// The page merged with the head failed: the head alone decides.
+	limit := opLimitOf(ctx)
+	if err := limit.acquire(ctx, 1); err != nil {
+		return nil, err
+	}
+	defer limit.release(1)
+	at := storageReader{r: bind(ctx, file), st: st, src: &sourceInfo{name: p.name, unreported: unreported(ctx, reportsIO(file))}}
+	head = make([]byte, 4)
+	if err := at.readFull(head, 0); err != nil {
+		return nil, err
+	}
+	return head, nil
 }
 
 // closeFile closes file when it implements io.Closer.
@@ -922,8 +1010,12 @@ func bind(ctx context.Context, file io.ReaderAt) io.ReaderAt {
 
 // at returns the part's file for reads under ctx, its errors marked as
 // the source's own, its calls counted in st.
-func (p *part) at(ctx context.Context, st *ReadStats) io.ReaderAt {
-	return storageReader{r: bind(ctx, p.file), st: st, src: &p.src}
+func (p *part) at(ctx context.Context, st *ReadStats) storageReader {
+	src := &p.src
+	if p.reports && !collected(ctx) {
+		src = &p.srcUncollected // its requests reach no collector
+	}
+	return storageReader{r: bind(ctx, p.file), st: st, src: src}
 }
 
 // begin takes a read lease that close waits for, and returns the request's
@@ -936,7 +1028,10 @@ func (r *reader) begin(ctx context.Context, st *ReadStats) (context.Context, fun
 	if err := checkCacheMode(ctx); err != nil {
 		return nil, nil, err
 	}
-	ctx = observing(ctx, st, r.sourceReports)
+	var c *collector
+	if st != nil && (r.sourceReports || r.fileReports.Load()) {
+		ctx, c = withCollector(ctx)
+	}
 	r.mu.Lock()
 	if r.closed || r.closing.Err() != nil {
 		r.mu.Unlock()
@@ -949,6 +1044,7 @@ func (r *reader) begin(ctx context.Context, st *ReadStats) (context.Context, fun
 	return rctx, func() {
 		stop()
 		cancel(nil)
+		c.addTo(st)
 		r.mu.Lock()
 		if r.active--; r.active == 0 {
 			r.idle.Broadcast()

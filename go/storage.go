@@ -103,6 +103,11 @@ func (e *BatchError) Error() string {
 }
 
 // Unwrap returns the non-nil member errors.
+//
+// Consumers must examine Errs in semantic consumption order.
+// An aggregate errors.Is or errors.As match does not identify which
+// ranges failed and must not invalidate successful, needed ranges
+// solely because an unused range failed.
 func (e *BatchError) Unwrap() []error {
 	var out []error
 	for _, err := range e.Errs {
@@ -114,9 +119,11 @@ func (e *BatchError) Unwrap() []error {
 }
 
 // SizedSource is an optional capability of a Source: it opens a part with
-// the size its manifest entry declares, so that no metadata request need
-// precede the part's first read. The reader uses it for parts whenever
-// the Source has it.
+// the size its manifest entry declares, which permits the source to avoid
+// a metadata request before the part's first read; it does not promise
+// that a source can always avoid one. The reader uses it for every part of
+// 12 bytes or more (the least a Parquet file holds) when the Source has
+// it; a smaller part is opened with Open, which establishes its size.
 type SizedSource interface {
 	// OpenSized opens a part with the manifest's expected byte length.
 	// expectedSize must be non-negative.
@@ -154,9 +161,10 @@ func (e *SizeMismatchError) Error() string {
 	return "seekparquet: " + e.Path + " is " + strconv.FormatInt(e.Actual, 10) + " bytes, expected " + strconv.FormatInt(e.Expected, 10)
 }
 
-// ManifestReader is an optional capability of a Source: it reads the
-// manifest whole, within a byte limit, in one request. Without it the
-// reader opens manifest.json and reads it through ReadAt.
+// ManifestReader optionally reads the complete manifest within a byte
+// limit. Implementations should use one whole-object request on the
+// ordinary successful remote path; retries may require more requests.
+// Without it the reader opens manifest.json and reads it through ReadAt.
 type ManifestReader interface {
 	// ReadManifest returns the complete manifest.json and an opaque
 	// identity for exactly those bytes, or no usable data on failure.
@@ -189,6 +197,10 @@ var (
 )
 
 // CacheMode is an operation's use of a byte cache a Source may keep.
+//
+// Sources with a byte cache must honor CacheBypass for operations
+// carrying this context, including context-bound scalar reads.
+// Bypass affects neither identity verification nor reader metadata reuse.
 type CacheMode uint8
 
 const (
@@ -289,26 +301,25 @@ type IOReporter interface {
 // logical reads. A zero field takes its default; a negative one is an
 // invalid request when the dataset is opened.
 type ReadPolicy struct {
-	// Concurrency bounds the logical ranges one operation has outstanding
-	// at once when the reader issues several reads together, through a
-	// RangeReader or, without one, through concurrent ReadAt calls on a
-	// ContextBinder view; Verify checks at most this many parts at once.
-	// Default 64.
+	// Concurrency bounds outstanding logical part ranges across one
+	// operation, including scalar reads, batches and speculative reads.
+	// It does not bound physical requests made by the source.
+	// Zero selects the default, 64; negative values are invalid.
 	Concurrency int
 	// MetadataPrefetchBytes is the speculative read of a part's end when
 	// the part is first checked: the footer and, when they fit, its page
-	// indexes in one read, at the same time as the part's 4-byte head. The
-	// page-index bytes it holds are kept (Limits.MetadataCacheMemory) and
-	// serve later loads of the part's ColumnIndexes and OffsetIndexes,
-	// decoded and checked only when a request needs them. It is clipped to
-	// the part's size; a footer larger than it costs one more read of
-	// exactly the missing bytes. Default 2 MiB; OpenDir's default is 64 KiB,
-	// since a local read costs little.
+	// indexes in one read. The page-index bytes it holds are kept
+	// (Limits.PageIndexCacheMemory) and serve later loads of the part's
+	// ColumnIndexes and OffsetIndexes, decoded and checked only when a
+	// request needs them. It is clipped to the part's size; a footer larger
+	// than it costs one more read of exactly the missing bytes. Default
+	// 2 MiB; OpenDir's default is 64 KiB.
 	MetadataPrefetchBytes int64
-	// DisableSpeculation turns off optional extra fetching: a part's end
-	// is read in a window of 64 KiB at most and only its footer is kept;
-	// reads the reader issues together are still issued together.
-	// Results, refusals and their order are the same.
+	// DisableSpeculation disables optional fetching, including listing
+	// read-ahead. It does not disable batching of demanded ranges or
+	// reuse of already available bytes. A part's end is then still read
+	// in one window of up to 64 KiB, the footer read strategy that
+	// precedes these capabilities, and only the footer is kept.
 	DisableSpeculation bool
 }
 

@@ -101,7 +101,8 @@ var Stop = errors.New("seekparquet: stop the scan")
 // would deadlock. To stop early, return Stop or an error, or cancel ctx,
 // then close the Dataset after Scan returns. Requests started by fn run
 // normally; once Close has begun they fail with ErrClosed. Concurrent or
-// reentrant scans have independent borrowed storage.
+// reentrant scans have independent borrowed storage. It asks a Source's
+// byte cache to be bypassed (CacheBypass), unless ctx sets a cache mode.
 func (plan *Plan) Scan(ctx context.Context, st *ReadStats, fn func(*Batch) error) error {
 	return plan.scanBatches(ctx, st, keyReuse{}, fn)
 }
@@ -124,7 +125,7 @@ func (plan *Plan) scanBatches(ctx context.Context, st *ReadStats, kr keyReuse, f
 		return invalidRequest("a nil batch callback")
 	}
 	r := plan.r
-	rctx, end, err := r.begin(ctx, st)
+	rctx, end, err := r.begin(bypassCache(ctx), st)
 	if err != nil {
 		return err
 	}
@@ -164,7 +165,7 @@ func (r *reader) rangeBatches(ctx context.Context, q Query, st *ReadStats, kr ke
 	if fn == nil {
 		return invalidRequest("a nil batch callback")
 	}
-	ctx, done, err := r.request(ctx, st, q.Cursor, false, q.Limit, true, q.Columns)
+	ctx, done, err := r.request(bypassCache(ctx), st, q.Cursor, false, q.Limit, true, q.Columns)
 	if err != nil {
 		return err
 	}

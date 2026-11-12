@@ -48,8 +48,9 @@ type ReadStats struct {
 	// group's key pages: it loaded the group's key page index or reused one
 	// an earlier request, or an earlier step of this one, had loaded.
 	RowGroupsOpened int64
-	// IndexLoads is the number of those openings that read the key page
-	// index from the Source, including successful build-only transient loads;
+	// IndexLoads counts successful key-index loads not satisfied by an
+	// already decoded index, including loads from retained raw metadata
+	// and successful build-only transient loads;
 	// RowGroupsOpened-IndexLoads were reuses, including an index a concurrent
 	// request published first. An
 	// index read but refused (Limits.IndexMemory) is in neither count.
@@ -66,10 +67,10 @@ type ReadStats struct {
 	// common prefix without reading them, because their first key and the
 	// next group's first key share it.
 	GroupsSkipped int64
-	// SourceReads is the number of ReadAt calls the request made on part
-	// files, and SourceBytes the total of their lengths, the bytes
-	// requested. They include the footer, page index and page header reads
-	// made on behalf of the request.
+	// SourceReads counts non-empty logical part ranges submitted to
+	// storage through ReadAt or ReadRanges. SourceBytes counts their
+	// requested bytes. Neither counts physical requests or wire bytes.
+	// Manifest reads are excluded.
 	SourceReads, SourceBytes int64
 	// ReadAheadReads is the number of key pages a listing read ahead
 	// (ListQuery.ReadAhead), each in one read counted in SourceReads and
@@ -79,11 +80,9 @@ type ReadStats struct {
 	// page is then read again).
 	ReadAheadReads, ReadAheadUnused, ReadAheadUnusedBytes int64
 
-	// SourceBatches is the number of RangeReader.ReadRanges calls the
-	// request made, and ScalarFallbackReads the ranges it read together
-	// through concurrent ReadAt calls instead, from a file without
-	// RangeReader. Ranges read in a batch are counted in SourceReads and
-	// SourceBytes too: those count logical ranges, not physical requests.
+	// SourceBatches counts calls actually made to RangeReader.ReadRanges.
+	// ScalarFallbackReads counts non-empty ReadAt calls actually made
+	// to execute a logical batch without RangeReader.
 	SourceBatches, ScalarFallbackReads int64
 
 	// The physical counters come from a Source that reports its requests
@@ -97,19 +96,24 @@ type ReadStats struct {
 	// (IOObserver.BatchPlanned); do not subtract them to infer requests.
 	PlannedRanges, PlannedRequests, PlannedOverReadBytes int64
 	// ByteCacheHitBytes are the bytes a reporting source served from its
-	// own byte cache. MetadataHitBytes are the bytes of footers and page
-	// indexes the reader served from the part metadata it retained
-	// (ReadPolicy.MetadataPrefetchBytes) instead of reading them.
-	ByteCacheHitBytes, MetadataHitBytes int64
-	// RequestMemoHitBytes are the bytes of key pages the request had read
-	// already and took from what it kept of them instead of reading them
-	// again: a routing probe's page that the walk reached, a cursor's page,
-	// a page Verify fetched together with others.
+	// own byte cache.
+	ByteCacheHitBytes int64
+	// MetadataHitBytes counts raw page-index bytes supplied from retained
+	// metadata instead of storage, counted on each use.
+	MetadataHitBytes int64
+	// RequestMemoHitBytes counts the bytes of complete key-page extents
+	// reused from the request's bounded memo instead of read again: a
+	// routing probe's page that the walk reached, a cursor's page, a page
+	// Verify fetched together with others. Extents not admitted to the
+	// memo may be read again; its capacity and admission policy are
+	// implementation details.
 	RequestMemoHitBytes int64
 	// UnreportedIOCalls is the number of storage calls (ReadAt,
-	// ReadRanges, Open, OpenSized, ReadManifest) made on a source or file
-	// that does not report its physical requests: the physical counters
-	// leave their work out.
+	// ReadRanges, Open, OpenSized, ReadManifest) whose physical requests
+	// the physical counters leave out: made on a source or file that does
+	// not report them, or, for a file that does, by an operation that
+	// began before the Dataset knew any of its files reported (the first
+	// operation to open such a part, when the Source itself does not).
 	UnreportedIOCalls int64
 	// PeakPhysicalRequests is the most physical requests a reporting
 	// source had in flight at once for the operation.
@@ -126,9 +130,10 @@ func resetStats(st *ReadStats) *ReadStats {
 	return st
 }
 
-// Add adds every count of o to st, and keeps the larger of each peak: the
-// work of several operations, such as a plan, its split and the scans of
-// its shards.
+// Add sums counters and takes the maximum of each peak: the work of several
+// operations, such as a plan, its split and the scans of its shards.
+// The resulting peak is the largest constituent operation peak,
+// not the peak of those operations running concurrently.
 func (st *ReadStats) Add(o ReadStats) {
 	st.ListIndexSkips += o.ListIndexSkips
 	st.ListIndexDelimiter += o.ListIndexDelimiter

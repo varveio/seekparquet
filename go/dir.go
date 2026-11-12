@@ -19,17 +19,27 @@ import (
 // as not existing, which OpenDataset refuses as no_manifest or
 // missing_part. The directory stays open, so that parts can be opened when
 // a read first touches them, and each part keeps its file open, until the
-// dataset closes. A local read costs little, so OpenDir reads a part's end
-// in 64 KiB unless opt.Read.MetadataPrefetchBytes says otherwise.
+// dataset closes.
+//
+// A local read costs little: OpenDir reads a part's end in 64 KiB unless
+// opt.Read.MetadataPrefetchBytes says otherwise, and with a zero opt.Read
+// it reads one range at a time, as it was read before the storage
+// capabilities, keeping no part metadata beyond the footer and no request
+// memo. Any field of opt.Read set gives the policy of OpenDataset.
 func OpenDir(ctx context.Context, path string, opt OpenOptions) (*Dataset, error) {
+	local := opt.Read == ReadPolicy{}
 	if opt.Read.MetadataPrefetchBytes == 0 {
 		opt.Read.MetadataPrefetchBytes = footerWindow
+	}
+	st, err := prepareOpen(ctx, &opt)
+	if err != nil {
+		return nil, err
 	}
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return nil, err
 	}
-	d, err := OpenDataset(ctx, dirSource{root}, opt)
+	d, err := openDataset(ctx, dirSource{root}, opt, st, local)
 	if err != nil {
 		_ = root.Close()
 		return nil, err

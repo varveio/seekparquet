@@ -264,7 +264,7 @@ func TestOpenReads(t *testing.T) {
 		must(t, err)
 		t.Cleanup(func() { _ = d.Close() })
 		if verify {
-			must(t, d.Verify(ctx))
+			must(t, d.Verify(ctx, nil))
 		}
 		return src.reads.Load(), d
 	}

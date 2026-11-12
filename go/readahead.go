@@ -106,12 +106,17 @@ type aheadPage struct {
 var errReadAheadPanic = errors.New("the read ahead panicked")
 
 // newReadAhead returns the read-ahead of a request with n slots, or nil
-// for none.
+// for none. Read-ahead is speculation: ReadPolicy.DisableSpeculation turns
+// it off, and its slots and the listing's own read stay within
+// ReadPolicy.Concurrency.
 func (r *reader) newReadAhead(ctx context.Context, n int) *readAhead {
+	if r.policy.DisableSpeculation {
+		return nil
+	}
+	n = min(n, maxReadAhead, r.policy.Concurrency-1)
 	if n <= 0 {
 		return nil
 	}
-	n = min(n, maxReadAhead)
 	actx, cancel := context.WithCancel(ctx)
 	return &readAhead{ctx: actx, cancel: cancel, slots: n, budget: int64(n) * readAheadPageBytes, maxPending: 4 * n,
 		maxPage: r.limits.PageBytes + r.limits.headerBytes(), pending: map[aheadKey]*aheadPage{}, lastAt: -1}

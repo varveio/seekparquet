@@ -6,6 +6,7 @@ package seekparquet
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"sync"
@@ -49,8 +50,8 @@ func sourceError(name string, err error) error {
 // reader follows is first checked to lie inside the file, so reading past
 // its end means the data lied.
 //
-// It stays three words, so that wrapping a read costs no more than before
-// it classified errors: what it knows of the file is behind src.
+// Page reads call its readFull method, so that it is never boxed into an
+// io.ReaderAt and allocated: what it knows of the file is behind src.
 type storageReader struct {
 	r   io.ReaderAt
 	st  *ReadStats // counts the reads of a request, nil for none
@@ -74,10 +75,41 @@ func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
 		}
 	}
 	n, err := s.r.ReadAt(p, off)
-	if err != nil && !errors.Is(err, io.EOF) {
+	switch {
+	case err != nil && (!errors.Is(err, io.EOF) || errors.Is(err, ErrObjectChanged)):
 		err = sourceError(s.src.name, err)
+	case n < len(p):
+		// Every extent the reader reads lies inside the file's Size: a
+		// short read is the source's failure, not the data's.
+		err = shortRead(s.src.name, n, len(p), off, err)
+	default:
+		err = nil
 	}
 	return n, err
+}
+
+// readFull is readFull of s without boxing s into an io.ReaderAt, which
+// would allocate for every page read.
+// ReadAt returns no io.EOF: a whole read has no error, a short one the
+// environment's.
+func (s storageReader) readFull(p []byte, off int64) error {
+	n, err := s.ReadAt(p, off)
+	switch {
+	case err != nil:
+		return err
+	case n == len(p):
+		return nil
+	}
+	return io.ErrUnexpectedEOF
+}
+
+// shortRead is the environment's error of a read of want bytes at off
+// that returned n, with io.EOF or no error.
+func shortRead(name string, n, want int, off int64, cause error) error {
+	if cause == nil {
+		cause = io.ErrUnexpectedEOF
+	}
+	return &storageError{fmt.Errorf("%s: %d of %d bytes at %d read: %w (%w)", name, n, want, off, io.ErrUnexpectedEOF, cause)}
 }
 
 // reportsIO reports whether x promises to report its physical requests.
@@ -87,36 +119,50 @@ func reportsIO(x any) bool {
 }
 
 // collector is an operation's IOObserver: it counts the physical requests
-// a reporting source makes for the operation into its ReadStats, with
-// atomic adds, since a source may report from its own goroutines, and
-// passes every event on to the observer the caller set, if any.
+// reporting sources and files make for the operation, in aligned atomic
+// counters, since a source may report from its own goroutines, and passes
+// every event on to the observer the caller set, if any. addTo adds its
+// counts to the operation's ReadStats once the operation's reads have
+// ended.
 type collector struct {
-	st       *ReadStats
-	parent   IOObserver
-	inFlight atomic.Int64
+	parent IOObserver
+
+	requests, bytes, retries, failures      atomic.Int64
+	plannedRanges, plannedRequests, planned atomic.Int64
+	cacheHits, inFlight, peak               atomic.Int64
 }
 
-// observing returns ctx with an operation's collector for st, when the
-// source of the operation reports its physical requests.
-func observing(ctx context.Context, st *ReadStats, reports bool) context.Context {
-	if !reports || st == nil {
-		return ctx
+// withCollector returns ctx with a new collector for an operation.
+func withCollector(ctx context.Context) (context.Context, *collector) {
+	c := &collector{parent: IOObserverFromContext(ctx)}
+	return WithIOObserver(ctx, c), c
+}
+
+// addTo adds the collector's counts to st.
+func (c *collector) addTo(st *ReadStats) {
+	if c == nil || st == nil {
+		return
 	}
-	if c, ok := IOObserverFromContext(ctx).(*collector); ok && c.st == st {
-		return ctx
-	}
-	return WithIOObserver(ctx, &collector{st: st, parent: IOObserverFromContext(ctx)})
+	st.PhysicalRequests += c.requests.Load()
+	st.PhysicalBytes += c.bytes.Load()
+	st.PhysicalRetries += c.retries.Load()
+	st.PhysicalFailures += c.failures.Load()
+	st.PlannedRanges += c.plannedRanges.Load()
+	st.PlannedRequests += c.plannedRequests.Load()
+	st.PlannedOverReadBytes += c.planned.Load()
+	st.ByteCacheHitBytes += c.cacheHits.Load()
+	st.PeakPhysicalRequests = max(st.PeakPhysicalRequests, c.peak.Load())
 }
 
 func (c *collector) Begin(req IORequest) func(IOResult) {
-	atomic.AddInt64(&c.st.PhysicalRequests, 1)
+	c.requests.Add(1)
 	if req.Retry {
-		atomic.AddInt64(&c.st.PhysicalRetries, 1)
+		c.retries.Add(1)
 	}
 	n := c.inFlight.Add(1)
 	for {
-		peak := atomic.LoadInt64(&c.st.PeakPhysicalRequests)
-		if n <= peak || atomic.CompareAndSwapInt64(&c.st.PeakPhysicalRequests, peak, n) {
+		peak := c.peak.Load()
+		if n <= peak || c.peak.CompareAndSwap(peak, n) {
 			break
 		}
 	}
@@ -126,9 +172,9 @@ func (c *collector) Begin(req IORequest) func(IOResult) {
 	}
 	return func(res IOResult) {
 		c.inFlight.Add(-1)
-		atomic.AddInt64(&c.st.PhysicalBytes, res.Bytes)
+		c.bytes.Add(res.Bytes)
 		if res.Err != nil {
-			atomic.AddInt64(&c.st.PhysicalFailures, 1)
+			c.failures.Add(1)
 		}
 		if done != nil {
 			done(res)
@@ -137,16 +183,16 @@ func (c *collector) Begin(req IORequest) func(IOResult) {
 }
 
 func (c *collector) CacheHit(bytes int64) {
-	atomic.AddInt64(&c.st.ByteCacheHitBytes, bytes)
+	c.cacheHits.Add(bytes)
 	if c.parent != nil {
 		c.parent.CacheHit(bytes)
 	}
 }
 
 func (c *collector) BatchPlanned(ranges, requests, overReadBytes int64) {
-	atomic.AddInt64(&c.st.PlannedRanges, ranges)
-	atomic.AddInt64(&c.st.PlannedRequests, requests)
-	atomic.AddInt64(&c.st.PlannedOverReadBytes, overReadBytes)
+	c.plannedRanges.Add(ranges)
+	c.plannedRequests.Add(requests)
+	c.planned.Add(overReadBytes)
 	if c.parent != nil {
 		c.parent.BatchPlanned(ranges, requests, overReadBytes)
 	}
@@ -240,8 +286,8 @@ func (l *opLimit) grant() {
 }
 
 // rangeFile is a file read by readRanges: the source's file, its name for
-// errors, whether it reports its physical requests, and the policy's
-// bound on the ranges it reads at once.
+// errors, whether it reports its physical requests, and the most ranges it
+// reads at once.
 type rangeFile struct {
 	file        io.ReaderAt
 	name        string
@@ -255,46 +301,31 @@ type rangeFile struct {
 // file is a RangeReader (at most Concurrency ranges, MaxReadRanges and
 // MaxReadBatchBytes per call), and otherwise as concurrent ReadAt calls on
 // ContextBinder views by at most Concurrency workers, never one goroutine
-// per range. A single range is read on the caller's goroutine. When ctx
-// carries an operation's limit (opLimit), its ranges count against it.
-// Errors are classified as every read's are (sourceError); a range that
-// ends with io.EOF, or short, is io.ErrUnexpectedEOF. Every read it
-// starts has ended when it returns. Counts go to st on the caller's
-// goroutine.
+// per range. A single range, or a Concurrency of 1, is read on the
+// caller's goroutine. When ctx carries an operation's limit (opLimit), its
+// ranges count against it. Errors are classified as every read's are
+// (sourceError, shortRead). Every read it starts has ended when it
+// returns. Counts reach st, on the caller's goroutine, only for the calls
+// actually made.
 func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadStats) []error {
 	var todo []int
 	for i, rg := range ranges {
 		if len(rg.Buf) > 0 {
 			todo = append(todo, i)
-			if st != nil {
-				st.SourceReads++
-				st.SourceBytes += int64(len(rg.Buf))
-			}
 		}
 	}
 	if len(todo) == 0 {
 		return nil
 	}
-	if err := ctx.Err(); err != nil {
-		errs := make([]error, len(ranges))
-		for _, i := range todo {
-			errs[i] = err
-		}
-		return errs
-	}
 	width := max(1, rf.concurrency)
 	limit := opLimitOf(ctx)
+	uncounted := unreported(ctx, rf.reports)
 	if rr, ok := rf.file.(RangeReader); ok {
-		return readBatches(ctx, rf, rr, ranges, todo, width, limit, st)
-	}
-	if st != nil {
-		st.ScalarFallbackReads += int64(len(todo))
-		if !rf.reports {
-			st.UnreportedIOCalls += int64(len(todo))
-		}
+		return readBatches(ctx, rf, rr, ranges, todo, width, limit, uncounted, st)
 	}
 	errs := make([]error, len(ranges))
-	failed := atomic.Bool{}
+	var failed atomic.Bool
+	var calls, bytes atomic.Int64
 	at := bind(ctx, rf.file)
 	src := &sourceInfo{name: rf.name}
 	read := func(i int) {
@@ -311,6 +342,8 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 			failed.Store(true)
 			return
 		}
+		calls.Add(1)
+		bytes.Add(int64(len(ranges[i].Buf)))
 		if err := readFull(storageReader{r: at, src: src}, ranges[i].Buf, ranges[i].Off); err != nil {
 			errs[i] = err
 			failed.Store(true)
@@ -336,6 +369,15 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 		}
 		wg.Wait()
 	}
+	if st != nil {
+		n := calls.Load()
+		st.SourceReads += n
+		st.SourceBytes += bytes.Load()
+		st.ScalarFallbackReads += n
+		if uncounted {
+			st.UnreportedIOCalls += n
+		}
+	}
 	if !failed.Load() {
 		return nil
 	}
@@ -351,7 +393,7 @@ type piece struct {
 
 // readBatches reads ranges through a RangeReader, in calls of at most
 // width ranges and MaxReadBatchBytes bytes.
-func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []ReadRange, todo []int, width int, limit *opLimit, st *ReadStats) []error {
+func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []ReadRange, todo []int, width int, limit *opLimit, uncounted bool, st *ReadStats) []error {
 	var pieces []piece
 	for _, i := range todo {
 		buf, off := ranges[i].Buf, ranges[i].Off
@@ -380,19 +422,22 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 		for j := range batch {
 			batch[j] = pieces[j].rg
 		}
-		var err error
-		if limit != nil {
-			if err = limit.acquire(ctx, n); err == nil {
-				err = rr.ReadRanges(ctx, batch)
+		err := ctx.Err()
+		if err == nil && limit != nil {
+			err = limit.acquire(ctx, n)
+		}
+		if err == nil {
+			err = rr.ReadRanges(ctx, batch)
+			if limit != nil {
 				limit.release(n)
 			}
-		} else if err = ctx.Err(); err == nil {
-			err = rr.ReadRanges(ctx, batch)
-		}
-		if st != nil {
-			st.SourceBatches++
-			if !rf.reports {
-				st.UnreportedIOCalls++
+			if st != nil {
+				st.SourceBatches++
+				st.SourceReads += int64(n)
+				st.SourceBytes += bytes
+				if uncounted {
+					st.UnreportedIOCalls++
+				}
 			}
 		}
 		var be *BatchError
@@ -418,12 +463,11 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 }
 
 // batchError classifies one range's error from ReadRanges.
+// The source's own error is kept, a broken pin first: a short or ended
+// range is the environment's error, like a short scalar read.
 func batchError(ctx context.Context, name string, err error) error {
 	if ctx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
 		return err
-	}
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		return io.ErrUnexpectedEOF
 	}
 	return sourceError(name, err)
 }
@@ -436,35 +480,37 @@ type retained struct {
 }
 
 // retainTail keeps, from the end of part p's file that its check read,
-// the bytes of its page-index region: from the first ColumnIndex or
-// OffsetIndex the footer locates within the tail, to the footer. They are
-// copied, so that the rest of the tail is not pinned, and charged to
-// Limits.MetadataCacheMemory, evicting the parts used least recently, or
-// not kept when they cannot fit. Nothing is decoded or checked here: an
-// index is decoded when a request first needs it, so an index no request
-// uses never causes a refusal. With DisableSpeculation nothing is kept.
+// the bytes of its page-index region the tail holds: from the first
+// ColumnIndex or OffsetIndex the footer locates (or the tail's start, when
+// an index begins before it) to the footer. They are charged to
+// Limits.PageIndexCacheMemory before they are copied, evicting the parts
+// used least recently, or not kept when they cannot fit, and copied, so
+// that the rest of the tail is not pinned. Nothing is decoded or checked
+// here: an index is decoded when a request first needs it, so an index no
+// request uses never causes a refusal. With DisableSpeculation, or as
+// OpenDir reads a local file, nothing is kept.
 func (r *reader) retainTail(p *part, tail footerTail) {
-	if r.policy.DisableSpeculation || len(tail.data) == 0 || tail.footerStart <= tail.off {
+	if r.policy.DisableSpeculation || r.local || len(tail.data) == 0 || tail.footerStart <= tail.off {
 		return
 	}
 	start := tail.footerStart
 	for _, rg := range p.footer.Metadata().RowGroups {
 		for _, c := range rg.Columns {
 			for _, off := range [2]int64{c.ColumnIndexOffset, c.OffsetIndexOffset} {
-				if off >= tail.off && off < start {
+				if off > 0 && off < start {
 					start = off
 				}
 			}
 		}
 	}
+	start = max(start, tail.off)
 	size := tail.footerStart - start
-	if size <= 0 || size > r.limits.MetadataCacheMemory {
+	if size <= 0 || size > r.limits.PageIndexCacheMemory {
 		return
 	}
-	kept := &retained{off: start, data: ownCopy(tail.data[start-tail.off : tail.footerStart-tail.off])}
 	r.metaMu.Lock()
 	defer r.metaMu.Unlock()
-	for r.metaMemory+size > r.limits.MetadataCacheMemory {
+	for r.metaMemory+size > r.limits.PageIndexCacheMemory {
 		lru := 0
 		for i, q := range r.metaParts {
 			if q.metaUsed.Load() < r.metaParts[lru].metaUsed.Load() {
@@ -476,7 +522,8 @@ func (r *reader) retainTail(p *part, tail footerTail) {
 		q.meta.Store(nil)
 		r.metaParts = append(r.metaParts[:lru], r.metaParts[lru+1:]...)
 	}
-	r.metaMemory += size
+	r.metaMemory += size // reserved before the copy is allocated
+	kept := &retained{off: start, data: ownCopy(tail.data[start-tail.off : tail.footerStart-tail.off])}
 	p.metaUsed.Store(r.metaClock.Add(1))
 	p.meta.Store(kept)
 	r.metaParts = append(r.metaParts, p)
@@ -487,9 +534,58 @@ func (r *reader) retainTail(p *part, tail footerTail) {
 // read-only.
 func (p *part) retainedBytes(off, length int64) []byte {
 	m := p.meta.Load()
-	if m == nil || off < m.off || length > int64(len(m.data)) || off-m.off > int64(len(m.data))-length {
+	if m == nil || length <= 0 || off < m.off || length > int64(len(m.data)) || off-m.off > int64(len(m.data))-length {
 		return nil
 	}
 	p.metaUsed.Store(p.r.metaClock.Add(1))
 	return m.data[off-m.off : off-m.off+length : off-m.off+length]
+}
+
+// retainedSuffix returns how many of the length bytes at off, a suffix of
+// them, the part's retained metadata holds, and those bytes: zero when it
+// holds none of them, or all of them (retainedBytes).
+func (p *part) retainedSuffix(off, length int64) (int64, []byte) {
+	m := p.meta.Load()
+	if m == nil || length <= 0 || off < 0 || off >= m.off || length > m.off-off+int64(len(m.data)) {
+		return 0, nil
+	}
+	n := off + length - m.off
+	if n <= 0 || n >= length {
+		return 0, nil
+	}
+	p.metaUsed.Store(p.r.metaClock.Add(1))
+	return n, m.data[:n]
+}
+
+// width is the most ranges the reader issues together: one when it reads
+// as suits a local file.
+func (r *reader) width() int {
+	if r.local {
+		return 1
+	}
+	return r.policy.Concurrency
+}
+
+// collected reports whether ctx carries an operation's collector.
+func collected(ctx context.Context) bool {
+	_, ok := IOObserverFromContext(ctx).(*collector)
+	return ok
+}
+
+// unreported reports whether a storage call under ctx on a receiver that
+// reports (or not) its requests leaves them out of the operation's counts:
+// it does not report them, or no collector counts them.
+func unreported(ctx context.Context, reports bool) bool {
+	return !reports || !collected(ctx)
+}
+
+// bypassCache returns ctx asking a Source's byte cache to be bypassed
+// (CacheBypass): scans and list-index builds read each page once, and
+// would only evict what interactive reads reuse. An unknown mode the
+// caller set is kept, to be rejected.
+func bypassCache(ctx context.Context) context.Context {
+	if CacheModeFromContext(ctx) != CacheDefault {
+		return ctx
+	}
+	return WithCacheMode(ctx, CacheBypass)
 }
