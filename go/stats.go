@@ -3,6 +3,8 @@
 
 package seekparquet
 
+import "sync"
+
 // ReadStats counts the work of one operation: Dataset.Rows, Get, Scan or
 // List, Dataset.Plan, Plan.Split or Plan.Scan. Pass a *ReadStats as the
 // operation's statistics argument to receive it: it is reset when the
@@ -15,7 +17,8 @@ package seekparquet
 // one, may do the same read with different counts. All fields are plain
 // integers; a ReadStats must not be shared between concurrent requests.
 //
-// The manifest read when the Dataset was opened is not counted. Work shared
+// The manifest read when the Dataset was opened is not counted here: pass
+// OpenOptions.OpenStats for it. Work shared
 // with earlier requests is counted only where a field says so: a part
 // checked by an earlier request, or by Verify, is not checked again, a key
 // page index loaded by an earlier request is reused, not loaded, a
@@ -47,8 +50,9 @@ type ReadStats struct {
 	// group's key pages: it loaded the group's key page index or reused one
 	// an earlier request, or an earlier step of this one, had loaded.
 	RowGroupsOpened int64
-	// IndexLoads is the number of those openings that read the key page
-	// index from the Source, including successful build-only transient loads;
+	// IndexLoads counts successful key-index loads not satisfied by an
+	// already decoded index, including loads from retained raw metadata
+	// and successful build-only transient loads;
 	// RowGroupsOpened-IndexLoads were reuses, including an index a concurrent
 	// request published first. An
 	// index read but refused (Limits.IndexMemory) is in neither count.
@@ -65,10 +69,10 @@ type ReadStats struct {
 	// common prefix without reading them, because their first key and the
 	// next group's first key share it.
 	GroupsSkipped int64
-	// SourceReads is the number of ReadAt calls the request made on part
-	// files, and SourceBytes the total of their lengths, the bytes
-	// requested. They include the footer, page index and page header reads
-	// made on behalf of the request.
+	// SourceReads counts non-empty logical part ranges submitted to
+	// storage through ReadAt or ReadRanges. SourceBytes counts their
+	// requested bytes. Neither counts physical requests or wire bytes.
+	// Manifest reads are excluded.
 	SourceReads, SourceBytes int64
 	// ReadAheadReads is the number of key pages a listing read ahead
 	// (ListQuery.ReadAhead), each in one read counted in SourceReads and
@@ -77,20 +81,76 @@ type ReadStats struct {
 	// pages past where the listing stopped, and reads that failed (the
 	// page is then read again).
 	ReadAheadReads, ReadAheadUnused, ReadAheadUnusedBytes int64
+
+	// SourceBatches counts calls actually made to RangeReader.ReadRanges.
+	// ScalarFallbackReads counts non-empty ReadAt calls actually made
+	// to execute a logical batch without RangeReader.
+	SourceBatches, ScalarFallbackReads int64
+
+	// The physical counters come from a Source that reports its requests
+	// (IOReporter): the requests it made for the operation, opens and
+	// metadata requests included, their payload bytes, the retries among
+	// them and the attempts that failed. They are exact only when
+	// UnreportedIOCalls is zero.
+	PhysicalRequests, PhysicalBytes, PhysicalRetries, PhysicalFailures int64
+	// PlannedRanges, PlannedRequests and PlannedOverReadBytes are what a
+	// reporting source said it planned for the batches it was given
+	// (IOObserver.BatchPlanned); do not subtract them to infer requests.
+	PlannedRanges, PlannedRequests, PlannedOverReadBytes int64
+	// ByteCacheHitBytes are the bytes a reporting source served from its
+	// own byte cache.
+	ByteCacheHitBytes int64
+	// MetadataHitBytes counts raw page-index bytes supplied from retained
+	// metadata instead of storage, counted on each use.
+	MetadataHitBytes int64
+	// RequestMemoHitBytes counts the bytes of complete key-page extents
+	// reused from the request's bounded memo instead of read again: a
+	// routing probe's page that the walk reached, a cursor's page, a page
+	// Verify fetched together with others. Extents not admitted to the
+	// memo may be read again; its capacity and admission policy are
+	// implementation details.
+	RequestMemoHitBytes int64
+	// UnreportedIOCalls is the number of storage calls (ReadAt,
+	// ReadRanges, Open, OpenSized, ReadManifest) whose physical requests
+	// the physical counters leave out: those made on a source or file that
+	// does not report them (IOReporter). Every operation observes the
+	// requests of the receivers that do, from its first call.
+	UnreportedIOCalls int64
+	// PeakPhysicalRequests is the most physical requests a reporting
+	// source had in flight at once for the operation.
+	PeakPhysicalRequests int64
 }
 
-// resetStats zeroes st for a new request, or returns a throwaway one when
-// the caller asked for none, so that counting never tests for nil.
-func resetStats(st *ReadStats) *ReadStats {
+// takeStats zeroes st for a new operation. When the caller asked for no
+// statistics (st is nil) it returns a zeroed throwaway from spareStats as
+// both the statistics and spare, so that counting never tests for nil; the
+// operation hands spare back with dropStats once it has ended and nothing
+// writes the throwaway any more. A throwaway is taken from a pool, not
+// allocated, because it cannot live on the stack: the operation's scans,
+// chunks and storage readers keep a pointer to it.
+func takeStats(st *ReadStats) (_, spare *ReadStats) {
 	if st == nil {
-		return new(ReadStats)
+		spare = spareStats.Get().(*ReadStats)
+		*spare = ReadStats{}
+		return spare, spare
 	}
 	*st = ReadStats{}
-	return st
+	return st, nil
 }
 
-// Add adds every count of o to st: the work of several operations, such as
-// a plan, its split and the scans of its shards.
+// dropStats returns the throwaway takeStats handed out, if any.
+func dropStats(spare *ReadStats) {
+	if spare != nil {
+		spareStats.Put(spare)
+	}
+}
+
+var spareStats = sync.Pool{New: func() any { return new(ReadStats) }}
+
+// Add sums counters and takes the maximum of each peak: the work of several
+// operations, such as a plan, its split and the scans of its shards.
+// The resulting peak is the largest constituent operation peak,
+// not the peak of those operations running concurrently.
 func (st *ReadStats) Add(o ReadStats) {
 	st.ListIndexSkips += o.ListIndexSkips
 	st.ListIndexDelimiter += o.ListIndexDelimiter
@@ -111,4 +171,20 @@ func (st *ReadStats) Add(o ReadStats) {
 	st.ReadAheadReads += o.ReadAheadReads
 	st.ReadAheadUnused += o.ReadAheadUnused
 	st.ReadAheadUnusedBytes += o.ReadAheadUnusedBytes
+	st.SourceBatches += o.SourceBatches
+	st.ScalarFallbackReads += o.ScalarFallbackReads
+	st.PhysicalRequests += o.PhysicalRequests
+	st.PhysicalBytes += o.PhysicalBytes
+	st.PhysicalRetries += o.PhysicalRetries
+	st.PhysicalFailures += o.PhysicalFailures
+	st.PlannedRanges += o.PlannedRanges
+	st.PlannedRequests += o.PlannedRequests
+	st.PlannedOverReadBytes += o.PlannedOverReadBytes
+	st.ByteCacheHitBytes += o.ByteCacheHitBytes
+	st.MetadataHitBytes += o.MetadataHitBytes
+	st.RequestMemoHitBytes += o.RequestMemoHitBytes
+	st.UnreportedIOCalls += o.UnreportedIOCalls
+	// A peak of several operations is the largest of theirs, not a
+	// measurement of their concurrent peak.
+	st.PeakPhysicalRequests = max(st.PeakPhysicalRequests, o.PeakPhysicalRequests)
 }

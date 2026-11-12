@@ -196,9 +196,12 @@ func TestRangeBatchesDoesNotPlan(t *testing.T) {
 	dir := write(t, spec)
 	rng := Query{Selection: Selection{Span: Span{Start: records[100].Key}}, Limit: 50, Columns: transitionColumns}
 	var cold, batched ReadStats
-	want, err := open(t, dir, OpenOptions{}).Rows(ctx, rng, &cold)
+	// Index reads from the Source, not retained metadata: planning's are
+	// what make it cost more.
+	opt := OpenOptions{Read: ReadPolicy{DisableSpeculation: true}}
+	want, err := open(t, dir, opt).Rows(ctx, rng, &cold)
 	must(t, err)
-	got := collectRangeBatches(t, open(t, dir, OpenOptions{}), rng, nil, nil)
+	got := collectRangeBatches(t, open(t, dir, opt), rng, nil, nil)
 	batched = got.stats
 	if !reflect.DeepEqual(got.rows, want) {
 		t.Fatal("rows differ from Range")
@@ -207,7 +210,7 @@ func TestRangeBatchesDoesNotPlan(t *testing.T) {
 		t.Fatalf("cold stats\nRangeBatches %+v\nRange        %+v", batched, cold)
 	}
 	var planned ReadStats
-	_, err = open(t, dir, OpenOptions{}).Plan(ctx, []Selection{{Span: Span{Start: records[100].Key}}}, transitionColumns, &planned)
+	_, err = open(t, dir, opt).Plan(ctx, []Selection{{Span: Span{Start: records[100].Key}}}, transitionColumns, &planned)
 	must(t, err)
 	if planned.SourceReads <= batched.SourceReads || planned.PartsOpened <= batched.PartsOpened {
 		t.Fatalf("planning read %+v, RangeBatches %+v: the fixture needs planning to cost more", planned, batched)

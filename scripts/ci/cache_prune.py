@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 PREFIX = r"seekparquet-go-v1-"
-BUILD = re.compile(PREFIX + r"build-(Linux|macOS|Windows)-(X64|ARM64)-(go[0-9.]+)-(go-lint|go-race-(?:differential|randomized|rest)|go-windows|go-macos|conformance|java|docs)-[0-9a-f]{64}-([0-9a-f]{40})$")
+BUILD = re.compile(PREFIX + r"build-(Linux|macOS|Windows)-(X64|ARM64)-(go[0-9.]+)-(go-lint|go-race-(?:differential|randomized|faults|rest)|go-windows|go-macos|conformance|java|docs)-[0-9a-f]{64}-([0-9a-f]{40})$")
 MODULE = re.compile(PREFIX + r"mod-(Linux|macOS|Windows)-(X64|ARM64)-[0-9a-f]{64}$")
 
 

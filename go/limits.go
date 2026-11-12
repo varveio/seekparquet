@@ -12,8 +12,9 @@ import (
 // Every limit is checked against what the files declare before anything
 // is allocated for it, and exceeding one fails the operation with an error
 // wrapping ErrLimitExceeded: a policy of the caller, not a refusal of the
-// data, reported as a *LimitError. OffsetIndexMemory is the exception: it
-// bounds a cache, and exceeding it never fails an operation. A zero field
+// data, reported as a *LimitError. OffsetIndexMemory and
+// PageIndexCacheMemory are the exceptions: they bound caches, and exceeding
+// them never fails an operation. A zero field
 // takes its default; a negative field is an invalid request when the
 // dataset is opened. Within a page, the counts and
 // lengths its encodings declare are checked against the page header before
@@ -88,6 +89,17 @@ type Limits struct {
 	// budget and even if no request projects a value column. Default
 	// 256 MiB.
 	OffsetIndexMemory int64
+	// PageIndexCacheMemory bounds the raw page-index bytes one Dataset
+	// keeps from the ends of the parts it checked
+	// (ReadPolicy.MetadataPrefetchBytes), to serve later ColumnIndex and
+	// OffsetIndex loads without a read. It is a cache, and only of those
+	// raw bytes: past it, the part used least recently gives up its bytes,
+	// or a part's are not kept, and later loads read the indexes from the
+	// Source; it never fails an operation. Footers, which every checked
+	// part keeps, decoded key indexes (IndexMemory) and page locations
+	// (OffsetIndexMemory) are outside it: no aggregate bound on a
+	// Dataset's metadata exists yet. Default 128 MiB.
+	PageIndexCacheMemory int64
 	// GetRows bounds the rows Dataset.Get returns: a group of more rows
 	// fails with a *LimitError naming GetRows, and is read by paging
 	// KeySpan(key) with Rows instead. It bounds a convenience call's row
@@ -100,13 +112,13 @@ type Limits struct {
 // unnoticed.
 func (l *Limits) check() error {
 	for _, f := range []struct {
-		name  LimitName
+		name  LimitName // or the name of a cache field, which no LimitError names
 		value int64
 	}{
 		{LimitManifestBytes, l.ManifestBytes}, {LimitParts, int64(l.Parts)}, {LimitFooterBytes, l.FooterBytes},
 		{LimitPageIndexBytes, l.PageIndexBytes}, {LimitMetadataMemory, l.MetadataMemory}, {LimitPageBytes, l.PageBytes},
 		{LimitPageValues, l.PageValues}, {LimitPageMemory, l.PageMemory}, {LimitIndexMemory, l.IndexMemory},
-		{LimitOffsetIndexMemory, l.OffsetIndexMemory}, {LimitGetRows, int64(l.GetRows)},
+		{LimitOffsetIndexMemory, l.OffsetIndexMemory}, {LimitGetRows, int64(l.GetRows)}, {"PageIndexCacheMemory", l.PageIndexCacheMemory},
 	} {
 		if f.value < 0 {
 			return invalidRequest("Limits.%s is negative (%d)", f.name, f.value)
@@ -131,6 +143,7 @@ func (l Limits) withDefaults() Limits {
 	set(&l.PageMemory, worstPageMemory(l.PageValues, l.PageBytes))
 	set(&l.IndexMemory, 1<<30)
 	set(&l.OffsetIndexMemory, 256<<20)
+	set(&l.PageIndexCacheMemory, 128<<20)
 	if l.Parts <= 0 {
 		l.Parts = 1_000_000
 	}

@@ -379,7 +379,7 @@ func TestPlanBoundaries(t *testing.T) {
 		t.Run(fmt.Sprintf("bounds%d", geometry.IndexSizeLimit), func(t *testing.T) {
 			dir := write(t, parts(geometry, split(keys, 3)...))
 			d, src, rows, extents := openOracle(t, dir, "size")
-			must(t, d.Verify(ctx))
+			must(t, d.Verify(ctx, nil))
 			pages := 0
 			for _, p := range d.r.parts {
 				for _, grp := range p.groups {

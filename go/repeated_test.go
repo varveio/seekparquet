@@ -141,7 +141,7 @@ func TestRepeatedQueriesMatchSequentialOracle(t *testing.T) {
 				doc.RepeatedKeys = true
 				d := open(t, write(t, doc), OpenOptions{})
 				if verify {
-					must(t, d.Verify(ctx))
+					must(t, d.Verify(ctx, nil))
 				}
 				for _, start := range starts {
 					for _, exclusive := range []bool{false, true} {
@@ -399,7 +399,7 @@ func TestRepeatedRefusals(t *testing.T) {
 		}
 		r, err = openPartsOf(t, split, 2, Key{Column: "key"}, false, OpenOptions{})
 		must(t, err)
-		if err := r.verify(ctx); RefusalCodeOf(err) != CodeKeyOrder {
+		if err := r.verify(ctx, new(ReadStats)); RefusalCodeOf(err) != CodeKeyOrder {
 			t.Fatalf("verify: got %v, want key_order", err)
 		}
 	})

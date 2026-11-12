@@ -198,7 +198,7 @@ func (s *scan) keyPages(g groupRef) (*keyPages, error) {
 	if err != nil {
 		return kp, err
 	}
-	kp.chunk.ahead = s.ahead
+	kp.chunk.ahead, kp.chunk.walk = s.ahead, true
 	if s.keyScratch == nil {
 		return kp, nil
 	}

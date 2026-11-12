@@ -49,7 +49,7 @@ func checkDataset(t *testing.T, dir string, s samples.Sample) seekparquet.Metada
 		t.Fatalf("%s: open: %v", s.Name, err)
 	}
 	defer d.Close()
-	if err := d.Verify(context.Background()); err != nil {
+	if err := d.Verify(context.Background(), nil); err != nil {
 		t.Fatalf("%s: verify: %v", s.Name, err)
 	}
 	meta := d.Metadata()
@@ -503,7 +503,7 @@ func verifyDir(dir string) error {
 		return err
 	}
 	defer d.Close()
-	return d.Verify(context.Background())
+	return d.Verify(context.Background(), nil)
 }
 
 // sameValue reports whether a read value is the value written: both null,

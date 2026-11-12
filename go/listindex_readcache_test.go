@@ -135,7 +135,7 @@ func TestListIndexEmptyDeclinesAndTransientStats(t *testing.T) {
 			}
 		}
 	}
-	d := open(t, write(t, parts(testutil.Part{}, []string{"a/x", "b/y"})), OpenOptions{})
+	d := open(t, write(t, parts(testutil.Part{}, []string{"a/x", "b/y"})), OpenOptions{Read: ReadPolicy{DisableSpeculation: true}}) // indexes read from the Source
 	must(t, d.r.checkParts(ctx, new(ReadStats)))
 	var st ReadStats
 	_, err := d.r.parts[0].loadKeyIndex(ctx, 0, &st, false)

@@ -52,7 +52,7 @@ func TestLazyOpenCounts(t *testing.T) {
 	if _, err := d.Rows(ctx, Query{Selection: Selection{Span: Span{Prefix: []byte("c/")}}, Limit: 100}, &st); err != nil || st.PartsOpened != 0 {
 		t.Fatalf("repeated read: %v, %d parts opened", err, st.PartsOpened)
 	}
-	must(t, d.Verify(ctx))
+	must(t, d.Verify(ctx, nil))
 	if src.opened.Load() != 5 {
 		t.Fatalf("Verify: %d files opened in all, want the manifest and 4 parts", src.opened.Load())
 	}
@@ -88,7 +88,7 @@ func TestLazyPartRefusal(t *testing.T) {
 	if _, err := d.List(ctx, ListQuery{Prefix: []byte("d/"), Limit: 5}, nil); RefusalCodeOf(err) != CodeStampMismatch {
 		t.Fatalf("list: %v, want stamp_mismatch", err)
 	}
-	if err := d.Verify(ctx); RefusalCodeOf(err) != CodeStampMismatch {
+	if err := d.Verify(ctx, nil); RefusalCodeOf(err) != CodeStampMismatch {
 		t.Fatalf("Verify: %v, want stamp_mismatch", err)
 	}
 	if src.opened.Load() != 5 || src.closed.Load() != 2 {
