@@ -1,0 +1,24 @@
+{
+  "description": "Go ReadStats field to Java ReadStats record component. Meanings come from the Go field comments (go/stats.go). go/internal/tools/docgen fails when a Go field is missing here or listed here but absent from Go. java null means Go only.",
+  "fields": [
+    {"go": "PartsOpened", "java": "partsOpened"},
+    {"go": "KeyPagesDecoded", "java": "keyPagesDecoded"},
+    {"go": "ValuePagesDecoded", "java": "valuePagesDecoded"},
+    {"go": "KeysDecoded", "java": "keysDecoded"},
+    {"go": "RowGroupsOpened", "java": "rowGroupsOpened"},
+    {"go": "IndexLoads", "java": "indexLoads"},
+    {"go": "PageIndexSeeks", "java": "pageIndexSeeks"},
+    {"go": "PrefixSkips", "java": "prefixSkips"},
+    {"go": "GroupsSkipped", "java": "groupsSkipped"},
+    {"go": "SourceReads", "java": "sourceReads"},
+    {"go": "SourceBytes", "java": "sourceBytes"},
+    {"go": "ReadAheadReads", "java": "readAheadReads"},
+    {"go": "ReadAheadUnused", "java": "readAheadUnused"},
+    {"go": "ReadAheadUnusedBytes", "java": "readAheadUnusedBytes"},
+    {"go": "ListIndexSkips", "java": "listIndexSkips"},
+    {"go": "ListIndexDelimiter", "java": "listIndexDelimiter"},
+    {"go": "ListIndexMissingGroup", "java": "listIndexMissingGroup"},
+    {"go": "ListIndexDensePage", "java": "listIndexDensePage"},
+    {"go": "ListIndexUnsafeRun", "java": "listIndexUnsafeRun"}
+  ]
+}
