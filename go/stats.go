@@ -6,9 +6,9 @@ package seekparquet
 import "sync"
 
 // ReadStats counts the work of one operation: Dataset.Rows, Get, Scan,
-// List, Plan, PlanRows, BuildListIndex or Verify; or Plan.Split, Scan or
-// ScanValues. Pass a *ReadStats as the operation's statistics argument to
-// receive it: it is reset when the
+// List, Page, Aggregate, AggregateRows, Plan, PlanRows, BuildListIndex or Verify;
+// or Plan.Split, Scan, ScanParallel or ScanValues. Pass a *ReadStats as the
+// operation's statistics argument to receive it: it is reset when the
 // operation starts and filled as it runs. The counts are exact for the
 // operation and are filled whether it succeeds or fails, up to the point it
 // stopped. Add sums the counts of several operations.
