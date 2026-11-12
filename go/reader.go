@@ -27,6 +27,9 @@ import (
 // part has its key bounds and row count; otherwise every part is checked
 // when the reader opens.
 type reader struct {
+	// id identifies the Dataset handle the reader serves, for the row
+	// positions it makes (RowPosition): never zero, never reused.
+	id     uint64
 	key    Key
 	limits Limits
 	policy ReadPolicy
@@ -87,6 +90,9 @@ type reader struct {
 	closed    bool // guarded by mu, beside closeOnce to fill its padding
 	closeErr  error
 }
+
+// readerIDs numbers the readers opened, for reader.id.
+var readerIDs atomic.Uint64
 
 // column is a top-level column's signature (COL-5) and the part it was
 // first seen in.
@@ -213,7 +219,7 @@ type fetchedInput struct {
 // openParts takes ownership of every file that implements io.Closer: when
 // it fails it closes them all, and on success reader.close closes them.
 func openParts(ctx context.Context, inputs []partInput, key Key, opt OpenOptions) (_ *reader, err error) {
-	r := &reader{key: key, limits: opt.Limits.withDefaults(), policy: opt.Read.withDefaults(), bounded: true, columns: map[string]column{}}
+	r := &reader{id: readerIDs.Add(1), key: key, limits: opt.Limits.withDefaults(), policy: opt.Read.withDefaults(), bounded: true, columns: map[string]column{}}
 	r.closing, r.closeNow = context.WithCancelCause(context.Background())
 	defer func() {
 		if err != nil {

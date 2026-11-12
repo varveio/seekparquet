@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -383,4 +384,42 @@ func selectionsOf(qs []Query) []Selection {
 		out[i] = q.Selection
 	}
 	return out
+}
+
+// sameEntries reports whether two listings, possibly of different Dataset
+// handles, have the same entries: equal but for the rows' positions, which
+// belong to their handles, and whose ordinals must agree wherever both
+// listings established them.
+func sameEntries(want, got []ListEntry) bool {
+	if len(want) != len(got) {
+		return false
+	}
+	for i := range want {
+		w, g := want[i], got[i]
+		if !samePosition(w.Rows.Start, g.Rows.Start) || !samePosition(w.Rows.End, g.Rows.End) {
+			return false
+		}
+		w.Rows, g.Rows = RowSpan{}, RowSpan{}
+		if !reflect.DeepEqual(w, g) {
+			return false
+		}
+	}
+	return true
+}
+
+// samePosition reports whether two positions agree where both are known.
+func samePosition(a, b RowPosition) bool {
+	x, okx := a.Ordinal()
+	y, oky := b.Ordinal()
+	return !okx || !oky || x == y
+}
+
+// sameResults is sameEntries for listings, and reflect.DeepEqual for
+// anything else.
+func sameResults(want, got any) bool {
+	if w, ok := want.([]ListEntry); ok {
+		g, ok := got.([]ListEntry)
+		return ok && sameEntries(w, g)
+	}
+	return reflect.DeepEqual(want, got)
 }

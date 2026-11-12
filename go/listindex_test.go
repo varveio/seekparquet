@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -113,7 +112,7 @@ func TestListIndexDifferential(t *testing.T) {
 						}
 						for _, tc := range cases {
 							got, err := indexed.List(ctx, tc.query, nil)
-							if err != nil || !reflect.DeepEqual(tc.want, got) {
+							if err != nil || !sameEntries(tc.want, got) {
 								t.Fatalf("cap=%d budget=%d prefix=%q cursor=%+v end=%q limit=%d error=%v\nwant=%v\ngot=%v", cap, budget, tc.query.Prefix, tc.query.Cursor, tc.query.End, tc.query.Limit, err, entriesOf(tc.want), entriesOf(got))
 							}
 						}
@@ -144,7 +143,7 @@ func TestListIndexPageCountsAndConcurrency(t *testing.T) {
 				defer wg.Done()
 				for range 10 {
 					got, e := d.List(ctx, q, nil)
-					if e != nil || !reflect.DeepEqual(want, got) {
+					if e != nil || !sameEntries(want, got) {
 						t.Error("concurrent listing", e)
 					}
 				}
@@ -156,13 +155,13 @@ func TestListIndexPageCountsAndConcurrency(t *testing.T) {
 		var reads ReadStats
 		got, err := d.List(ctx, q, &reads)
 		must(t, err)
-		if !reflect.DeepEqual(want, got) || reads.KeyPagesDecoded > 2 || reads.ListIndexSkips < 99 {
+		if !sameEntries(want, got) || reads.KeyPagesDecoded > 2 || reads.ListIndexSkips < 99 {
 			t.Fatalf("build=%+v reads=%+v", st, reads)
 		}
 		q.Cursor = want[49].Cursor()
 		got, err = d.List(ctx, q, nil)
 		must(t, err)
-		if !reflect.DeepEqual(want[50:], got) || reads.KeyPagesDecoded > 2 {
+		if !sameEntries(want[50:], got) || reads.KeyPagesDecoded > 2 {
 			t.Fatalf("cursor pages: %+v", reads)
 		}
 		for range 4 {
@@ -172,7 +171,7 @@ func TestListIndexPageCountsAndConcurrency(t *testing.T) {
 				for range 10 {
 					query := q
 					result, e := d.List(ctx, query, nil)
-					if e != nil || !reflect.DeepEqual(want[50:], result) {
+					if e != nil || !sameEntries(want[50:], result) {
 						t.Error("indexed concurrency", e)
 					}
 				}

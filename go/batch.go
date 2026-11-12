@@ -139,6 +139,11 @@ func (plan *Plan) scanBatches(ctx context.Context, st *ReadStats, kr keyReuse, f
 				return err
 			}
 			s.groupKey, s.groupStart = s.key, sp.start
+			if sp.inside {
+				if err := s.findGroupStart(); err != nil {
+					return err
+				}
+			}
 		} else if err := s.start(sp.from, sp.exclusive, sp.cursor); err != nil {
 			return err
 		}

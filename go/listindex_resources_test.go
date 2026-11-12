@@ -10,7 +10,6 @@ import (
 	"github.com/varveio/seekparquet/go/internal/testutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -43,7 +42,7 @@ func TestListIndexSharedMemoryIsolation(t *testing.T) {
 			}
 			got, err := d.List(ctx, q, nil)
 			must(t, err)
-			if !reflect.DeepEqual(want, got) {
+			if !sameEntries(want, got) {
 				t.Fatalf("%v != %v", want, got)
 			}
 		}
