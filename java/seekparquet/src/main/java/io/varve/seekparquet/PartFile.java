@@ -306,26 +306,29 @@ final class PartFile implements AutoCloseable {
     /**
      * Reads and decodes a part's footer: one read of the part's end ({@link #footerWindow}), which holds the
      * trailer and, when it fits, the footer; a footer larger than the window costs one more read, of exactly
-     * the footer bytes before it. The trailer is checked, and the footer length against the part's size and
-     * {@link Limits#maxFooterBytes()}, before anything is allocated from it. Only the footer's own bytes are
-     * kept, in an array of their own, never the window.
+     * the footer bytes before it. Both magics are checked (CHECK-1): a part no larger than the window holds
+     * its leading magic in the window, and a larger part costs one more read, of its first 4 bytes, made
+     * first. {@code PARE} at either end is an encrypted part; any other magic but {@code PAR1} is
+     * {@code invalid_footer}. The footer length is checked against the part's size and {@link
+     * Limits#maxFooterBytes()} before anything is allocated from it. Only the footer's own bytes are kept,
+     * in an array of their own, never the window.
      */
     static FileMetaData readFooter(PartSource source, String name, long size, ReadContext ctx) {
         if (size < 12) {
             throw refuse(RefusalCode.INVALID_FOOTER, name, "the part is too short to be Parquet");
         }
         int window = footerWindow(size, ctx.limits);
+        ByteBuffer head = window < size ? read(source, name, 0, 4, ctx) : null;
         ByteBuffer tail = read(source, name, size - window, window, ctx);
         int start = tail.position();
         int end = start + window;
-        byte[] magic = new byte[4];
-        tail.duplicate().position(end - 4).get(magic);
-        String m = new String(magic, StandardCharsets.ISO_8859_1);
-        if (m.equals("PARE")) {
-            throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCRYPTION, "part " + name + " has an encrypted footer");
+        String leading = head == null ? magic(tail, start) : magic(head, head.position());
+        String trailing = magic(tail, end - 4);
+        if (leading.equals("PARE") || trailing.equals("PARE")) {
+            throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCRYPTION, "part " + name + " uses Parquet modular encryption");
         }
-        if (!m.equals("PAR1")) {
-            throw refuse(RefusalCode.INVALID_FOOTER, name, "the part does not end with PAR1");
+        if (!leading.equals("PAR1") || !trailing.equals("PAR1")) {
+            throw refuse(RefusalCode.INVALID_FOOTER, name, "the file does not begin and end with PAR1");
         }
         long footerLength = Integer.toUnsignedLong(tail.duplicate().order(ByteOrder.LITTLE_ENDIAN).getInt(end - 8));
         if (footerLength > size - 12) {
@@ -349,6 +352,13 @@ final class PartFile implements AutoCloseable {
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_FOOTER, name, "the footer does not parse: " + e.getMessage());
         }
+    }
+
+    /** {@return the 4 bytes of {@code b} at {@code at}, as ISO-8859-1 text} */
+    private static String magic(ByteBuffer b, int at) {
+        byte[] magic = new byte[4];
+        b.duplicate().position(at).get(magic);
+        return new String(magic, StandardCharsets.ISO_8859_1);
     }
 
     /** Checks a column chunk's metadata against its schema leaf, and its byte range against the file. */

@@ -31,9 +31,11 @@ import org.junit.jupiter.api.Test;
 /**
  * A part's footer is read in one read of the part's end (the last 64 KiB, the whole part when smaller, never
  * more than {@code maxFooterBytes} plus the trailer), and a footer larger than that window in one more read
- * of exactly the bytes before it. Each case states its exact reads and bytes; every outcome on a malformed
- * part (refusal code and message, unsupported part, limit, success) is the one the reader gave before the
- * window was bounded, checked against a copy of that reader's footer read.
+ * of exactly the bytes before it. Both magics are checked (CHECK-1): a part larger than the window costs one
+ * more read, of its 4-byte leading magic. Each case states its exact reads and bytes; every outcome on a
+ * malformed part (refusal code and message, unsupported part, limit, success) is the one the reader gave
+ * before the window was bounded, with the leading magic checked too, checked against a copy of that reader's
+ * footer read.
  */
 class FooterWindowTest {
 
@@ -159,13 +161,14 @@ class FooterWindowTest {
         List<Case> cases = List.of(
                 new Case("small part, read whole", small, Limits.DEFAULT, 1, small.length),
                 new Case("part of exactly the window", grow(small, W - small.length), Limits.DEFAULT, 1, W),
-                new Case("part one byte over the window", grow(small, W + 1 - small.length), Limits.DEFAULT, 1, W),
-                new Case("large part, footer in the window", large, Limits.DEFAULT, 1, W),
-                new Case("footer and trailer exactly the window", boundary, Limits.DEFAULT, 1, W),
-                new Case("footer one byte over the window", past, Limits.DEFAULT, 2, W + 1),
-                new Case("footer larger than the window", huge, Limits.DEFAULT, 2, footerLength(huge) + 8L),
-                new Case("window bounded by maxFooterBytes", large, limits(3000), 1, 3008),
-                new Case("window bounded to exactly the footer", large, limits(footerLength(large)), 1, footerLength(large) + 8L));
+                // Larger than the window: one more read, of the 4-byte leading magic.
+                new Case("part one byte over the window", grow(small, W + 1 - small.length), Limits.DEFAULT, 2, W + 4),
+                new Case("large part, footer in the window", large, Limits.DEFAULT, 2, W + 4),
+                new Case("footer and trailer exactly the window", boundary, Limits.DEFAULT, 2, W + 4),
+                new Case("footer one byte over the window", past, Limits.DEFAULT, 3, W + 1 + 4),
+                new Case("footer larger than the window", huge, Limits.DEFAULT, 3, footerLength(huge) + 8L + 4),
+                new Case("window bounded by maxFooterBytes", large, limits(3000), 2, 3008 + 4),
+                new Case("window bounded to exactly the footer", large, limits(footerLength(large)), 2, footerLength(large) + 8L + 4));
         for (Case c : cases) {
             ReadContext ctx = new ReadContext(Cancellation.none(), c.limits);
             FileMetaData meta = PartFile.readFooter(source(c.raw), "p", c.raw.length, ctx);
@@ -218,6 +221,24 @@ class FooterWindowTest {
         }
     }
 
+    /** The leading magic is checked whether or not the window holds it: PAR1 or invalid_footer, PARE unsupported. */
+    @Test
+    void theLeadingMagicIsCheckedOnEveryPath() {
+        for (byte[] raw : List.of(small, large, huge)) {
+            for (String head : List.of("PAR0", "par1", "\0\0\0\0")) {
+                byte[] bad = edit(raw, 0, head.getBytes(StandardCharsets.ISO_8859_1));
+                RefusalException e = assertThrows(RefusalException.class,
+                        () -> PartFile.readFooter(source(bad), "p", bad.length, new ReadContext(Cancellation.none(), Limits.DEFAULT)));
+                assertEquals(RefusalCode.INVALID_FOOTER, e.code());
+                assertTrue(e.getMessage().contains("does not begin and end with PAR1"), e.getMessage());
+            }
+            byte[] encrypted = edit(raw, 0, "PARE".getBytes(StandardCharsets.US_ASCII));
+            UnsupportedFeatureException u = assertThrows(UnsupportedFeatureException.class,
+                    () -> PartFile.readFooter(source(encrypted), "p", encrypted.length, new ReadContext(Cancellation.none(), Limits.DEFAULT)));
+            assertEquals(UnsupportedCode.UNSUPPORTED_ENCRYPTION, u.code());
+        }
+    }
+
     /** A footer over {@code maxFooterBytes} is refused before anything beyond the bounded window is read. */
     @Test
     void aFooterOverTheLimitIsRefusedWithinTheBoundedWindow() {
@@ -225,8 +246,8 @@ class FooterWindowTest {
             ReadContext ctx = new ReadContext(Cancellation.none(), limits(64));
             LimitExceededException e = assertThrows(LimitExceededException.class, () -> PartFile.readFooter(source(raw), "p", raw.length, ctx));
             assertTrue(e.getMessage().contains("maxFooterBytes"), e.getMessage());
-            assertEquals(1, ctx.stats.sourceReads);
-            assertEquals(64 + 8, ctx.stats.sourceBytes);
+            assertEquals(2, ctx.stats.sourceReads);
+            assertEquals(4 + 64 + 8, ctx.stats.sourceBytes);
         }
     }
 
@@ -280,23 +301,29 @@ class FooterWindowTest {
         }
     }
 
-    /** The reader's footer read before its window was bounded by maxFooterBytes: the oracle of the refusals. */
+    /**
+     * The reader's footer read before its window was bounded by maxFooterBytes, with the leading magic checked
+     * as well as the trailing one (CHECK-1): the oracle of the refusals.
+     */
     private static FileMetaData previousReadFooter(PartSource source, long size, ReadContext ctx) throws IOException {
         String name = "p";
         if (size < 12) {
             throw new RefusalException(RefusalCode.INVALID_FOOTER, name, "the part is too short to be Parquet");
         }
+        byte[] lead = new byte[4];
+        source.read(0, 4, ctx.cancellation).duplicate().get(lead);
         int tailLength = (int) Math.min(size, PartFile.TAIL_WINDOW);
         ByteBuffer tail = source.read(size - tailLength, tailLength, ctx.cancellation).duplicate();
         int end = tail.position() + tailLength;
         byte[] magic = new byte[4];
         tail.duplicate().position(end - 4).get(magic);
         String m = new String(magic, StandardCharsets.ISO_8859_1);
-        if (m.equals("PARE")) {
-            throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCRYPTION, "part " + name + " has an encrypted footer");
+        String l = new String(lead, StandardCharsets.ISO_8859_1);
+        if (m.equals("PARE") || l.equals("PARE")) {
+            throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCRYPTION, "part " + name + " uses Parquet modular encryption");
         }
-        if (!m.equals("PAR1")) {
-            throw new RefusalException(RefusalCode.INVALID_FOOTER, name, "the part does not end with PAR1");
+        if (!m.equals("PAR1") || !l.equals("PAR1")) {
+            throw new RefusalException(RefusalCode.INVALID_FOOTER, name, "the file does not begin and end with PAR1");
         }
         long footerLength = Integer.toUnsignedLong(tail.duplicate().order(ByteOrder.LITTLE_ENDIAN).getInt(end - 8));
         if (footerLength > size - 12) {
