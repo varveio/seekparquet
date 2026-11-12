@@ -12,7 +12,7 @@
     },
     {
       "code": "invalid_manifest",
-      "meaning": "The manifest is not valid: unparseable JSON, duplicate member names, a missing, extra or ill-typed member, a wrong format name, malformed base64, a part with no rows, or a part path that breaks PART-1. Also part bounds in the manifest that are not ascending and disjoint (PART-4). A missing or malformed key declaration is also invalid_manifest.",
+      "meaning": "The manifest is not valid: unparseable JSON, duplicate member names (including inside extensions), a missing, extra or ill-typed member, an extensions member that is not an object, a wrong format name, malformed base64, a part with no rows, or a part path that breaks PART-1. Also part bounds in the manifest that are not ascending and disjoint (PART-4). A missing or malformed key declaration is also invalid_manifest.",
       "requirements": [
         "MAN-1",
         "MAN-2",
@@ -24,7 +24,8 @@
         "MAN-6",
         "MAN-7",
         "PART-4",
-        "MAN-8"
+        "MAN-8",
+        "EXT-4"
       ],
       "detect": "open"
     },
@@ -57,7 +58,7 @@
     },
     {
       "code": "invalid_footer",
-      "meaning": "A part's Parquet footer cannot be read, its row groups' row counts do not sum to the footer's row count, or a column chunk refers to another file (file_path set).",
+      "meaning": "A part does not begin and end with the PAR1 magic, its Parquet footer cannot be read, its row groups' row counts do not sum to the footer's row count, or a column chunk refers to another file (file_path set).",
       "requirements": [
         "CHECK-1",
         "FILE-1"
@@ -185,7 +186,7 @@
       "codes": [
         {
           "code": "unsupported_encoding",
-          "meaning": "a codec or encoding outside what the reader implements"
+          "meaning": "a codec or encoding outside what the reader implements (never one of the ENC-1 baseline; for example BROTLI)"
         },
         {
           "code": "unsupported_projection",
@@ -193,7 +194,7 @@
         },
         {
           "code": "unsupported_encryption",
-          "meaning": "an encrypted part"
+          "meaning": "an encrypted part (PARE magic at either end, or encryption declared in the footer)"
         }
       ]
     },

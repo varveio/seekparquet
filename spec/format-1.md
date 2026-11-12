@@ -61,9 +61,11 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
   member name twice, compared after decoding escapes. A reader MUST refuse a manifest with duplicate names
   (`invalid_manifest`).
 - [MAN-3] The manifest MUST conform to [manifest.schema.json](manifest.schema.json). Members not defined by
-  this document are not allowed, at the top level, in `key` or in a part, except inside `extensions` (§3.4). A reader
-  MUST refuse a manifest with an undefined member (`invalid_manifest`). After a release, new members arrive only with a new
-  format version or draft revision. Unreleased draft revision 1 is edited in place.
+  this document are not allowed, at the top level, in `key` or in a part, except inside an `extensions` object
+  (§3.4), which the top level and each part may have. A reader MUST refuse a manifest with an undefined member
+  (`invalid_manifest`). After a release, new members arrive only with a new format version or draft revision
+  (VER-2); metadata a reader may ignore arrives inside `extensions`. Unreleased draft revision 1 is edited in
+  place.
 - [MAN-6] The integer members this document defines (`format_version`, `draft_revision`, `rows`, `bytes`)
   are written as JSON numbers with no fraction, exponent or leading zeros, and lie between 0 and 2^63 − 1.
   Numbers inside `extensions` are ordinary JSON numbers and are not constrained. A reader MUST parse them exactly, without rounding, and refuse any other spelling
@@ -107,6 +109,7 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
 | `min_key_base64` | string | yes | The part's first key, exactly, in standard base64 (RFC 4648 §4, with padding). |
 | `max_key_base64` | string | yes | The part's last key, exactly, in the same encoding. |
 | `sha256` | string | no | Lowercase hexadecimal SHA-256 of the part file's exact bytes. |
+| `extensions` | object | no | Producer and accelerator metadata about this part (§3.4). |
 
 - [PART-1] `path` is a sequence of segments separated by `/`. Each segment is non-empty, is neither `.` nor
   `..`, and contains no `\` and no control character (U+0000 to U+001F and U+007F). The path does not begin
@@ -130,14 +133,33 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
 
 ### 3.4 Extensions
 
-`extensions` is an object whose member names are namespaces chosen by producers (a tool or organisation
-name, for example `"swath"`), each holding any JSON value.
+The top level of the manifest, and each part, MAY have an `extensions` member: an object whose member names
+are non-empty namespaces chosen by producers (a tool or organisation name, for example `"swath"`), each
+holding any JSON value. Extensions are the one place where metadata can be added without a new format
+version or draft revision. An **accelerator** is extension metadata that lets a reader find or read data with
+fewer or smaller reads, and that a reader may ignore.
 
 - [EXT-1] Extensions carry information the format does not define, such as what a dataset was produced
-  from and whether it covers its whole source. They MUST NOT change the meaning of anything this document
-  defines. A reader MUST be able to open and query a dataset while ignoring every extension.
-- [EXT-2] A reader that exposes the manifest SHOULD expose extensions unchanged, so that consumers can apply
-  their own acceptance policies (for example, "accept only a complete listing of the whole bucket").
+  from, whether it covers its whole source, or an accelerator. Extension metadata, wherever it appears, MUST
+  NOT change which datasets are valid, what a query returns, which checks a reader makes (§7), or the meaning
+  of any member this document defines. A reader MUST be able to open and query a dataset while ignoring
+  every extension.
+- [EXT-2] A reader that exposes the manifest SHOULD expose extensions unchanged, the top-level object and
+  each part's, so that consumers can apply their own acceptance policies (for example, "accept only a
+  complete listing of the whole bucket").
+- [EXT-3] A reader MUST ignore namespaces it does not know and, within a namespace it knows, members,
+  values and accelerator versions it does not know. A reader that uses an accelerator and finds its metadata
+  malformed, inconsistent with the data, or otherwise unusable MUST NOT use that accelerator, and MUST read
+  as if it were absent: such metadata never turns otherwise valid data into a refusal, and never makes a
+  check of §7 unnecessary.
+- [EXT-4] The rules of §3.1 hold inside extensions as everywhere else: malformed JSON, a duplicate member
+  name (MAN-2) and an unpaired surrogate (MAN-1) are `invalid_manifest`, and so are an `extensions` member
+  that is not an object and an empty namespace name (MAN-3).
+- [EXT-5] The namespace `seekparquet` is reserved for accelerators that this specification documents, each
+  in a document of its own; this draft defines none, so a reader ignores whatever the namespace holds
+  (EXT-3). A feature that changes which files are valid, what a query returns or what a reader must check is
+  not an extension: it needs a (`format_version`, `draft_revision`) pair that readers support (VER-1, VER-2),
+  and MUST NOT be carried in extensions.
 
 ## 4. Commit and immutability
 
@@ -162,7 +184,8 @@ Each part is a Parquet file that any conforming Parquet reader can read.
   No column chunk may set `file_path`. A reader MUST check this when it first touches the part (CHECK-1), before following any reference
   (`invalid_footer`).
 - [FILE-2] Parquet modular encryption is outside this draft. A reader MAY report an encrypted part as
-  unsupported (`unsupported_encryption`).
+  unsupported (`unsupported_encryption`). A part whose leading or trailing magic is `PARE`, or whose footer
+  declares encryption, is an encrypted part (CHECK-1).
 
 ### 5.1 The key column
 
@@ -272,11 +295,16 @@ The following affect speed and size, not validity.
   Small key pages bound how many keys a seek decodes.
 - [GEO-2] Row group size, part size, dictionary use, encodings and compression are the writer's choice,
   within the baseline below.
-- [ENC-1] A reader MUST support data page versions 1 and 2; the codecs `UNCOMPRESSED`, `SNAPPY`, `GZIP` and
-  `ZSTD`; and the encodings `PLAIN`, `RLE`, `RLE_DICTIONARY`, `PLAIN_DICTIONARY`, `DELTA_BINARY_PACKED`,
-  `DELTA_LENGTH_BYTE_ARRAY` and `DELTA_BYTE_ARRAY`. A writer SHOULD use only these. A file outside the
-  baseline is not invalid, but a reader MAY report it as unsupported (§8). *Open question for format 1:
-  whether `LZ4_RAW` and `BROTLI` join the baseline.*
+- [ENC-1] A reader MUST support data page versions 1 and 2; the codecs `UNCOMPRESSED`, `SNAPPY`, `GZIP`,
+  `ZSTD` and `LZ4_RAW`; and the encodings `PLAIN`, `RLE`, `RLE_DICTIONARY`, `PLAIN_DICTIONARY`,
+  `DELTA_BINARY_PACKED`, `DELTA_LENGTH_BYTE_ARRAY` and `DELTA_BYTE_ARRAY`. `LZ4_RAW` is Parquet's codec 7, the
+  LZ4 block format without framing; it is distinct from the deprecated `LZ4` codec (codec 5), which is outside
+  the baseline. A writer SHOULD use only these. A file outside the baseline is not invalid, but a reader MAY
+  report it as unsupported (`unsupported_encoding`, §10), never as a refusal of the data. `BROTLI` is such a
+  codec: valid, and outside the baseline. A codec or encoding a reader does not support MUST NOT prevent a
+  request that does not need the pages that use it: a value column the request does not project has no bearing
+  on its result (RANGE-2), so its codec does not either. A validation level that needs a codec or encoding the
+  validator does not support is incomplete (VAL-1).
 
 ## 6. Queries
 
@@ -302,6 +330,10 @@ finds them. A reader MAY use any access path, provided its results are these.
   includes none, since every key is non-empty and so greater than the empty string.
 - [QUERY-3] "All results" below means the results of the same request with a limit at least the number of
   rows in the dataset.
+
+Implementations MAY also expose streaming operations without a result limit. Those operations are outside
+the paginated interface QUERY-1 defines; their complete, ordered output is that of the corresponding range
+(RANGE-1) without a limit, and they do not waive any check of §7.
 
 ### 6.2 Range
 
@@ -381,7 +413,9 @@ A reader checks what it reads. It does not certify data it skips.
   bounds, row count and size, which is all a reader needs to route a query, so opening needs no part file.
   **When a read first routes to a part**, or the reader verifies every part (CHECK-3), and before using any
   of the part's data, a reader MUST check that the part file exists and has the manifest's exact size; that
-  its footer is readable and self-contained (FILE-1), and that its row groups' row counts sum to the footer's
+  it begins and ends with the Parquet magic `PAR1`, checking both ends (a part whose leading or trailing magic
+  is `PARE` is encrypted and reported as `unsupported_encryption`, FILE-2; any other value is
+  `invalid_footer`); that its footer is readable and self-contained (FILE-1), and that its row groups' row counts sum to the footer's
   own row count (`invalid_footer` otherwise), which equals the manifest's `rows` (`part_mismatch`
   otherwise); that its stamps agree (§5.4); that its `key` column meets KEY-1 and KEY-5; COL-5 against the
   parts already checked; and RG-1 for every non-empty row group. A failure of the manifest refuses the
@@ -405,7 +439,15 @@ A reader checks what it reads. It does not certify data it skips.
 - [CHECK-5] Corruption in the Parquet data itself (a page that does not decompress or decode, a malformed
   dictionary, a value count that does not match the rows) is reported as `invalid_parquet` when a reader
   meets it. A failure to read storage is not a refusal of the data, and a valid feature the reader does not
-  support is reported as unsupported (§10).
+  support is reported as unsupported (§10). Nor is a limit of the reader's own resources: a valid dataset that
+  exceeds the memory available, or a maximum the reader applies to a manifest, footer, page, key or result
+  (§11), is not thereby invalid, and the reader reports the limit as such, distinct from every refusal code.
+- [CHECK-6] A part's bytes are one immutable object (COMMIT-2), and a reader MUST NOT combine bytes of two
+  versions of a part: in particular, metadata it keeps from a part (its footer, page indexes, the outcome of
+  its checks) MUST NOT be used with the bytes of a replacement, even one of the same size. Establishing that
+  every read of a part, including retries and reads of any object an extension refers to, sees the same
+  object is the storage layer's responsibility (for example by a version identifier or a conditional read);
+  a reader whose storage reports that an object changed reports a storage error, not a refusal of the data.
 
 ## 8. Validation
 
@@ -445,8 +487,13 @@ Several version identities move independently:
 
 - [VER-1] An implementation MUST declare the (`format_version`, `draft_revision`) pairs it supports and MUST
   refuse every other pair (`unsupported_version`).
-- [VER-2] Before the first release, draft revision 1 is edited in place. After a release, a change that alters which bytes are valid or what a query returns requires a new draft revision
-  (while in draft) or a new format version (after format 1 is final).
+- [VER-2] Draft revision 1 is edited in place until its first release: the first tag of this specification
+  (`spec/v1.0.0-draft.1`), or the first implementation release that writes files of this draft for others to
+  read, whichever comes first. That release records the version pair it writes and the conformance revision it
+  passed ([RELEASING.md](../RELEASING.md)). After it, a change that alters which bytes are valid or what a query returns
+  requires a new draft revision (while in draft) or a new format version (after format 1 is final). Adding an
+  accelerator inside `extensions` that obeys EXT-1 and EXT-3 alters neither, and needs no new revision; a
+  change that does alter them cannot be made through extensions (EXT-5).
 
 ## 10. Refusal codes
 
@@ -463,4 +510,4 @@ When one dataset has several faults, a reader MAY report any code that applies t
 A reader handles files from untrusted sources. It MUST bound memory by the sizes the files declare and not
 trust them blindly (a page claiming gigabytes, a footer larger than its file), MUST confine part paths to
 the dataset root (PART-1), and SHOULD apply limits on manifest size, number of parts and page size that its
-users can configure.
+users can configure. Reaching such a limit is a limit of the reader, not a refusal of the data (CHECK-5).

@@ -35,3 +35,28 @@ First public draft of format 1. Files carry `format_version` 0, `draft_revision`
   respectively. Existing refusal codes cover all new faults; no new code is needed.
 - The snapshot holds live records, possibly several per key; producer-defined columns carry any
   version, position, identity or direction semantics.
+
+### Pre-release compatibility pass ([proposal 0001](proposals/0001-prerelease-compatibility-pass.md))
+
+- §3.3, §3.4, MAN-3, EXT-1 to EXT-5: each part MAY carry an `extensions` object, with the same schema as the
+  top-level one (`$defs/extensions` in the schema). Readers ignore unknown namespaces and members (EXT-3);
+  extension metadata never changes validity, query results, required checks or core members (EXT-1); unusable
+  accelerator metadata disables the accelerator and never refuses valid data (EXT-3); the JSON rules still
+  apply inside extensions (EXT-4); the namespace `seekparquet` is reserved for accelerators the specification
+  documents, of which there are none yet (EXT-5). The core manifest stays closed. Manifests with per-part
+  extensions become valid; no valid file becomes invalid and no query result changes.
+- ENC-1: `LZ4_RAW` joins the required codec baseline, and is distinct from the deprecated `LZ4`. `BROTLI` stays
+  valid and outside the baseline (`unsupported_encoding`, never a refusal). An unsupported codec in a column a
+  request does not need must not prevent that request. The open question is closed. No file changes validity;
+  a reader without `LZ4_RAW` no longer conforms.
+- CHECK-1, FILE-2: a reader checks both the leading and the trailing magic when it first touches a part:
+  `PARE` at either end is `unsupported_encryption`, anything else but `PAR1` is `invalid_footer`. No file
+  changes validity.
+- CHECK-5, §11: a limit of the reader's resources is not a refusal of the data. CHECK-6: a reader never
+  combines bytes of two versions of a part, such as cached metadata with a same-sized replacement; storage
+  identity is the storage layer's to establish.
+- §6.1: streaming operations without a result limit are outside QUERY-1's paginated interface; their output
+  follows the range semantics and they keep every check. QUERY-1 is unchanged.
+- VER-2 and the README state when in-place editing of draft revision 1 ends: at its first release, the first
+  specification tag or the first implementation release that writes files of this draft for others to read.
+  No version number changes.
