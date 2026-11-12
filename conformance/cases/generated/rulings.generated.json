@@ -10,7 +10,7 @@
   "cases": [
     {
       "id": "rulings/unknown-key-encoding-99-v1",
-      "description": "Column 0 first V1 data-page value encoding is 99; column encodings also includes 99.",
+      "description": "Column 0 first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.",
       "family": "rulings/0001",
       "fault_id": "unknown-key-encoding-99-v1",
       "requirements": [
@@ -29,7 +29,7 @@
     },
     {
       "id": "rulings/unknown-value-encoding-99-projected",
-      "description": "Column 1 first V1 data-page value encoding is 99; column encodings also includes 99.",
+      "description": "Column 1 first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.",
       "family": "rulings/0001",
       "fault_id": "unknown-value-encoding-99",
       "requirements": [
@@ -51,11 +51,10 @@
     },
     {
       "id": "rulings/unknown-value-encoding-99-unprojected",
-      "description": "Column 1 first V1 data-page value encoding is 99; column encodings also includes 99.",
+      "description": "Column 1 first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.",
       "family": "rulings/0001",
       "requirements": [
-        "ENC-1",
-        "RG-6"
+        "ENC-1"
       ],
       "dataset": "datasets/invalid/unknown-value-encoding-99",
       "request": {
@@ -119,8 +118,7 @@
       "description": "Optional value column CompressionCodec is 99; key codec is unchanged.",
       "family": "rulings/0001",
       "requirements": [
-        "ENC-1",
-        "RG-6"
+        "ENC-1"
       ],
       "dataset": "datasets/invalid/unknown-codec-99",
       "request": {
@@ -350,7 +348,7 @@
     },
     {
       "id": "rulings/ignored-enums-99",
-      "description": "Key boundary_order and every non-repeated key/value repetition_level_encoding are 99.",
+      "description": "Key boundary_order, every non-repeated key/value repetition_level_encoding and key/value encoding_stats encodings include 99.",
       "family": "rulings/0001",
       "requirements": [
         "ENC-1",

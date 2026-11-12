@@ -54,8 +54,14 @@ OPTIONAL_DESC = {
                        "unavailable, full is incomplete with code unsupported_encoding and a non-empty reason.",
 }
 BIG = 100000  # a limit at least the number of rows of every fixture (QUERY-3)
-# Retired cases that tested only removed request members; their ids are never reused.
-REMOVED = {"list/delimiter/continuation-without-after": "tested the removed continuation member"}
+# Retired cases for removed request members or renamed metadata; their ids are never reused.
+REMOVED = {
+    "list/delimiter/continuation-without-after": "tested the removed continuation member",
+    "validate-full/unknown-value-encoding-99-projected":
+        "renamed to validate-full/unknown-value-encoding-99; validation has no projection",
+    "validate-full/unknown-codec-99-projected":
+        "renamed to validate-full/unknown-codec-99; validation has no projection",
+}
 
 
 class Group:
@@ -208,7 +214,7 @@ def open_group(lock):
                                 "unusual but valid layouts.")
     g.fam("valid-dataset", "open each valid dataset; it must succeed")
     for d in lock["datasets"]:
-        if d["valid"] and d["name"] not in RULING_DATASETS:
+        if d["valid"]:
             reqs = ["CHECK-1", "LAYOUT-1", "MAN-1", "MAN-3"]
             if d["name"] == "multipart":
                 reqs += ["LAYOUT-3", "EXT-1", "ENC-1", "PART-5"]
@@ -919,7 +925,7 @@ def refusal_groups(lock):
     for lvl in LEVELS:
         gv[lvl].fam("valid-dataset", "every valid dataset completes this level and its prerequisites")
     for d in lock["datasets"]:
-        if not d["valid"] or d["name"] in RULING_DATASETS:
+        if not d["valid"]:
             continue
         label = {v: k for k, v in RENAMED.items()}.get(d["name"], d["name"])
         for lvl in LEVELS:
@@ -1127,6 +1133,8 @@ def rulings_group(lock, validators):
         else:
             expected = run(oracle.Dataset.load("rulings-controls" if name == "annotation-physical-fallback-controls" else "rulings"), request)
             requirements = ["STAMP-2"] if name == "metadata-no-value" else ["CHECK-1", "COL-3"] if name == "annotation-physical-fallback-controls" else ["ENC-1", "RG-6"]
+            if unprojected:
+                requirements = ["ENC-1"]
             meta, detect = None, None
         g.add(cid, requirements, d["dir"], expected, request=request, desc=d["description"], meta=meta, detect=detect)
     # Only the five validator cases requested by 0001: all prerequisites are explicit.
@@ -1141,7 +1149,7 @@ def rulings_group(lock, validators):
         levels[low] = {"result": "incomplete" if f.get("outcome") == "unsupported" else "failed", "code": f["codes"][0]}
         for higher in LEVELS[LEVELS.index(low) + 1:LEVELS.index(target) + 1]:
             levels[higher] = {"result": "incomplete"}
-        group.add(name + ("-projected" if name in ("unknown-value-encoding-99", "unknown-codec-99") else ""),
+        group.add(name,
                   f["requirements"] + ["VAL-1"], f["dataset"], {"status": "ok", "levels": levels},
                   request={"op": "validate", "level": target}, requires=["validate:" + target], meta={"fault_id": name})
     return g

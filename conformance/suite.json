@@ -65,7 +65,7 @@
     "cases/core/validate-profile.json": 4,
     "cases/core/validate-structural.json": 10,
     "cases/generated/repeated.generated.json": 451,
-    "cases/generated/open.generated.json": 22,
+    "cases/generated/open.generated.json": 25,
     "cases/generated/range.generated.json": 588,
     "cases/generated/prefix.generated.json": 43,
     "cases/generated/list.generated.json": 41,
@@ -75,15 +75,15 @@
     "cases/generated/requests.generated.json": 8,
     "cases/generated/refusals-open.generated.json": 64,
     "cases/generated/refusals-read.generated.json": 21,
-    "cases/generated/validate-structural.generated.json": 147,
-    "cases/generated/validate-profile.generated.json": 48,
-    "cases/generated/validate-full.generated.json": 41,
+    "cases/generated/validate-structural.generated.json": 150,
+    "cases/generated/validate-profile.generated.json": 51,
+    "cases/generated/validate-full.generated.json": 44,
     "cases/generated/validate-digest.generated.json": 2,
     "cases/generated/rulings.generated.json": 16
   },
   "totals": {
     "core": 185,
-    "generated": 1649
+    "generated": 1661
   },
   "renamed_datasets": {
     "datasets/truncated-bounds": "datasets/binary-bounds-truncated-16-byte",
@@ -185,7 +185,15 @@
     {
       "id": "list/delimiter/continuation-without-after",
       "reason": "tested the removed continuation member"
+    },
+    {
+      "id": "validate-full/unknown-value-encoding-99-projected",
+      "reason": "renamed to validate-full/unknown-value-encoding-99; validation has no projection"
+    },
+    {
+      "id": "validate-full/unknown-codec-99-projected",
+      "reason": "renamed to validate-full/unknown-codec-99; validation has no projection"
     }
   ],
-  "content_sha256": "ee7d2228a9b3bce1c7efb9914460ad6fa124d7dabe9e12770ebd972093dabbaf"
+  "content_sha256": "b8d210aad764558ea12c8f874794d0ce6892298f014cd8b9cc96132a24313d49"
 }

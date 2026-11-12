@@ -28,6 +28,7 @@ behaviors. Proposal [0001](../spec/proposals/0001-prerelease-compatibility-pass.
 exact 16-reader/five-validator matrix in `rulings_group`: three unsupported-data full validations and two
 structural annotation validations. Its other reader faults remain declared in `faults.json`; this admission
 exception does not add validation cases for them. `test_case_generation.py` checks that matrix explicitly.
+The three valid part-B datasets also participate in the generic valid-dataset open and validation families.
 
 Every valid dataset is generated from a rows document in [generators/rows/](generators/rows/): keys in
 base64 and column values typed as in the protocol. [oracle.py](oracle.py) computes each expected entry

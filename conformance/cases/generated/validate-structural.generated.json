@@ -563,6 +563,75 @@
       }
     },
     {
+      "id": "validate-structural/annotation-physical-fallback-controls",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/annotation-physical-fallback-controls",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/ignored-enums-99",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/ignored-enums-99",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/metadata-no-value",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/metadata-no-value",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-structural/missing-column-index-native",
       "description": "Row group 1 holds a 5002-byte key; pyarrow omits the whole ColumnIndex of that key chunk (statistics larger than its 4096-byte limit) but keeps the OffsetIndex.",
       "family": "validate-structural/fault-at-lowest-level",

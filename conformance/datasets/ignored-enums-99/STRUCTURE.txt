@@ -1,18 +1,18 @@
 # ignored-enums-99
 
 valid: yes
-description: Key boundary_order and every non-repeated key/value repetition_level_encoding are 99.
+description: Key boundary_order, every non-repeated key/value repetition_level_encoding and key/value encoding_stats encodings include 99.
 provenance: mutated
 producer: pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)
 source rows: generators/rows/rulings.json
 changes:
-  - Key boundary_order and every non-repeated key/value repetition_level_encoding are 99.
+  - Key boundary_order, every non-repeated key/value repetition_level_encoding and key/value encoding_stats encodings include 99.
   - Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed.
 
 manifest: format_version 0, 1 parts
-  part 0: 'data/part-00000.parquet', rows 4, bytes 1401, keys 'a' .. 'd'
+  part 0: 'data/part-00000.parquet', rows 4, bytes 1417, keys 'a' .. 'd'
 
-file data/part-00000.parquet: 1401 bytes, footer 1141 bytes
+file data/part-00000.parquet: 1417 bytes, footer 1157 bytes
   num_rows 4, row_groups 1, created_by 'parquet-cpp-arrow version 26.0.1'
   stamps {'seekparquet.draft_revision': '1', 'seekparquet.format_version': '0', 'seekparquet.key_column': 'key', 'seekparquet.key_unique': 'true', 'seekparquet.schema_id': 'conformance/rulings/v1'}
   other key-value keys ['ARROW:schema']

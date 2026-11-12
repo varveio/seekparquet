@@ -103,6 +103,8 @@ class Generation(unittest.TestCase):
                           "unknown-value-encoding-99-projected", "unknown-value-encoding-99-unprojected"})
         faults = make_cases.load_faults()
         for c in readers:
+            if c["id"].endswith(("unknown-value-encoding-99-unprojected", "unknown-codec-99-unprojected")):
+                self.assertNotIn("RG-6", c["requirements"])
             if c.get("fault_id"):
                 f = faults[c["fault_id"]]
                 self.assertEqual(c["detect"], f["reader_detect"])
@@ -117,6 +119,7 @@ class Generation(unittest.TestCase):
             "annotation-decimal-int64-p19-unprojected", "annotation-timestamp-empty-unit"})
         self.assertEqual(len(validators), 5)
         for c in validators:
+            self.assertFalse(c["id"].endswith("-projected"))
             f = faults[c["fault_id"]]
             low = f["validation_level"]
             levels = c["expect"]["levels"]
@@ -125,6 +128,14 @@ class Generation(unittest.TestCase):
             for lower in make_cases.LEVELS[:make_cases.LEVELS.index(low)]:
                 self.assertEqual(levels[lower], {"result": "complete"})
             self.assertEqual(c["request"]["level"], "full" if f.get("outcome") == "unsupported" else "structural")
+
+    def test_valid_rulings_use_generic_valid_dataset_families(self):
+        import rulings
+        for name in rulings.VALID:
+            for family in ("open", "validate-structural", "validate-profile", "validate-full"):
+                case = next(c for c in self.allgen if c["id"] == f"{family}/{name}")
+                self.assertEqual(case["family"], f"{family}/valid-dataset")
+                self.assertEqual(case["expect"]["status"], "ok")
 
     def test_incomplete_never_broadly_accepted(self):
         allowed = set(make_cases.OPTIONAL) | set(make_cases.NESTED_COLUMNS)

@@ -94,14 +94,23 @@ def rewrite_pages(part, edits):
                 cc.remove(fid)
 
 
-def build():
+def unknown_encoding_stats(md):
+    """Ignored advisory stats may name a future encoding independently of usable pages."""
+    stats = md.get(13)
+    if stats is None:
+        stats = p.TList(p.CT_STRUCT, [])
+        md.set(13, p.CT_LIST, stats)
+    stats.items.append(p.Struct([(1, p.CT_I32, 0), (2, p.CT_I32, 99), (3, p.CT_I32, 1)]))
+
+
+def build(names=None):
     import pyarrow_fixtures as native
     from mutate_metadata import Part
     records = []
     for controls in (False, True):
         doc = source(controls)
         write_text(ROWS / f"{doc['dataset']}.json", dumps(native.jsonable_rows_doc(doc)))
-    for name in sorted(NAMES):
+    for name in sorted(NAMES if names is None else names):
         controls = name == 'annotation-physical-fallback-controls'
         doc = source(controls)
         raw = native.write_part(doc, doc['parts'][0])
@@ -113,16 +122,20 @@ def build():
             col = 0 if 'key' in name else 1
             edit = {(col, 0): lambda h: h.get(p.PH_DATA_V1).set(2, p.CT_I32, 99)}
             # Metadata advertises the same future encoding as the page.
-            part.meta.items_of(p.FMD_ROW_GROUPS)[0].items_of(p.RG_COLUMNS)[col].get(p.CC_META).get(p.CMD_ENCODINGS).items.append(99)
-            description = f'Column {col} first V1 data-page value encoding is 99; column encodings also includes 99.'
+            md = part.meta.items_of(p.FMD_ROW_GROUPS)[0].items_of(p.RG_COLUMNS)[col].get(p.CC_META)
+            md.get(p.CMD_ENCODINGS).items.append(99)
+            unknown_encoding_stats(md)
+            description = f'Column {col} first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.'
         elif name == 'unknown-codec-99':
             part.meta.items_of(p.FMD_ROW_GROUPS)[0].items_of(p.RG_COLUMNS)[1].get(p.CC_META).set(p.CMD_CODEC, p.CT_I32, 99)
             description = 'Optional value column CompressionCodec is 99; key codec is unchanged.'
         elif name == 'ignored-enums-99':
             part.key_ci(0).set(p.CI_BOUNDARY, p.CT_I32, 99)
+            for cc in part.meta.items_of(p.FMD_ROW_GROUPS)[0].items_of(p.RG_COLUMNS):
+                unknown_encoding_stats(cc.get(p.CC_META))
             edit = {(col, page): lambda h: h.get(p.PH_DATA_V1).set(4, p.CT_I32, 99)
                     for col in (0, 1) for page in (0, 1)}
-            description = 'Key boundary_order and every non-repeated key/value repetition_level_encoding are 99.'
+            description = 'Key boundary_order, every non-repeated key/value repetition_level_encoding and key/value encoding_stats encodings include 99.'
         elif name == 'missing-boundary-order':
             part.key_ci(0).remove(p.CI_BOUNDARY)
             description = 'Required boundary_order absent from the key ColumnIndex.'

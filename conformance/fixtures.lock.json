@@ -7,7 +7,7 @@
     "requirements": "generators/requirements.txt"
   },
   "reproducibility": "Byte-reproducible with the pinned pyarrow on Python 3.13: generators/check_reproducible.py regenerates everything in a temporary directory and compares it with the checked-in files (pyarrow 26.0.1 footers carry no timestamps). If a future writer is not byte-reproducible, the checked-in bytes stay authoritative and STRUCTURE.txt must remain identical.",
-  "total_bytes": 868268,
+  "total_bytes": 868300,
   "largest_file_bytes": 9285,
   "datasets": [
     {
@@ -5892,19 +5892,19 @@
       "name": "ignored-enums-99",
       "dir": "datasets/ignored-enums-99",
       "valid": true,
-      "description": "Key boundary_order and every non-repeated key/value repetition_level_encoding are 99.",
+      "description": "Key boundary_order, every non-repeated key/value repetition_level_encoding and key/value encoding_stats encodings include 99.",
       "provenance": "mutated",
       "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
       "rows": "generators/rows/rulings.json",
       "changes": [
-        "Key boundary_order and every non-repeated key/value repetition_level_encoding are 99.",
+        "Key boundary_order, every non-repeated key/value repetition_level_encoding and key/value encoding_stats encodings include 99.",
         "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
       ],
       "files": [
         {
           "path": "datasets/ignored-enums-99/data/part-00000.parquet",
-          "bytes": 1401,
-          "sha256": "2c539e9aa80bf5f4352ef1511e3d99daee2949008575e992bbcbda4b94f871ef",
+          "bytes": 1417,
+          "sha256": "9d048b629f898732bd653c407fb4a98831a5505dbcce9447340b5fa6f55cdb50",
           "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
           "provenance": "mutated",
           "command": "python generators/regenerate.py"
@@ -5912,7 +5912,7 @@
         {
           "path": "datasets/ignored-enums-99/manifest.json",
           "bytes": 345,
-          "sha256": "59f7855d80e3e004813fe40fdf1047bd7fc59bf39ec12679ed8ea1f5dc83c626",
+          "sha256": "d337c1e10b94a41d55f14b9f4ac93bdf6394ac02a87379d798cb2f18cc62be87",
           "producer": "generators/mutate_metadata.py",
           "provenance": "mutated",
           "command": "python generators/regenerate.py"
@@ -6178,20 +6178,20 @@
       "name": "unknown-key-encoding-99-v1",
       "dir": "datasets/invalid/unknown-key-encoding-99-v1",
       "valid": false,
-      "description": "Column 0 first V1 data-page value encoding is 99; column encodings also includes 99.",
+      "description": "Column 0 first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.",
       "provenance": "mutated",
       "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
       "rows": "generators/rows/rulings.json",
       "changes": [
-        "Column 0 first V1 data-page value encoding is 99; column encodings also includes 99.",
+        "Column 0 first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.",
         "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
       ],
       "fault_id": "unknown-key-encoding-99-v1",
       "files": [
         {
           "path": "datasets/invalid/unknown-key-encoding-99-v1/data/part-00000.parquet",
-          "bytes": 1399,
-          "sha256": "3bb2ff683b2afd85ff7e90e9235900a9cef9c99d905c0d7487b7f89c438ac10c",
+          "bytes": 1407,
+          "sha256": "df76c290073788a0cb65c1c62732773c1eb4c6eaf9fa5053fcd477ceb47813a0",
           "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
           "provenance": "mutated",
           "command": "python generators/regenerate.py"
@@ -6199,7 +6199,7 @@
         {
           "path": "datasets/invalid/unknown-key-encoding-99-v1/manifest.json",
           "bytes": 345,
-          "sha256": "411f6380c2c8eba0c9da3afdb226c2a55215f4f48b9e31849b8817152a4941ed",
+          "sha256": "666bff1d75756aeb5cb30d079867cd5a6f691fa367e8d80782ae4d27fb91ff01",
           "producer": "generators/mutate_metadata.py",
           "provenance": "mutated",
           "command": "python generators/regenerate.py"
@@ -6210,20 +6210,20 @@
       "name": "unknown-value-encoding-99",
       "dir": "datasets/invalid/unknown-value-encoding-99",
       "valid": false,
-      "description": "Column 1 first V1 data-page value encoding is 99; column encodings also includes 99.",
+      "description": "Column 1 first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.",
       "provenance": "mutated",
       "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py (rulings.py)",
       "rows": "generators/rows/rulings.json",
       "changes": [
-        "Column 1 first V1 data-page value encoding is 99; column encodings also includes 99.",
+        "Column 1 first V1 data-page value encoding is 99; column encodings and encoding_stats also include 99.",
         "Data payloads preserved byte for byte; page header lengths, dependent chunk/index offsets and sizes, footer and manifest byte size repaired as needed."
       ],
       "fault_id": "unknown-value-encoding-99",
       "files": [
         {
           "path": "datasets/invalid/unknown-value-encoding-99/data/part-00000.parquet",
-          "bytes": 1399,
-          "sha256": "1c4fbacbbe895eabcf78d88d515cd77ab215c4c1e2560e7c39882ec4a5164afe",
+          "bytes": 1407,
+          "sha256": "1d00b8c1e7ce7ec73790f9a100bbe373721ee8f920f3785d4f61cc795c67dc21",
           "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
           "provenance": "mutated",
           "command": "python generators/regenerate.py"
@@ -6231,7 +6231,7 @@
         {
           "path": "datasets/invalid/unknown-value-encoding-99/manifest.json",
           "bytes": 345,
-          "sha256": "411f6380c2c8eba0c9da3afdb226c2a55215f4f48b9e31849b8817152a4941ed",
+          "sha256": "666bff1d75756aeb5cb30d079867cd5a6f691fa367e8d80782ae4d27fb91ff01",
           "producer": "generators/mutate_metadata.py",
           "provenance": "mutated",
           "command": "python generators/regenerate.py"

@@ -11,7 +11,7 @@
     {
       "path": "data/part-00000.parquet",
       "rows": 4,
-      "bytes": 1399,
+      "bytes": 1407,
       "min_key_base64": "YQ==",
       "max_key_base64": "ZA=="
     }
