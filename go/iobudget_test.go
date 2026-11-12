@@ -93,6 +93,11 @@ var none = ioTarget{-1, -1}
 // keys carry it too; Get carries the Rows lookup's target plus one round,
 // as that decision allows Get a separate value round; scans keep their
 // cold target warm; Verify carries CheckSchema's admission target.
+// Metadata-first Plan proves whole-part ends from manifest bounds before
+// decoding keys. Thus plan-part/plan-cold and split/plan now read only the
+// part check (plain: 3 requests/2 rounds; capable: 2/2, both 2,097,156 B),
+// and plan-part/plan-warm makes no requests. These accepted improvements
+// are recorded as exact current values in both tables below.
 var ioBudgets = []ioBudget{
 	{"open/cold", ioMetrics{2, 2, 1591, 0, 1}, ioTarget{1, 1}, current},
 	{"open/again", ioMetrics{2, 2, 1591, 0, 1}, ioTarget{1, 1}, current},

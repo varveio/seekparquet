@@ -68,7 +68,8 @@ type groupBytes struct {
 	rows    int64 // the group's row count
 	bytes   int64
 	partial bool
-	// chunks are the group's projected chunks, by projection slot.
+	// chunks are the group's distinct projected chunks. Repeated projection
+	// slots share physical extents and must only be priced and reserved once.
 	chunks []plannedChunk
 }
 
@@ -84,7 +85,12 @@ type plannedChunk struct {
 
 // locsPin is a reservation in Limits.OffsetIndexMemory of the page
 // locations plans keep privately, given back once no plan holds it.
-type locsPin struct{ size int64 }
+type locsPin struct {
+	// Keep the owner pointer here so the pin cannot share a tiny allocation
+	// with a live pin, which could prevent its cleanup from ever running.
+	r    *reader
+	size int64
+}
 
 // keep reserves the private page locations of gb's chunks in the
 // Dataset's OffsetIndexMemory, and drops those beyond it.
@@ -97,7 +103,7 @@ func (plan *Plan) keep(gb *groupBytes) {
 		pc.private = false
 		if size := locsSize(pc.locs); plan.r.reserveLocations(size) {
 			if plan.pin == nil {
-				plan.pin = new(locsPin)
+				plan.pin = &locsPin{r: plan.r}
 			}
 			plan.pin.size += size
 		} else {
@@ -110,7 +116,7 @@ func (plan *Plan) keep(gb *groupBytes) {
 // it nor any plan made from it is reachable.
 func (plan *Plan) release() {
 	if plan.pin != nil {
-		runtime.AddCleanup(plan.pin, func(c locsCleanup) { c.r.locsMemory.Add(-c.size) }, locsCleanup{plan.r, plan.pin.size})
+		runtime.AddCleanup(plan.pin, func(c locsCleanup) { c.r.locsMemory.Add(-c.size) }, locsCleanup{plan.pin.r, plan.pin.size})
 	}
 }
 
@@ -391,8 +397,11 @@ func (plan *Plan) planColumns(ctx context.Context, st *ReadStats) error {
 				if g := (groupRef{i, j}); g != current {
 					current = g
 					grp := p.groups[j]
-					gb := groupBytes{start: grp.start, rows: grp.rows, chunks: make([]plannedChunk, len(plan.columns))}
+					gb := groupBytes{start: grp.start, rows: grp.rows, chunks: make([]plannedChunk, 0, len(plan.columns))}
 					for c, name := range plan.columns {
+						if slices.Contains(plan.columns[:c], name) {
+							continue
+						}
 						cp, err := p.openColumn(ctx, grp.physical, name, st, nil)
 						if err != nil {
 							return err
@@ -404,7 +413,7 @@ func (plan *Plan) planColumns(ctx context.Context, st *ReadStats) error {
 								kept := p.locs[grp.physical][p.leaves[name].index].Load()
 								pc.private = kept == nil || &(*kept)[0] != &cp.locs[0]
 							}
-							gb.chunks[c] = pc
+							gb.chunks = append(gb.chunks, pc)
 						}
 					}
 					plan.groups = append(plan.groups, gb)

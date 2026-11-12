@@ -309,6 +309,45 @@ func TestSelectRowsProjectedBytes(t *testing.T) {
 
 func eqBytes(n int64, exact bool, p *Plan) bool { return n == p.bytes && exact == !p.partial }
 
+func TestSelectRowsDuplicateProjection(t *testing.T) {
+	dir, _, _, _ := batchOracleFixture(t, 4, true)
+	d := open(t, dir, OpenOptions{})
+	spans := []RowSpan{d.r.rowSpan(0, d.r.rows)}
+	for _, byKey := range []bool{false, true} {
+		makePlan := func(columns []string) *Plan {
+			var p *Plan
+			var err error
+			if byKey {
+				p, err = d.Plan(ctx, []Selection{{}}, columns, nil)
+			} else {
+				p, err = d.PlanRows(ctx, spans, columns, nil)
+			}
+			must(t, err)
+			return p
+		}
+		one := makePlan([]string{"dict", "num"})
+		dup := makePlan([]string{"dict", "num", "dict", "num"})
+		if n, exact := dup.ProjectedBytes(); !eqBytes(n, exact, one) {
+			t.Fatalf("byKey=%v: duplicate columns priced %d %v, want %d %v", byKey, n, exact, one.bytes, !one.partial)
+		}
+		subset := []RowSpan{d.r.rowSpan(d.r.rows/3, d.r.rows/2)}
+		a, err := one.SelectRows(subset)
+		must(t, err)
+		b, err := dup.SelectRows(subset)
+		must(t, err)
+		if n, exact := b.ProjectedBytes(); !eqBytes(n, exact, a) {
+			t.Fatalf("byKey=%v: duplicate subset priced %d %v, want %d %v", byKey, n, exact, a.bytes, !a.partial)
+		}
+		_, values := scannedValues(t, b, nil)
+		for _, row := range values {
+			fields := strings.Fields(row)
+			if len(fields) != 4 || fields[0] != fields[2] || fields[1] != fields[3] {
+				t.Fatalf("duplicate projection changed values: %q", row)
+			}
+		}
+	}
+}
+
 // TestPlanMetadataFirst: Dataset.Plan resolves the whole dataset, and ends
 // at part boundaries, from the manifest without decoding a key page, and
 // decoded unique first keys place an end at a row group; RowSpans gives
@@ -351,7 +390,7 @@ func TestPlanMetadataFirst(t *testing.T) {
 	_, err = d.Rows(ctx, Query{Selection: Selection{Span: KeySpan(first)}, Limit: 1}, nil)
 	must(t, err)
 	if k := d.r.parts[1].groups[1].first.Load(); k == nil || !bytes.Equal(*k, first) {
-		t.Skip("the fixture's row group does not begin at the key")
+		t.Fatal("the fixture's row group does not begin at the key")
 	}
 	plan, err = d.Plan(ctx, []Selection{{Span: Span{Start: first, End: parts[2].MinKey}}}, nil, &st)
 	must(t, err)

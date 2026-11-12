@@ -60,6 +60,12 @@ func browseCases(fx *ioFixture) []browseCase {
 		out = append(out, browseCase{name: fmt.Sprintf("tenant/limit-%d", limit), q: q})
 	}
 	out = append(out,
+		browseCase{name: "all-parts/unchecked-middle", q: seekparquet.ListQuery{Delimiter: '-', Limit: 2}},
+		browseCase{name: "all-parts/shortcut", setup: func(ctx context.Context, d *seekparquet.Dataset) (*seekparquet.Cursor, error) {
+			// A shortcut needs a previously decoded first-key witness.
+			_, err := d.Rows(ctx, seekparquet.Query{Limit: 1}, nil)
+			return nil, err
+		}, q: seekparquet.ListQuery{Delimiter: '-', Limit: 2}},
 		browseCase{name: "root/page1", q: root},
 		browseCase{name: "root/limit-1", q: seekparquet.ListQuery{Delimiter: '/', Limit: 1}},
 		browseCase{name: "root/page2", setup: page(root), q: root},
@@ -81,6 +87,7 @@ func browseCases(fx *ioFixture) []browseCase {
 // browseRun is what one run of a browseCase observed.
 type browseRun struct {
 	trace   string
+	logical string
 	stats   seekparquet.ReadStats
 	entries string
 	counts  []string
@@ -93,7 +100,13 @@ func runBrowse(t *testing.T, fx *ioFixture, store ioStore, c browseCase, counts 
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		src := fakestore.New(fx.objects, ioOptions)
-		d, err := seekparquet.OpenDataset(ctx, store.wrap(src), store.opt)
+		tr := new(browseTrace)
+		source := browseSource{Source: store.wrap(src), tr: tr}
+		var wrapped seekparquet.Source = source
+		if _, ok := source.Source.(seekparquet.SizedSource); ok {
+			wrapped = browseCapableSource{source}
+		}
+		d, err := seekparquet.OpenDataset(ctx, wrapped, store.opt)
 		must(t, err)
 		defer d.Close()
 		q := c.q
@@ -104,33 +117,39 @@ func runBrowse(t *testing.T, fx *ioFixture, store ioStore, c browseCase, counts 
 				q.Cursor = cur
 			}
 		}
+		tr.reset()
 		op := src.Begin(c.name)
 		ents, err := d.List(ctx, q, &run.stats)
 		must(t, err)
 		if counts {
 			for _, e := range ents {
-				run.counts = append(run.counts, countOf(ctx, d, e))
+				run.counts = append(run.counts, countOf(t, ctx, d, e))
 			}
 		}
 		rep := op.End()
 		run.entries, _ = listText(ents, nil)
 		run.trace = requestsText(rep)
+		run.logical = tr.text()
+		if counts && c.name == "all-parts/unchecked-middle" {
+			if len(run.counts) != 1 || run.counts[0] != fmt.Sprintf("%d false", len(fx.keys)) {
+				t.Fatalf("whole dataset with unchecked middle parts: counts %v", run.counts)
+			}
+		}
 	})
 	return run
 }
 
 // countOf counts e's rows as a browser does: PlanRows over its Rows with
 // no columns, then Count. An entry with an unknown boundary has none.
-func countOf(ctx context.Context, d *seekparquet.Dataset, e seekparquet.ListEntry) string {
+func countOf(t *testing.T, ctx context.Context, d *seekparquet.Dataset, e seekparquet.ListEntry) string {
+	t.Helper()
 	_, okStart := e.Rows.Start.Ordinal()
 	_, okEnd := e.Rows.End.Ordinal()
 	if !okStart || !okEnd {
 		return "unknown"
 	}
 	p, err := d.PlanRows(ctx, []seekparquet.RowSpan{e.Rows}, nil, nil)
-	if err != nil {
-		return err.Error()
-	}
+	must(t, err)
 	n, exact := p.Count()
 	return fmt.Sprintf("%d %v", n, exact)
 }
@@ -160,13 +179,19 @@ func TestBrowseCountsTraceInvariant(t *testing.T) {
 	for _, spec := range []ioFixtureSpec{ioTiny, ioTinyRepeated} {
 		fx := ioFixtureOf(t, spec)
 		known := 0
+		var shortcuts, indexSkips int64
 		for _, c := range browseCases(fx) {
 			for _, store := range ioStores {
 				t.Run(fmt.Sprintf("repeated-%v/%s/%s", spec.repeated, c.name, store.name), func(t *testing.T) {
 					off := runBrowse(t, fx, store, c, false)
 					on := runBrowse(t, fx, store, c, true)
+					shortcuts += on.stats.GroupsSkipped
+					indexSkips += on.stats.ListIndexSkips
 					if off.trace != on.trace {
 						t.Fatalf("counts change the requests:\noff\n%s\non\n%s", off.trace, on.trace)
+					}
+					if off.logical != on.logical {
+						t.Fatalf("counts change logical calls:\noff\n%s\non\n%s", off.logical, on.logical)
 					}
 					if off.stats != on.stats || off.entries != on.entries {
 						t.Fatalf("counts change the listing: %+v\n%+v", off.stats, on.stats)
@@ -181,6 +206,9 @@ func TestBrowseCountsTraceInvariant(t *testing.T) {
 		}
 		if known == 0 {
 			t.Fatalf("no listed entry had both boundaries")
+		}
+		if shortcuts == 0 || indexSkips == 0 {
+			t.Fatalf("trace cases missed traversal paths: %d group shortcuts, %d index skips", shortcuts, indexSkips)
 		}
 	}
 }
@@ -373,14 +401,14 @@ func TestScanValuesReadsNoKeyPage(t *testing.T) {
 				must(t, err)
 				var spans []seekparquet.RowSpan
 				var want int64
-				for _, e := range ents {
+				for i, e := range ents {
 					lo, okLo := e.Rows.Start.Ordinal()
 					hi, okHi := e.Rows.End.Ordinal()
 					if !okLo || !okHi {
 						t.Fatalf("%q: unknown boundary", e.Bytes())
 					}
 					// Every other folder, so the plan has gaps and crosses parts.
-					if len(spans)%2 == 0 || hi-lo > 1000 {
+					if i%2 == 0 || hi-lo > 1000 {
 						want += hi - lo
 					} else {
 						continue
