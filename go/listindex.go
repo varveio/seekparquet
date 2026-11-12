@@ -310,12 +310,12 @@ func (g *listGroup) add(row int64, key []byte) {
 func directory(key []byte) []byte { return key[:bytes.LastIndexByte(key, '/')+1] }
 
 // buildWindows reads ahead, in the build's windows, the key pages of the
-// row groups from g on, in checked parts, up to half of Limits.ReadMemory:
+// row groups from g on, in checked parts, up to readWaveBytes:
 // the build decodes every one of them. A group whose key column chunk
 // does not lie in its file is left out, for its build to refuse.
 func (r *reader) buildWindows(w *windows, g groupRef) {
 	var exts []extent
-	total, most := int64(0), max(r.limits.ReadMemory/2, r.windowBytes())
+	total, most := int64(0), readWaveBytes
 	for ; g.part < len(r.parts) && r.parts[g.part].ready.Load(); g = (groupRef{g.part + 1, 0}) {
 		p := r.parts[g.part]
 		for ; g.index < len(p.groups); g = g.next() {

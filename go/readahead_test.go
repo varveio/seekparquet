@@ -232,12 +232,12 @@ func TestListReadAheadLatency(t *testing.T) {
 	report := func(name string, l listing) {
 		t.Logf("%-14s %3d entries  %4d reads  %8d bytes  %4d key pages  wall %6.1f ms (%5.1f delays)  max in flight %d  read ahead %d bytes, unused %d",
 			name, len(l.entries), l.reads, l.bytes, l.stats.KeyPagesDecoded, float64(l.wall)/1e6, float64(l.wall)/float64(delay), l.maxInFlight,
-			l.stats.SpeculativeBytes, l.stats.SpeculativeUnusedBytes)
+			l.stats.ReadAheadReads, l.stats.ReadAheadUnusedBytes)
 	}
 	report("no read-ahead", off)
 	// A part's head and end are read together when it is checked.
-	if off.maxInFlight > 2 || off.stats.SpeculativeBytes != 0 {
-		t.Fatalf("without read-ahead: %d reads at once, %d bytes read ahead", off.maxInFlight, off.stats.SpeculativeBytes)
+	if off.maxInFlight > 2 || off.stats.ReadAheadReads != 0 {
+		t.Fatalf("without read-ahead: %d reads at once, %d bytes read ahead", off.maxInFlight, off.stats.ReadAheadReads)
 	}
 	for _, n := range []int{0, 2, 8, 32} {
 		req.ReadAhead = n
@@ -251,7 +251,7 @@ func TestListReadAheadLatency(t *testing.T) {
 			t.Errorf("ReadAhead %d: %d reads at once", n, on.maxInFlight)
 		}
 		// Exact bounds predict every page: no more reads than without.
-		if on.reads > off.reads || on.stats.SpeculativeUnusedBytes > on.stats.SpeculativeBytes {
+		if on.reads > off.reads || on.stats.ReadAheadUnused > on.stats.ReadAheadReads {
 			t.Errorf("ReadAhead %d: %d reads (without: %d), %+v", n, on.reads, off.reads, on.stats)
 		}
 		if (n == 0 || n == 8) && on.wall*2 > off.wall {
@@ -290,7 +290,7 @@ func TestListReadAheadPagination(t *testing.T) {
 				var st seekparquet.ReadStats
 				for range 1000 {
 					entries, err := d.List(context.Background(), req, &st)
-					readAhead += st.SpeculativeBytes
+					readAhead += st.ReadAheadReads
 					if err != nil {
 						t.Fatal(err)
 					}

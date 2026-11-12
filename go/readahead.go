@@ -19,7 +19,7 @@ var testListReadAhead int
 // the scan is in, it predicts the key pages the listing will decode next,
 // and reads them ahead together, speculatively, in the operation's windows
 // (windows.fetch): runs of adjacent pages in one window, up to
-// WindowBytes. When the scan decodes a page, the page read path takes its
+// readWindowBytes. When the scan decodes a page, the page read path takes its
 // bytes from the windows instead of reading them, and checks them exactly
 // as it checks bytes it reads itself (CHECK-2): nothing is trusted because
 // it was read ahead. A read ahead that failed is not used; the page is
@@ -49,7 +49,7 @@ type readAhead struct {
 // for n pages (ListQuery.ReadAhead), or nil for none: n of zero reads
 // adaptively ahead over a remote Source, and nothing from a local file.
 // Read-ahead is speculation: ReadPolicy.DisableSpeculation turns it off,
-// and SpeculativeBytes and SpeculativeRanges bound it.
+// and each wave is bounded internally.
 func (r *reader) newReadAhead(ctx context.Context, n, limit int) *readAhead {
 	o := operationOf(ctx)
 	if r.policy.DisableSpeculation || o == nil || o.r == nil || n == 0 && r.local {
@@ -58,7 +58,7 @@ func (r *reader) newReadAhead(ctx context.Context, n, limit int) *readAhead {
 	if n == 0 {
 		n = math.MaxInt
 	}
-	return &readAhead{w: o.windows(), pages: n, bytes: r.windowBytes(), lastAt: -1, passed: -1, remaining: limit}
+	return &readAhead{w: o.windows(), pages: n, bytes: readWindowBytes, lastAt: -1, passed: -1, remaining: limit}
 }
 
 // close drops the windows of the pages read ahead, once their reads have

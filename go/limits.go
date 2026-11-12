@@ -13,7 +13,7 @@ import (
 // is allocated for it, and exceeding one fails the operation with an error
 // wrapping ErrLimitExceeded: a policy of the caller, not a refusal of the
 // data, reported as a *LimitError. OffsetIndexMemory,
-// PageIndexCacheMemory, ReadMemory and DatasetReadMemory are the
+// PageIndexCacheMemory are the
 // exceptions: they bound caches and reading ahead, and exceeding them never
 // fails an operation. A zero field
 // takes its default; a negative field is an invalid request when the
@@ -107,23 +107,7 @@ type Limits struct {
 	// count, not its memory: a few rows can hold large keys and values.
 	// Default 1,000.
 	GetRows int
-	// ReadMemory bounds the raw bytes one operation holds read ahead of
-	// decoding from a remote Source: windows of column chunks
-	// (ReadPolicy.WindowBytes), value pages fetched with their key page or
-	// together with other projected columns, in flight or fetched and not
-	// yet used. They are reserved before they are allocated. It bounds
-	// speculation and batching, not a read: what does not fit is not read
-	// ahead, its pages are read when they are decoded, and it never fails an
-	// operation. Pages read on demand, listing read-ahead
-	// (ListQuery.ReadAhead) and the request's key-page memo are outside it.
-	// Default 128 MiB.
-	ReadMemory int64
-	// DatasetReadMemory bounds the bytes that ReadMemory bounds across the
-	// concurrent operations of one Dataset. An operation holding none of
-	// them waits for room for the window it needs next, until its context
-	// ends; one that holds some never waits, and reads on demand instead.
-	// Default 512 MiB.
-	DatasetReadMemory int64
+
 }
 
 // check rejects a negative limit, which would otherwise take its default
@@ -137,7 +121,6 @@ func (l *Limits) check() error {
 		{LimitPageIndexBytes, l.PageIndexBytes}, {LimitMetadataMemory, l.MetadataMemory}, {LimitPageBytes, l.PageBytes},
 		{LimitPageValues, l.PageValues}, {LimitPageMemory, l.PageMemory}, {LimitIndexMemory, l.IndexMemory},
 		{LimitOffsetIndexMemory, l.OffsetIndexMemory}, {LimitGetRows, int64(l.GetRows)}, {"PageIndexCacheMemory", l.PageIndexCacheMemory},
-		{"ReadMemory", l.ReadMemory}, {"DatasetReadMemory", l.DatasetReadMemory},
 	} {
 		if f.value < 0 {
 			return invalidRequest("Limits.%s is negative (%d)", f.name, f.value)
@@ -163,8 +146,6 @@ func (l Limits) withDefaults() Limits {
 	set(&l.IndexMemory, 1<<30)
 	set(&l.OffsetIndexMemory, 256<<20)
 	set(&l.PageIndexCacheMemory, 128<<20)
-	set(&l.ReadMemory, 128<<20)
-	set(&l.DatasetReadMemory, 512<<20)
 	if l.Parts <= 0 {
 		l.Parts = 1_000_000
 	}

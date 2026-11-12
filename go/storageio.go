@@ -33,15 +33,43 @@ func (e *storageError) Unwrap() error { return e.err }
 // with part_mismatch, one found missing with missing_part; a broken pin
 // (ErrObjectChanged) and every other error are the environment's.
 func sourceError(name string, err error) error {
-	var mismatch *SizeMismatchError
-	switch {
-	case errors.Is(err, ErrObjectChanged):
-		return &storageError{err}
-	case errors.As(err, &mismatch):
-		return refusePart(CodePartMismatch, name, -1, "the object is %d bytes, its manifest entry %d", mismatch.Actual, mismatch.Expected)
-	case errors.Is(err, fs.ErrNotExist):
-		return refusePart(CodeMissingPart, name, -1, "%v", err)
-	}
+	// Do not use errors.Is/As here: sources may return cyclic error trees.
+ // Walk a bounded number of causes, keeping broken-pin precedence even
+ // when a sibling also reports a missing object or a size mismatch.
+ var mismatch *SizeMismatchError
+ changed, missing := false, false
+ budget := maxEOFCauses
+ var visit func(error)
+ visit = func(e error) {
+  if e == nil || budget == 0 { return }
+  budget--
+  is := func(target error) bool {
+   if e == target { return true }
+   x, ok := e.(interface{ Is(error) bool })
+   return ok && x.Is(target)
+  }
+  changed = changed || is(ErrObjectChanged)
+  missing = missing || is(fs.ErrNotExist)
+  if mismatch == nil {
+   if x, ok := e.(*SizeMismatchError); ok { mismatch = x
+   } else if x, ok := e.(interface{ As(any) bool }); ok { x.As(&mismatch) }
+  }
+  switch x := e.(type) {
+  case interface{ Unwrap() []error }:
+   for _, cause := range x.Unwrap() { if budget == 0 { break }; visit(cause) }
+  case interface{ Unwrap() error }:
+   visit(x.Unwrap())
+  }
+ }
+ visit(err)
+ switch {
+ case changed:
+  return &storageError{err}
+ case mismatch != nil:
+  return refusePart(CodePartMismatch, name, -1, "the object is %d bytes, its manifest entry %d", mismatch.Actual, mismatch.Expected)
+ case missing:
+  return refusePart(CodeMissingPart, name, -1, "%v", err)
+ }
 	return &storageError{err}
 }
 
@@ -333,8 +361,7 @@ func limitOf(ctx context.Context) *opLimit {
 // waiters are served in arrival order and can give up when their context
 // ends. A nil *opLimit limits nothing.
 //
-// The same type bounds bytes (Limits.ReadMemory, DatasetReadMemory): its
-// weights are int64.
+// // weights are int64.
 type opLimit struct {
 	mu      sync.Mutex
 	free    int64
@@ -527,8 +554,16 @@ type piece struct {
 	rg ReadRange
 }
 
+// batchSlots reserves up to the logical capacity for a capable-source
+// batch. Scalar fallback still uses one slot per running worker.
+func batchSlots(limit *opLimit, n int) int64 {
+ if limit == nil { return int64(n) }
+ return limit.size
+}
+
 // readBatches reads ranges through a RangeReader, in calls of at most
-// width ranges and MaxReadBatchBytes bytes.
+// MaxReadRanges ranges and MaxReadBatchBytes bytes. The source owns
+// physical concurrency; logical Concurrency must not hide merging opportunities.
 func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []ReadRange, todo []int, width int, limit *opLimit, uncounted bool, st *ReadStats) []error {
 	var pieces []piece
 	for _, i := range todo {
@@ -539,10 +574,7 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 			buf, off = buf[n:], off+int64(n)
 		}
 	}
-	width = min(width, MaxReadRanges)
-	if limit != nil {
-		width = int(min(int64(width), limit.size))
-	}
+	width = MaxReadRanges // expose the whole bounded wave to the source
 	errs := make([]error, len(ranges))
 	failed := false
 	fail := func(of int, err error) {
@@ -563,13 +595,10 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 		}
 		err := ctx.Err()
 		if err == nil {
-			err = limit.acquire(ctx, int64(n))
+			err = limit.acquire(ctx, min(int64(n), batchSlots(limit, n)))
 		}
 		if err == nil {
-			err = func() error {
-				defer limit.release(int64(n)) // also when the source panics
-				return rr.ReadRanges(ctx, batch)
-			}()
+
 			if st != nil {
 				st.SourceBatches++
 				st.SourceReads += int64(n)
@@ -578,6 +607,10 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 					st.UnreportedIOCalls++
 				}
 			}
+			err = func() error {
+				defer limit.release(min(int64(n), batchSlots(limit, n))) // also when the source panics
+				return rr.ReadRanges(ctx, batch)
+			}()
 		}
 		var be *BatchError
 		switch {

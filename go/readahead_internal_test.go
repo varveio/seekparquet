@@ -140,11 +140,11 @@ func TestListReadAheadSameResults(t *testing.T) {
 					if decodeCounts(st) != decodeCounts(base) {
 						t.Fatalf("%s, ReadAhead %d: decoding differs:\n got %+v\nwant %+v", describe(req), n, st, base)
 					}
-					if st.SpeculativeUnusedBytes > st.SpeculativeBytes {
+					if st.ReadAheadUnused > st.ReadAheadReads {
 						t.Fatalf("%s, ReadAhead %d: %+v", describe(req), n, st)
 					}
-					predicted += st.SpeculativeBytes
-					wasted += st.SpeculativeUnusedBytes
+					predicted += st.ReadAheadReads
+					wasted += st.ReadAheadUnusedBytes
 				}
 			}
 		})
@@ -211,7 +211,7 @@ func TestListReadAheadListIndex(t *testing.T) {
 		var st ReadStats
 		_, err = d.List(ctx, ListQuery{Prefix: []byte("seg001/"), Delimiter: 'k', Limit: 1000, ReadAhead: n}, &st)
 		must(t, err)
-		if n > 0 && st.SpeculativeBytes == 0 {
+		if n > 0 && st.ReadAheadReads == 0 {
 			t.Errorf("a 'k' listing with the index built read nothing ahead: %+v", st)
 		}
 	}
@@ -253,7 +253,7 @@ func TestListReadAheadManyPages(t *testing.T) {
 	if len(entries[0]) != len(keys) || !slices.Equal(entries[0], entries[1]) {
 		t.Fatalf("%d and %d entries, want %d alike", len(entries[0]), len(entries[1]), len(keys))
 	}
-	if stats[1].SpeculativeBytes == 0 || stats[1].SourceReads >= stats[0].SourceReads {
+	if stats[1].ReadAheadReads == 0 || stats[1].SourceReads >= stats[0].SourceReads {
 		t.Fatalf("nothing was read ahead, or not in fewer reads: %+v, without %+v", stats[1], stats[0])
 	}
 	if decodeCounts(stats[1]) != decodeCounts(stats[0]) {
@@ -301,7 +301,7 @@ func TestListReadAheadByteFlips(t *testing.T) {
 				text = err.Error()
 			}
 			texts, got = append(texts, text), append(got, entries)
-			ahead += int(st.SpeculativeBytes)
+			ahead += int(st.ReadAheadReads)
 		}
 		if texts[0] != texts[1] || texts[0] != texts[2] || got[0] != got[1] || got[0] != got[2] {
 			t.Fatalf("byte %d flipped: errors %q, entries differ: %v", off, texts, got[0] != got[1] || got[0] != got[2])
@@ -378,7 +378,7 @@ func TestListReadAheadSourcePanic(t *testing.T) {
 	if !slices.Equal(entriesOf(got), entriesOf(want)) {
 		t.Fatalf("entries %q, want %q", entriesOf(got), entriesOf(want))
 	}
-	if src.panics == 0 || st.SpeculativeFallbackReads == 0 {
+	if src.panics == 0 || st.ReadAheadUnused == 0 {
 		t.Fatalf("%d panics, stats %+v", src.panics, st)
 	}
 }

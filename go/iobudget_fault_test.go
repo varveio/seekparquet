@@ -608,7 +608,7 @@ func TestPhysicalReportingCombinations(t *testing.T) {
 				rec = src.Begin("list")
 				_, err = listed.List(context.Background(), seekparquet.ListQuery{Prefix: fx.listPrefix, Limit: 300, ReadAhead: 4}, &st)
 				must(t, err)
-				if st.SpeculativeBytes == 0 {
+				if st.ReadAheadReads == 0 {
 					t.Fatalf("list: nothing read ahead: %+v", st)
 				}
 				check("cold list", st, rec, st.PartsOpened)

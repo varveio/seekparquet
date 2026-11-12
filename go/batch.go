@@ -303,10 +303,7 @@ func (w *batcher) walk(s *scan, n int64, fn func(*Batch) error) error {
 		if err := w.ctx.Err(); err != nil {
 			return err
 		}
-		win := windowsOf(w.ctx)
-		win.enterCallback()
 		err := fn(b)
-		win.leaveCallback()
 		if err != nil {
 			return err
 		}

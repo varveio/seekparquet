@@ -174,24 +174,12 @@ type ListQuery struct {
 	// Columns names the columns projected for each row entry and each
 	// exact row (ListEntry.Exact), as Query.Columns.
 	Columns []string
-	// ReadAhead bounds the key pages the listing reads ahead at once.
-	// From the key page index of the row group it is in, the listing
-	// predicts the key pages it will decode next, after each common prefix
-	// at the prefix's successor, toward its Limit and its upper bound, and
-	// reads them together, adjacent pages in one range of up to
-	// ReadPolicy.WindowBytes, so that a listing that skips from prefix to
-	// prefix waits for about one read per prediction instead of one per
-	// page. Zero, the default, predicts as many pages as the listing can
-	// still use, within WindowBytes, over a remote Source, and none from a
-	// local directory opened with a zero ReadPolicy (OpenDir); a positive
-	// value predicts at most that many; a negative value is an invalid
-	// request. Pages read ahead are checked as any page read is, and the
-	// entries are the same with or without it. It is speculation:
-	// ReadPolicy.DisableSpeculation turns it off, SpeculativeBytes and
-	// SpeculativeRanges bound it, and ReadStats.SpeculativeBytes and
-	// SpeculativeUnusedBytes count it. Its bytes are held, within
-	// Limits.ReadMemory, until the listing passes them or its key scan
-	// ends.
+	// ReadAhead caps the future key pages considered by each listing
+	// prediction. Zero selects adaptive read-ahead toward Limit+1 over a
+	// remote Source; zero-policy OpenDir reads on demand. Positive values
+	// cap the same predictor; negative values are invalid. Adjacent pages
+	// are fetched together in bounded windows and checked on use.
+	// ReadPolicy.DisableSpeculation disables this optional fetching.
 	ReadAhead int
 }
 

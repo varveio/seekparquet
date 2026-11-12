@@ -11,19 +11,12 @@ import (
 	"sync"
 )
 
-// This file holds the bytes an operation reads ahead of decoding from a
-// remote Source, in windows: the store every page read of the operation
-// looks in before it reads storage (windows), and its memory bounds
-// (Limits.ReadMemory, Limits.DatasetReadMemory). The planners that fill it
-// are in readplan.go. A window is one range of a checked part's file, read
-// with the other windows of its part planned with it in one readRanges
-// call (a wave), on a goroutine of its own. A read is served from windows
-// only when adjacent windows that were read completely and without error
-// hold all of it, and its bytes are then checked as any read's are. A
-// window read speculatively that failed is never served: the read goes to
-// storage itself, and fails as it would have. A window the operation
-// needed that failed fails the read that needed it with its error: it is
-// not read again.
+// Windows hold complete reads ahead of decoding for one operation. The
+// source merges, splits and schedules each wave's physical requests.
+const (
+ readWaveBytes int64 = 64 << 20
+ readWindowBytes int64 = 4 << 20
+)
 
 // extent is bytes an operation will read: size bytes at off of part p, of
 // rows below the dataset ordinal rowEnd, once the operation has passed
@@ -51,31 +44,19 @@ type window struct {
 
 func (x *window) end() int64 { return x.off + int64(len(x.buf)) }
 
-// windows is one operation's bytes read ahead of decoding. Its waves run
-// under a context of their own, the operation's, which close cancels
-// before it waits for them. Every byte of a window is charged, before it
-// is allocated, to Limits.ReadMemory (held) and to the reader's
-// DatasetReadMemory (readBudget), and given back once the window is
-// dropped, which waits for its wave to end.
+// windows owns at most readWaveBytes of fetched, undecoded buffers.
+// Admission never waits. Workers for different handles run concurrently
+// within a wave and are joined before fetch returns or close frees buffers.
 type windows struct {
-	r      *reader
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-
-	mu     sync.Mutex
-	held   int64
-	list   []*window
-	closed bool
-	// inCallback is set while the operation runs a caller's callback
-	// holding bytes (readBudget.callbacks).
-	inCallback bool
-	// st counts the waves' storage calls; the other counts are those of
-	// the windows, added to the operation's statistics when it ends.
-	st                             ReadStats
-	specBytes, specRanges          int64
-	specUnusedBytes, specFallbacks int64
-	peak                           int64
+ r *reader
+ ctx context.Context
+ cancel context.CancelFunc
+ wg sync.WaitGroup
+ mu sync.Mutex
+ held int64
+ list []*window
+ closed bool
+ st ReadStats
 }
 
 // windows returns the operation's windows, made on first use.
@@ -99,86 +80,35 @@ func windowsOf(ctx context.Context) *windows {
 	return nil
 }
 
-// windowBytes is the most bytes one window holds: ReadPolicy.WindowBytes,
-// within both memory bounds.
-func (r *reader) windowBytes() int64 {
-	return min(r.policy.WindowBytes, r.limits.ReadMemory, r.limits.DatasetReadMemory)
-}
-
-// readBudget is the reader's DatasetReadMemory: a byte semaphore, and the
-// number of operations holding some of it while they run a caller's
-// callback. A demand waits for capacity only when none does: such
-// capacity is released only once a callback returns, which may itself be
-// waiting for the operation that waits.
-type readBudget struct {
-	opLimit
-	callbacks int // guarded by opLimit.mu
-}
-
-// mayWait reports whether a demand may wait for the bound's capacity: no
-// holder runs a callback.
-func (b *readBudget) mayWait() bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.callbacks == 0
-}
-
-// enterCallback and leaveCallback bracket a caller's callback run by an
-// operation that may hold windows (a scan): while its windows hold bytes,
-// no demand of another operation waits for the dataset's bound.
-func (w *windows) enterCallback() {
-	if w == nil {
-		return
-	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.held > 0 && !w.inCallback {
-		w.inCallback = true
-		b := &w.r.readMemory
-		b.mu.Lock()
-		b.callbacks++
-		b.mu.Unlock()
-	}
-}
-
-func (w *windows) leaveCallback() {
-	if w == nil {
-		return
-	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.leaveLocked()
-}
-
-func (w *windows) leaveLocked() {
-	if w.inCallback {
-		w.inCallback = false
-		b := &w.r.readMemory
-		b.mu.Lock()
-		b.callbacks--
-		b.mu.Unlock()
-	}
-}
-
-// fetch reads ahead the extents, in the order given, as many as the
-// memory bounds, and for speculation (spec) the speculative allowances
-// (ReadPolicy.SpeculativeBytes and SpeculativeRanges), admit now, and
-// reports how many it admitted: a prefix of them. Extents of one part that
-// touch are read as one window, up to windowBytes, cut where an extent
-// ends; a larger extent is cut at windowBytes. A window that cannot be
-// admitted stops the admission. Speculation never waits; a demand waits
-// for the dataset's bound only while the operation holds nothing and no
-// holder runs a callback, and until its context ends. Extents the windows
-// hold already are not read again.
+// fetch submits a prefix that fits the fixed operation bound. Adjacent
+// extents become contiguous runs. An extent is admitted whole or omitted.
 func (w *windows) fetch(exts []extent, spec bool) int {
-	cut := w.r.windowBytes()
-	var planned []*window
-	admitted := 0
 	w.mu.Lock()
-	defer func() {
-		w.launch(planned)
-		w.mu.Unlock()
-	}()
+ n, planned := w.plan(exts, spec)
+ w.launch(planned)
+ w.mu.Unlock()
+ w.wg.Wait()
+ return n
+}
+
+// fetchWave submits demanded and optional runs together per handle.
+func (w *windows) fetchWave(need, spec []extent) bool {
+ w.mu.Lock()
+ n, planned := w.plan(need, false)
+ m, optional := w.plan(spec, true)
+ planned = append(planned, optional...)
+ slices.SortStableFunc(planned, func(a, b *window) int { return cmp.Compare(a.p.name, b.p.name) })
+ w.launch(planned)
+ w.mu.Unlock()
+ w.wg.Wait()
+ return n == len(need) && m == len(spec)
+}
+
+// plan reserves buffers with mu held. Oversized runs fall back to demand.
+func (w *windows) plan(exts []extent, spec bool) (int, []*window) {
+ cut := readWindowBytes
+ var planned []*window
+ admitted := 0
 	for i := 0; i < len(exts); {
 		e := exts[i]
 		if e.size <= 0 || w.coverLocked(e.p, e.off, e.size) != nil {
@@ -194,54 +124,18 @@ func (w *windows) fetch(exts []extent, spec bool) int {
 			}
 			end, rowEnd = next, max(rowEnd, exts[j].rowEnd)
 		}
-		ok := true
-		for off := start; off < end && ok; off += cut {
-			n := min(cut, end-off)
-			if ok = w.admit(n, spec); ok {
-				planned = append(planned, &window{p: e.p, off: off, buf: make([]byte, n), rowEnd: rowEnd, spec: spec, done: make(chan struct{})})
-			}
-		}
-		if !ok {
-			break
-		}
-		i, admitted = j, j
-	}
-	return admitted
-}
-
-// admit charges n bytes of a window, with mu held: to the speculative
-// allowances for speculation, to ReadMemory, and to the dataset's bound.
-func (w *windows) admit(n int64, spec bool) bool {
-	pol := &w.r.policy
-	if w.closed || n > w.r.limits.ReadMemory-w.held ||
-		spec && (n > pol.SpeculativeBytes-w.specBytes || w.specRanges >= int64(pol.SpeculativeRanges)) {
-		return false
-	}
-	b := &w.r.readMemory
-	if b.tryAcquire(n, 0) {
-		w.held += n
-	} else {
-		if spec || w.held > 0 || !b.mayWait() {
-			return false
-		}
-		w.held += n // so that no other goroutine of the operation waits too
-		w.mu.Unlock()
-		err := b.acquire(w.ctx, n)
-		w.mu.Lock()
-		if err != nil || w.closed {
-			w.held -= n
-			if err == nil {
-				b.release(n)
-			}
-			return false
-		}
-	}
-	if spec {
-		w.specBytes += n
-		w.specRanges++
-	}
-	w.peak = max(w.peak, w.held)
-	return true
+		if w.closed || start < 0 || end < start || end-start > readWaveBytes-w.held ||
+   len(w.list)+len(planned)+int((end-start+cut-1)/cut) > MaxReadRanges {
+   break
+  }
+  w.held += end-start
+  for off := start; off < end; off += cut {
+   n := min(cut, end-off)
+   planned = append(planned, &window{p: e.p, off: off, buf: make([]byte, n), rowEnd: rowEnd, spec: spec, done: make(chan struct{})})
+  }
+  i, admitted = j, j
+ }
+ return admitted, planned
 }
 
 // launch reads the windows, with mu held: those of each part in one wave.
@@ -330,7 +224,7 @@ func (w *windows) holds(p *part, off, size int64) bool {
 // A window the operation needed that failed is the read's error; one read
 // speculatively that failed is not, and the read goes to storage.
 func (w *windows) copy(p *part, buf []byte, off int64) (bool, error) {
-	if w == nil || len(buf) == 0 {
+	if w == nil || len(buf) == 0 || w.ctx.Err() != nil {
 		return false, nil
 	}
 	w.mu.Lock()
@@ -353,9 +247,6 @@ func (w *windows) copy(p *part, buf []byte, off int64) (bool, error) {
 		if !x.spec && w.ctx.Err() == nil {
 			return false, x.err
 		}
-		w.mu.Lock()
-		w.specFallbacks++
-		w.mu.Unlock()
 		return false, nil
 	}
 	end := off + int64(len(buf))
@@ -401,9 +292,6 @@ func (w *windows) dropLocked(drop func(*window) bool) {
 	}
 	clear(w.list[len(kept):])
 	w.list = kept
-	if w.held == 0 {
-		w.leaveLocked()
-	}
 }
 
 // retire gives back a finished window's bytes and counts it, with mu
@@ -412,10 +300,14 @@ func (w *windows) retire(x *window) {
 	n := int64(len(x.buf))
 	x.dropped = true
 	w.held -= n
-	w.r.readMemory.release(n)
-	if x.spec && x.err == nil {
-		w.specUnusedBytes += n - x.used
-	}
+	if x.spec {
+  w.st.ReadAheadReads++
+  if x.err != nil || x.used == 0 {
+   w.st.ReadAheadUnused++
+   w.st.ReadAheadUnusedBytes += n
+  }
+ }
+ x.buf = nil
 }
 
 // close ends the waves still reading, waits for them, gives back every
@@ -432,16 +324,11 @@ func (w *windows) close(st *ReadStats) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.dropLocked(func(*window) bool { return true })
-	w.leaveLocked()
 	if st != nil {
 		st.Add(w.st)
-		st.SpeculativeBytes += w.specBytes
-		st.SpeculativeUnusedBytes += w.specUnusedBytes
-		st.SpeculativeFallbackReads += w.specFallbacks
-		st.PeakReadBufferBytes = max(st.PeakReadBufferBytes, w.peak)
+
 	}
 	w.st = ReadStats{}
-	w.specBytes, w.specRanges, w.specUnusedBytes, w.specFallbacks, w.peak = 0, 0, 0, 0, 0
 }
 
 // sortExtents orders the extents of each part, kept together in the order

@@ -71,9 +71,6 @@ type reader struct {
 	// of first loads still publishing, which a load that loses the race to
 	// publish gives back.
 	locsMemory atomic.Int64
-	// readMemory bounds the bytes the operations hold read ahead
-	// (Limits.DatasetReadMemory, windows).
-	readMemory readBudget
 
 	// mu guards the request leases: active counts the requests in
 	// progress, and idle is signalled when it drops to zero; closed is set
@@ -217,7 +214,6 @@ type fetchedInput struct {
 // it fails it closes them all, and on success reader.close closes them.
 func openParts(ctx context.Context, inputs []partInput, key Key, opt OpenOptions) (_ *reader, err error) {
 	r := &reader{key: key, limits: opt.Limits.withDefaults(), policy: opt.Read.withDefaults(), bounded: true, columns: map[string]column{}}
-	r.readMemory.free, r.readMemory.size = r.limits.DatasetReadMemory, r.limits.DatasetReadMemory
 	r.closing, r.closeNow = context.WithCancelCause(context.Background())
 	defer func() {
 		if err != nil {

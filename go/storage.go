@@ -317,26 +317,6 @@ type ReadPolicy struct {
 	// than it costs one more read of exactly the missing bytes. Default
 	// 2 MiB; OpenDir's default is 64 KiB.
 	MetadataPrefetchBytes int64
-	// WindowBytes is the most bytes of one column chunk that a scan
-	// (Dataset.Scan, Plan.Scan), a listing (Dataset.List) or a list-index
-	// build reads in one range ahead of decoding, a window: the pages from
-	// the one it needs next to the last it can reach in the row group, and
-	// the row groups after it in the part as Limits.ReadMemory allows, read
-	// together. Pages are checked as any page read is, served only from a
-	// window read completely, and read again on their own when a window
-	// fails. A larger chunk is read in several windows. Zero selects the
-	// default, 4 MiB; negative values are invalid. A read of a local
-	// directory with a zero ReadPolicy (OpenDir) reads no window.
-	WindowBytes int64
-	// SpeculativeBytes and SpeculativeRanges bound, cumulatively over one
-	// operation, the bytes and the ranges it reads ahead without knowing
-	// it will use them (ReadStats.SpeculativeBytes): windows beyond the
-	// rows a scan is sure to read, a listing's windows, value pages
-	// fetched with their key page and routing probes. Past either, the
-	// operation reads what it needs as it needs it. Zero selects the
-	// defaults, 16 MiB and 1,024; negative values are invalid.
-	SpeculativeBytes  int64
-	SpeculativeRanges int
 	// DisableSpeculation disables optional fetching, including listing
 	// read-ahead, windows beyond the pages a planned scan needs, and value
 	// pages fetched with their key page. It does not disable batching of demanded ranges or
@@ -353,12 +333,6 @@ func (p ReadPolicy) check() error {
 	}
 	if p.MetadataPrefetchBytes < 0 {
 		return invalidRequest("ReadPolicy.MetadataPrefetchBytes is negative (%d)", p.MetadataPrefetchBytes)
-	}
-	if p.SpeculativeBytes < 0 || p.SpeculativeRanges < 0 {
-		return invalidRequest("ReadPolicy.SpeculativeBytes or SpeculativeRanges is negative (%d, %d)", p.SpeculativeBytes, p.SpeculativeRanges)
-	}
-	if p.WindowBytes < 0 {
-		return invalidRequest("ReadPolicy.WindowBytes is negative (%d)", p.WindowBytes)
 	}
 	return nil
 }
@@ -378,15 +352,6 @@ func (p ReadPolicy) withDefaults() ReadPolicy {
 	}
 	if p.MetadataPrefetchBytes == 0 {
 		p.MetadataPrefetchBytes = 2 << 20
-	}
-	if p.WindowBytes == 0 {
-		p.WindowBytes = 4 << 20
-	}
-	if p.SpeculativeBytes == 0 {
-		p.SpeculativeBytes = 16 << 20
-	}
-	if p.SpeculativeRanges == 0 {
-		p.SpeculativeRanges = 1024
 	}
 	return p
 }

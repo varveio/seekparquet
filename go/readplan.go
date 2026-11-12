@@ -11,9 +11,7 @@ import (
 
 // readPlan plans the windows of one scan over a remote Source (windows):
 // the pages it will decode, from the key page it needs and the windows do
-// not hold, read ahead in waves of at most waveBytes, half of ReadMemory,
-// so that the next wave is read while the scan decodes one: when the scan
-// reaches the rows of the latest wave, the wave after it is read. A wave
+// not hold, read ahead in waves of at most waveBytes, bounded by readWaveBytes. Each wave finishes before decoding resumes. A wave
 // holds the rows the scan reads in the row group it is in and in the row
 // groups after it, in checked parts: every row of a planned scan's spans,
 // which the scan needs; otherwise the rows up to the scan's upper bound
@@ -58,7 +56,7 @@ func (r *reader) newReadPlan(ctx context.Context, columns []string, spans []span
 		return nil
 	}
 	return &readPlan{r: r, w: o.windows(), columns: columns, spans: spans, limit: limit, end: -1, speculate: speculate,
-		waveBytes: max(r.limits.ReadMemory/2, r.windowBytes()), frontier: -1, prev: -1}
+		waveBytes: readWaveBytes, frontier: -1, prev: -1}
 }
 
 // page is called before the scan's walker on row group g decodes key page
@@ -72,15 +70,9 @@ func (rp *readPlan) page(s *scan, k *keyPages, i int) {
 	rp.w.release(min(rp.prev, ordinal))
 	rp.prev = ordinal
 	loc := k.index.pages[i].pageLoc
-	switch {
-	case !rp.w.holds(k.part, loc.offset, loc.size):
-		rp.wave(s, k.g, ordinal)
-	case !rp.ahead && rp.frontier >= 0 && ordinal >= rp.from:
-		rp.ahead = true
-		if g, ok := s.r.groupOf(rp.frontier); ok {
-			rp.wave(s, g, rp.frontier)
-		}
-	}
+	if !rp.w.holds(k.part, loc.offset, loc.size) {
+  rp.wave(s, k.g, ordinal)
+ }
 }
 
 // groupOf returns the row group holding the dataset ordinal in a checked
@@ -154,7 +146,7 @@ func (rp *readPlan) wave(s *scan, g groupRef, from int64) {
 	sortExtents(need)
 	sortExtents(spec)
 	rp.from, rp.ahead = from, false
-	if rp.w.fetch(need, false) < len(need) || rp.w.fetch(spec, true) < len(spec) {
+	if !rp.w.fetchWave(need, spec) {
 		frontier = -1
 	}
 	rp.frontier = frontier

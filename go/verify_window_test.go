@@ -261,7 +261,7 @@ func TestOperationLimit(t *testing.T) {
 		var st ReadStats
 		entries, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 100, ReadAhead: 8}, &st)
 		must(t, err)
-		if len(entries) == 0 || st.SpeculativeBytes == 0 || st.SpeculativeUnusedBytes == 0 {
+		if len(entries) == 0 || st.ReadAheadReads == 0 || st.ReadAheadUnusedBytes == 0 {
 			t.Fatalf("%d entries, %+v", len(entries), st)
 		}
 		if got := src.most.Load(); got > 2 {

@@ -388,8 +388,8 @@ func TestReadAheadPolicy(t *testing.T) {
 		d := openWith(t, ctx, dirOf(t, dir), OpenOptions{Read: ReadPolicy{DisableSpeculation: true}}, false)
 		_, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 100, ReadAhead: n}, &st)
 		must(t, err)
-		if st.SpeculativeBytes != 0 || st.PeakReadBufferBytes != 0 {
-			t.Fatalf("ReadAhead %d: %d bytes read ahead with speculation disabled", n, st.SpeculativeBytes)
+		if st.ReadAheadReads != 0 || st.ReadAheadUnused != 0 {
+			t.Fatalf("ReadAhead %d: %d bytes read ahead with speculation disabled", n, st.ReadAheadReads)
 		}
 	}
 }
