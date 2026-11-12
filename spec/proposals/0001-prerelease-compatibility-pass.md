@@ -1,6 +1,6 @@
 # 0001: Pre-release compatibility pass
 
-- **Status:** draft
+- **Status:** accepted
 - **Author(s):** SeekParquet maintainers
 - **Affects:** valid files / refusal codes (detection point) / editorial
 
@@ -91,7 +91,7 @@ Draft revision 1 is unreleased and edited in place (VER-2), so this change keeps
    gain a required unsupported classification without being certified valid Parquet; ignored enum values
    and valueless non-stamp metadata cannot cause refusal. Intrinsic header corruption retains its data
    classification even where index checks also fail. Valid supported queries keep their rows. No refusal
-   code, draft revision, format version or release status changes (VER-2); this proposal remains draft.
+   code, draft revision, format version or release status changes (VER-2).
 
 ## Conformance
 
@@ -152,7 +152,7 @@ adapter follow. Both readers already decode `LZ4_RAW`; Go keeps its `BROTLI` sup
    remapping, and enforces the pinned DECIMAL/TIMESTAMP rules. Python checks raw metadata before Arrow,
    checks all leaves, classifies indexed headers before walking physical pages, and decodes only needed
    query columns. Part B updates Java and admits the named shared cases together so implementation CI
-   keeps passing. Proposal 0001 stays draft until implementations and shared expectations agree.
+   keeps passing. Both parts are merged (#73, #74).
 
 ## Alternatives considered
 
