@@ -77,8 +77,8 @@ import java.util.Optional;
  * request waits for it and stops waiting when cancelled. Each open therefore costs a short-lived thread
  * and a directory handle, besides the part's own; parts are opened once each, when first touched (and
  * again only after an interrupt closed the part's channel). An open that never returns strands its
- * thread and directory handle until the file is opened for writing or the process exits; once {@value
- * #MAX_STRANDED_OPENS} opens through one storage are stranded, its further opens fail with an {@link
+ * thread and directory handle until the file is opened for writing or the process exits; once 64
+ * opens through one storage are stranded, its further opens fail with an {@link
  * IOException} instead of starting another thread. Plain directory streams open on the caller's thread:
  * on Windows a named pipe exists only in the {@code \\.\pipe\} namespace and cannot be an entry of
  * the dataset directory, so an open there does not wait for a writer.
@@ -89,7 +89,7 @@ import java.util.Optional;
 public final class LocalStorage implements DatasetStorage {
 
     /** The most opens through one storage that may be left blocked before its further opens fail. */
-    public static final int MAX_STRANDED_OPENS = 64;
+    static final int MAX_STRANDED_OPENS = 64;
 
     private final Path root;
     private final Opener opener = new Opener();

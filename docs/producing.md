@@ -18,12 +18,15 @@ promises. Readers and validators check the result; nothing here relaxes a rule o
      bounds that are bounds: exact, or shortened only where the shortened value still bounds the page
      (RG-5). Value columns should have an OffsetIndex too (COL-4);
    - key pages of at most 1,024 rows (GEO-1, a recommendation);
+   - only baseline codecs: `UNCOMPRESSED`, `SNAPPY`, `GZIP`, `ZSTD` or `LZ4_RAW`, which is not the legacy
+     `LZ4` (ENC-1). `BROTLI` is valid, but a reader may not support it;
    - the five `seekparquet.*` footer stamps, repeating the manifest's version, schema id and key
      declaration (STAMP-1).
 4. **Make every part durable** under its final path: sync the file, move it into place, and sync its
    directory.
 5. **Commit the manifest** (§3): the parts in key order with their exact row counts, sizes and first and
-   last keys, optionally their SHA-256 digests and an `extensions` object. Write it whole, sync it, and
+   last keys, optionally their SHA-256 digests and `extensions` objects, at the top level and per part,
+   for metadata readers ignore (§3.4; the namespace `seekparquet` is reserved). Write it whole, sync it, and
    install it atomically as `manifest.json`, then sync the root (COMMIT-1). Until then the root holds no
    dataset (LAYOUT-1).
 

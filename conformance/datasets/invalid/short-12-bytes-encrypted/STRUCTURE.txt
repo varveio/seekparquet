@@ -1,0 +1,16 @@
+# short-12-bytes-encrypted
+
+valid: no
+description: The part is 12 bytes, PARE, a zero footer length, PARE: long enough, so encryption.
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/basic
+fault (generators/faults.json): short-12-bytes-encrypted: unsupported_encryption; reader detects on touch; lowest validation level structural (CHECK-1, FILE-2); location: data/part-00000.parquet: 12 bytes, PARE at both ends
+changes:
+  - data/part-00000.parquet: replaced by the 12 bytes 504152450000000050415245
+  - manifest: parts[0].bytes 2828 -> 12
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 12, keys 'a/1.txt' .. 'foxtrot'
+
+file data/part-00000.parquet: 12 bytes; footer unreadable: missing PAR1 magic

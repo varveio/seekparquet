@@ -78,7 +78,7 @@ final class ListBoundaryIndex {
         // Binary-search the successor and reject any dense marker in the interval.
         // The callback also permits deterministic cancellation/step-bound tests.
         int firstOutside(int start, byte[] prefix, Runnable checkCancelled) {
-            byte[] target = Bytes.wrap(prefix).successor().map(Bytes::unsafeArray).orElse(null);
+            byte[] target = Bytes.wrap(prefix).prefixEnd().map(Bytes::unsafeArray).orElse(null);
             int lo = start, hi = rows.length;
             while (lo < hi) {
                 checkCancelled.run();

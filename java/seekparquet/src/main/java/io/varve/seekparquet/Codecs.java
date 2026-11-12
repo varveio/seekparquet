@@ -13,8 +13,8 @@ import java.util.zip.Inflater;
 import org.apache.parquet.format.CompressionCodec;
 
 /**
- * Page decompression. The baseline codecs (ENC-1) are UNCOMPRESSED, SNAPPY, GZIP and ZSTD; LZ4_RAW is
- * also read. Every decode is bounded to exactly the size the page header declares, which the caller has
+ * Page decompression. The baseline codecs (ENC-1) are UNCOMPRESSED, SNAPPY, GZIP, ZSTD and LZ4_RAW (not the
+ * legacy LZ4); BROTLI, outside the baseline, is reported unsupported. Every decode is bounded to exactly the size the page header declares, which the caller has
  * checked against its limits, so a hostile page cannot expand into a larger retained output capacity.
  */
 final class Codecs {
@@ -35,11 +35,11 @@ final class Codecs {
     /** Throws if this reader cannot decompress {@code codec}. */
     static void checkSupported(CompressionCodec codec, String where) {
         if (codec == null) {
-            throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCODING, where + ": an unknown codec");
+            throw new UnsupportedFeatureException(UnsupportedCode.ENCODING, where + ": an unknown codec");
         }
         switch (codec) {
             case UNCOMPRESSED, SNAPPY, GZIP, ZSTD, LZ4_RAW -> {}
-            default -> throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCODING, where + ": codec " + codec);
+            default -> throw new UnsupportedFeatureException(UnsupportedCode.ENCODING, where + ": codec " + codec);
         }
     }
 
@@ -80,7 +80,7 @@ final class Codecs {
                 case ZSTD -> state.zstd().decompress(in, off, len, out, 0, size);
                 case LZ4_RAW -> state.lz4().decompress(in, off, len, out, 0, size);
                 case GZIP -> gunzip(in, off, len, out, size);
-                default -> throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCODING, "codec " + codec);
+                default -> throw new UnsupportedFeatureException(UnsupportedCode.ENCODING, "codec " + codec);
             };
             if (n != size) {
                 throw new DataException("the page decompresses to " + n + " bytes, not the " + size + " it declares");

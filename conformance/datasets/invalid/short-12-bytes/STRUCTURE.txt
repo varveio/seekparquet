@@ -1,0 +1,16 @@
+# short-12-bytes
+
+valid: no
+description: The part is 12 bytes, PAR1, a zero footer length, PAR1: long enough, magic valid, but no footer.
+provenance: mutated
+producer: generators/mutate_metadata.py
+derived from: datasets/basic
+fault (generators/faults.json): short-12-bytes: invalid_footer; reader detects on touch; lowest validation level structural (CHECK-1); location: data/part-00000.parquet: 12 bytes, a zero footer length
+changes:
+  - data/part-00000.parquet: replaced by the 12 bytes 504152310000000050415231
+  - manifest: parts[0].bytes 2828 -> 12
+
+manifest: format_version 0, 1 parts
+  part 0: 'data/part-00000.parquet', rows 12, bytes 12, keys 'a/1.txt' .. 'foxtrot'
+
+file data/part-00000.parquet: 12 bytes; footer unreadable: footer length out of range

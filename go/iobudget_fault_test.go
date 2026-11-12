@@ -42,6 +42,12 @@ import (
 // fault.
 const faultPositions = 12
 
+// raceFaultPositions is faultPositions under the race detector, which
+// slows every cell tenfold: the first, the last and two between still
+// cover every phase, within the race shard's time; the full matrix runs
+// without it.
+const raceFaultPositions = 4
+
 // faultDeadline ends a hung operation on the virtual clock.
 const faultDeadline = time.Hour
 
@@ -277,6 +283,10 @@ func TestFaultMatrix(t *testing.T) {
 	ops := faultOps(fx, ents[len(ents)-1].Cursor())
 	cells := 0
 	outcomes := map[string]int{}
+	tried := faultPositions
+	if raceEnabled {
+		tried = raceFaultPositions
+	}
 	for _, store := range ioStores {
 		for i := -1; i < len(ops); i++ {
 			var op *faultOp
@@ -291,7 +301,7 @@ func TestFaultMatrix(t *testing.T) {
 				}
 				n := len(clean.report.Requests)
 				for _, kind := range faultKinds {
-					for _, at := range positions(n, faultPositions) {
+					for _, at := range positions(n, tried) {
 						cells++
 						got := runFaulted(t, fx, store, op, fakestore.Fault{At: at, Kind: kind})
 						where := fmt.Sprintf("%s at request %d of %d", kind, at, n)

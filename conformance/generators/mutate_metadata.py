@@ -402,6 +402,58 @@ def bump_num_values(rg, col, page_no):
     return fn
 
 
+def shrink_uncompressed_size(rg, col, page_no):
+    """Lower a data page header's uncompressed_page_size by one, keeping the header's encoded length: the page
+    then decompresses to one byte more than it declares."""
+    def fn(data):
+        pf = pm.read_parquet(data)
+        cc = pm.column_chunk(pf, rg, col)
+        p = pm.data_pages(pf, cc)[page_no]
+        h, hend = pm.decode_struct(data, p.offset)
+        old = h.get(pm.PH_UNCOMPRESSED)
+        h.set(pm.PH_UNCOMPRESSED, pm.CT_I32, old - 1)
+        enc = pm.encode_struct(h)
+        assert len(enc) == hend - p.offset, "header length changed"
+        new = data[:p.offset] + enc + data[hend:]
+        return new, [f"row group {rg} column {col}: data page {page_no} header uncompressed_page_size {old} -> "
+                     f"{old - 1} (its LZ4_RAW body decompresses to {old} bytes); header length unchanged"]
+    return fn
+
+
+def declare_encryption(part):
+    """Declare AES_GCM_V1 encryption in FileMetaData (field 8, union EncryptionAlgorithm, member 1)."""
+    part.meta.set(8, pm.CT_STRUCT, pm.Struct(fields=[(1, pm.CT_STRUCT, pm.Struct())]))
+    part.changes.append("footer: FileMetaData.encryption_algorithm = AES_GCM_V1 {} (nothing else encrypted)")
+
+
+def signed_footer(declare, signature_bytes):
+    """A raw edit: re-encode the footer, optionally declaring encryption in plaintext footer mode
+    (declare True: encryption_algorithm AES_GCM_V1 and footer_signing_key_metadata; "algorithm": the first
+    alone; "empty-key": an empty footer_signing_key_metadata alone), and follow it with signature_bytes
+    deterministic bytes that the footer length covers, as a signed plaintext footer's 28-byte signature is."""
+    def fn(d):
+        pf = pm.read_parquet(d)
+        meta = copy.deepcopy(pf.meta)
+        if declare in (True, "algorithm"):
+            meta.set(pm.FMD_ENCRYPTION, pm.CT_STRUCT, pm.Struct(fields=[(1, pm.CT_STRUCT, pm.Struct())]))
+        if declare is True:
+            meta.set(pm.FMD_SIGNING_KEY, pm.CT_BINARY, b"conformance-key")
+        if declare == "empty-key":  # field 9 present, as an empty binary: present is a declaration
+            meta.set(pm.FMD_SIGNING_KEY, pm.CT_BINARY, b"")
+        footer = pm.encode_struct(meta) + bytes(range(signature_bytes))
+        return d[:pf.footer_start] + footer + len(footer).to_bytes(4, "little") + pm.MAGIC
+    return fn
+
+
+def set_part_extensions(values):
+    """Give parts their own extensions objects: {part index: object}."""
+    def fn(m, changes):
+        for i, v in values.items():
+            m["parts"][i]["extensions"] = v
+            changes.append(f"manifest: parts[{i}].extensions = {json.dumps(v)}")
+    return fn
+
+
 # Conservative bound shortening, as parquet-java's BinaryTruncator does it ------
 
 TRUNC = 16
@@ -513,6 +565,32 @@ def build():
                     None, valid=True, out=DATASETS / "extensions-numbers",
                     raw_manifest=lambda t: (t.replace(',\n  "parts": [', ext_text, 1),
                                             ["manifest text: extensions member added with ordinary JSON values"])))
+    R.append(derive("part-extensions", "multipart",
+                    "multipart with an extensions object on each part: an unknown namespace with nested values, the "
+                    "reserved namespace seekparquet holding an array, an object with members no accelerator defines "
+                    "and a string, and the reserved namespace at the top level too (an array); every reader ignores "
+                    "them, so queries answer exactly as on multipart (EXT-1, EXT-3, EXT-5).",
+                    None, valid=True, out=DATASETS / "part-extensions",
+                    manifest=lambda m, ch: (
+                        set_member(["extensions", "seekparquet"], [True, None, {"future": 1}])(m, ch),
+                        set_part_extensions({
+                            0: {"conformance": {"nested": {"a": [1, 2.5, None, {"b": [True, {}]}]}, "n": -7},
+                                "seekparquet": [1, "x", None]},
+                            1: {"seekparquet": {"future_accelerator": {"version": 99, "data": [1, 2, 3]},
+                                                "unknown": "ignored"}},
+                            2: {"other-tool": None, "seekparquet": "text", "conformance": 3.5}})(m, ch))))
+    R.append(derive("part-extensions-empty", "basic",
+                    "basic with the reserved namespace seekparquet holding a number at the top level, and an empty "
+                    "extensions object on the part; readers ignore both (EXT-3, EXT-5).",
+                    None, valid=True, out=DATASETS / "part-extensions-empty",
+                    manifest=lambda m, ch: (set_member(["extensions"], {"seekparquet": 42})(m, ch),
+                                            set_part_extensions({0: {}})(m, ch))))
+    R.append(derive("part-extensions-null", "basic",
+                    "basic with the reserved namespace seekparquet holding null at the top level and in the part's "
+                    "extensions; readers ignore both (EXT-3, EXT-5).",
+                    None, valid=True, out=DATASETS / "part-extensions-null",
+                    manifest=lambda m, ch: (set_member(["extensions"], {"seekparquet": None})(m, ch),
+                                            set_part_extensions({0: {"seekparquet": None}})(m, ch))))
     R.append(derive("digest-mixed", "multipart",
                     "multipart with sha256 declared for parts 0 and 2 only: digest validation checks exactly 2.",
                     None, valid=True, out=DATASETS / "digest-mixed",
@@ -601,6 +679,31 @@ def build():
     R.append(derive("manifest-extensions-duplicate-member", "basic",
                     "An object inside extensions has the member a twice.", None,
                     raw_manifest=text_replace('  "parts": [', '  "extensions": {"conformance": {"a": 1, "a": 2}},\n  "parts": [')))
+    R.append(derive("manifest-part-extensions-not-object", "multipart",
+                    "Part 1's extensions is an array, not an object.", None,
+                    manifest=set_part_extensions({1: ["conformance"]})))
+    R.append(derive("manifest-part-extensions-duplicate-member", "basic",
+                    "The part's extensions object holds a namespace whose object has the member a twice.", None,
+                    raw_manifest=text_replace('"rows": 12,',
+                                              '"rows": 12,\n      "extensions": {"conformance": {"a": 1, "a": 2}},')))
+    for fid, desc, text in (
+            ("manifest-part-extensions-empty-namespace", "The part's extensions object has an empty namespace name.",
+             '"extensions": {"": 1}'),
+            ("manifest-part-extensions-null", "The part's extensions is null, not an object.", '"extensions": null'),
+            ("manifest-part-extensions-duplicate-namespace", "The part's extensions object names the namespace "
+             "conformance twice.", '"extensions": {"conformance": 1, "conformance": 2}'),
+            ("manifest-part-extensions-escaped-duplicate", "The part's extensions object names the namespace "
+             "conformance twice, once spelled with an escape (conform\\u0061nce).",
+             '"extensions": {"conformance": 1, "conform\\u0061nce": 2}'),
+            ("manifest-part-extensions-unpaired-surrogate", "A string nested inside the part's extensions is the "
+             "escaped lone surrogate \\ud800.", '"extensions": {"conformance": {"x": ["\\ud800"]}}')):
+        R.append(derive(fid, "basic", desc, None,
+                        raw_manifest=text_replace('"rows": 12,', '"rows": 12,\n      ' + text + ',')))
+    R.append(derive("manifest-part-extensions-unknown-member", "basic",
+                    "The part has a valid extensions object and, beside it, the undefined member checksum: the core "
+                    "part object stays closed.", None,
+                    manifest=lambda m, ch: (set_part_extensions({0: {"conformance": {}}})(m, ch),
+                                            set_member(["parts", 0, "checksum"], "abc")(m, ch))))
     R.append(derive("manifest-duplicate-member-escaped", "basic",
                     "schema_id appears twice, once spelled with an escape (schema\\u005fid).", None,
                     raw_manifest=text_replace('"schema_id": "conformance/objects/v1",',
@@ -668,6 +771,59 @@ def build():
     # ---- footer ---------------------------------------------------------------
     R.append(derive_raw_part("invalid-footer-magic", "The part's trailing magic is PAR0 instead of PAR1.",
                              lambda d: d[:-4] + b"PAR0", "trailing magic PAR1 -> PAR0"))
+    # The magic matrix (CHECK-1): PARE at either end is encryption; otherwise anything but PAR1 is invalid_footer.
+    for name, head, tail, desc in (
+            ("encrypted-footer-magic", b"PAR1", b"PARE", "The part's trailing magic is PARE."),
+            ("encrypted-both-magic", b"PARE", b"PARE", "The part begins and ends with PARE, the magics of an encrypted-"
+                                                        "footer Parquet file (its footer and pages are plaintext)."),
+            ("encrypted-header-bad-footer-magic", b"PARE", b"PAR0", "The part's leading magic is PARE and its "
+                                                                     "trailing magic PAR0: encryption takes precedence."),
+            ("encrypted-footer-bad-header-magic", b"PAR0", b"PARE", "The part's leading magic is PAR0 and its "
+                                                                     "trailing magic PARE: encryption takes precedence."),
+            ("invalid-both-magic", b"PAR0", b"PAR0", "The part's leading and trailing magics are both PAR0.")):
+        R.append(derive_raw_part(name, desc, lambda d, h=head, e=tail: h + d[4:-4] + e,
+                                 f"leading magic -> {head.decode()}, trailing magic -> {tail.decode()}"))
+    for name, data, desc in (
+            ("short-11-bytes", b"PARE" + bytes(3) + b"PARE", "The part is 11 bytes, PARE ... PARE: shorter than 12 bytes, "
+                                                             "invalid_footer whatever its magic."),
+            ("short-12-bytes", b"PAR1" + bytes(4) + b"PAR1", "The part is 12 bytes, PAR1, a zero footer length, PAR1: "
+                                                             "long enough, magic valid, but no footer."),
+            ("short-12-bytes-encrypted", b"PARE" + bytes(4) + b"PARE", "The part is 12 bytes, PARE, a zero footer "
+                                                                       "length, PARE: long enough, so encryption.")):
+        R.append(derive_raw_part(name, desc, lambda d, b=data: b, f"replaced by the {len(data)} bytes {data.hex()}",
+                                 resize=True))
+    for name, declare, n, desc in (
+            ("encrypted-footer-signed", True, pm.SIGNATURE_BYTES,
+             "A plaintext-footer encrypted layout: PAR1 at both ends; the footer declares encryption "
+             "(encryption_algorithm AES_GCM_V1, footer_signing_key_metadata) and is followed by a 28-byte signature "
+             "that the footer length covers. Readable footer metadata declares encryption (FILE-2)."),
+            ("encrypted-footer-signature-short", True, pm.SIGNATURE_BYTES - 1,
+             "The footer declares encryption, but 27 bytes, not a 28-byte signature, follow its metadata: a "
+             "malformed footer."),
+            ("encrypted-footer-signature-long", True, pm.SIGNATURE_BYTES + 1,
+             "The footer declares encryption, but 29 bytes, not a 28-byte signature, follow its metadata: a "
+             "malformed footer."),
+            ("encrypted-footer-signed-algorithm", "algorithm", pm.SIGNATURE_BYTES,
+             "A signed plaintext footer declaring encryption by encryption_algorithm alone, then a 28-byte "
+             "signature."),
+            ("encrypted-footer-signed-empty-key", "empty-key", pm.SIGNATURE_BYTES,
+             "A signed plaintext footer whose only declaration is footer_signing_key_metadata present as an empty "
+             "binary, then a 28-byte signature: the field's presence declares encryption."),
+            ("invalid-footer-trailing-28", False, pm.SIGNATURE_BYTES,
+             "28 bytes follow the footer metadata, which declares no encryption: a malformed footer, not a "
+             "signature.")):
+        R.append(derive_raw_part(name, desc, signed_footer(declare, n),
+                                 f"footer re-encoded{' declaring encryption' if declare else ''} ({declare}), followed by {n} "
+                                 "bytes the footer length covers", resize=True))
+    R.append(derive("encrypted-footer-metadata", "basic",
+                    "The part's footer declares encryption (FileMetaData.encryption_algorithm AES_GCM_V1); its magics "
+                    "are PAR1 and its pages plaintext.", None, parts={B: declare_encryption}))
+    R.append(derive_raw_part("invalid-header-magic", "The part's leading magic is PAR0 instead of PAR1; its trailer, "
+                             "footer and pages are intact.", lambda d: b"PAR0" + d[4:], "leading magic PAR1 -> PAR0"))
+    R.append(derive_raw_part("encrypted-header-magic", "The part's leading magic is PARE, the magic of an encrypted "
+                             "Parquet file; its trailer, footer and pages are intact. A reader reports it as "
+                             "unsupported_encryption (CHECK-1, FILE-2), never as readable or as a refusal.",
+                             lambda d: b"PARE" + d[4:], "leading magic PAR1 -> PARE"))
     R.append(derive_raw_part("invalid-footer-length", "The footer length field exceeds the file size.",
                              lambda d: d[:-8] + (len(d) + 10).to_bytes(4, "little") + d[-4:],
                              "footer length field -> file size + 10"))
@@ -726,6 +882,16 @@ def build():
                     "The first data page of column size in row group 1 of shards/c.parquet does not decompress.",
                     None,
                     raw={MP: corrupt_page(1, 1, 0)}))
+    LZ0, LZ1 = "data/part-00000.parquet", "data/part-00001.parquet"
+    R.append(derive("invalid-parquet-lz4-raw-page", "lz4-raw",
+                    "Part 1 (data page v2): the body of key page 1 in row group 0, LZ4_RAW-compressed, is overwritten "
+                    "with 0xFF and does not decompress.",
+                    None, raw={LZ1: corrupt_page(0, 0, 1)}))
+    R.append(derive("invalid-parquet-lz4-raw-size", "lz4-raw",
+                    "Part 0 (data page v1): the first data page of value column n in row group 1, LZ4_RAW-compressed, "
+                    "declares an uncompressed size one byte smaller than its body decompresses to: a reader must not "
+                    "accept output beyond the declared size.",
+                    None, raw={LZ0: shrink_uncompressed_size(1, 1, 0)}))
     R.append(derive("sorting-columns-missing-second-row-group", "basic",
                     "Only row group 1 lacks sorting_columns.",
                     None, parts={B: remove_sorting(1)}))
@@ -794,8 +960,9 @@ def _ff_footer(d):
     return d[:start] + b"\xff" * flen + d[-8:]
 
 
-def derive_raw_part(name, desc, fn, what):
-    """Copy basic and apply a byte-level edit to the part's tail (footer), keeping the manifest size exact."""
+def derive_raw_part(name, desc, fn, what, resize=False):
+    """Copy basic and apply a byte-level edit to the part's magic or footer, keeping the manifest size exact
+    (resize: the edit may change the part's size, and the manifest's bytes follows it)."""
     src = DATASETS / "basic"
     out = INVALID / name
     if out.exists():
@@ -804,14 +971,18 @@ def derive_raw_part(name, desc, fn, what):
     p = m["parts"][0]
     data = (src / p["path"]).read_bytes()
     new = fn(data)
-    assert len(new) == len(data)
+    assert resize or len(new) == len(data)
+    changes = [f"{p['path']}: {what}; size unchanged; data pages untouched"]
+    if resize:
+        changes = [f"{p['path']}: {what}", f"manifest: parts[0].bytes {p['bytes']} -> {len(new)}"]
+        p["bytes"] = len(new)
     dst = out / p["path"]
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_bytes(new)
     write_text(out / "manifest.json", dumps(m))
     return {"name": name, "dir": str(out.relative_to(CONF)), "valid": False, "description": desc, "rows": None,
             "producer": PRODUCER, "provenance": "mutated", "command": COMMAND, "derived_from": "datasets/basic",
-            "changes": [f"{p['path']}: {what}; size unchanged; data pages untouched"]}
+            "changes": changes}
 
 
 if __name__ == "__main__":

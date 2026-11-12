@@ -35,7 +35,10 @@ public enum RefusalCode {
     INVALID_PAGE_INDEX("invalid_page_index"),
     /** An empty key, or a key that is not valid UTF-8 in a key column annotated as a string. */
     INVALID_KEY("invalid_key"),
-    /** Keys are not unique and strictly ascending. */
+    /**
+     * Keys are out of the declared order: not ascending (repeated keys allowed) when keys are not unique,
+     * or not strictly ascending (a key repeated) when the manifest declares them unique.
+     */
     KEY_ORDER("key_order"),
     /** Corruption in the Parquet data itself (CHECK-5). */
     INVALID_PARQUET("invalid_parquet"),

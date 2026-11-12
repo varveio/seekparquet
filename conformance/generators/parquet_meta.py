@@ -365,12 +365,23 @@ DPH2_NUM_VALUES, DPH2_NUM_NULLS, DPH2_NUM_ROWS, DPH2_ENCODING = 1, 2, 3, 4
 MAGIC = b"PAR1"
 
 
+# Parquet modular encryption, plaintext footer mode: FileMetaData declares encryption_algorithm (8) and
+# footer_signing_key_metadata (9), and the footer length covers the metadata and a 28-byte signature.
+FMD_ENCRYPTION, FMD_SIGNING_KEY = 8, 9
+SIGNATURE_BYTES = 28
+
+
 class ParquetMetaError(ValueError):
     pass
 
 
 # --------------------------------------------------------------------------
 # Footer
+
+class SignedPlaintextFooter(ParquetMetaError):
+    """A footer that declares encryption and is followed by exactly its 28-byte signature: an encrypted part
+    (FILE-2), not a malformed one. Any other trailing bytes are a malformed footer."""
+
 
 @dataclass
 class ParquetFile:
@@ -436,6 +447,8 @@ def read_parquet(data: bytes) -> ParquetFile:
         meta, end = decode_struct(data, start, len(data) - 8)
     except ThriftError as e:
         raise ParquetMetaError(f"footer: {e}") from e
+    if end == len(data) - 8 - SIGNATURE_BYTES and (meta.has(FMD_ENCRYPTION) or meta.has(FMD_SIGNING_KEY)):
+        raise SignedPlaintextFooter("an encrypted part: a plaintext footer declaring encryption and its signature")
     if end != len(data) - 8:
         raise ParquetMetaError("footer length does not match encoded FileMetaData")
     return ParquetFile(data, meta, start, flen)

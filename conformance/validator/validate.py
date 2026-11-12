@@ -95,6 +95,13 @@ def members(value, needed, allowed):
             'invalid_manifest', 'missing, extra or invalid object members')
 
 
+def check_extensions(obj):
+    """EXT-4: an extensions object (top-level or a part's) with non-empty namespace names; its values are
+    ignored (EXT-3)."""
+    if 'extensions' in obj:
+        require(isinstance(obj['extensions'], dict) and all(obj['extensions']), 'invalid_manifest', 'extensions')
+
+
 def name(value):
     return isinstance(value, str) and bool(value) and not any(ord(c) < 32 or ord(c) == 127 for c in value)
 
@@ -141,15 +148,15 @@ def manifest(root, limits):
     members(m['key'], {'column', 'unique'}, {'column', 'unique'})
     require(name(m['key']['column']) and type(m['key']['unique']) is bool,
             'invalid_manifest', 'key declaration')
-    if 'extensions' in m:
-        require(isinstance(m['extensions'], dict) and all(m['extensions']), 'invalid_manifest', 'extensions')
+    check_extensions(m)
     require(isinstance(m['parts'], list), 'invalid_manifest', 'parts must be an array')
     if len(m['parts']) > limits.parts:
         raise Incomplete('configured parts limit exceeded')
     seen, previous = set(), None
     for entry in m['parts']:
         needed = {'path', 'rows', 'bytes', 'min_key_base64', 'max_key_base64'}
-        members(entry, needed, needed | {'sha256'})
+        members(entry, needed, needed | {'sha256', 'extensions'})
+        check_extensions(entry)
         rel = entry['path']
         require(name(rel) and not rel.startswith('/') and '\\' not in rel
                 and all(s not in ('', '.', '..') for s in rel.split('/')) and rel not in seen,
@@ -217,14 +224,17 @@ class Part:
                 raise Incomplete('configured part_bytes limit exceeded')
             require(size >= 12, 'invalid_footer', 'part too short')
             self.mapping = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
-            if self.mapping[-4:] == b'PARE':
-                raise Incomplete('unsupported_encryption: encrypted footer')
+            if b'PARE' in (self.mapping[:4], self.mapping[-4:]):  # CHECK-1: both magics, FILE-2
+                raise Incomplete('unsupported_encryption: PARE magic (an encrypted part)')
             require(self.mapping[:4] == b'PAR1' and self.mapping[-4:] == b'PAR1',
                     'invalid_footer', 'missing Parquet magic')
             footer_len = int.from_bytes(self.mapping[-8:-4], 'little')
             if footer_len > limits.footer_bytes:
                 raise Incomplete('configured footer_bytes limit exceeded')
-            self.pf = p.read_parquet(self.mapping)
+            try:
+                self.pf = p.read_parquet(self.mapping)
+            except p.SignedPlaintextFooter as e:
+                raise Incomplete(f'unsupported_encryption: {e}') from None
             self.fields, self.leaves = field_tree(self.pf.schema)
             self._footer(m)
         except Exception:
@@ -238,6 +248,8 @@ class Part:
             self.file.close()
 
     def _footer(self, m):
+        if self.pf.meta.has(8) or self.pf.meta.has(9):  # FILE-2: encryption declared in the footer
+            raise Incomplete('unsupported_encryption: encryption declared in the footer')
         groups = self.pf.row_groups
         counts = [g.get(p.RG_NUM_ROWS) for g in groups]
         require(all(integer(n) for n in counts), 'invalid_footer', 'negative/missing row group count')
@@ -377,7 +389,9 @@ def _run_level(action):
     except p.ResourceLimit as e:
         return {'result': 'incomplete', 'reason': str(e), 'category': 'limit'}
     except Incomplete as e:
-        return {'result': 'incomplete', 'reason': str(e), 'category': 'unsupported' if str(e).startswith('unsupported_') else 'limit'}
+        if str(e).startswith('unsupported_'):  # an unsupported feature names its code
+            return {'result': 'incomplete', 'reason': str(e), 'category': 'unsupported', 'code': str(e).split(':')[0]}
+        return {'result': 'incomplete', 'reason': str(e), 'category': 'limit'}
     except OSError as e:
         return {'result': 'incomplete', 'reason': str(e), 'category': 'storage'}
     except (p.ParquetMetaError, p.ThriftError, AttributeError, IndexError, TypeError, ValueError) as e:

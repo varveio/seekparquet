@@ -103,12 +103,13 @@ class IndexedAccessTest {
         CountingStorage storage = new CountingStorage(TestDatasets.write(tmp, spec, parts));
         try (Dataset ds = Dataset.open(storage)) {
             assertEquals(0, storage.footers.get() + storage.reads.get(), "open reads no part");
-            List<Row> rows = ds.range(RangeQuery.builder().start(Bytes.utf8("p2/dir050/file02000")).limit(1).columns("size").build());
+            List<Row> rows = ds.rows(Reads.builder().start(Bytes.utf8("p2/dir050/file02000")).limit(1).columns("size").build());
             assertEquals(Bytes.utf8("p2/dir050/file02000"), rows.getFirst().key());
             assertEquals(new Value.Int64(2000), rows.getFirst().values().getFirst());
-            // Five row-group indexes use two narrow reads each instead of overfetching the gaps;
+            // The part's 4-byte leading magic (CHECK-1: the part is larger than the footer window);
+            // five row-group indexes use two narrow reads each instead of overfetching the gaps;
             // then read a key page, value index and value page.
-            assertTrue(storage.reads.get() <= 13, "a point seek made " + storage.reads.get() + " reads");
+            assertTrue(storage.reads.get() <= 14, "a point seek made " + storage.reads.get() + " reads");
             assertEquals(1, storage.footers.get(), "a point seek checks the one part it routes to");
 
             // A listing of 100 directories of 40 keys each skips to each directory's successor:

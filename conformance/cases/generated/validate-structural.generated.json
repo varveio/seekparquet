@@ -3,7 +3,7 @@
   "target": "validator-structural",
   "generated": true,
   "generator": "generators/make_cases.py",
-  "description": "Validation at the structural level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code, and a dataset that cannot be opened shows structural failed.",
+  "description": "Validation at the structural level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code. An open-stage refusal makes structural failed with its refusal code; an unsupported feature makes structural incomplete with its unsupported code and a non-empty reason. Dependent levels are incomplete.",
   "families": {
     "validate-structural/valid-dataset": "every valid dataset completes this level and its prerequisites",
     "validate-structural/fault-at-lowest-level": "each fault at the lowest validation level that detects it (validation_level in generators/faults.json)"
@@ -309,6 +309,52 @@
       }
     },
     {
+      "id": "validate-structural/lz4-raw",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/lz4-raw",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/brotli-key",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/brotli-key",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-structural/truncated-bounds",
       "family": "validate-structural/valid-dataset",
       "requirements": [
@@ -387,6 +433,75 @@
         "validate:structural"
       ],
       "dataset": "datasets/extensions-numbers",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/part-extensions",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/part-extensions",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/part-extensions-empty",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/part-extensions-empty",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/part-extensions-null",
+      "family": "validate-structural/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/part-extensions-null",
       "request": {
         "op": "validate",
         "level": "structural"
@@ -1745,6 +1860,237 @@
       }
     },
     {
+      "id": "validate-structural/manifest-part-extensions-not-object",
+      "description": "Part 1's extensions is an array, not an object.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-part-extensions-not-object",
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-not-object",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-part-extensions-duplicate-member",
+      "description": "The part's extensions object holds a namespace whose object has the member a twice.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-part-extensions-duplicate-member",
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-duplicate-member",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-part-extensions-empty-namespace",
+      "description": "The part's extensions object has an empty namespace name.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-part-extensions-empty-namespace",
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-empty-namespace",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-part-extensions-null",
+      "description": "The part's extensions is null, not an object.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-part-extensions-null",
+      "requirements": [
+        "EXT-4",
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-null",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-part-extensions-duplicate-namespace",
+      "description": "The part's extensions object names the namespace conformance twice.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-part-extensions-duplicate-namespace",
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-duplicate-namespace",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-part-extensions-escaped-duplicate",
+      "description": "The part's extensions object names the namespace conformance twice, once spelled with an escape (conform\\u0061nce).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-part-extensions-escaped-duplicate",
+      "requirements": [
+        "EXT-4",
+        "MAN-2",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-escaped-duplicate",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-part-extensions-unpaired-surrogate",
+      "description": "A string nested inside the part's extensions is the escaped lone surrogate \\ud800.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-part-extensions-unpaired-surrogate",
+      "requirements": [
+        "EXT-4",
+        "MAN-1",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-unpaired-surrogate",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/manifest-part-extensions-unknown-member",
+      "description": "The part has a valid extensions object and, beside it, the undefined member checksum: the core part object stays closed.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "manifest-part-extensions-unknown-member",
+      "requirements": [
+        "MAN-3",
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/manifest-part-extensions-unknown-member",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_manifest"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-structural/manifest-duplicate-member-escaped",
       "description": "schema_id appears twice, once spelled with an escape (schema\\u005fid).",
       "family": "validate-structural/fault-at-lowest-level",
@@ -2120,6 +2466,477 @@
         "validate:structural"
       ],
       "dataset": "datasets/invalid/invalid-footer-magic",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/invalid-header-magic",
+      "description": "The part's leading magic is PAR0 instead of PAR1; its trailer, footer and pages are intact.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "invalid-header-magic",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/invalid-header-magic",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-header-magic",
+      "description": "The part's leading magic is PARE, the magic of an encrypted Parquet file; its trailer, footer and pages are intact. A reader reports it as unsupported_encryption (CHECK-1, FILE-2), never as readable or as a refusal.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-header-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-header-magic",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-magic",
+      "description": "The part's trailing magic is PARE.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-magic",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-both-magic",
+      "description": "The part begins and ends with PARE, the magics of an encrypted-footer Parquet file (its footer and pages are plaintext).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-both-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-both-magic",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-header-bad-footer-magic",
+      "description": "The part's leading magic is PARE and its trailing magic PAR0: encryption takes precedence.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-header-bad-footer-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-header-bad-footer-magic",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-bad-header-magic",
+      "description": "The part's leading magic is PAR0 and its trailing magic PARE: encryption takes precedence.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-bad-header-magic",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-bad-header-magic",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-metadata",
+      "description": "The part's footer declares encryption (FileMetaData.encryption_algorithm AES_GCM_V1); its magics are PAR1 and its pages plaintext.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-metadata",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-metadata",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-signed",
+      "description": "A plaintext-footer encrypted layout: PAR1 at both ends; the footer declares encryption (encryption_algorithm AES_GCM_V1, footer_signing_key_metadata) and is followed by a 28-byte signature that the footer length covers. Readable footer metadata declares encryption (FILE-2).",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-signed",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signed",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-signature-short",
+      "description": "The footer declares encryption, but 27 bytes, not a 28-byte signature, follow its metadata: a malformed footer.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-signature-short",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signature-short",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-signature-long",
+      "description": "The footer declares encryption, but 29 bytes, not a 28-byte signature, follow its metadata: a malformed footer.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-signature-long",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signature-long",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-signed-algorithm",
+      "description": "A signed plaintext footer declaring encryption by encryption_algorithm alone, then a 28-byte signature.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-signed-algorithm",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signed-algorithm",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-signed-empty-key",
+      "description": "A signed plaintext footer whose only declaration is footer_signing_key_metadata present as an empty binary, then a 28-byte signature: the field's presence declares encryption.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-signed-empty-key",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signed-empty-key",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/invalid-footer-trailing-28",
+      "description": "28 bytes follow the footer metadata, which declares no encryption: a malformed footer, not a signature.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "invalid-footer-trailing-28",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/invalid-footer-trailing-28",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/short-12-bytes-encrypted",
+      "description": "The part is 12 bytes, PARE, a zero footer length, PARE: long enough, so encryption.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "short-12-bytes-encrypted",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/short-12-bytes-encrypted",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/invalid-both-magic",
+      "description": "The part's leading and trailing magics are both PAR0.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "invalid-both-magic",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/invalid-both-magic",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/short-11-bytes",
+      "description": "The part is 11 bytes, PARE ... PARE: shorter than 12 bytes, invalid_footer whatever its magic.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "short-11-bytes",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/short-11-bytes",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/short-12-bytes",
+      "description": "The part is 12 bytes, PAR1, a zero footer length, PAR1: long enough, magic valid, but no footer.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "short-12-bytes",
+      "requirements": [
+        "CHECK-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/short-12-bytes",
       "request": {
         "op": "validate",
         "level": "structural"

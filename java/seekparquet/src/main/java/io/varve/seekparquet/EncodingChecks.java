@@ -160,8 +160,8 @@ final class EncodingChecks {
         long padded = total == 0 ? 1 : ((total - 1) / perMiniblock + 1) * perMiniblock + 1;
         long scratch = padded > Integer.MAX_VALUE || miniblocks > Integer.MAX_VALUE || blockSize > Integer.MAX_VALUE
                 ? Long.MAX_VALUE : 32 + padded * Long.BYTES + miniblocks * Integer.BYTES;
-        if (scratch > limits.maxPageBytes()) {
-            throw new LimitExceededException("maxPageBytes", scratch, limits.maxPageBytes(), where + " (delta decoder scratch)");
+        if (scratch > limits.pageBytes()) {
+            throw new LimitExceededException(LimitName.PAGE_BYTES, scratch, limits.pageBytes(), where + " (delta decoder scratch)");
         }
         long remaining = total - 1;
         while (remaining > 0) {

@@ -209,8 +209,8 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 		return nil, tail, fmt.Errorf("part %s: footer: %w", name, err)
 	case err != nil:
 		return nil, tail, bad("decode the footer: %v", err)
-	case int64(used) == n-28:
-		return nil, tail, errEncrypted() // a signed plaintext footer
+	case int64(used) == n-28 && (meta.EncryptionAlgorithm.Value != nil || meta.FooterSigningKeyMetadata != nil):
+		return nil, tail, errEncrypted() // a plaintext footer declaring encryption, then its 28-byte signature
 	case int64(used) != n:
 		return nil, tail, bad("the footer has %d bytes after its metadata", n-int64(used))
 	}
@@ -288,7 +288,7 @@ func checkMetadata(name string, meta *format.FileMetaData) error {
 	bad := func(group int, format string, args ...any) error {
 		return refusePart(CodeInvalidFooter, name, group, format, args...)
 	}
-	if meta.EncryptionAlgorithm.Value != nil || len(meta.FooterSigningKeyMetadata) > 0 {
+	if meta.EncryptionAlgorithm.Value != nil || meta.FooterSigningKeyMetadata != nil {
 		return errEncrypted()
 	}
 	leaves, err := checkSchema(meta.Schema)

@@ -76,13 +76,26 @@ public final class Bytes implements Comparable<Bytes> {
     }
 
     /**
-     * Returns the UTF-8 encoding of {@code text}.
+     * Returns the UTF-8 encoding of {@code text}, for building keys from text. It is strict: text that is
+     * not well-formed UTF-16 (an unpaired surrogate) is rejected rather than encoded with a replacement,
+     * which would silently change the key's identity.
      *
      * @param text the text to encode
      * @return the byte string
+     * @throws IllegalArgumentException if {@code text} holds an unpaired surrogate
      */
     public static Bytes utf8(String text) {
-        return wrap(text.getBytes(StandardCharsets.UTF_8));
+        try {
+            java.nio.ByteBuffer b = StandardCharsets.UTF_8.newEncoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .encode(java.nio.CharBuffer.wrap(text));
+            byte[] out = new byte[b.remaining()];
+            b.get(out);
+            return wrap(out);
+        } catch (java.nio.charset.CharacterCodingException e) {
+            throw new IllegalArgumentException("the text is not well-formed UTF-16: it holds an unpaired surrogate", e);
+        }
     }
 
     /**
@@ -193,14 +206,16 @@ public final class Bytes implements Comparable<Bytes> {
     }
 
     /**
-     * Returns the successor of this prefix (spec §1): the least byte string greater than every
-     * string that begins with it. It is this string with its trailing {@code 0xFF} bytes removed and
+     * Returns the end of the keys that begin with this prefix (the prefix successor of spec §1): the
+     * least byte string greater than every string that begins with it. It is not the next exact key
+     * (an exact key's span ends at the key followed by {@code 0x00}, {@link Span#key}). It is used as an
+     * exclusive upper bound. It is this string with its trailing {@code 0xFF} bytes removed and
      * its last remaining byte incremented. It is empty when this string is empty or consists only of
      * {@code 0xFF} bytes: the strings beginning with it are then unbounded above.
      *
      * @return the successor, or empty when there is none
      */
-    public Optional<Bytes> successor() {
+    public Optional<Bytes> prefixEnd() {
         int end = data.length;
         while (end > 0 && data[end - 1] == (byte) 0xFF) {
             end--;
@@ -224,8 +239,8 @@ public final class Bytes implements Comparable<Bytes> {
     }
 
     /**
-     * {@return the bytes decoded as UTF-8, with malformed input replaced} For display only: a key's
-     * identity is its bytes.
+     * {@return the bytes decoded as UTF-8, lossily: malformed input is replaced with U+FFFD} For display
+     * only: a key's identity is its bytes, and the text may not encode back to them.
      */
     public String toStringUtf8() {
         return new String(data, StandardCharsets.UTF_8);

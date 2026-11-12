@@ -87,7 +87,7 @@
 // and their counts and bytes add up to the plan's. Splitting is a
 // convenience of this package over the query model, not a format rule: the
 // specification and the conformance protocol do not define it. The Java
-// reader has it as RangePlan.split.
+// reader has it as Plan.split.
 //
 // # Equal keys and pagination
 //

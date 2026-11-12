@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"unicode/utf8"
 
 	"github.com/varveio/seekparquet/go/internal/manifest"
@@ -80,6 +81,8 @@ func parseManifest(raw []byte, lim *Limits) (*manifest.Manifest, error) {
 			return nil, refuse(RefusalCode(e.Code), "%s: %s", ManifestName, e.Detail)
 		case errors.Is(err, manifest.ErrTooManyParts):
 			return nil, exceeded(LimitParts, -1, int64(lim.Parts), "%s lists more parts", ManifestName)
+		case errors.Is(err, manifest.ErrTooDeep):
+			return nil, exceeded(LimitManifestNesting, -1, manifest.MaxDepth, "%s nests objects and arrays deeper", ManifestName)
 		}
 		return nil, err
 	}
@@ -95,14 +98,31 @@ func manifestOf(m *manifest.Manifest) Manifest {
 	return out
 }
 
+// compactExtensions returns an extensions object compacted, or nil when
+// raw is empty or the empty object, which MarshalManifest leaves out.
+func compactExtensions(raw json.RawMessage, where string) (json.RawMessage, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, raw); err != nil {
+		return nil, refuse(CodeInvalidManifest, "%s: %sextensions is not valid JSON: %v", ManifestName, where, err)
+	}
+	if compact.String() == "{}" {
+		return nil, nil
+	}
+	return compact.Bytes(), nil
+}
+
 // MarshalManifest writes m as a manifest.json: UTF-8 JSON indented by two
 // spaces, with a final newline, its members in the order of the
 // specification's examples (format, format_version, draft_revision,
 // schema_id, parts, extensions, key), draft_revision only on format
 // version 0, keys in canonical standard base64 (PART-3), a part's sha256
-// only when it is set, and extensions only when it is a non-empty object.
-// Extensions keep their members, their order and the spelling of every
-// string and number; only the whitespace between them is re-indented.
+// only when it is set, and extensions, the top-level object and each
+// part's (after sha256), only when they are non-empty objects. Extensions
+// keep their members, their order and the spelling of every string and
+// number; only the whitespace between them is re-indented.
 //
 // The result is checked as ParseManifest checks a manifest, with no limit
 // on its size or its parts: m must be a manifest this package reads, or
@@ -114,12 +134,13 @@ func MarshalManifest(m Manifest) ([]byte, error) {
 		Unique bool   `json:"unique"`
 	}
 	type part struct {
-		Path   string `json:"path"`
-		Rows   int64  `json:"rows"`
-		Bytes  int64  `json:"bytes"`
-		MinKey string `json:"min_key_base64"`
-		MaxKey string `json:"max_key_base64"`
-		SHA256 string `json:"sha256,omitempty"`
+		Path       string          `json:"path"`
+		Rows       int64           `json:"rows"`
+		Bytes      int64           `json:"bytes"`
+		MinKey     string          `json:"min_key_base64"`
+		MaxKey     string          `json:"max_key_base64"`
+		SHA256     string          `json:"sha256,omitempty"`
+		Extensions json.RawMessage `json:"extensions,omitempty"`
 	}
 	type document struct {
 		Format        string          `json:"format"`
@@ -146,18 +167,18 @@ func MarshalManifest(m Manifest) ([]byte, error) {
 		doc.DraftRevision = &m.Version.DraftRevision
 	}
 	for i, p := range m.Parts {
-		doc.Parts[i] = part{Path: p.Path, Rows: p.Rows, Bytes: p.Bytes, SHA256: p.SHA256,
+		ext, err := compactExtensions(p.Extensions, fmt.Sprintf("part %d: ", i))
+		if err != nil {
+			return nil, err
+		}
+		doc.Parts[i] = part{Path: p.Path, Rows: p.Rows, Bytes: p.Bytes, SHA256: p.SHA256, Extensions: ext,
 			MinKey: base64.StdEncoding.EncodeToString(p.MinKey), MaxKey: base64.StdEncoding.EncodeToString(p.MaxKey)}
 	}
-	if len(m.Extensions) > 0 {
-		var compact bytes.Buffer
-		if err := json.Compact(&compact, m.Extensions); err != nil {
-			return nil, refuse(CodeInvalidManifest, "%s: extensions is not valid JSON: %v", ManifestName, err)
-		}
-		if compact.String() != "{}" {
-			doc.Extensions = compact.Bytes()
-		}
+	ext, err := compactExtensions(m.Extensions, "")
+	if err != nil {
+		return nil, err
 	}
+	doc.Extensions = ext
 	var out bytes.Buffer
 	enc := json.NewEncoder(&out)
 	enc.SetEscapeHTML(false)
