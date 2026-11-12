@@ -306,3 +306,37 @@ func TestScanParallelDisjointRepeatedPositions(t *testing.T) {
 		}
 	}
 }
+
+// Ported from swath 0d204aa4 TestShardBoundaryRepeatedKeys: four equal
+// keys cross three-row groups and must remain together at every worker count.
+func TestScanParallelShardBoundaryRepeatedKeys(t *testing.T) {
+	d := open(t, write(t, testutil.Dataset{RepeatedKeys: true, Parts: []testutil.Part{{Rows: testutil.Rows("a", "b", "c", "c", "c", "c", "d", "e"), GroupRows: 3}}}), OpenOptions{})
+	p, err := d.Plan(ctx, []Selection{{}}, []string{"size"}, nil)
+	must(t, err)
+	var want []Row
+	must(t, p.Scan(ctx, nil, func(b *Batch) error {
+		for i := range b.Len() {
+			want = append(want, b.Row(i))
+		}
+		return nil
+	}))
+	if len(want) != 8 {
+		t.Fatal(want)
+	}
+	for _, workers := range []int{1, 2, 4, 8} {
+		var mu sync.Mutex
+		var got []Row
+		must(t, p.ScanParallel(ctx, workers, nil, func(b *Batch) error {
+			mu.Lock()
+			defer mu.Unlock()
+			for i := range b.Len() {
+				got = append(got, b.Row(i))
+			}
+			return nil
+		}))
+		slices.SortStableFunc(got, func(a, b Row) int { return bytes.Compare(a.Key, b.Key) })
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("workers=%d got=%+v want=%+v", workers, got, want)
+		}
+	}
+}

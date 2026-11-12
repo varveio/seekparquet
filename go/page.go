@@ -89,7 +89,8 @@ func (d *Dataset) Page(ctx context.Context, q PageQuery, st *ReadStats) (page Pa
 		if c := q.Cursor; c != nil {
 			known = known && !bytes.HasPrefix(c.Key, e.CommonPrefix) && !(len(c.Prefix) > len(e.CommonPrefix) && bytes.HasPrefix(c.Prefix, e.CommonPrefix))
 		}
-		// Even a known ordinal at End is only the clipped candidate boundary.
+		// Defensive: List currently leaves Rows.End unknown when End clips a
+		// prefix. Even if it establishes an ordinal, that boundary is clipped.
 		if q.End != nil {
 			upper, ok := successor(e.CommonPrefix)
 			known = known && ok && bytes.Compare(q.End, upper) >= 0

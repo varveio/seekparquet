@@ -49,7 +49,8 @@ for _, r := range results {
 
 [`AggregateRows`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.AggregateRows) accepts established spans without locating their keys again.
 Unfiltered `CountRows` over known, checked spans reads no values.
-Unchecked contributing parts leave results `AggregateUnknown`.
+Without `CheckKeys`, unchecked contributing parts leave results `AggregateUnknown`.
+With `CheckKeys`, selected keys and contributing parts are checked, and failures return no results.
 Counts include every selected row, including repeated keys.
 `Sum` and `Max` skip null and absent values; request `CountNulls` and `CountAbsent` to distinguish them.
 Empty sums are zero; empty maxima are null.
@@ -310,7 +311,7 @@ The counting test store pins `browse/count-prefix` at **0 physical requests, 0 r
 It pins `browse/sum-prefix`, including projected planning and scanning, at **1 physical request, 1 round, 6,153 bytes**.
 Both the scalar and capable store tables assert these numbers in [`TestReadBudgets`](../../go/iobudget_test.go).
 [`TestReadBudgetsGeneric`](../../go/generic_iobudget_test.go) pins the same counts and single-prefix sum for `AggregateRows`.
-Its nine-prefix sums fit a 64 KiB budget; adding counts causes no additional physical requests.
+Its 64 KiB budget admits exactly nine sums from more complete prefixes than fit; adding counts causes no additional physical requests.
 They describe that test's fixture and setup, not the small example above or arbitrary prefixes.
 
 `ProjectedBytes()` counts unique compressed projected page and dictionary extents, once each for the selected union.

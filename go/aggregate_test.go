@@ -591,3 +591,137 @@ func TestAggregateDuplicateSelectionsReuseResolution(t *testing.T) {
 		}
 	}
 }
+
+// Budget refusal in AggregateRows must still validate every requested key.
+// These exercise the extra key-only scan, rather than Aggregate's key-first path.
+func TestAggregateRowsBudgetRefusalChecksKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		parts []testutil.Part
+		edit  func(map[string]any)
+		code  RefusalCode
+	}{
+		{"part-count", []testutil.Part{{Rows: testutil.Rows("a")}, {Rows: testutil.Rows("b")}, {Rows: testutil.Rows("c")}}, func(m map[string]any) { testutil.ManifestPart(m, 1)["rows"] = 100 }, CodePartMismatch},
+		{"shard-order", []testutil.Part{{Rows: testutil.Rows("a", "b", "c", "z", "d", "e", "f", "zz"), GroupRows: 4}}, nil, CodeKeyOrder},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := write(t, testutil.Dataset{Parts: tc.parts})
+			if tc.edit != nil {
+				must(t, testutil.EditManifest(dir, tc.edit))
+			}
+			d := open(t, dir, OpenOptions{})
+			p, err := d.Plan(ctx, []Selection{{}}, nil, nil)
+			must(t, err)
+			if tc.edit != nil && d.r.parts[1].ready.Load() {
+				t.Fatal("interior part must remain cold")
+			}
+			out, err := d.AggregateRows(ctx, p.InputRowSpans(), []Reduction{{Op: CountRows}, {Op: Sum, Column: "size"}}, AggregateOptions{ValueBudgetBytes: 0, CheckKeys: true, Workers: 2}, nil)
+			if out != nil || RefusalCodeOf(err) != tc.code {
+				t.Fatalf("got %+v, %v; want %s and no results", out, err, tc.code)
+			}
+		})
+	}
+}
+
+func TestAggregateBudgetAbsentPartFloor(t *testing.T) {
+	type keyOnly struct {
+		Key []byte `parquet:"key"`
+	}
+	var a, c []string
+	for i := range 100 {
+		a = append(a, fmt.Sprintf("a/%03d", i))
+		c = append(c, fmt.Sprintf("c/%03d", i))
+	}
+	dir := write(t, testutil.Dataset{Parts: []testutil.Part{
+		{Rows: testutil.Rows(a...)},
+		{Rows: []keyOnly{{[]byte("b")}}},
+		{Rows: testutil.Rows(c...)},
+		{Rows: []keyOnly{{[]byte("d")}}},
+	}})
+	priced := verified(t, dir, OpenOptions{})
+	p, err := priced.Plan(ctx, []Selection{{}}, []string{"size"}, nil)
+	must(t, err)
+	budget, exact := p.ProjectedBytes()
+	if !exact || budget <= 3*minAggregatePageBytes {
+		t.Fatal(budget, exact)
+	}
+	d := open(t, dir, OpenOptions{})
+	p, err = d.Plan(ctx, []Selection{{}}, nil, nil)
+	must(t, err)
+	// The final checked, absent part has no floor of its own. A stale floor
+	// from the cold interior absent part must not refuse it at the exact budget.
+	_, err = d.Plan(ctx, []Selection{{Span: KeySpan([]byte("d"))}}, nil, nil)
+	must(t, err)
+	if d.r.parts[1].ready.Load() {
+		t.Fatal("interior absent part must be cold")
+	}
+	got, err := d.AggregateRows(ctx, p.InputRowSpans(), []Reduction{{Op: Sum, Column: "size"}}, AggregateOptions{ValueBudgetBytes: budget, CheckKeys: true}, nil)
+	must(t, err)
+	if got[0][0].Status != AggregateExact || got[0][0].Value.Int64() != 2*100*99/2 {
+		t.Fatal(got)
+	}
+}
+
+func TestAggregateFiniteBudgetReadsKeysOnce(t *testing.T) {
+	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: testutil.Rows("a", "b", "c", "d", "e", "f"), GroupRows: 2}}})
+	for _, workers := range []int{1, 2} {
+		var keys, values ReadStats
+		for _, countOnly := range []bool{true, false} {
+			d := verified(t, dir, OpenOptions{})
+			reductions := []Reduction{{Op: CountRows}}
+			st := &keys
+			if !countOnly {
+				reductions = append(reductions, Reduction{Op: Sum, Column: "size"})
+				st = &values
+			}
+			got, err := d.Aggregate(ctx, []Selection{{}}, reductions, AggregateOptions{ValueBudgetBytes: 1 << 20, CheckKeys: true, Workers: workers}, st)
+			must(t, err)
+			if got[0][0].Status != AggregateExact || got[0][0].Value.Int64() != 6 || !countOnly && (got[0][1].Status != AggregateExact || got[0][1].Value.Int64() != 15) {
+				t.Fatal(got)
+			}
+		}
+		if keys.KeyPagesDecoded == 0 || values.ValuePagesDecoded == 0 || values.KeyPagesDecoded != keys.KeyPagesDecoded || values.KeysDecoded != keys.KeysDecoded {
+			t.Fatalf("workers=%d keys=%+v keys then values=%+v", workers, keys, values)
+		}
+	}
+}
+
+// Ported from swath 0d204aa4 TestTotalsIgnoreManifestBoundExcludingKey.
+func TestAggregateIgnoreManifestBoundExcludingKey(t *testing.T) {
+	var keys []string
+	for _, prefix := range []string{"a/", "b/"} {
+		for i := range 10 {
+			keys = append(keys, fmt.Sprintf("%s%04d", prefix, i))
+		}
+	}
+	rows := testutil.Rows(keys...)
+	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: rows[:10]}, {Rows: rows[10:]}}})
+	must(t, testutil.EditManifest(dir, func(m map[string]any) { testutil.ManifestPart(m, 0)["max_key_base64"] = b64("a/0005") }))
+	for _, budget := range []int64{-1, 1 << 20} {
+		d := open(t, dir, OpenOptions{})
+		got, err := d.Aggregate(ctx, []Selection{{Span: PrefixSpan([]byte("a/0009"))}, {Span: PrefixSpan([]byte("a/"))}, {Span: PrefixSpan([]byte("a/0008"))}}, []Reduction{{Op: CountRows}, {Op: Sum, Column: "size"}}, AggregateOptions{ValueBudgetBytes: budget, CheckKeys: true}, nil)
+		if got != nil || RefusalCodeOf(err) != CodeBoundsMismatch {
+			t.Fatalf("%+v, %v; want bounds_mismatch and no results", got, err)
+		}
+	}
+}
+
+func TestAggregateUnsupportedTypesWhenKnown(t *testing.T) {
+	rows := []aggregateNumbers{{Key: []byte("b"), Bad: 1}}
+	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: testutil.Rows("a")}, {Rows: rows}, {Rows: testutil.Rows("c")}}})
+	for _, op := range []AggregateOp{Sum, Max} {
+		d := open(t, dir, OpenOptions{})
+		got, err := d.Aggregate(ctx, []Selection{{}}, []Reduction{{Op: op, Column: "bad"}}, AggregateOptions{ValueBudgetBytes: -1}, nil)
+		must(t, err)
+		if got[0][0].Status != AggregateUnknown || d.r.parts[1].ready.Load() {
+			t.Fatal(got)
+		}
+		// Once the contributing parts are checked, it must fail even with no
+		// value budget, consistent with checkProjection's lazy validation.
+		must(t, d.Verify(ctx, nil))
+		got, err = d.Aggregate(ctx, []Selection{{}}, []Reduction{{Op: op, Column: "bad"}}, AggregateOptions{}, nil)
+		if got != nil || !errors.Is(err, ErrInvalidRequest) {
+			t.Fatal(got, err)
+		}
+	}
+}

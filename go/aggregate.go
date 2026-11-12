@@ -35,10 +35,12 @@ const (
 // Reduction names an operation and its column. Column is empty only for CountRows.
 // Sum accepts unannotated integers and INT annotations. Max additionally accepts
 // TIMESTAMP integers (in their declared unit), and unannotated or STRING byte
-// arrays. Other physical or logical types fail with ErrInvalidRequest.
+// arrays. Unsupported physical or logical types fail with ErrInvalidRequest
+// once the contributing column types are known. Parts not yet checked can leave
+// results AggregateUnknown without discovering unsupported types.
 // Across contributing parts, a reduced column must keep its signedness and
 // integer/timestamp meaning; timestamps must keep their unit and UTC adjustment.
-// Incompatible annotations also fail with ErrInvalidRequest.
+// Incompatible annotations also fail with ErrInvalidRequest once known.
 type Reduction struct {
 	// Op is the requested reduction.
 	Op AggregateOp
@@ -135,9 +137,9 @@ func aggregateColumns(reductions []Reduction, opt AggregateOptions) ([]string, [
 
 // Aggregate returns results indexed by input selection, then reduction, keeping
 // duplicates and overlaps independent. It resolves selections once and scans
-// their accepted union once. Unfiltered counts from established spans require no
-// value reads. Value work is admitted together per input in ascending row order;
-// shared compressed pages and dictionaries are charged once. Unknown counts
+// their accepted union for values. Unfiltered counts from established spans
+// require no value reads. Value work is admitted together per input in ascending
+// row order; shared compressed pages and dictionaries are charged once. Unknown counts
 // remain unknown. Sum and Max skip nulls and absent values; empty sums are zero
 // and empty maxima null, both exact. All errors return no partial results.
 // CheckKeys plans outer selections alone and distributes by key boundaries,
@@ -383,9 +385,11 @@ func (d *Dataset) budgetValues(ctx context.Context, spans []RowSpan, candidates 
 		first := sort.Search(len(ends), func(j int) bool { return ends[j] > start })
 		last := sort.Search(len(ends), func(j int) bool { return ends[j] >= end })
 		floor := int64(0)
+		partFloors := make([]int64, last-first+1)
 		for j := first; j <= last; j++ {
 			if !charged[j] {
-				floor += aggregatePartFloor(parts[j], columns)
+				partFloors[j-first] = aggregatePartFloor(parts[j], columns)
+				floor += partFloors[j-first]
 			}
 		}
 		trial := slices.Clone(rows)
@@ -423,7 +427,9 @@ func (d *Dataset) budgetValues(ctx context.Context, spans []RowSpan, candidates 
 				break
 			}
 			if !charged[j] {
-				floor -= aggregatePartFloor(parts[j], columns)
+				// Opening a part may reveal that every projected column is absent.
+				// Remove its original floor, before that metadata was known.
+				floor -= partFloors[j-first]
 			}
 			from = to
 		}
