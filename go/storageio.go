@@ -34,42 +34,54 @@ func (e *storageError) Unwrap() error { return e.err }
 // (ErrObjectChanged) and every other error are the environment's.
 func sourceError(name string, err error) error {
 	// Do not use errors.Is/As here: sources may return cyclic error trees.
- // Walk a bounded number of causes, keeping broken-pin precedence even
- // when a sibling also reports a missing object or a size mismatch.
- var mismatch *SizeMismatchError
- changed, missing := false, false
- budget := maxEOFCauses
- var visit func(error)
- visit = func(e error) {
-  if e == nil || budget == 0 { return }
-  budget--
-  is := func(target error) bool {
-   if e == target { return true }
-   x, ok := e.(interface{ Is(error) bool })
-   return ok && x.Is(target)
-  }
-  changed = changed || is(ErrObjectChanged)
-  missing = missing || is(fs.ErrNotExist)
-  if mismatch == nil {
-   if x, ok := e.(*SizeMismatchError); ok { mismatch = x
-   } else if x, ok := e.(interface{ As(any) bool }); ok { x.As(&mismatch) }
-  }
-  switch x := e.(type) {
-  case interface{ Unwrap() []error }:
-   for _, cause := range x.Unwrap() { if budget == 0 { break }; visit(cause) }
-  case interface{ Unwrap() error }:
-   visit(x.Unwrap())
-  }
- }
- visit(err)
- switch {
- case changed:
-  return &storageError{err}
- case mismatch != nil:
-  return refusePart(CodePartMismatch, name, -1, "the object is %d bytes, its manifest entry %d", mismatch.Actual, mismatch.Expected)
- case missing:
-  return refusePart(CodeMissingPart, name, -1, "%v", err)
- }
+	// Visit at most maxEOFCauses nodes. If classification is incomplete,
+	// conservatively keep the source error rather than report corrupt data.
+	var mismatch *SizeMismatchError
+	changed, missing := false, false
+	budget := maxEOFCauses
+	var visit func(error)
+	visit = func(e error) {
+		if e == nil || budget == 0 {
+			return
+		}
+		budget--
+		is := func(target error) bool {
+			if e == target {
+				return true
+			}
+			x, ok := e.(interface{ Is(error) bool })
+			return ok && x.Is(target)
+		}
+		changed = changed || is(ErrObjectChanged)
+		missing = missing || is(fs.ErrNotExist)
+		if mismatch == nil {
+			if x, ok := e.(*SizeMismatchError); ok {
+				mismatch = x
+			} else if x, ok := e.(interface{ As(any) bool }); ok {
+				x.As(&mismatch)
+			}
+		}
+		switch x := e.(type) {
+		case interface{ Unwrap() []error }:
+			for _, cause := range x.Unwrap() {
+				if budget == 0 {
+					break
+				}
+				visit(cause)
+			}
+		case interface{ Unwrap() error }:
+			visit(x.Unwrap())
+		}
+	}
+	visit(err)
+	switch {
+	case changed || budget == 0:
+		return &storageError{err}
+	case mismatch != nil:
+		return refusePart(CodePartMismatch, name, -1, "the object is %d bytes, its manifest entry %d", mismatch.Actual, mismatch.Expected)
+	case missing:
+		return refusePart(CodeMissingPart, name, -1, "%v", err)
+	}
 	return &storageError{err}
 }
 
@@ -290,11 +302,10 @@ func checkCacheMode(ctx context.Context) error {
 // the operation's IOObserver it counts the physical requests reporting
 // receivers make for it, in a collector made on the first observation, so
 // that an operation whose receivers report nothing pays for none; and its
-// limit bounds the ranges the operation has outstanding at once
-// (ReadPolicy.Concurrency), wherever they are read. Every range is charged
-// once, where it is read: a scalar read (storageReader), a ReadRanges call
-// (readBatches) or a page read ahead (readAhead.fetch). Nothing holds a
-// slot while it calls code that takes one.
+// limit bounds concurrent scalar reads and batch admission
+// (ReadPolicy.Concurrency). Scalar reads take one slot; capable-source
+// batches take up to the capacity without being subdivided. Nothing holds
+// a slot while it calls code that takes one.
 type operation struct {
 	context.Context // the operation's own: cancelled when it ends
 	c               atomic.Pointer[collector]
@@ -361,7 +372,7 @@ func limitOf(ctx context.Context) *opLimit {
 // waiters are served in arrival order and can give up when their context
 // ends. A nil *opLimit limits nothing.
 //
-// // weights are int64.
+// Weights are int64.
 type opLimit struct {
 	mu      sync.Mutex
 	free    int64
@@ -459,12 +470,12 @@ type rangeFile struct {
 // readRanges reads every range of rf under ctx and returns nil, or one
 // error per range, nil where its buffer was filled. It is the one way the
 // reader issues independent reads together: as ReadRanges calls when the
-// file is a RangeReader (at most Concurrency ranges, MaxReadRanges and
-// MaxReadBatchBytes per call), and otherwise as concurrent ReadAt calls on
+// file is a RangeReader (at most MaxReadRanges and MaxReadBatchBytes
+// per call), and otherwise as concurrent ReadAt calls on
 // ContextBinder views by at most Concurrency workers, never one goroutine
-// per range. A single range, or a Concurrency of 1, is read on the
-// caller's goroutine. When ctx runs under an operation, each range counts
-// against its limit (opLimit) while it is read. Errors are classified as every read's are
+// per range. Scalar fallback charges one slot per running read; a
+// capable-source batch reserves up to Concurrency slots without splitting
+// the batch. Errors are classified as every read's are
 // (sourceError, shortRead). Every read it starts has ended when it
 // returns. Counts reach st, on the caller's goroutine, only for the calls
 // actually made.
@@ -481,11 +492,22 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 	width := max(1, rf.concurrency)
 	uncounted := unreported(ctx, rf.reports)
 	if rr, ok := rf.file.(RangeReader); ok {
-		return readBatches(ctx, rf, rr, ranges, todo, width, limitOf(ctx), uncounted, st)
+		return readBatches(ctx, rf, rr, ranges, todo, limitOf(ctx), uncounted, st)
 	}
 	errs := make([]error, len(ranges))
 	var failed atomic.Bool
 	var count callCount
+	defer func() {
+		if st != nil {
+			n := count.calls.Load()
+			st.SourceReads += n
+			st.SourceBytes += count.bytes.Load()
+			st.ScalarFallbackReads += n
+			if uncounted {
+				st.UnreportedIOCalls += n
+			}
+		}
+	}()
 	at := storageReader{r: bind(ctx, rf.file), op: operationOf(ctx), calls: &count, name: rf.name}
 	read := func(i int) {
 		if err := ctx.Err(); err != nil {
@@ -528,15 +550,7 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 		}
 		wg.Wait()
 	}
-	if st != nil {
-		n := count.calls.Load()
-		st.SourceReads += n
-		st.SourceBytes += count.bytes.Load()
-		st.ScalarFallbackReads += n
-		if uncounted {
-			st.UnreportedIOCalls += n
-		}
-	}
+
 	if !failed.Load() {
 		return nil
 	}
@@ -554,17 +568,10 @@ type piece struct {
 	rg ReadRange
 }
 
-// batchSlots reserves up to the logical capacity for a capable-source
-// batch. Scalar fallback still uses one slot per running worker.
-func batchSlots(limit *opLimit, n int) int64 {
- if limit == nil { return int64(n) }
- return limit.size
-}
-
 // readBatches reads ranges through a RangeReader, in calls of at most
 // MaxReadRanges ranges and MaxReadBatchBytes bytes. The source owns
 // physical concurrency; logical Concurrency must not hide merging opportunities.
-func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []ReadRange, todo []int, width int, limit *opLimit, uncounted bool, st *ReadStats) []error {
+func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []ReadRange, todo []int, limit *opLimit, uncounted bool, st *ReadStats) []error {
 	var pieces []piece
 	for _, i := range todo {
 		buf, off := ranges[i].Buf, ranges[i].Off
@@ -574,7 +581,7 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 			buf, off = buf[n:], off+int64(n)
 		}
 	}
-	width = MaxReadRanges // expose the whole bounded wave to the source
+	width := MaxReadRanges // expose the whole bounded wave to the source
 	errs := make([]error, len(ranges))
 	failed := false
 	fail := func(of int, err error) {
@@ -593,9 +600,13 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 		for j := range batch {
 			batch[j] = pieces[j].rg
 		}
+		slots := int64(n)
+		if limit != nil {
+			slots = min(slots, limit.size)
+		}
 		err := ctx.Err()
 		if err == nil {
-			err = limit.acquire(ctx, min(int64(n), batchSlots(limit, n)))
+			err = limit.acquire(ctx, slots)
 		}
 		if err == nil {
 
@@ -608,7 +619,7 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 				}
 			}
 			err = func() error {
-				defer limit.release(min(int64(n), batchSlots(limit, n))) // also when the source panics
+				defer limit.release(slots) // also when the source panics
 				return rr.ReadRanges(ctx, batch)
 			}()
 		}

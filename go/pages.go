@@ -1318,7 +1318,7 @@ func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, leng
 	// only its missing beginning is read.
 	if n, kept := p.retainedSuffix(off, int64(length)); n > 0 {
 		missing := int64(length) - n
-		if err := p.at(ctx, st).readFull(raw[:missing], off); err != nil {
+		if err := p.read(ctx, st, raw[:missing], off); err != nil {
 			return nil, err
 		}
 		copy(raw[missing:], kept)
@@ -1327,7 +1327,7 @@ func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, leng
 		}
 		return raw, nil
 	}
-	if err := p.at(ctx, st).readFull(raw, off); err != nil {
+	if err := p.read(ctx, st, raw, off); err != nil {
 		return nil, err
 	}
 	return raw, nil

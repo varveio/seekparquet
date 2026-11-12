@@ -12,10 +12,9 @@ import (
 // Every limit is checked against what the files declare before anything
 // is allocated for it, and exceeding one fails the operation with an error
 // wrapping ErrLimitExceeded: a policy of the caller, not a refusal of the
-// data, reported as a *LimitError. OffsetIndexMemory,
-// PageIndexCacheMemory are the
-// exceptions: they bound caches and reading ahead, and exceeding them never
-// fails an operation. A zero field
+// data, reported as a *LimitError. OffsetIndexMemory and
+// PageIndexCacheMemory are the exceptions: they bound caches, and exceeding
+// them never fails an operation. A zero field
 // takes its default; a negative field is an invalid request when the
 // dataset is opened. Within a page, the counts and
 // lengths its encodings declare are checked against the page header before
@@ -107,7 +106,6 @@ type Limits struct {
 	// count, not its memory: a few rows can hold large keys and values.
 	// Default 1,000.
 	GetRows int
-
 }
 
 // check rejects a negative limit, which would otherwise take its default

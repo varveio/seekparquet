@@ -14,8 +14,8 @@ import (
 // Windows hold complete reads ahead of decoding for one operation. The
 // source merges, splits and schedules each wave's physical requests.
 const (
- readWaveBytes int64 = 64 << 20
- readWindowBytes int64 = 4 << 20
+	readWaveBytes   int64 = 64 << 20
+	readWindowBytes int64 = 4 << 20
 )
 
 // extent is bytes an operation will read: size bytes at off of part p, of
@@ -29,7 +29,7 @@ type extent struct {
 
 // window is one range read ahead: the len(buf) bytes at off of part p,
 // holding bytes of rows below rowEnd. err is set before done is closed.
-// used and dropped are guarded by windows.mu.
+// dropped is guarded by windows.mu.
 type window struct {
 	p       *part
 	off     int64
@@ -38,7 +38,6 @@ type window struct {
 	spec    bool
 	done    chan struct{}
 	err     error
-	used    int64
 	dropped bool
 }
 
@@ -48,15 +47,16 @@ func (x *window) end() int64 { return x.off + int64(len(x.buf)) }
 // Admission never waits. Workers for different handles run concurrently
 // within a wave and are joined before fetch returns or close frees buffers.
 type windows struct {
- r *reader
- ctx context.Context
- cancel context.CancelFunc
- wg sync.WaitGroup
- mu sync.Mutex
- held int64
- list []*window
- closed bool
- st ReadStats
+	r      *reader
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+	mu     sync.Mutex
+	held   int64
+	list   []*window
+	ahead  []aheadPage // listing pages fetched, for the existing ReadAhead counters
+	closed bool
+	st     ReadStats
 }
 
 // windows returns the operation's windows, made on first use.
@@ -84,31 +84,56 @@ func windowsOf(ctx context.Context) *windows {
 // extents become contiguous runs. An extent is admitted whole or omitted.
 func (w *windows) fetch(exts []extent, spec bool) int {
 	w.mu.Lock()
- n, planned := w.plan(exts, spec)
- w.launch(planned)
- w.mu.Unlock()
- w.wg.Wait()
- return n
+	n, planned := w.plan(exts, spec)
+	w.launch(planned)
+	w.mu.Unlock()
+	w.wg.Wait()
+	return n
+}
+
+// aheadPage records a listing page independently of the windows containing
+// it: adjacent pages may share a read, and one page may span several reads.
+type aheadPage struct {
+	extent
+	used bool
+}
+
+func (w *windows) fetchAhead(exts []extent) {
+	fresh := make([]bool, len(exts))
+	w.mu.Lock()
+	for i, e := range exts {
+		fresh[i] = w.coverLocked(e.p, e.off, e.size) == nil
+	}
+	w.mu.Unlock()
+	n := w.fetch(exts, true)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for i, e := range exts[:n] {
+		if fresh[i] {
+			w.ahead = append(w.ahead, aheadPage{extent: e})
+			w.st.ReadAheadReads++
+		}
+	}
 }
 
 // fetchWave submits demanded and optional runs together per handle.
 func (w *windows) fetchWave(need, spec []extent) bool {
- w.mu.Lock()
- n, planned := w.plan(need, false)
- m, optional := w.plan(spec, true)
- planned = append(planned, optional...)
- slices.SortStableFunc(planned, func(a, b *window) int { return cmp.Compare(a.p.name, b.p.name) })
- w.launch(planned)
- w.mu.Unlock()
- w.wg.Wait()
- return n == len(need) && m == len(spec)
+	w.mu.Lock()
+	n, planned := w.plan(need, false)
+	m, optional := w.plan(spec, true)
+	planned = append(planned, optional...)
+	slices.SortStableFunc(planned, func(a, b *window) int { return cmp.Compare(a.p.name, b.p.name) })
+	w.launch(planned)
+	w.mu.Unlock()
+	w.wg.Wait()
+	return n == len(need) && m == len(spec)
 }
 
 // plan reserves buffers with mu held. Oversized runs fall back to demand.
 func (w *windows) plan(exts []extent, spec bool) (int, []*window) {
- cut := readWindowBytes
- var planned []*window
- admitted := 0
+	cut := readWindowBytes
+	var planned []*window
+	admitted := 0
 	for i := 0; i < len(exts); {
 		e := exts[i]
 		if e.size <= 0 || w.coverLocked(e.p, e.off, e.size) != nil {
@@ -125,17 +150,17 @@ func (w *windows) plan(exts []extent, spec bool) (int, []*window) {
 			end, rowEnd = next, max(rowEnd, exts[j].rowEnd)
 		}
 		if w.closed || start < 0 || end < start || end-start > readWaveBytes-w.held ||
-   len(w.list)+len(planned)+int((end-start+cut-1)/cut) > MaxReadRanges {
-   break
-  }
-  w.held += end-start
-  for off := start; off < end; off += cut {
-   n := min(cut, end-off)
-   planned = append(planned, &window{p: e.p, off: off, buf: make([]byte, n), rowEnd: rowEnd, spec: spec, done: make(chan struct{})})
-  }
-  i, admitted = j, j
- }
- return admitted, planned
+			len(w.list)+len(planned)+int((end-start+cut-1)/cut) > MaxReadRanges {
+			break
+		}
+		w.held += end - start
+		for off := start; off < end; off += cut {
+			n := min(cut, end-off)
+			planned = append(planned, &window{p: e.p, off: off, buf: make([]byte, n), rowEnd: rowEnd, spec: spec, done: make(chan struct{})})
+		}
+		i, admitted = j, j
+	}
+	return admitted, planned
 }
 
 // launch reads the windows, with mu held: those of each part in one wave.
@@ -255,9 +280,11 @@ func (w *windows) copy(p *part, buf []byte, off int64) (bool, error) {
 		copy(buf[from-off:to-off], x.buf[from-x.off:to-x.off])
 	}
 	w.mu.Lock()
-	for _, x := range cover {
-		from, to := max(off, x.off), min(end, x.end())
-		x.used = min(int64(len(x.buf)), x.used+to-from)
+	for i := range w.ahead {
+		x := &w.ahead[i]
+		if x.p == p && x.off < end && off < x.off+x.size {
+			x.used = true
+		}
 	}
 	w.mu.Unlock()
 	return true, nil
@@ -292,6 +319,19 @@ func (w *windows) dropLocked(drop func(*window) bool) {
 	}
 	clear(w.list[len(kept):])
 	w.list = kept
+	pages := w.ahead[:0]
+	for _, x := range w.ahead {
+		if w.coverLocked(x.p, x.off, x.size) == nil {
+			if !x.used {
+				w.st.ReadAheadUnused++
+				w.st.ReadAheadUnusedBytes += x.size
+			}
+		} else {
+			pages = append(pages, x)
+		}
+	}
+	clear(w.ahead[len(pages):])
+	w.ahead = pages
 }
 
 // retire gives back a finished window's bytes and counts it, with mu
@@ -300,14 +340,7 @@ func (w *windows) retire(x *window) {
 	n := int64(len(x.buf))
 	x.dropped = true
 	w.held -= n
-	if x.spec {
-  w.st.ReadAheadReads++
-  if x.err != nil || x.used == 0 {
-   w.st.ReadAheadUnused++
-   w.st.ReadAheadUnusedBytes += n
-  }
- }
- x.buf = nil
+	x.buf = nil
 }
 
 // close ends the waves still reading, waits for them, gives back every
@@ -326,7 +359,6 @@ func (w *windows) close(st *ReadStats) {
 	w.dropLocked(func(*window) bool { return true })
 	if st != nil {
 		st.Add(w.st)
-
 	}
 	w.st = ReadStats{}
 }

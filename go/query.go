@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go/format"
 )
 
 // Row is one row of a result: its key, its offset in its equal-key group,
@@ -507,6 +508,13 @@ func (r *reader) project(ctx context.Context, rows []*Row, at []position, column
 		if err := p.checkProjection(columns); err != nil {
 			return err
 		}
+		w := windowsOf(ctx)
+		_, batched := p.file.(RangeReader)
+		if o := operationOf(ctx); !r.local && batched && o != nil {
+			w = o.windows()
+			w.release(math.MaxInt64)
+			r.projectWindows(w, p, at[i:j], columns)
+		}
 		for c, name := range columns {
 			cp, err := p.openColumn(ctx, p.groups[at[i].g.index].physical, name, st, &scratch[c])
 			if err != nil {
@@ -516,9 +524,90 @@ func (r *reader) project(ctx context.Context, rows []*Row, at []position, column
 				return err
 			}
 		}
+		w.release(math.MaxInt64)
 		i = j
 	}
 	return nil
+}
+
+// projectWindows batches the distinct pages holding selected rows, including
+// dictionaries. Locations are scheduling hints; openColumn still validates
+// each column in projection order. Missing indexes are fetched together first
+// when their locations are not already resident.
+func (r *reader) projectWindows(w *windows, p *part, at []position, columns []string) {
+	phys := p.groups[at[0].g.index].physical
+	endRow := p.groups[at[0].g.index].start + p.groups[at[0].g.index].rows
+	var indexes []extent
+	for _, name := range columns {
+		col, ok := p.leaves[name]
+		if !ok || p.locs[phys][col.index].Load() != nil {
+			continue
+		}
+		meta := &p.footer.Metadata().RowGroups[phys].Columns[col.index]
+		if p.checkIndexExtent(phys, meta.OffsetIndexOffset, meta.OffsetIndexLength) == nil &&
+			p.retainedBytes(meta.OffsetIndexOffset, int64(meta.OffsetIndexLength)) == nil {
+			indexes = append(indexes, extent{p, meta.OffsetIndexOffset, int64(meta.OffsetIndexLength), endRow})
+			if len(indexes) == MaxReadRanges {
+				break
+			}
+		}
+	}
+	sortExtents(indexes)
+	w.fetch(indexes, false)
+	var exts []extent
+	for _, name := range columns {
+		if len(exts) >= MaxReadRanges {
+			break
+		}
+		col, ok := p.leaves[name]
+		if !ok {
+			continue
+		}
+		meta := &p.footer.Metadata().RowGroups[phys].Columns[col.index]
+		start, end, ok := chunkRange(&meta.MetaData)
+		if !ok || end > p.size {
+			continue
+		}
+		locs := p.planLocs(phys, col, start, end)
+		if locs == nil && meta.OffsetIndexLength > 0 && w.holds(p, meta.OffsetIndexOffset, int64(meta.OffsetIndexLength)) {
+			raw := make([]byte, meta.OffsetIndexLength)
+			if hit, err := w.copy(p, raw, meta.OffsetIndexOffset); hit && err == nil {
+				if oi, err := p.decodeOffsetIndex(raw); err == nil {
+					locs, _ = checkLocations(oi, p.groups[at[0].g.index].rows, start, end)
+				}
+			}
+		}
+		if len(locs) == 0 {
+			continue
+		} // unknown coverage: read on demand
+		// In a mixed PLAIN/dictionary chunk, location hints cannot tell
+		// which selected pages need the dictionary. Leave it on demand.
+		dictionaryOnly := len(meta.MetaData.EncodingStats) > 0
+		for _, enc := range meta.MetaData.EncodingStats {
+			if (enc.PageType == format.DataPage || enc.PageType == format.DataPageV2) &&
+				enc.Encoding != format.RLEDictionary && enc.Encoding != format.PlainDictionary {
+				dictionaryOnly = false
+			}
+		}
+		if dictionaryOnly && locs[0].offset > start {
+			exts = append(exts, extent{p, start, locs[0].offset - start, endRow})
+		}
+		previous := -1
+		for _, pos := range at {
+			pg := pageAt(locs, pos.row)
+			if pg == previous {
+				continue
+			}
+			loc := locs[pg]
+			exts = append(exts, extent{p, loc.offset, loc.size, endRow})
+			previous = pg
+			if len(exts) >= MaxReadRanges {
+				break
+			}
+		}
+	}
+	sortExtents(exts)
+	w.fetch(exts, false)
 }
 
 // projectColumn sets value c of rows, found at positions at in one row

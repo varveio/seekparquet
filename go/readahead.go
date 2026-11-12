@@ -100,7 +100,7 @@ func (s *scan) readAhead(req *ListQuery, remaining int) {
 	var exts []extent
 	size := int64(0)
 	pos, n := at, 0
-	for n < min(remaining, a.pages) {
+	for n < min(remaining, a.pages, MaxReadRanges) {
 		j := pos + 1
 		if cur != nil {
 			next, ok := successor(cur)
@@ -139,7 +139,7 @@ func (s *scan) readAhead(req *ListQuery, remaining int) {
 		pos = j
 		cur = commonPrefix(page.hi, req.Prefix, req.Delimiter)
 	}
-	a.w.fetch(exts, true)
+	a.w.fetchAhead(exts)
 }
 
 // landing is called before a listing's walker decodes key page i of row
@@ -153,7 +153,7 @@ func (a *readAhead) landing(s *scan, k *keyPages, i int) {
 		return
 	}
 	exts, _ := a.following(s, k.g, i, nil, 0, 0)
-	a.w.fetch(exts, true)
+	a.w.fetchAhead(exts)
 }
 
 // following appends to exts, of size bytes and n pages, the key pages of
@@ -165,7 +165,7 @@ func (a *readAhead) landing(s *scan, k *keyPages, i int) {
 func (a *readAhead) following(s *scan, g groupRef, i int, exts []extent, size int64, n int) ([]extent, int) {
 	r := s.r
 	p := r.parts[g.part]
-	for ; g.index < len(p.groups) && n < min(a.remaining, a.pages); g, i = g.next(), 0 {
+	for ; g.index < len(p.groups) && n < min(a.remaining, a.pages, MaxReadRanges); g, i = g.next(), 0 {
 		if s.end != nil && i == 0 && r.startsAtOrAfter(g, s.end) {
 			break
 		}
@@ -180,7 +180,7 @@ func (a *readAhead) following(s *scan, g groupRef, i int, exts []extent, size in
 			break
 		}
 		index := p.index[grp.physical].Load()
-		for ; i < len(locs) && n < min(a.remaining, a.pages); i++ {
+		for ; i < len(locs) && n < min(a.remaining, a.pages, MaxReadRanges); i++ {
 			loc := locs[i]
 			if s.end != nil && index != nil && bytes.Compare(index.pages[i].lo, s.end) >= 0 {
 				return exts, n

@@ -11,7 +11,9 @@ import (
 	"io"
 	"math"
 	"os"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -961,6 +963,7 @@ func (r *reader) groupFor(ctx context.Context, from []byte, inclusive bool, log 
 	// holds the first row the read can return, or precedes it.
 	a, b := 1, hi
 	for a < b {
+		r.routeWindows(ctx, at, a, b)
 		mid := int(uint(a+b) >> 1)
 		key, err := r.first(ctx, at(mid), log, st)
 		if err != nil {
@@ -973,6 +976,57 @@ func (r *reader) groupFor(ctx context.Context, from []byte, inclusive bool, log 
 		}
 	}
 	return at(a - 1), nil
+}
+
+// routeWindows fetches at most three levels (seven candidates) of the
+// routing search together. Only adopted handles and resident location hints
+// are used; probes are decoded and checked later, in routing order.
+func (r *reader) routeWindows(ctx context.Context, at func(int) groupRef, a, b int) {
+	if r.local || r.policy.DisableSpeculation {
+		return
+	}
+	o := operationOf(ctx)
+	if o == nil {
+		return
+	}
+	root := at(int(uint(a+b) >> 1))
+	if !r.parts[root.part].ready.Load() || r.group(root).first.Load() != nil {
+		return
+	}
+	if _, ok := r.parts[root.part].file.(RangeReader); !ok {
+		return
+	}
+	if index := r.listIndex.Load(); index != nil && index.group(root) != nil {
+		return
+	}
+	w := o.windows()
+	var exts []extent
+	var visit func(int, int, int)
+	visit = func(a, b, depth int) {
+		if a >= b || depth == 0 {
+			return
+		}
+		mid := int(uint(a+b) >> 1)
+		g := at(mid)
+		p := r.parts[g.part]
+		if p.ready.Load() && r.group(g).first.Load() == nil {
+			grp := p.groups[g.index]
+			meta := &p.footer.Metadata().RowGroups[grp.physical].Columns[p.key.index].MetaData
+			if start, end, ok := chunkRange(meta); ok && end <= p.size {
+				if locs := p.planLocs(grp.physical, p.key, start, end); len(locs) > 0 {
+					// Key dictionaries precede the first data page.
+					exts = append(exts, extent{p, start, locs[0].offset + locs[0].size - start, grp.start + grp.rows})
+				}
+			}
+		}
+		visit(a, mid, depth-1)
+		visit(mid+1, b, depth-1)
+	}
+	visit(a, b, 3)
+	// Group candidates by handle so one call exposes every run to storage.
+	slices.SortStableFunc(exts, func(a, b extent) int { return strings.Compare(a.p.name, b.p.name) })
+	sortExtents(exts)
+	w.fetch(exts, true)
 }
 
 // partAt returns the part holding the dataset row ordinal, or the number

@@ -11,7 +11,8 @@ import (
 
 // readPlan plans the windows of one scan over a remote Source (windows):
 // the pages it will decode, from the key page it needs and the windows do
-// not hold, read ahead in waves of at most waveBytes, bounded by readWaveBytes. Each wave finishes before decoding resumes. A wave
+// not hold, read ahead in waves bounded by readWaveBytes. Each wave
+// finishes before decoding resumes. A wave
 // holds the rows the scan reads in the row group it is in and in the row
 // groups after it, in checked parts: every row of a planned scan's spans,
 // which the scan needs; otherwise the rows up to the scan's upper bound
@@ -33,11 +34,6 @@ type readPlan struct {
 	end       int64
 	speculate bool
 	waveBytes int64
-	// from is the dataset ordinal the latest wave began at, and frontier
-	// the one past its rows, -1 when the wave stopped short (the next page
-	// not held then begins one); ahead is set once the wave after it began.
-	from, frontier int64
-	ahead          bool
 	// prev is the first row of the key page decoded last.
 	prev int64
 }
@@ -56,7 +52,7 @@ func (r *reader) newReadPlan(ctx context.Context, columns []string, spans []span
 		return nil
 	}
 	return &readPlan{r: r, w: o.windows(), columns: columns, spans: spans, limit: limit, end: -1, speculate: speculate,
-		waveBytes: readWaveBytes, frontier: -1, prev: -1}
+		waveBytes: readWaveBytes, prev: -1}
 }
 
 // page is called before the scan's walker on row group g decodes key page
@@ -71,19 +67,8 @@ func (rp *readPlan) page(s *scan, k *keyPages, i int) {
 	rp.prev = ordinal
 	loc := k.index.pages[i].pageLoc
 	if !rp.w.holds(k.part, loc.offset, loc.size) {
-  rp.wave(s, k.g, ordinal)
- }
-}
-
-// groupOf returns the row group holding the dataset ordinal in a checked
-// part, or false.
-func (r *reader) groupOf(ordinal int64) (groupRef, bool) {
-	i := r.partAt(ordinal)
-	if i == len(r.parts) || !r.parts[i].ready.Load() {
-		return groupRef{}, false
+		rp.wave(s, k.g, ordinal)
 	}
-	p := r.parts[i]
-	return groupRef{i, sort.Search(len(p.groups), func(j int) bool { return p.groups[j].start+p.groups[j].rows > ordinal })}, true
 }
 
 // wave reads ahead the rows the scan reads from the dataset ordinal from
@@ -95,15 +80,11 @@ func (rp *readPlan) wave(s *scan, g groupRef, from int64) {
 	}
 	var need, spec []extent
 	total := int64(0)
-	frontier := int64(-1)
 	for n := 0; ; n++ {
 		if g.part < len(r.parts) && r.parts[g.part].ready.Load() && g.index >= len(r.parts[g.part].groups) {
 			g = groupRef{g.part + 1, 0}
 		}
 		if g.part >= len(r.parts) || !r.parts[g.part].ready.Load() {
-			if g.part < len(r.parts) && n > 0 {
-				frontier = r.parts[g.part].start // read once the part is checked
-			}
 			break
 		}
 		if n > 0 && rp.spans == nil && (!rp.speculate || s.end != nil && r.startsAtOrAfter(g, s.end)) {
@@ -127,7 +108,7 @@ func (rp *readPlan) wave(s *scan, g groupRef, from int64) {
 				size += e.size
 			}
 			if total > 0 && total+size > rp.waveBytes {
-				frontier, full = u.from, false
+				full = false
 				break
 			}
 			total += size
@@ -140,16 +121,11 @@ func (rp *readPlan) wave(s *scan, g groupRef, from int64) {
 		if !full || stop {
 			break
 		}
-		frontier = grp.start + grp.rows
 		g = g.next()
 	}
 	sortExtents(need)
 	sortExtents(spec)
-	rp.from, rp.ahead = from, false
-	if !rp.w.fetchWave(need, spec) {
-		frontier = -1
-	}
-	rp.frontier = frontier
+	rp.w.fetchWave(need, spec)
 }
 
 // rows returns the ranges of rows of row group grp, from the dataset
@@ -226,6 +202,7 @@ func (rp *readPlan) units(p *part, g groupRef, ranges [][2]int64, end []byte) []
 	}
 	keys := cols[0].locs
 	var units []unit
+	totalBytes, descriptors := int64(0), 0
 	groupEnd := grp.start + grp.rows
 	for _, rg := range ranges {
 		a, b := rg[0]-grp.start, rg[1]-grp.start
@@ -257,9 +234,19 @@ func (rp *readPlan) units(p *part, g groupRef, ranges [][2]int64, end []byte) []
 					loc := col.locs[j]
 					u.exts = append(u.exts, extent{p, loc.offset, loc.size, grp.start + loc.first + loc.rows})
 					col.next = j + 1
+					if descriptors+len(u.exts) >= MaxReadRanges {
+						return append(units, u, unit{stop: true})
+					}
 				}
 			}
 			units = append(units, u)
+			for _, e := range u.exts {
+				totalBytes += e.size
+			}
+			descriptors += len(u.exts)
+			if totalBytes >= rp.waveBytes || descriptors >= MaxReadRanges {
+				return append(units, unit{stop: true})
+			}
 			a = hi
 		}
 	}

@@ -74,7 +74,6 @@ type ReadStats struct {
 	// requested bytes. Neither counts physical requests or wire bytes.
 	// Manifest reads are excluded.
 	SourceReads, SourceBytes int64
-
 	// ReadAheadReads is the number of key pages a listing read ahead
 	// (ListQuery.ReadAhead), each in one read counted in SourceReads and
 	// SourceBytes; ReadAheadUnused and ReadAheadUnusedBytes are the pages
@@ -120,7 +119,6 @@ type ReadStats struct {
 	// PeakPhysicalRequests is the most physical requests a reporting
 	// source had in flight at once for the operation.
 	PeakPhysicalRequests int64
-
 }
 
 // takeStats zeroes st for a new operation. When the caller asked for no
