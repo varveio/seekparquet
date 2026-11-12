@@ -14,10 +14,10 @@ Exit status is 0 when every reported level is complete, 1 when one failed, 2 whe
 
 ## What each level checks
 
-- **structural**: the manifest, and for every part its footer and page indexes. It walks the physical page
-  headers of each column chunk from the extents in the footer, and only then compares the key column's
-  OffsetIndex against what it found: offsets, page sizes, value counts and first-row positions. A plausible
-  index that omits a physical page fails.
+- **structural**: the manifest, and for every part its footer, every leaf's recognized annotation
+  restrictions, and key page indexes. It classifies headers at indexed key offsets under CHECK-5, then
+  independently walks every physical key page header from the chunk extent in the footer and compares
+  offsets, sizes, counts and first-row positions. An index that omits a physical page fails.
 - **profile**: decodes every key in row group order through PyArrow without filters, then checks byte order,
   page bounds against the ColumnIndex, UTF-8 where the key is annotated so, and the manifest's exact bounds.
 - **full**: enumerates every stored column chunk, checks physical value totals against the column metadata,
@@ -25,15 +25,19 @@ Exit status is 0 when every reported level is complete, 1 when one failed, 2 whe
 - **digest**: streams the declared parts without opening them as Parquet, so it runs even when structural
   validation fails. With no declared hashes it reports complete with zero checked.
 
-Resource limits (`Limits`) and unsupported features (LZO, build codecs PyArrow lacks, legacy
-GROUP_VAR_INT and BIT_PACKED value encodings) make a level incomplete, not failed. Unknown codec or encoding
-enums are corrupt data; a decoder error on a supported feature is `invalid_parquet`.
+Resource limits (`Limits`) and unsupported features (LZO, deprecated `LZ4` codec 5, build codecs PyArrow
+lacks, and legacy GROUP_VAR_INT and BIT_PACKED value encodings) make a level incomplete, not failed.
+Both Python tools report unsupported features and unknown codec or encoding enums as `unsupported_encoding`
+when needed (ENC-1); a decoder error on a supported feature is `invalid_parquet`. Unused enum values follow ENC-1/RG-6 while their required fields remain checked.
+Valueless non-stamp metadata is ignored; valueless listed stamps are `stamp_mismatch` (STAMP-2).
 
 ## Independence
 
 Decoding is PyArrow's, and the page walk uses the Thrift codec in
 [`../generators/parquet_meta.py`](../generators/parquet_meta.py), so the validator shares no code with
-parquet-go or the Java readers, and does not trust the OffsetIndex under examination. It imports neither the
+parquet-go or the Java readers, and does not trust the OffsetIndex under examination. Raw annotation,
+header and encoding checks are shared with the reference adapter in
+[`../parquet_rules.py`](../parquet_rules.py). It imports neither the
 reference adapter, the oracle, the expected case outcomes nor source rows.
 
 ## Known limits
@@ -60,4 +64,5 @@ python conformance/harness/run.py --adapter 'python conformance/validator/valida
 unsupported (an encrypted part), whose structural level must be incomplete. `test_validate.py` builds
 temporary fixtures for page V1 and V2, four of the mandatory codecs, omitted physical pages, corruption confined
 to a value page, digest independence, limits, unsupported codecs and malformed manifests. No binary fixtures
-are committed.
+are committed. Classification ruling tests cover unsupported enums at each level, ignored required enum
+values, optional metadata values, indexed header precedence and annotation restrictions on unprojected leaves.

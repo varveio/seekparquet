@@ -39,6 +39,15 @@ First public draft of format 1. Files carry `format_version` 0, `draft_revision`
 
 ### Pre-release compatibility pass ([proposal 0001](proposals/0001-prerelease-compatibility-pass.md))
 
+- Classification rulings (#37, #38): ENC-1 classifies unknown numeric encodings/codecs only when needed;
+  ENC-1/RG-6 ignore unused repetition encoding and boundary order values while retaining required fields.
+  STAMP-2 accepts valueless non-stamp metadata and refuses valueless listed stamps as `stamp_mismatch`.
+  CHECK-5/RG-7 distinguish undecodable indexed headers and index disagreement from intrinsic header
+  corruption, with explicit precedence. CHECK-1 requires recognized leaf annotation restrictions at first
+  touch, including unprojected leaves, with COL-3 fallback for unknown alternatives. These explicit validity
+  and classification rules use the Parquet revision pinned in 0001. The proposal remains draft; unreleased
+  draft revision 1 is edited in place (VER-2), with no version bump.
+
 - §3.3, §3.4, MAN-3, EXT-1 to EXT-5: each part MAY carry an `extensions` object, with the same schema as the
   top-level one (`$defs/extensions` in the schema). Readers ignore unknown namespaces and members (EXT-3);
   extension metadata never changes validity, query results, required checks or core members (EXT-1); unusable

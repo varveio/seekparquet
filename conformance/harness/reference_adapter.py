@@ -4,16 +4,16 @@
     python harness/run.py --adapter "python harness/reference_adapter.py"
 
 THIS IS NOT A SEEKPARQUET READER AND MAKES NO READER CLAIM. It exists to test
-the suite itself: it answers the runner protocol (protocol.md) by decoding every
-row of every part with pyarrow and filtering in memory, never using the page
-index to choose what to read. It performs the part checks eagerly, on open (manifest
-rules, sizes, footers, stamps, key column shape, column consistency,
-sorting_columns) and, on the first read or validation of a dataset, the
-read-time checks over the whole dataset (page index consistency with the
-physical pages, key order, empty and non-UTF-8 keys, page bounds, Parquet
-decoding), using generators/parquet_meta.py for the metadata. Because it checks
-everything on first read, it detects faults earlier than an index-guided reader
-must, which the protocol allows.
+the suite itself: it answers the runner protocol (protocol.md) by scanning keys
+of candidate parts with pyarrow, filtering in memory, and decoding projected
+value columns on demand. It never uses page indexes to choose rows. It performs
+part checks eagerly on open (manifest rules, sizes, footers, stamps, recognized
+leaf annotations, key column shape, column consistency and sorting_columns).
+Read-time checks cover candidate parts' page indexes, key order, empty and
+non-UTF-8 keys and page bounds, using generators/parquet_meta.py and the raw
+checks in parquet_rules.py. Full validation also decodes all value columns.
+These scans may detect faults earlier than an indexed reader must, which the
+protocol allows.
 
 It shares no query code with oracle.py, so agreement between the two is a check
 on the expected answers. It needs pyarrow and jsonschema
@@ -40,6 +40,8 @@ import pyarrow as pa  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
 
 import parquet_meta as pm  # noqa: E402
+sys.path.insert(0, str(CONF))
+import parquet_rules as rules  # noqa: E402
 
 SCHEMA = json.loads((CONF.parent / "spec" / "manifest.schema.json").read_text(encoding="utf-8"))
 SUPPORTED = [(0, 1)]
@@ -251,6 +253,7 @@ class Part:
             raise NotSupported("unsupported_encryption", f"{rel}: PARE magic")
         try:
             self.pf = pm.read_parquet(self.data)
+            rules.annotations(self.pf)
             self.fields = top_level(self.pf)
         except pm.SignedPlaintextFooter as e:
             raise NotSupported("unsupported_encryption", f"{rel}: {e}") from None
@@ -286,7 +289,7 @@ class Part:
         got = {}
         for e in self.pf.meta.items_of(pm.FMD_KV):
             k = e.get(pm.KV_KEY, b"")
-            if k.startswith(b"seekparquet."):
+            if k.decode("utf-8", "replace") in set(want) | {"seekparquet.draft_revision"}:
                 ks = k.decode("utf-8", "replace")
                 if ks in got:
                     raise Refusal("stamp_mismatch", f"duplicate {ks}")
@@ -325,11 +328,13 @@ class Part:
         try:
             ci = pm.read_index(self.pf, cc, "column")
             oi = pm.read_index(self.pf, cc, "offset")
-        except pm.ParquetMetaError as e:
+        except (pm.ParquetMetaError, pm.ThriftError) as e:
             raise Refusal("invalid_page_index", str(e)) from None
         if ci is None or oi is None:
             raise Refusal("missing_page_index", f"row group {ri}")
+        rules.field(ci, pm.CI_BOUNDARY, pm.CT_I32, 'invalid_page_index')
         locs = oi.items_of(pm.OI_PAGE_LOCATIONS)
+        rules.indexed_headers(self.pf, cc, locs, n)
         if not locs:
             raise Refusal("invalid_page_index", "empty OffsetIndex")
         firsts = [x.get(pm.PL_FIRST_ROW) for x in locs]
@@ -344,7 +349,7 @@ class Part:
             if off is None or size is None or off < start or size <= 0 or off + size > end or end > self.pf.footer_start:
                 raise Refusal("invalid_page_index", "page location outside the column chunk or file")
         try:
-            pages = pm.data_pages(self.pf, cc)
+            pages = [page for page in rules.physical_pages(self.pf, cc) if page.type in (0, 3)]
         except pm.ParquetMetaError as e:
             raise Refusal("invalid_parquet", str(e)) from None
         if [(p.offset, p.header_len + p.compressed_size) for p in pages] != \
@@ -362,10 +367,21 @@ class Part:
             raise Refusal("invalid_page_index", "null page")
         return intervals, mins, maxs
 
+    def check_encoding(self, ri, selected):
+        for ci in selected:
+            cc = self.pf.row_groups[ri].items_of(pm.RG_COLUMNS)[ci]
+            try:
+                pages = rules.physical_pages(self.pf, cc)
+            except (pm.ParquetMetaError, pm.ThriftError) as e:
+                raise Refusal("invalid_parquet", str(e)) from None
+            rules.encoding_support(self.pf, cc, pages)
+
     def key_checks(self, ri, intervals, mins, maxs, prev):
         """KEY-2, KEY-3, KEY-6, RG-5 over the decoded keys of one row group. Returns the last key."""
+        self.check_encoding(ri, {self.key_leaf})
         with decoding():
-            col = pq.ParquetFile(self.path).read_row_group(ri, columns=[self.key_name]).column(0).combine_chunks()
+            col = pq.ParquetFile(pa.BufferReader(rules.arrow_bytes(self.pf, {self.key_leaf}))).read_row_group(
+                ri, columns=[self.key_name], use_threads=False).column(0).combine_chunks()
         if pa.types.is_string(col.type) or pa.types.is_large_string(col.type):
             col = col.view(pa.binary() if pa.types.is_string(col.type) else pa.large_binary())
         keys = col.to_pylist()
@@ -396,8 +412,9 @@ class Dataset:
     def __init__(self, root):
         self.root = Path(root)
         self.state = None  # Refusal or None after open
-        self.read_state = None
-        self.rows = None
+        self.read_state = {}
+        self.rows = {}
+        self.colcache = {}
         self.manifest, self.bounds = load_manifest(self.root)
         self.parts = [Part(self.root, e, self.manifest) for e in self.manifest["parts"]]
         sigs = {}
@@ -417,11 +434,13 @@ class Dataset:
                 if rg.get(pm.RG_NUM_ROWS):
                     p.index_checks(ri)
 
-    def profile(self):
+    def profile(self, selected=None):
         """Read every key page in dataset order (also used to serve queries)."""
         prev = None
         all_rows = []
         for pi, p in enumerate(self.parts):
+            if selected is not None and pi not in selected:
+                continue
             part_keys = []
             for ri, rg in enumerate(p.pf.row_groups):
                 if not rg.get(pm.RG_NUM_ROWS):
@@ -440,8 +459,12 @@ class Dataset:
     def full(self):
         tables = []
         for p in self.parts:
+            selected = set(range(len(p.pf.leaf_columns())))
+            for ri, rg in enumerate(p.pf.row_groups):
+                if rg.get(pm.RG_NUM_ROWS):
+                    p.check_encoding(ri, selected)
             with decoding():
-                t = pq.read_table(p.path)
+                t = pq.read_table(pa.BufferReader(rules.arrow_bytes(p.pf, selected)), use_threads=False)
                 for c in t.columns:
                     c.combine_chunks()
             if any(len(c) != p.entry["rows"] for c in t.columns):
@@ -449,22 +472,56 @@ class Dataset:
             tables.append(t)
         return tables
 
-    def load(self):
-        """Read-time checks over everything, then the rows (cached)."""
-        if self.read_state is not None:
-            raise self.read_state
-        if self.rows is not None:
-            return self.rows
+    def needed_parts(self, req):
+        """Use manifest bounds to avoid decoding keys a request cannot need."""
+        prefix = b64arg(req, "prefix_base64")
+        start = b64arg(req, "start_base64")
+        end = b64arg(req, "end_base64")
+        cursor = cursor_arg(req)
+        upper = None
+        if prefix:
+            for i in range(len(prefix) - 1, -1, -1):
+                if prefix[i] != 255:
+                    upper = prefix[:i] + bytes([prefix[i] + 1])
+                    break
+        lower = max(x for x in (start, prefix, b'') if x is not None)
+        upper_bounds = [x for x in (end, upper) if x is not None]
+        if upper_bounds and lower >= min(upper_bounds):
+            return ()
+        selected = []
+        for pi, (lo, hi) in enumerate(self.bounds):
+            if start is not None and (hi < start or req.get("start_exclusive", False) and hi == start):
+                continue
+            if end is not None and lo >= end or prefix is not None and hi < prefix or upper is not None and lo >= upper:
+                continue
+            if cursor is not None:
+                if hi < cursor[1] or (hi == cursor[1] and (cursor[0] == "prefix" or self.manifest["key"]["unique"])):
+                    continue
+                if cursor[0] == "prefix" and lo.startswith(cursor[1]) and hi.startswith(cursor[1]):
+                    continue
+            selected.append(pi)
+        return tuple(selected)
+
+    def load(self, req):
+        """Read keys of candidate parts; value decoding is projection-dependent."""
+        selected = self.needed_parts(req)
+        if selected in self.read_state:
+            raise self.read_state[selected]
+        if selected in self.rows:
+            return self.rows[selected]
         try:
-            self.profile()
-            tables = self.full()
-        except Refusal as r:
-            self.read_state = r
+            self.profile(selected)
+            tables = {}
+            for pi in selected:
+                p = self.parts[pi]
+                with decoding():
+                    tables[pi] = pq.read_table(pa.BufferReader(rules.arrow_bytes(p.pf, {p.key_leaf})),
+                                               columns=[p.key_name], use_threads=False)
+        except (Refusal, rules.RuleError, NotSupported) as r:
+            self.read_state[selected] = r
             raise
-        self.tables = tables
-        self.colcache = {}
         rows = []
-        for pi, t in enumerate(tables):
+        for pi, t in tables.items():
             keys = t.column(self.manifest["key"]["column"]).combine_chunks()
             if pa.types.is_string(keys.type) or pa.types.is_large_string(keys.type):
                 keys = keys.view(pa.binary() if pa.types.is_string(keys.type) else pa.large_binary())
@@ -476,7 +533,7 @@ class Dataset:
             offset = offset + 1 if key == previous else 0
             previous = key
             positioned.append((key, offset, pos))
-        self.rows = positioned
+        self.rows[selected] = positioned
         return positioned
 
     def value(self, key, pos, col):
@@ -491,8 +548,13 @@ class Dataset:
         vals = self.colcache.get((pi, col))
         if vals is None:
             el = field[1]
-            vals = to_protocol(self.tables[pi].column(col).combine_chunks(), el.get(pm.SE_TYPE),
-                               el.get(pm.SE_TYPE_LENGTH))
+            selected = set(field[3])
+            for gi, group in enumerate(p.pf.row_groups):
+                if group.get(pm.RG_NUM_ROWS):
+                    p.check_encoding(gi, selected)
+            with decoding():
+                table = pq.read_table(pa.BufferReader(rules.arrow_bytes(p.pf, selected)), columns=[col], use_threads=False)
+                vals = to_protocol(table.column(col).combine_chunks(), el.get(pm.SE_TYPE), el.get(pm.SE_TYPE_LENGTH))
             self.colcache[(pi, col)] = vals
         return vals[ri]
 
@@ -629,7 +691,7 @@ def do_range(ds, req):
     for c in cols:
         if ds.nested.get(c):
             raise NotSupported("unsupported_projection", c)
-    rows = ds.load()
+    rows = ds.load(req)
     entries = []
     cursor = cursor_arg(req)
     for k, offset, v in rows:
@@ -657,7 +719,7 @@ def do_list(ds, req):
     for c in cols:
         if ds.nested.get(c):
             raise NotSupported("unsupported_projection", c)
-    rows = ds.load()
+    rows = ds.load(req)
     entries = []
     last_prefix = None
     cursor = cursor_arg(req)
@@ -718,6 +780,10 @@ def do_validate(path, level):
             else:
                 ds.full()
             out[lvl] = {"result": "complete"}
+        except rules.RuleError as e:
+            out[lvl] = ({"result": "incomplete", "code": e.code, "reason": str(e)} if e.code.startswith("unsupported_")
+                        else {"result": "failed", "code": e.code})
+            blocked = True
         except Refusal as r:
             out[lvl] = {"result": "failed", "code": r.code}
             blocked = True
@@ -760,6 +826,9 @@ def handle(req):
                 raise BadRequest("level")
             return {"status": "ok", "levels": do_validate(path, req["level"])}
         return {"status": "invalid_request", "message": f"unknown op {op!r}"}
+    except rules.RuleError as e:
+        return {"status": "unsupported" if e.code.startswith("unsupported_") else "refused", "code": e.code,
+                "message": str(e)}
     except BadRequest as e:
         return {"status": "invalid_request", "message": str(e)}
     except Refusal as r:

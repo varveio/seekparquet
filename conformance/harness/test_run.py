@@ -548,5 +548,169 @@ class ReferenceAdapter(unittest.TestCase):
                              {"structural": {"result": "failed", "code": "invalid_footer"}})
 
 
+@unittest.skipIf(ra is None, "the reference adapter needs generators/requirements.txt")
+class ReferenceRulings(unittest.TestCase):
+    def setUp(self):
+        sys.path.insert(0, str(HERE.parent))
+        from validator import test_validate as fixtures
+        self.f = fixtures
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        ra.DATASETS.clear()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def request(self, **args):
+        return ra.handle({"dataset": str(self.root), "op": "range", "limit": 10000, **args})
+
+    def test_timestamp_fixed_carrier(self):
+        self.f.timestamp_fixed_fixture(self.root)
+        answer = self.request(columns=['value'])
+        self.assertEqual(answer, {'status': 'ok', 'entries': [{'kind': 'row', 'key_base64': 'YQ==',
+                          'offset': 0, 'values': [{'bytes_base64': 'AQAAAAAAAAAAAAAA'}]}]})
+
+    def test_v1_level_encodings_are_needed_only_with_levels(self):
+        p = self.f.p
+        for repeated, fid in ((False, 3), (True, 3), (True, 4)):
+            with self.subTest(repeated=repeated, field=fid):
+                ra.DATASETS.clear()
+                self.f.fixture(self.root, version='1.0', repeated=repeated)
+                self.f.rewrite_test_header(self.root, 1, lambda h: h.get(p.PH_DATA_V1).set(fid, p.CT_I32, 99))
+                self.assertEqual(self.request()['status'], 'ok')
+                if not repeated:
+                    answer = self.request(columns=['value'])
+                    self.assertEqual((answer['status'], answer['code']), ('unsupported', 'unsupported_encoding'))
+                levels = self.request(op='validate', level='full')['levels']
+                self.assertEqual(levels['structural']['result'], 'complete', levels)
+                self.assertEqual(levels['profile']['result'], 'complete', levels)
+                self.assertEqual(levels['full']['result'], 'incomplete', levels)
+                self.assertEqual(levels['full']['code'], 'unsupported_encoding', levels)
+        ra.DATASETS.clear()
+        self.f.fixture(self.root, version='1.0')
+        self.f.rewrite_test_header(self.root, 0, lambda h: h.get(p.PH_DATA_V1).set(3, p.CT_I32, 99))
+        self.assertEqual(self.request(columns=['value'])['status'], 'ok')
+
+    def test_group_only_annotations_on_leaves(self):
+        p = self.f.p
+        for kind in (19, 20):
+            for nested in (False, True):
+                with self.subTest(kind=kind, nested=nested):
+                    ra.DATASETS.clear()
+                    m = self.f.fixture(self.root)
+                    def annotate(meta):
+                        leaf = meta.items_of(p.FMD_SCHEMA)[2]
+                        params = p.Struct([(1, p.CT_I32, 3)]) if kind == 20 else p.Struct()
+                        leaf.set(10, p.CT_STRUCT, p.Struct([(kind, p.CT_STRUCT, params)]))
+                        if nested:
+                            leaf.set(p.SE_NAME, p.CT_BINARY, b'child')
+                            meta.get(p.FMD_SCHEMA).items.insert(2, p.Struct([
+                                (p.SE_NAME, p.CT_BINARY, b'value'), (p.SE_REPETITION, p.CT_I32, 0),
+                                (p.SE_NUM_CHILDREN, p.CT_I32, 1)]))
+                    self.f.rewrite_test_footer(self.root, m, annotate)
+                    self.assertEqual(self.request()['code'], 'invalid_footer')
+                    levels = self.request(op='validate', level='structural')['levels']
+                    self.assertEqual(levels['structural']['code'], 'invalid_footer', levels)
+
+    def test_unknown_value_features_are_projection_dependent(self):
+        p = self.f.p
+        for version in ('1.0', '2.0'):
+            for feature in ('encoding', 'codec'):
+                with self.subTest(version=version, feature=feature):
+                    ra.DATASETS.clear()
+                    m = self.f.fixture(self.root, version=version)
+                    if feature == 'codec':
+                        self.f.rewrite_test_footer(self.root, m, lambda meta: meta.items_of(p.FMD_ROW_GROUPS)[0]
+                                                  .items_of(p.RG_COLUMNS)[1].get(p.CC_META).set(p.CMD_CODEC, p.CT_I32, 99))
+                    else:
+                        self.f.rewrite_test_header(self.root, 1, lambda h: h.get(p.PH_DATA_V1 if version == '1.0'
+                                                   else p.PH_DATA_V2).set(2 if version == '1.0' else 4, p.CT_I32, 99))
+                    self.assertEqual(self.request()['status'], 'ok')
+                    answer = self.request(columns=['value'])
+                    self.assertEqual((answer['status'], answer['code']), ('unsupported', 'unsupported_encoding'))
+                    # A failed projection must not poison subsequent key-only queries.
+                    self.assertEqual(self.request()['status'], 'ok')
+                    levels = self.request(op='validate', level='full')['levels']
+                    self.assertEqual(levels['profile']['result'], 'complete')
+                    self.assertEqual(levels['full']['result'], 'incomplete')
+                    self.assertEqual(levels['full']['code'], 'unsupported_encoding')
+
+    def test_unknown_key_features_only_when_needed(self):
+        p = self.f.p
+        for feature in ('encoding', 'codec'):
+            ra.DATASETS.clear()
+            m = self.f.fixture(self.root, version='1.0')
+            if feature == 'codec':
+                self.f.rewrite_test_footer(self.root, m, lambda meta: meta.items_of(p.FMD_ROW_GROUPS)[0]
+                                          .items_of(p.RG_COLUMNS)[0].get(p.CC_META).set(p.CMD_CODEC, p.CT_I32, 99))
+            else:
+                self.f.rewrite_test_header(self.root, 0, lambda h: h.get(p.PH_DATA_V1).set(2, p.CT_I32, 99))
+            self.assertEqual(self.request(start_base64='eg=='), {'status': 'ok', 'entries': []})
+            answer = self.request()
+            self.assertEqual((answer['status'], answer['code']), ('unsupported', 'unsupported_encoding'))
+            levels = self.request(op='validate', level='full')['levels']
+            self.assertEqual(levels['structural']['result'], 'complete')
+            self.assertEqual(levels['profile']['code'], 'unsupported_encoding')
+
+    def test_ignored_values_and_required_fields(self):
+        p = self.f.p
+        m = self.f.fixture(self.root, version='1.0')
+        for ci in (0, 1):
+            self.f.rewrite_test_header(self.root, ci, lambda h: h.get(p.PH_DATA_V1).set(4, p.CT_I32, 99))
+        self.f.rewrite_indexes(self.root / 'part.parquet', lambda indexes: indexes[0][1].set(p.CI_BOUNDARY, p.CT_I32, 99))
+        self.f.save(self.root, m)
+        self.assertEqual(self.request(columns=['value'])['status'], 'ok')
+        self.f.rewrite_test_header(self.root, 1, lambda h: h.get(p.PH_DATA_V1).remove(4))
+        ra.DATASETS.clear()
+        self.assertEqual(self.request(columns=['value'])['code'], 'invalid_parquet')
+        m = self.f.fixture(self.root)
+        self.f.rewrite_indexes(self.root / 'part.parquet', lambda indexes: indexes[0][1].remove(p.CI_BOUNDARY))
+        self.f.save(self.root, m)
+        ra.DATASETS.clear()
+        self.assertEqual(self.request()['code'], 'invalid_page_index')
+
+    def test_valueless_metadata_and_stamps(self):
+        p = self.f.p
+        m = self.f.fixture(self.root)
+        def ignored(meta):
+            for key in (b'ordinary', b'seekparquet.future'):
+                for _ in range(2):
+                    meta.get(p.FMD_KV).items.append(p.Struct([(p.KV_KEY, p.CT_BINARY, key)]))
+        self.f.rewrite_test_footer(self.root, m, ignored)
+        self.assertEqual(self.request()['status'], 'ok')
+        self.f.rewrite_test_footer(self.root, m, lambda meta: meta.get(p.FMD_KV).items.append(
+                                   p.Struct([(p.KV_KEY, p.CT_BINARY, b'seekparquet.schema_id')])))
+        ra.DATASETS.clear()
+        self.assertEqual(self.request()['code'], 'stamp_mismatch')
+        m = self.f.fixture(self.root)
+        self.f.rewrite_test_footer(self.root, m, lambda meta: meta.get(p.FMD_KV).items.append(p.Struct()))
+        ra.DATASETS.clear()
+        self.assertEqual(self.request()['code'], 'invalid_footer')
+
+    def test_header_and_annotation_classifications(self):
+        p = self.f.p
+        for version, mutate, code in (
+            ('1.0', lambda h: h.get(p.PH_DATA_V1).set(1, p.CT_I32, -5), 'invalid_parquet'),
+            ('2.0', lambda h: h.get(p.PH_DATA_V2).set(5, p.CT_I32, -1), 'invalid_parquet'),
+            ('1.0', lambda h: h.set(p.PH_COMPRESSED, p.CT_I32, 1000000), 'invalid_page_index'),
+        ):
+            ra.DATASETS.clear()
+            self.f.fixture(self.root, version=version)
+            self.f.rewrite_test_header(self.root, 0, mutate)
+            self.assertEqual(self.request()['code'], code)
+        m = self.f.fixture(self.root)
+        self.f.rewrite_test_footer(self.root, m, lambda meta: meta.items_of(p.FMD_SCHEMA)[2].set(
+                                  10, p.CT_STRUCT, p.Struct([(6, p.CT_STRUCT, p.Struct())])))
+        ra.DATASETS.clear()
+        self.assertEqual(self.request()['code'], 'invalid_footer')
+        for lt in (p.Struct([(99, p.CT_STRUCT, p.Struct())]), p.Struct([(8, p.CT_STRUCT,
+                   p.Struct([(1, p.CT_BOOL, False), (2, p.CT_STRUCT, p.Struct([(99, p.CT_STRUCT, p.Struct())]))]))])):
+            m = self.f.fixture(self.root)
+            self.f.rewrite_test_footer(self.root, m, lambda meta: meta.items_of(p.FMD_SCHEMA)[2].set(10, p.CT_STRUCT, lt))
+            ra.DATASETS.clear()
+            answer = self.request(columns=['value'])
+            self.assertEqual(answer['status'], 'ok', answer)
+
+
 if __name__ == "__main__":
     unittest.main()

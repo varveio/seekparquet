@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"slices"
 	"strconv"
@@ -99,8 +100,8 @@ func ownCopy(b []byte) []byte {
 // decodeBounded decodes one thrift struct into v from raw after
 // thriftcheck has shown that its lengths fit and its decoded size is
 // within budget. It returns the number of bytes the struct occupies.
-func decodeBounded(raw []byte, v any, budget int64) (int, error) {
-	n, _, err := thriftcheck.Check(raw, reflect.TypeOf(v), budget)
+func decodeBounded(raw []byte, v any, budget int64, nonempty ...reflect.Type) (int, error) {
+	n, _, err := thriftcheck.Check(raw, reflect.TypeOf(v), budget, nonempty...)
 	if errors.Is(err, thriftcheck.ErrBudget) {
 		return 0, exceeded(LimitMetadataMemory, -1, budget, "decoding metadata")
 	}
@@ -201,8 +202,9 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 			return nil, tail, footerError(ctx, name, err)
 		}
 	}
-	var meta format.FileMetaData
-	used, err := decodeBounded(raw[:n], &meta, lim.MetadataMemory)
+	var wire footerMetadata
+	used, err := decodeBounded(raw[:n], &wire, lim.MetadataMemory, reflect.TypeFor[format.TimeUnit](), reflect.TypeFor[footerLogicalType]())
+	meta, normalized := wire.metadata()
 	switch {
 	case errors.Is(err, ErrLimitExceeded):
 		return nil, tail, fmt.Errorf("part %s: footer: %w", name, err)
@@ -221,7 +223,8 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	// but the format ignores, it gets a re-encoded footer without it, at
 	// the same offset: everything before the footer is read as stored.
 	footer, end := raw, size
-	if forParquetGo(&meta) {
+	originalSchema := slices.Clone(meta.Schema)
+	if forParquetGo(&meta) || normalized {
 		encoded, err := thrift.Marshal(new(thrift.CompactProtocol), &meta)
 		if err != nil {
 			return nil, tail, bad("re-encode the footer: %v", err)
@@ -251,6 +254,9 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	if err != nil {
 		return nil, tail, footerError(ctx, name, err)
 	}
+	// Keep the checked annotations for KEY-1 and schema reporting. The
+	// dependency's column types were built from its normalized physical view.
+	f.Metadata().Schema = originalSchema
 	tail.off, tail.footerStart = size-window, size-8-n
 	return f, tail, nil
 }
@@ -413,6 +419,28 @@ func checkSchema(schema []format.SchemaElement) ([]schemaLeaf, error) {
 func forParquetGo(meta *format.FileMetaData) bool {
 	changed := false
 	leaves := 0
+	for i := range meta.Schema {
+		se := &meta.Schema[i]
+		physical := false
+		clearConverted := false
+		switch lt := se.LogicalType.Value.(type) {
+		case *unrecognizedLogicalType, *fileLogicalType, *finiteVectorLogicalType:
+			physical = true
+		case *format.TimeType:
+			physical = lt.Unit.Value == nil
+			clearConverted = true
+		case *format.TimestampType:
+			physical = lt.Unit.Value == nil || se.Type.V == format.FixedLenByteArray
+			clearConverted = true
+		}
+		if physical {
+			if clearConverted {
+				se.ConvertedType.Valid = false
+			}
+			se.LogicalType.Value = nil
+			changed = true
+		}
+	}
 	for _, se := range meta.Schema[1:] {
 		if n, ok := se.NumChildren.Get(); !ok || n == 0 {
 			leaves++
@@ -465,7 +493,22 @@ func checkLeaf(se *format.SchemaElement) error {
 		return false
 	}
 	decimalOK := func(precision, scale int32) bool {
-		return is(format.Int32, format.Int64, format.ByteArray, format.FixedLenByteArray) && precision > 0 && scale >= 0 && scale <= precision
+		if precision <= 0 || scale < 0 || scale > precision {
+			return false
+		}
+		switch t {
+		case format.Int32:
+			return precision <= 9
+		case format.Int64:
+			return precision <= 18
+		case format.ByteArray:
+			return true
+		case format.FixedLenByteArray:
+			// Parquet: floor(log10(2^(8*n-1)-1)); for n >= 1 the
+			// subtraction cannot change the floor. Use int64 before multiplying.
+			return int64(precision) <= int64(math.Floor(float64(int64(length)*8-1)*math.Log10(2)))
+		}
+		return false
 	}
 	switch lt := se.LogicalType.Value.(type) {
 	case nil:
@@ -491,11 +534,11 @@ func checkLeaf(se *format.SchemaElement) error {
 		}
 	case *format.TimeType:
 		_, millis := lt.Unit.Value.(*format.MilliSeconds)
-		if lt.Unit.Value == nil || !(is(format.Int32) && millis || is(format.Int64) && !millis) {
+		if lt.Unit.Value != nil && !(is(format.Int32) && millis || is(format.Int64) && !millis) {
 			return bad()
 		}
 	case *format.TimestampType:
-		if lt.Unit.Value == nil || !is(format.Int64) {
+		if lt.Unit.Value != nil && !(is(format.Int64) || is(format.FixedLenByteArray) && length == 12) {
 			return bad()
 		}
 	case *format.IntType:
@@ -506,7 +549,7 @@ func checkLeaf(se *format.SchemaElement) error {
 			return bad()
 		}
 	case *format.NullType:
-	default: // LIST, MAP, VARIANT and unknown annotations do not apply to a leaf
+	case *format.ListType, *format.MapType, *format.VariantType, *fileLogicalType, *finiteVectorLogicalType:
 		return bad()
 	}
 	ct, ok := se.ConvertedType.Get()
@@ -537,8 +580,9 @@ func checkLeaf(se *format.SchemaElement) error {
 		if !decimalOK(precision, scale) {
 			return bad()
 		}
-	default: // MAP, LIST, MAP_KEY_VALUE and unknown values do not apply to a leaf
+	case deprecated.Map, deprecated.List, deprecated.MapKeyValue:
 		return bad()
+	default: // Unknown converted annotations are ignored (COL-3).
 	}
 	return nil
 }
@@ -650,8 +694,22 @@ func columnOf(se *format.SchemaElement, keyColumn string) Column {
 		c.Length = se.TypeLength.V
 	}
 	if v := se.LogicalType.Value; v != nil {
-		c.Logical = logicalOf(v)
-	} else if ct, ok := se.ConvertedType.Get(); ok {
+		switch lt := v.(type) {
+		case *format.TimeType:
+			if lt.Unit.Value == nil {
+				return c
+			}
+		case *format.TimestampType:
+			if lt.Unit.Value == nil {
+				return c
+			}
+		}
+		if _, unknown := v.(*unrecognizedLogicalType); !unknown {
+			c.Logical = logicalOf(v)
+			return c
+		}
+	}
+	if ct, ok := se.ConvertedType.Get(); ok {
 		c.Logical = convertedLogical(ct, se)
 	}
 	return c

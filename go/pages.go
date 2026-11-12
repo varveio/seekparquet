@@ -183,7 +183,7 @@ func (c *chunk) header(off int64) (*format.PageHeader, int64, []byte, error) {
 // that it fails as any page beyond them does.
 func (c *chunk) located(off, size, rows int64) (*format.PageHeader, int64, []byte, error) {
 	if lim := &c.p.r.limits; size > lim.PageBytes+lim.headerBytes() {
-		return c.header(off)
+		return c.p.pageHeaderInto(c.ctx, c.physical, c.col.index, off, c.end, c.stats, c.scratch, rows, size)
 	}
 	var pre []byte
 	if kept := c.memo.get(c.p, off, size); kept != nil {
@@ -325,7 +325,7 @@ func (c *chunk) indexedPage(i int, loc pageLoc) (*format.PageHeader, []byte, err
 	}
 	h, n, raw, err := c.located(loc.offset, loc.size, loc.rows)
 	if err != nil {
-		if RefusalCodeOf(err) == CodeInvalidParquet {
+		if h == nil && RefusalCodeOf(err) == CodeInvalidParquet {
 			return nil, nil, bad("its OffsetIndex entry does not locate a page header")
 		}
 		return nil, nil, err
@@ -1135,7 +1135,14 @@ func (p *part) pageHeader(ctx context.Context, physical, column int, off, end in
 	return p.pageHeaderInto(ctx, physical, column, off, end, st, nil)
 }
 
-func (p *part) pageHeaderInto(ctx context.Context, physical, column int, off, end int64, st *ReadStats, scratch *pageScratch) (*format.PageHeader, int64, []byte, error) {
+// indexedRows, when supplied by located, holds the indexed row count and extent.
+func (p *part) pageHeaderInto(ctx context.Context, physical, column int, off, end int64, st *ReadStats, scratch *pageScratch, indexedRows ...int64) (*format.PageHeader, int64, []byte, error) {
+	rows := int64(-1)
+	var extent []int64
+	if len(indexedRows) != 0 {
+		rows = indexedRows[0]
+		extent = indexedRows[1:]
+	}
 	bad := p.badPage(physical, column, off)
 	if off < 0 || off >= end {
 		return nil, 0, nil, bad("outside the column chunk")
@@ -1148,7 +1155,7 @@ func (p *part) pageHeaderInto(ctx context.Context, physical, column int, off, en
 		if err != nil {
 			return nil, 0, nil, err
 		}
-		h, n, err := p.decodeHeader(raw, end-off, int64(len(raw)) == ceiling, -1, bad)
+		h, n, err := p.decodeHeader(raw, end-off, int64(len(raw)) == ceiling, rows, bad, extent...)
 		if h != nil || err != nil {
 			return h, n, raw, err
 		}
@@ -1173,7 +1180,7 @@ func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, 
 			return nil, 0, nil, err
 		}
 	}
-	h, n, err := p.decodeHeader(raw, end-off, true, rows, bad)
+	h, n, err := p.decodeHeader(raw, end-off, true, rows, bad, size)
 	return h, n, raw, err
 }
 
@@ -1216,8 +1223,11 @@ func (p *part) readPage(ctx context.Context, off, n int64, st *ReadStats, bad fu
 // rows is returned for its caller to refuse (RG-3), even beyond
 // Limits.PageValues, which then does not apply. A header that does not decode from raw is
 // refused when raw is all there is to read (final), and otherwise reported
-// by a nil header and error, so that the caller reads more.
-func (p *part) decodeHeader(raw []byte, avail int64, final bool, rows int64, bad func(string, ...any) error) (*format.PageHeader, int64, error) {
+// by a nil header and error, so that the caller reads more. A decoded header
+// is returned even with an intrinsic-corruption error, preserving CHECK-5's
+// distinction from a header that did not decode. indexedExtent, when set,
+// is the header-plus-payload size its OffsetIndex entry declares.
+func (p *part) decodeHeader(raw []byte, avail int64, final bool, rows int64, bad func(string, ...any) error, indexedExtent ...int64) (*format.PageHeader, int64, error) {
 	lim := &p.r.limits
 	var header format.PageHeader
 	length, err := decodeBounded(raw, &header, lim.MetadataMemory)
@@ -1229,11 +1239,8 @@ func (p *part) decodeHeader(raw []byte, avail int64, final bool, rows int64, bad
 	case err != nil:
 		return nil, 0, nil
 	}
-	if header.CompressedPageSize < 0 || header.UncompressedPageSize < 0 || int64(length)+int64(header.CompressedPageSize) > avail {
-		return nil, 0, bad("the page sizes are invalid")
-	}
-	if size := int64(max(header.CompressedPageSize, header.UncompressedPageSize)); size > lim.PageBytes {
-		return nil, 0, exceeded(LimitPageBytes, size, lim.PageBytes, "part %s: a page", p.name)
+	if header.CompressedPageSize < 0 || header.UncompressedPageSize < 0 {
+		return &header, int64(length), bad("the page sizes are invalid")
 	}
 	var values int64
 	switch header.Type {
@@ -1245,21 +1252,28 @@ func (p *part) decodeHeader(raw []byte, avail int64, final bool, rows int64, bad
 		values = int64(max(h.NumValues, h.NumRows))
 		if h.NumValues < 0 || h.NumRows < 0 || h.NumNulls < 0 || h.DefinitionLevelsByteLength < 0 || h.RepetitionLevelsByteLength < 0 ||
 			int64(h.DefinitionLevelsByteLength)+int64(h.RepetitionLevelsByteLength) > int64(min(header.CompressedPageSize, header.UncompressedPageSize)) {
-			return nil, 0, bad("the data page header is invalid")
+			return &header, int64(length), bad("the data page header is invalid")
 		}
 	case format.DictionaryPage:
 		h, _ := header.DictionaryPageHeader.Get()
 		values = int64(h.NumValues)
 	}
 	if values < 0 {
-		return nil, 0, bad("the value count is negative")
+		return &header, int64(length), bad("the value count is negative")
 	}
-	if values > lim.PageValues {
-		// A page its OffsetIndex locates with other rows breaks RG-3 whatever
-		// the limits: its caller refuses it, rather than call it too large.
-		if declared, ok := dataRows(&header); ok && rows >= 0 && declared != rows {
+	// A decoded header's intrinsic corruption takes precedence over index
+	// disagreement. Valid extents and row counts are judged by indexedPage.
+	if rows >= 0 {
+		if declared, ok := dataRows(&header); !ok || declared != rows || int64(length)+int64(header.CompressedPageSize) > avail || len(indexedExtent) != 0 && int64(length)+int64(header.CompressedPageSize) != indexedExtent[0] {
 			return &header, int64(length), nil
 		}
+	} else if int64(length)+int64(header.CompressedPageSize) > avail {
+		return &header, int64(length), bad("the page sizes are invalid")
+	}
+	if size := int64(max(header.CompressedPageSize, header.UncompressedPageSize)); size > lim.PageBytes {
+		return nil, 0, exceeded(LimitPageBytes, size, lim.PageBytes, "part %s: a page", p.name)
+	}
+	if values > lim.PageValues {
 		return nil, 0, exceeded(LimitPageValues, values, lim.PageValues, "part %s: a page", p.name)
 	}
 	return &header, int64(length), nil
