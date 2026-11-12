@@ -58,12 +58,18 @@ func sourceError(name string, err error) error {
 // A read under an operation (op) takes one slot of its limit for its
 // duration, and is counted once it has one.
 type storageReader struct {
-	r          io.ReaderAt
-	op         *operation // nil for none
-	st         *ReadStats // counts the reads of a request, nil for none
+	r  io.ReaderAt
+	op *operation // nil for none
+	st *ReadStats // counts the reads of a request, nil for none
+	// calls, when set, counts the reads made from several goroutines
+	// (readRanges), which add them to st themselves.
+	calls      *callCount
 	name       string
 	unreported bool
 }
+
+// callCount counts ReadAt calls actually made, and their bytes.
+type callCount struct{ calls, bytes atomic.Int64 }
 
 func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
 	if s.op != nil && len(p) > 0 {
@@ -71,6 +77,11 @@ func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
 			return 0, err
 		}
 		defer s.op.limit.release(1)
+	}
+	// Counted once admitted: a read whose slot never came made no call.
+	if s.calls != nil {
+		s.calls.calls.Add(1)
+		s.calls.bytes.Add(int64(len(p)))
 	}
 	if s.st != nil {
 		s.st.SourceReads++
@@ -98,25 +109,38 @@ func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
 // else (a pin broken or a size found different, the context's end, any
 // failure of the source) is the source's error even when the read was
 // complete: ReadAt may return io.EOF with a full read, but nothing else.
+// The walk visits at most maxEOFCauses errors, so that an error tree that
+// is cyclic, or too large, is the source's error too.
 func onlyEOF(err error) bool {
+	budget := maxEOFCauses
+	return eofCauses(err, &budget)
+}
+
+const maxEOFCauses = 64
+
+func eofCauses(err error, budget *int) bool {
+	if *budget--; *budget < 0 {
+		return false
+	}
 	if err == io.EOF {
 		return true
 	}
-	var mismatch *SizeMismatchError
-	if errors.Is(err, ErrObjectChanged) || errors.As(err, &mismatch) {
-		return false
+	if is, ok := err.(interface{ Is(error) bool }); ok && is.Is(ErrObjectChanged) || err == ErrObjectChanged {
+		return false // each cause is looked at alone: errors.Is would walk a cycle
 	}
 	switch e := err.(type) {
+	case *SizeMismatchError:
+		return false
 	case interface{ Unwrap() []error }:
 		causes := e.Unwrap()
 		for _, c := range causes {
-			if !onlyEOF(c) {
+			if !eofCauses(c, budget) {
 				return false
 			}
 		}
 		return len(causes) > 0
 	case interface{ Unwrap() error }:
-		return onlyEOF(e.Unwrap())
+		return eofCauses(e.Unwrap(), budget)
 	}
 	return false
 }
@@ -429,16 +453,14 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 	}
 	errs := make([]error, len(ranges))
 	var failed atomic.Bool
-	var calls, bytes atomic.Int64
-	at := storageReader{r: bind(ctx, rf.file), op: operationOf(ctx), name: rf.name}
+	var count callCount
+	at := storageReader{r: bind(ctx, rf.file), op: operationOf(ctx), calls: &count, name: rf.name}
 	read := func(i int) {
 		if err := ctx.Err(); err != nil {
 			errs[i] = err
 			failed.Store(true)
 			return
 		}
-		calls.Add(1)
-		bytes.Add(int64(len(ranges[i].Buf)))
 		if err := at.readFull(ranges[i].Buf, ranges[i].Off); err != nil {
 			errs[i] = err
 			failed.Store(true)
@@ -465,9 +487,9 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 		wg.Wait()
 	}
 	if st != nil {
-		n := calls.Load()
+		n := count.calls.Load()
 		st.SourceReads += n
-		st.SourceBytes += bytes.Load()
+		st.SourceBytes += count.bytes.Load()
 		st.ScalarFallbackReads += n
 		if uncounted {
 			st.UnreportedIOCalls += n
@@ -525,8 +547,10 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 			err = limit.acquire(ctx, n)
 		}
 		if err == nil {
-			err = rr.ReadRanges(ctx, batch)
-			limit.release(n)
+			err = func() error {
+				defer limit.release(n) // also when the source panics
+				return rr.ReadRanges(ctx, batch)
+			}()
 			if st != nil {
 				st.SourceBatches++
 				st.SourceReads += int64(n)

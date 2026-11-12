@@ -247,3 +247,105 @@ func TestThrowawayStats(t *testing.T) {
 		t.Errorf("takeStats(mine) = %p, %p, %+v", got, spare, *mine)
 	}
 }
+
+// gatedFile counts its ReadAt calls, each waiting for gate.
+type gatedFile struct {
+	gate  chan struct{}
+	calls atomic.Int64
+}
+
+func (f *gatedFile) ReadAt(p []byte, off int64) (int, error) {
+	f.calls.Add(1)
+	<-f.gate
+	clear(p)
+	return len(p), nil
+}
+
+// TestReadRangesCountsCalls: a range counts once its read is admitted. With
+// Concurrency 2 and one slot held (as by a page read ahead), a pair of
+// ranges on scalar fallback reads one, the other queued for a slot; the
+// operation cancelled then, the queued range is never read, and the counts
+// are the one ReadAt call made.
+func TestReadRangesCountsCalls(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		c, cancel := context.WithCancel(context.Background())
+		op := newOperation(c, 2)
+		if !op.limit.tryAcquire(1, 0) { // the read ahead's slot
+			t.Fatal("no slot")
+		}
+		f := &gatedFile{gate: make(chan struct{})}
+		var st ReadStats
+		done := make(chan []error, 1)
+		go func() {
+			done <- readRanges(op, rangeFile{file: f, name: "p", concurrency: 2}, testRanges(2, 10), &st)
+		}()
+		synctest.Wait() // one range in ReadAt, the other waiting for a slot
+		if f.calls.Load() != 1 {
+			t.Fatalf("%d calls made", f.calls.Load())
+		}
+		cancel()
+		synctest.Wait()
+		close(f.gate)
+		errs := <-done
+		failed := 0
+		for _, err := range errs {
+			if err != nil {
+				failed++
+			}
+		}
+		if failed != 1 || f.calls.Load() != 1 ||
+			st.SourceReads != 1 || st.SourceBytes != 10 || st.ScalarFallbackReads != 1 || st.UnreportedIOCalls != 1 {
+			t.Fatalf("%d calls, errors %v, %+v", f.calls.Load(), errs, st)
+		}
+		op.limit.release(1)
+		if op.limit.free != 2 {
+			t.Fatalf("%d slots free", op.limit.free)
+		}
+	})
+}
+
+// panicBatchFile is a RangeReader whose ReadRanges panics.
+type panicBatchFile struct{ rangeTestFile }
+
+func (*panicBatchFile) ReadRanges(context.Context, []ReadRange) error { panic("source") }
+
+// TestBatchPanicReleasesSlots: a source panicking in ReadRanges gives the
+// operation's slots back.
+func TestBatchPanicReleasesSlots(t *testing.T) {
+	op := newOperation(context.Background(), 4)
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("no panic")
+			}
+		}()
+		readRanges(op, rangeFile{file: &panicBatchFile{}, name: "p", concurrency: 4}, testRanges(3, 10), nil)
+	}()
+	if op.limit.free != 4 {
+		t.Fatalf("%d of 4 slots free after the panic", op.limit.free)
+	}
+}
+
+// loopError is its own cause.
+type loopError struct{}
+
+func (e *loopError) Error() string { return "loop" }
+func (e *loopError) Unwrap() error { return e }
+
+// TestOnlyEOFBounded: the walk of an error's causes ends on a cyclic error,
+// and on one with more causes than it visits, failing closed.
+func TestOnlyEOFBounded(t *testing.T) {
+	if onlyEOF(&loopError{}) || onlyEOF(errors.Join(io.EOF, &loopError{})) {
+		t.Fatal("a cyclic error is io.EOF")
+	}
+	wide := make([]error, 2*maxEOFCauses)
+	for i := range wide {
+		wide[i] = io.EOF
+	}
+	if onlyEOF(errors.Join(wide...)) {
+		t.Fatal("an error with more causes than the walk visits is io.EOF")
+	}
+	if !onlyEOF(errors.Join(wide[:4]...)) || !onlyEOF(fmt.Errorf("read: %w", io.EOF)) {
+		t.Fatal("io.EOF's own causes refused")
+	}
+}
