@@ -103,8 +103,9 @@ Here `object` is a struct with a `[]byte` field tagged `parquet:"key"` and an `i
 
 **Java:** not available. The Java module reads datasets only.
 
-`WriteDir` creates the dataset directory, which must not exist, and syncs its parent. It creates and syncs
-`data/` before publishing any part. It names parts `data/part-NNNNN.parquet`, records each part's SHA-256 in
+`WriteDir` creates the dataset directory, which must not exist, and `data/`. It syncs the parent and root
+directories, making the root's entry in its parent and `data/`'s entry in the root
+durable before publishing any part. It names parts `data/part-NNNNN.parquet`, records each part's SHA-256 in
 the manifest, and checks the encoded part size after each input batch. Once it reaches
 `DatasetOptions.PartBytes`, the next key change ends the part. With no rows it
 commits an empty dataset. When it fails before the commit, including on cancellation, it removes the

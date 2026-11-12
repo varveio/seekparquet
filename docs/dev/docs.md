@@ -99,7 +99,7 @@ conformance jobs. Links to other sites are not checked.
 A page that describes work not yet merged carries one line naming the PR or branch:
 
 ```markdown
-> Pending: the guide to implementing a Source waits for the reader I/O branch (`claude/reader-io-scheduling`).
+> Pending: the guide to custom schema checks waits for the schema checks branch (`feature/schema-checks`).
 ```
 
 Search for `Pending:` before a release; none may remain.

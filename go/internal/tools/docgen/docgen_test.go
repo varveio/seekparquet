@@ -268,6 +268,59 @@ func TestReaderIOOperationReferences(t *testing.T) {
 	}
 }
 
+func TestJavaReadStatsDifferences(t *testing.T) {
+	g, err := newGenerator(mutableTree(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := g.renderReadStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"The table's meanings describe Go",
+		"`groupsSkipped` is always 0",
+		"`sourceReads` counts `PartSource.read` calls; Java does not batch reads",
+		"`indexLoads` counts successful key page index reads from storage",
+		"no retained raw metadata case",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Java statistics reference is missing %q", want)
+		}
+	}
+}
+
+func TestVerifyConcurrencyParity(t *testing.T) {
+	g, err := newGenerator(mutableTree(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.check(); err != nil {
+		t.Fatal(err)
+	}
+	page, err := g.renderParity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page, "| Verify concurrency | `ReadPolicy.Concurrency` | `OpenOptions.verifyConcurrency` | Java defaults to 1") {
+		t.Error("parity reference is missing Java's verify concurrency counterpart and default")
+	}
+}
+
+func TestLimitsScope(t *testing.T) {
+	g, err := newGenerator(mutableTree(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := g.renderLimits()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page, "They do not bound result sizes, dataset lifetime or concurrency; bound those yourself.") {
+		t.Error("limits reference must distinguish resource settings from caller-owned bounds")
+	}
+}
+
 func TestParenthesizedDefault(t *testing.T) {
 	root := mutableTree(t)
 	edit(t, root, "java/"+javaMain+"/Limits.java", "DEFAULT_PAGE_BYTES = 64 * MIB", "DEFAULT_PAGE_BYTES = (64 * MIB)")

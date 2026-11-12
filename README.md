@@ -20,7 +20,7 @@ the profile can also, with no query engine and no catalog:
 
 Selective reads use manifest bounds, part footers and page indexes to avoid unrelated data. The pages and
 requests needed depend on the query, file geometry, bounds and projected columns; broad reads can scan the
-dataset. The storage interface supports local disk and object storage.
+dataset. A local directory implementation ships; an object store is an implementation you write.
 
 ## What it looks like
 

@@ -153,9 +153,9 @@ the reader; it does not impose an overall memory budget. A limit exceeded leaves
 
 | | Reading | Verify | Validation |
 |---|---|---|---|
-| What | what each read touches | every part's footer; each non-empty row group's first key page and each part's last; each part's first and last key against the manifest | the scope of the level asked for |
+| What | what each read touches | every part's footer; each non-empty row group's key page index and first key page, and each part's last key page; each part's first and last key against the manifest | the scope of the level asked for |
 | When it runs | as you read | when you call Go `Dataset.Verify` or Java `Dataset.verify` (implementation behavior; [CHECK-3](../../spec/format-1.md#check-3) makes it optional) | when you run it |
-| Reads | what the read needs | one footer per part not yet checked, and a few pages per row group | structural: metadata and page headers; profile: every key page; full: every page; digest: every part with a declared digest, whole |
+| Reads | what the read needs | one footer per part not yet checked, plus key page indexes and a few key pages per row group; reuses prior checks and cached metadata | structural: metadata and page headers; profile: every key page; full: every page; digest: every part with a declared digest, whole |
 | Languages | Go, Java | Go, Java | Go |
 
 A successful read does not certify the rows it skipped ([CHECK-4](../../spec/format-1.md#check-4)). Neither

@@ -113,5 +113,64 @@ class Checks(unittest.TestCase):
         self.assertIn('docs/a.md:1', problems[0])
 
 
+class DocumentationContracts(unittest.TestCase):
+    """Keep the reviewed cross-language and storage contracts visible in the docs."""
+
+    def read(self, name):
+        return (check_docs.ROOT / name).read_text()
+
+    def test_changed_object_is_an_environment_error(self):
+        for name in ('docs/concepts.md', 'docs/guides/troubleshooting.md'):
+            with self.subTest(page=name):
+                page = self.read(name)
+                for text in ('ErrObjectChanged', 'storage.PartChangedException',
+                             'never a refusal', 'reopen the dataset'):
+                    self.assertIn(text, page)
+                for text in ('ErrObjectTooLarge', '*LimitError', 'ManifestBytes'):
+                    self.assertIn(text, page)
+
+    def test_go_storage_capabilities_and_defaults(self):
+        page = self.read('docs/concepts.md')
+        for text in ('SizedSource.OpenSized', 'ManifestReader.ReadManifest', 'ErrObjectTooLarge',
+                     '*LimitError', 'ManifestBytes', 'CacheMode', 'CacheDefault', 'CacheBypass',
+                     'WithCacheMode', 'OpenOptions.OpenStats',
+                     '| `Concurrency` | 64 |',
+                     '| `MetadataPrefetchBytes` | 2 MiB; 64 KiB with `OpenDir` |',
+                     '| `DisableSpeculation` | `false` |'):
+            with self.subTest(contract=text):
+                self.assertIn(text, page)
+        self.assertNotIn('> Pending:', page)
+
+    def test_cache_budget_allows_eviction(self):
+        glossary = self.read('docs/concepts.md').split('## Glossary', 1)[1]
+        self.assertIn('evicts cached bytes or stops keeping what it loads', glossary)
+
+    def test_verify_checks_key_page_indexes(self):
+        for name in ('docs/concepts.md', 'docs/guides/validating.md'):
+            with self.subTest(page=name):
+                self.assertIn("each non-empty row group's key page index and first key page",
+                              self.read(name))
+
+    def test_writedir_makes_directory_entries_durable(self):
+        page = self.read('docs/guides/producing.md')
+        self.assertIn("root's entry in its parent and `data/`'s entry in the root", page)
+        self.assertIn('durable before publishing any part', page)
+
+    def test_readme_distinguishes_shipped_storage(self):
+        self.assertIn('A local directory implementation ships; an object store is an implementation you write.',
+                      self.read('README.md'))
+
+    def test_examples_use_current_names(self):
+        self.assertNotIn('claude/reader-io-scheduling', self.read('docs/dev/docs.md'))
+        for name in ('go/README.md', 'java/README.md'):
+            with self.subTest(page=name):
+                self.assertNotIn('Dataset.Verify(ctx)`', self.read(name))
+        self.assertIn('Dataset.Verify(ctx, st)', self.read('java/README.md'))
+
+    def test_go_macos_ci_is_path_selective(self):
+        page = self.read('docs/reference/compatibility.md')
+        self.assertIn('macOS CI runs selectively by changed paths', page)
+
+
 if __name__ == '__main__':
     unittest.main()

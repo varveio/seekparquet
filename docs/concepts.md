@@ -233,7 +233,7 @@ flowchart LR
 | Open | format rule ([CHECK-1](../spec/format-1.md#check-1)) | the manifest is valid and its version pair is supported | anything about the parts |
 | First touch | format rule ([CHECK-1](../spec/format-1.md#check-1)) | the part exists, has the manifest's size and row count, a readable self-contained footer, matching stamps, a valid key column, consistent columns across checked parts, and `sorting_columns` on every non-empty row group | anything inside its pages |
 | Read | format rule ([CHECK-2](../spec/format-1.md#check-2)) | the page index of each row group it reads; each key page it decodes: row count, non-empty keys, UTF-8 where KEY-6 applies, order within and across decoded pages, within the page's bounds | rows it does not decode ([CHECK-4](../spec/format-1.md#check-4)) |
-| Verify | optional ([CHECK-3](../spec/format-1.md#check-3)); implementation behavior: Go `Dataset.Verify`, Java `Dataset.verify` | every part now, as first touch would; then each non-empty row group's first key page and each part's last, and each part's first and last key against the manifest | every row; values; digests |
+| Verify | optional ([CHECK-3](../spec/format-1.md#check-3)); implementation behavior: Go `Dataset.Verify`, Java `Dataset.verify` | every part now, as first touch would; then each non-empty row group's key page index and first key page, and each part's last key page; each part's first and last key against the manifest | every row; values; digests |
 | Validate | a separate procedure ([§8](../spec/format-1.md#8-validation)); Go only | the scope of the requested level: structural metadata and the key pages' indexed headers; every key at profile; every stored column at full; declared digests at digest | anything outside that level's scope; how the dataset was published ([VAL-3](../spec/format-1.md#val-3)) |
 
 A **check** is what a read does as it goes. **Verify** checks every part when you call it. **Validate**
@@ -246,7 +246,11 @@ checks the scope of a level; see [validating](guides/validating.md).
 | **Refusal** | a fault the reader found in the data, or a dataset version pair the reader does not support (`unsupported_version`); it carries a stable [refusal code](reference/refusal-codes.md) | `*RefusalError` | `RefusalException` |
 | **Unsupported** | the reader met a feature it does not implement. It does not certify that the rest of the dataset is valid: the reader may stop before checking anything else | `*UnsupportedError` | `UnsupportedFeatureException` |
 | **Limit** | the data or result exceeds a [limit](reference/limits.md) you set, or a capacity of the reader. No fault of the data | `*LimitError` | `LimitExceededException` |
-| **Environment** | storage failed, the request was cancelled or invalid, or the dataset was closed. No fault of the data | the storage's or context's error, `ErrInvalidRequest`, `ErrClosed` | `StorageException`, `CancellationException`, `IllegalArgumentException`, `IllegalStateException` |
+| **Environment** | storage failed, the request was cancelled or invalid, or the dataset was closed. No fault of the data | the storage's or context's error, `ErrObjectChanged`, `ErrInvalidRequest`, `ErrClosed` | `StorageException`, `CancellationException`, `IllegalArgumentException`, `IllegalStateException` |
+
+Go `ErrObjectChanged` and Java `StorageException` caused by `storage.PartChangedException` mean a part's
+stored object changed while it was open. This is an environment error, never a refusal; reopen the dataset
+([CHECK-6](../spec/format-1.md#check-6)).
 
 [Troubleshooting](guides/troubleshooting.md) says what to do about each code.
 
@@ -259,13 +263,49 @@ part, and makes the storage layer responsible for serving one stable version of 
 retries ([CHECK-6](../spec/format-1.md#check-6)). The Go and Java readers rely on their storage
 implementation for that.
 
-> Pending: the storage guide will cover implementing an object-store `Source`, `ReadPolicy` and
-> `OpenOptions.OpenStats`.
+### Go reader I/O
+
+Implement `Source.Open` and `SourceFile` (`ReadAt`, `Size`, `Close`) for custom storage. Bind scalar reads
+to the operation's context with `ContextBinder`. Optional capabilities are defined in
+[storage.go](../go/storage.go); without them the reader uses `Open` and `ReadAt`.
+
+- `SizedSource.OpenSized` receives the manifest's expected part size for parts of at least 12 bytes.
+  It can avoid a metadata request, but must establish an immutable identity and actual size before a
+  non-empty read succeeds. An initial size mismatch is `*SizeMismatchError`, refused as `part_mismatch`;
+  breaking an established identity is `ErrObjectChanged`.
+- `ManifestReader.ReadManifest` reads the whole manifest within `Limits.ManifestBytes`, normally in one
+  whole-object request. Reject excess with `ErrObjectTooLarge`; opening reports it as a `*LimitError`
+  naming `ManifestBytes`. Without this capability the reader opens `manifest.json` and uses `ReadAt`.
+- `RangeReader.ReadRanges` fills several logical ranges in one call. Storage may merge or split physical
+  requests while preserving each range's outcome and the opened object's identity.
+- `CacheMode` controls a Source's byte cache through `WithCacheMode(ctx, mode)`. `CacheDefault` permits
+  lookup and admission under storage policy; `CacheBypass` permits neither. Bypass preserves identity
+  checks and reader-owned metadata reuse, including for context-bound scalar reads.
+
+Set `OpenOptions.Read` to a `ReadPolicy`. Zero numeric fields take these defaults; negative values are
+invalid requests when opening.
+
+| Field | Default | Effect |
+|---|---|---|
+| `Concurrency` | 64 | Bounds outstanding logical part ranges per operation, including Verify and list-index builds; it does not bound physical requests. |
+| `MetadataPrefetchBytes` | 2 MiB; 64 KiB with `OpenDir` | Tail read on first touch, clipped to the part's size; a larger footer requires another read of the missing bytes. |
+| `DisableSpeculation` | `false` | When true, disables optional fetching, including listing read-ahead; the tail read is at most 64 KiB and retains only the footer. Demanded batching and available-byte reuse remain enabled. |
+
+Java `OpenOptions.verifyConcurrency` defaults to 1 and controls concurrent part checks during verify;
+it corresponds to the verify part of Go `ReadPolicy.Concurrency`.
+
+With a zero `OpenOptions.Read`, `OpenDir` reads each part's ranges one at a time, keeps only the footer,
+and uses no request memo. Verify and explicit listing read-ahead still use the default concurrency.
+Setting any policy field selects `OpenDataset`'s scheduling behavior.
+
+Set `OpenOptions.OpenStats` to a `*ReadStats` for manifest I/O statistics, reset on entry and filled on every
+exit. The dataset does not retain it. A Source can report physical requests through `IOObserver` and declare
+complete reporting with `IOReporter`; see [read statistics](reference/read-stats.md).
 
 ## Glossary
 
 - <a id="absent"></a>**absent**: A projected column the row's part does not have. Not null ([COL-2](../spec/format-1.md#col-2)).
-- <a id="cache-budget"></a>**cache budget**: A memory bound that never fails an operation; past it the reader stops keeping what it loads. Compare [limit](#limit).
+- <a id="cache-budget"></a>**cache budget**: A memory bound that never fails an operation; past it the reader evicts cached bytes or stops keeping what it loads. Go `PageIndexCacheMemory` evicts raw page index bytes from the least recently used part. Compare [limit](#limit).
 - <a id="candidate-row"></a>**candidate row**: In a listing, a row under the prefix, before the end and after the cursor.
 - <a id="check"></a>**check**: What a reader examines as it reads: the manifest on open, a part on first touch, pages as they are decoded (§7).
 - <a id="cold"></a>**cold**: The first operation on a freshly opened dataset, before any part has been touched.

@@ -8,6 +8,7 @@
         {"concept": "Open through custom storage", "go": "OpenDataset", "java": "Dataset.open", "note": "Java takes a storage.DatasetStorage."},
         {"concept": "Open options", "go": "OpenOptions", "java": "OpenOptions"},
         {"concept": "Read scheduling policy", "go": "ReadPolicy", "java": null, "note": "Go sets OpenOptions.Read; Concurrency bounds logical ranges, not physical requests. Java has no counterpart for the policy struct yet."},
+        {"concept": "Verify concurrency", "go": "ReadPolicy.Concurrency", "java": "OpenOptions.verifyConcurrency", "note": "Java defaults to 1 and bounds concurrent part checks during verify. Go also bounds logical ranges for other operations."},
         {"concept": "Open statistics", "go": "OpenOptions.OpenStats", "java": null, "note": "Go only; a *ReadStats reset on entry and filled on every exit, including manifest I/O. The Dataset does not retain it."},
         {"concept": "Resource limits", "go": "Limits", "java": "Limits", "note": "Java builds them with Limits.builder(). See the limits reference."},
         {"concept": "Retained raw page-index cache budget", "go": "Limits.PageIndexCacheMemory", "java": null, "note": "Go only; excludes footers and decoded indexes and does not bound overall metadata."},

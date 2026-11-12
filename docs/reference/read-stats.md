@@ -9,6 +9,8 @@ For Go's open operation, set `OpenOptions.OpenStats`: it includes manifest I/O, 
 
 The counts describe this reader's access path. They are diagnostics, not part of the format: another reader, or another version of this one, may do the same read with different counts.
 
+The table's meanings describe Go; Java differences follow it.
+
 | Go field | Java component | Meaning |
 |---|---|---|
 | `ListIndexSkips` | `listIndexSkips` | ListIndexSkips counts skips answered by the optional slash index. |
@@ -44,3 +46,9 @@ The counts describe this reader's access path. They are diagnostics, not part of
 | `RequestMemoHitBytes` | Go only | RequestMemoHitBytes counts the bytes of complete key-page extents reused from the request's bounded memo instead of read again: a routing probe's page that the walk reached, a cursor's page, a page Verify fetched together with others. Extents not admitted to the memo may be read again; its capacity and admission policy are implementation details. |
 | `UnreportedIOCalls` | Go only | UnreportedIOCalls is the number of storage calls (ReadAt, ReadRanges, Open, OpenSized, ReadManifest) whose physical requests the physical counters leave out: those made on a source or file that does not report them (IOReporter). Every operation observes the requests of the receivers that do, from its first call. |
 | `PeakPhysicalRequests` | Go only | PeakPhysicalRequests is the most physical requests a reporting source had in flight at once for the operation. |
+
+Java's `ReadStats` Javadoc gives these differences:
+
+- `groupsSkipped` is always 0: Java has no shortcut that emits a whole row group as a common prefix.
+- `sourceReads` counts `PartSource.read` calls; Java does not batch reads. `sourceBytes` counts their requested bytes.
+- `indexLoads` counts successful key page index reads from storage, including build-only transient loads; there is no retained raw metadata case. An index a concurrent request published first counts as reuse, and an index refused by `indexMemory` counts in neither `indexLoads` nor `rowGroupsOpened`.

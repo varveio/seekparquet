@@ -249,6 +249,9 @@ reader, never a fault of the data ([CHECK-5](../../spec/format-1.md#check-5)). R
 you trust: the limits are what stop a hostile file from making the reader allocate what it declares. Defaults
 and meanings are in the [limits reference](../reference/limits.md).
 
+Go `ErrObjectTooLarge` from `ManifestReader.ReadManifest` surfaces when opening as a `*LimitError` naming
+`ManifestBytes`.
+
 <!-- generated: troubleshooting-limits -->
 ### `ManifestBytes`
 
@@ -334,7 +337,7 @@ Fixed; it cannot be raised. Split the dataset.
 | Go context error, Java `CancellationException` | the read was cancelled or timed out | retry with a longer deadline if needed |
 | Go: the storage's error, wrapped; Java `StorageException` | reading storage failed | retry; this says nothing about the data |
 | Go: an error from `OpenDir` naming the path | the directory does not exist or cannot be opened; a directory without `manifest.json` is the refusal `no_manifest` instead | check the path |
-| Java `StorageException` caused by `storage.PartChangedException` | a part's stored object changed while it was open ([CHECK-6](../../spec/format-1.md#check-6)) | reopen the dataset; parts must not change after commit |
+| Go `ErrObjectChanged`, Java `StorageException` caused by `storage.PartChangedException` | a part's stored object changed while it was open; an environment error, never a refusal ([CHECK-6](../../spec/format-1.md#check-6)) | reopen the dataset; parts must not change after commit |
 
 ## Symptoms
 

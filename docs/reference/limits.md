@@ -2,7 +2,7 @@
 
 # Limits and caches
 
-These settings bound specific input sizes, decoding estimates, retained indexes and lookup row counts. They do not impose an overall memory or open-resource budget; also bound result sizes, dataset lifetime and concurrency.
+These settings bound specific input sizes, decoding estimates, retained indexes and lookup row counts. They do not bound result sizes, dataset lifetime or concurrency; bound those yourself.
 A **limit** fails the operation that exceeds it with a limit error: Go `*LimitError`, which wraps `ErrLimitExceeded`, or Java `LimitExceededException`.
 A **cache budget** never fails an operation; past it, the reader evicts cached bytes or stops keeping what it loads.
 Exceeding a limit is a policy of yours or a capacity of the reader, never a refusal of the data ([CHECK-5](../../spec/format-1.md#check-5)).

@@ -39,7 +39,7 @@ change the API.
 
 | | Requirement | Platforms |
 |---|---|---|
-| Go module | Go 1.26 or later | Linux and macOS, both tested in CI. Windows is best-effort: it is tested in CI, but `local` cannot sync a directory there and publishes only with `AllowUnsynced`. |
+| Go module | Go 1.26 or later | Linux and macOS. Linux is tested in CI; macOS CI runs selectively by changed paths on pull requests and on full runs (main, nightly, manual or `ci:full`). Windows is best-effort: it is tested in CI, but `local` cannot sync a directory there and publishes only with `AllowUnsynced`. |
 | Java reader | JDK 21 or later | Linux. macOS is expected to work but is not tested in CI. Windows is best-effort: it is tested in CI; `storage.LocalStorage` takes a checked-path route there because the default file system has no secure directory streams. |
 
 The specification and the conformance suite are platform-independent. The conformance harness needs Python

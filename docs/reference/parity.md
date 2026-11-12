@@ -13,6 +13,7 @@ A dash means the language has no counterpart. Names are checked against the code
 | Open through custom storage | `OpenDataset` | `Dataset.open` | Java takes a storage.DatasetStorage. |
 | Open options | `OpenOptions` | `OpenOptions` |  |
 | Read scheduling policy | `ReadPolicy` | — | Go sets OpenOptions.Read; Concurrency bounds logical ranges, not physical requests. Java has no counterpart for the policy struct yet. |
+| Verify concurrency | `ReadPolicy.Concurrency` | `OpenOptions.verifyConcurrency` | Java defaults to 1 and bounds concurrent part checks during verify. Go also bounds logical ranges for other operations. |
 | Open statistics | `OpenOptions.OpenStats` | — | Go only; a *ReadStats reset on entry and filled on every exit, including manifest I/O. The Dataset does not retain it. |
 | Resource limits | `Limits` | `Limits` | Java builds them with Limits.builder(). See the limits reference. |
 | Retained raw page-index cache budget | `Limits.PageIndexCacheMemory` | — | Go only; excludes footers and decoded indexes and does not bound overall metadata. |

@@ -139,7 +139,7 @@ func (g *generator) renderLimits() (string, error) {
 	b.WriteString(header)
 	b.WriteString("# Limits and caches\n\n")
 	b.WriteString(g.pending(page))
-	b.WriteString("These settings bound specific input sizes, decoding estimates, retained indexes and lookup row counts. They do not impose an overall memory or open-resource budget; also bound result sizes, dataset lifetime and concurrency.\n")
+	b.WriteString("These settings bound specific input sizes, decoding estimates, retained indexes and lookup row counts. They do not bound result sizes, dataset lifetime or concurrency; bound those yourself.\n")
 	b.WriteString("A **limit** fails the operation that exceeds it with a limit error: Go `*LimitError`, which wraps `ErrLimitExceeded`, or Java `LimitExceededException`.\n")
 	b.WriteString("A **cache budget** never fails an operation; past it, the reader evicts cached bytes or stops keeping what it loads.\n")
 	fmt.Fprintf(&b, "Exceeding a limit is a policy of yours or a capacity of the reader, never a refusal of the data (%s).\n", reqLinks(page, []string{"CHECK-5"}))
@@ -188,6 +188,7 @@ func (g *generator) renderReadStats() (string, error) {
 	b.WriteString("In Java, pass a statistics consumer in `ReadOptions`; it receives a `ReadStats` record.\n\n")
 	b.WriteString("For Go's open operation, set `OpenOptions.OpenStats`: it includes manifest I/O, is reset on entry to OpenDataset or OpenDir and filled on every exit. The Dataset does not retain it. Manifest reads are excluded from SourceReads and SourceBytes.\n\n")
 	b.WriteString("The counts describe this reader's access path. They are diagnostics, not part of the format: another reader, or another version of this one, may do the same read with different counts.\n\n")
+	b.WriteString("The table's meanings describe Go; Java differences follow it.\n\n")
 	b.WriteString("| Go field | Java component | Meaning |\n|---|---|---|\n")
 	java := map[string]string{}
 	for _, f := range g.stats.Fields {
@@ -200,6 +201,10 @@ func (g *generator) renderReadStats() (string, error) {
 	for _, f := range p.fields["ReadStats"] {
 		fmt.Fprintf(&b, "| `%s` | %s | %s |\n", f.name, java[f.name], cell(f.doc))
 	}
+	b.WriteString("\nJava's `ReadStats` Javadoc gives these differences:\n\n")
+	b.WriteString("- `groupsSkipped` is always 0: Java has no shortcut that emits a whole row group as a common prefix.\n")
+	b.WriteString("- `sourceReads` counts `PartSource.read` calls; Java does not batch reads. `sourceBytes` counts their requested bytes.\n")
+	b.WriteString("- `indexLoads` counts successful key page index reads from storage, including build-only transient loads; there is no retained raw metadata case. An index a concurrent request published first counts as reuse, and an index refused by `indexMemory` counts in neither `indexLoads` nor `rowGroupsOpened`.\n")
 	return b.String(), nil
 }
 
