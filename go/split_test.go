@@ -95,7 +95,7 @@ func checkSplit(t *testing.T, d *Dataset, src *extentSource, rows []oracleRow, e
 			for i, shard := range shards {
 				src.take()
 				shardRows, keys := scanShard(t, shard, nil)
-				served := scannedBytes(src.take(), extents)
+				served := scannedBytes(t, name, d, src.take(), extents)
 				rowsN, exact := shard.Count()
 				if len(shardRows) == 0 || rowsN != int64(len(shardRows)) || exact != countExact && !exact {
 					t.Fatalf("%s: shard %d of %d scanned %d rows, counts %d (exact %v)", name, i, n, len(shardRows), rowsN, exact)

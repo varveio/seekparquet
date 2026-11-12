@@ -6,7 +6,6 @@ package seekparquet
 import (
 	"cmp"
 	"context"
-	"errors"
 	"slices"
 	"sync"
 )
@@ -45,7 +44,8 @@ func (x *window) end() int64 { return x.off + int64(len(x.buf)) }
 
 // windows owns at most readWaveBytes of fetched, undecoded buffers.
 // Admission never waits. Workers for different handles run concurrently
-// within a wave and are joined before fetch returns or close frees buffers.
+// within a wave. Each fetch joins its own workers; wg joins all workers
+// before close frees buffers. Admission and closing are serialized by mu.
 type windows struct {
 	r      *reader
 	ctx    context.Context
@@ -85,9 +85,9 @@ func windowsOf(ctx context.Context) *windows {
 func (w *windows) fetch(exts []extent, spec bool) int {
 	w.mu.Lock()
 	n, planned := w.plan(exts, spec)
-	w.launch(planned)
+	wg := w.launch(planned)
 	w.mu.Unlock()
-	w.wg.Wait()
+	wg.Wait()
 	return n
 }
 
@@ -123,9 +123,9 @@ func (w *windows) fetchWave(need, spec []extent) bool {
 	m, optional := w.plan(spec, true)
 	planned = append(planned, optional...)
 	slices.SortStableFunc(planned, func(a, b *window) int { return cmp.Compare(a.p.name, b.p.name) })
-	w.launch(planned)
+	wg := w.launch(planned)
 	w.mu.Unlock()
-	w.wg.Wait()
+	wg.Wait()
 	return n == len(need) && m == len(spec)
 }
 
@@ -164,7 +164,8 @@ func (w *windows) plan(exts []extent, spec bool) (int, []*window) {
 }
 
 // launch reads the windows, with mu held: those of each part in one wave.
-func (w *windows) launch(planned []*window) {
+func (w *windows) launch(planned []*window) *sync.WaitGroup {
+	var wg sync.WaitGroup
 	for len(planned) > 0 {
 		n := 1
 		for n < len(planned) && planned[n].p == planned[0].p {
@@ -173,13 +174,14 @@ func (w *windows) launch(planned []*window) {
 		wave := planned[:n:n]
 		planned = planned[n:]
 		w.list = append(w.list, wave...)
-		w.wg.Go(func() { w.read(wave) })
+		w.wg.Add(1)
+		wg.Go(func() {
+			defer w.wg.Done()
+			w.read(wave)
+		})
 	}
+	return &wg
 }
-
-// errWindowPanic is the failure of a wave whose source panicked: its
-// windows are not served.
-var errWindowPanic = errors.New("seekparquet: the source panicked reading ahead")
 
 // read reads one wave and closes each window's done. Its storage calls
 // are counted in a ReadStats of its own, added to the windows' once it
@@ -188,12 +190,6 @@ func (w *windows) read(wave []*window) {
 	var st ReadStats
 	var errs []error
 	defer func() {
-		if recover() != nil {
-			errs = make([]error, len(wave))
-			for i := range errs {
-				errs[i] = errWindowPanic
-			}
-		}
 		for i, x := range wave {
 			if errs != nil {
 				x.err = errs[i]

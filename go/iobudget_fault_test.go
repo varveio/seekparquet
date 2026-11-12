@@ -556,9 +556,8 @@ func (f reportFile) WithContext(ctx context.Context) io.ReaderAt {
 // whichever receivers report them, from its first call: the open's
 // manifest read, a cold lookup, a cold listing reading ahead, a warm
 // lookup, and an operation whose first check fails. In this store each
-// call makes at most one request (none when the operation's end cancels
-// it in the store's queue), so the requests counted and the calls left
-// unreported add up to at least the requests made, and the requests
+// call makes one request, so the requests counted and the calls left
+// unreported add up to exactly the requests made, and the requests
 // counted are exactly those made when every call reports.
 func TestPhysicalReportingCombinations(t *testing.T) {
 	fx := ioFixtureOf(t, ioTiny)
@@ -574,10 +573,8 @@ func TestPhysicalReportingCombinations(t *testing.T) {
 					switch {
 					case made == 0:
 						t.Fatalf("%s: no request", what)
-					case st.PhysicalRequests > made || st.PhysicalRequests+st.UnreportedIOCalls < made,
+					case st.PhysicalRequests > made || st.PhysicalRequests+st.UnreportedIOCalls != made,
 						st.UnreportedIOCalls == 0 && st.PhysicalRequests != made:
-						// An unreported call may make no request: a read ahead
-						// the operation's end cancels in the store's queue.
 						t.Fatalf("%s: %d physical requests and %d unreported calls counted, %d requests made", what, st.PhysicalRequests, st.UnreportedIOCalls, made)
 					case c.source && c.file && st.UnreportedIOCalls != 0:
 						t.Fatalf("%s: %d unreported calls with every receiver reporting", what, st.UnreportedIOCalls)

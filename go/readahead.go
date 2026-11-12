@@ -130,7 +130,7 @@ func (s *scan) readAhead(req *ListQuery, remaining int) {
 		if len(exts) == 0 && a.w.holds(p, page.offset, page.size) {
 			return // read ahead already: predict again once the scan reaches what is not
 		}
-		if size+page.size > a.bytes && len(exts) > 0 {
+		if page.size > s.r.limits.PageBytes+s.r.limits.headerBytes() || size+page.size > a.bytes && len(exts) > 0 {
 			break
 		}
 		size += page.size
@@ -185,7 +185,7 @@ func (a *readAhead) following(s *scan, g groupRef, i int, exts []extent, size in
 			if s.end != nil && index != nil && bytes.Compare(index.pages[i].lo, s.end) >= 0 {
 				return exts, n
 			}
-			if size+loc.size > a.bytes && len(exts) > 0 {
+			if loc.size > r.limits.PageBytes+r.limits.headerBytes() || size+loc.size > a.bytes && len(exts) > 0 {
 				return exts, n
 			}
 			size += loc.size

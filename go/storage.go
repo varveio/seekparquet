@@ -299,7 +299,9 @@ type IOReporter interface {
 
 // ReadPolicy controls the selection and scheduling of the reader's
 // logical reads. A zero field takes its default; a negative one is an
-// invalid request when the dataset is opened.
+// invalid request when the dataset is opened. Windows hold up to 64 MiB
+// of fetched, undecoded bytes per operation. Concurrent operations each
+// hold their own windows; this is not a per-Dataset bound.
 type ReadPolicy struct {
 	// Concurrency bounds concurrent scalar reads and part acquisition
 	// across one operation. A RangeReader receives the whole bounded

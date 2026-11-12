@@ -533,7 +533,7 @@ func TestWindowsPanicCountsInvocation(t *testing.T) {
 	op, w, p := testWindows(t, panickingWindowReader{})
 	w.fetch([]extent{{p, 0, 10, 1}}, false)
 	hit, err := w.copy(p, make([]byte, 10), 0)
-	if hit || !errors.Is(err, errWindowPanic) {
+	if hit || !errors.Is(err, errSourcePanic) || !isEnvironment(ctx, err) || RefusalCodeOf(err) != "" {
 		t.Fatal(hit, err)
 	}
 	var st ReadStats

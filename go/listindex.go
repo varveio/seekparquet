@@ -129,13 +129,13 @@ func (d *Dataset) BuildListIndex(ctx context.Context, opt ListIndexOptions) (sta
 	}()
 	built := &listIndex{}
 	var readStats ReadStats
-	// Over a remote Source, the parts are checked together first, and every
-	// key page the build decodes is read ahead in windows (buildWindows).
+	// Over a remote Source, check parts and fetch key pages in bounded
+	// lookahead, limited by the remaining index budget.
 	var win *windows
 	if !r.local {
-		_ = r.verifyParts(rctx, new(pageMemo), &readStats, probeNone) // a part that fails is met again below
 		win = rctx.windows()
 	}
+	checkedThrough := 0
 	var previousLast []byte
 	var previousRef groupRef
 	var previousFailed, previousAdmitted bool
@@ -143,6 +143,14 @@ outer:
 	for pi := range r.parts {
 		if err = rctx.Err(); err != nil {
 			return stats, err
+		}
+		// Every indexed group costs at least 256 bytes. Even the smallest
+		// budget permits one attempt, but cannot open every remaining part.
+		lookahead := max(1, min(int64(r.width()), (opt.MaxBytes-stats.Bytes)/256))
+		if win != nil && pi >= checkedThrough {
+			checkedThrough = pi + int(min(lookahead, int64(len(r.parts)-pi)))
+			_ = r.verifyPartRange(rctx, new(pageMemo), &readStats, probeNone, pi, checkedThrough)
+			// A failed part is met again below, with the usual build policy.
 		}
 		var p *part
 		p, err = r.part(rctx, pi, &readStats)
@@ -164,7 +172,7 @@ outer:
 			n := min(opt.Workers, len(p.groups)-start)
 			if win != nil {
 				win.release(p.groups[start].start)
-				r.buildWindows(win, groupRef{pi, start})
+				r.buildWindows(win, groupRef{pi, start}, max(1, (opt.MaxBytes-stats.Bytes)/256))
 			}
 			type result struct {
 				group listGroup
@@ -310,15 +318,21 @@ func (g *listGroup) add(row int64, key []byte) {
 func directory(key []byte) []byte { return key[:bytes.LastIndexByte(key, '/')+1] }
 
 // buildWindows reads ahead, in the build's windows, the key pages of the
-// row groups from g on, in checked parts, up to readWaveBytes:
-// the build decodes every one of them. A group whose key column chunk
-// does not lie in its file is left out, for its build to refuse.
-func (r *reader) buildWindows(w *windows, g groupRef) {
+// row groups from g on, in checked parts, up to groups and readWaveBytes:
+// the budget bounds the groups the build can attempt before stopping.
+// A group whose key column chunk does not lie in its file is left out,
+// for its build to refuse.
+func (r *reader) buildWindows(w *windows, g groupRef, groups int64) {
 	var exts []extent
 	total, most := int64(0), readWaveBytes
 	for ; g.part < len(r.parts) && r.parts[g.part].ready.Load(); g = (groupRef{g.part + 1, 0}) {
 		p := r.parts[g.part]
 		for ; g.index < len(p.groups); g = g.next() {
+			if groups == 0 {
+				w.fetch(exts, false)
+				return
+			}
+			groups--
 			grp := p.groups[g.index]
 			meta := &p.footer.Metadata().RowGroups[grp.physical].Columns[p.key.index].MetaData
 			start, stop, ok := chunkRange(meta)
@@ -332,10 +346,17 @@ func (r *reader) buildWindows(w *windows, g groupRef) {
 			total += stop - start
 			end := grp.start + grp.rows
 			if locs := p.planLocs(grp.physical, p.key, start, stop); locs != nil {
+				if prefix := locs[0].offset - start; prefix > 0 && prefix <= r.limits.PageBytes {
+					exts = append(exts, extent{p, start, prefix, end})
+				}
 				for _, loc := range locs {
+					if loc.size > r.limits.PageBytes {
+						w.fetch(exts, false)
+						return
+					}
 					exts = append(exts, extent{p, loc.offset, loc.size, end})
 				}
-			} else {
+			} else if stop-start <= r.limits.PageBytes {
 				exts = append(exts, extent{p, start, stop - start, end})
 			}
 		}
