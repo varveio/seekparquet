@@ -42,6 +42,29 @@ class ManifestTest {
     }
 
     @Test
+    void keepsPartExtensionsAsWrittenAndIgnoresTheirContent() {
+        String ext = "{\"tool\": {\"n\": 1.50e3, \"deep\": [{\"x\": null}]}, \"seekparquet\": {\"unknown\": {\"version\": 99}}}";
+        Manifest m = parse(manifest(PART.replace("}", ",\"extensions\":" + ext + "}"), ""));
+        ManifestPart part = m.parts().get(0);
+        assertEquals(Map.of("tool", "{\"n\": 1.50e3, \"deep\": [{\"x\": null}]}", "seekparquet", "{\"unknown\": {\"version\": 99}}"),
+                part.extensions());
+        assertEquals(List.of("tool", "seekparquet"), List.copyOf(part.extensions().keySet()));
+        assertEquals(Map.of(), m.extensions());
+        assertEquals(Map.of(), parse(manifest(PART, "")).parts().get(0).extensions());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"x\"", "[]", "null", "1", "{\"\":1}", "{\"t\":{\"a\":1,\"a\":2}}", "{\"t\":1,\"t\":2}", "{\"t\":\"\\udfff\"}"})
+    void malformedPartExtensionsAreInvalid(String ext) {
+        assertEquals(RefusalCode.INVALID_MANIFEST, refusal(manifest(PART.replace("}", ",\"extensions\":" + ext + "}"), "")));
+    }
+
+    @Test
+    void anUndefinedPartMemberBesidePartExtensionsIsInvalid() {
+        assertEquals(RefusalCode.INVALID_MANIFEST, refusal(manifest(PART.replace("}", ",\"extensions\":{},\"checksum\":\"x\"}"), "")));
+    }
+
+    @Test
     void anEmptyPartListIsAnEmptyDataset() {
         assertEquals(List.of(), parse(manifest("", "")).parts());
     }
