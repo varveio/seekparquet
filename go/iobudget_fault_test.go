@@ -485,17 +485,14 @@ func TestStorageObserver(t *testing.T) {
 		t.Run(store.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				src := fakestore.New(fx.objects, ioOptions)
-				var open seekparquet.ReadStats
-				opt := store.opt
-				opt.OpenStats = &open
 				var openObs countingObserver
 				rec := src.Begin("open")
-				d, err := seekparquet.OpenDataset(fakestore.WithObserver(context.Background(), &openObs), store.wrap(src), opt)
+				d, err := seekparquet.OpenDataset(fakestore.WithObserver(context.Background(), &openObs), store.wrap(src), store.opt)
 				must(t, err)
 				defer d.Close()
 				want := rec.End().Summary()
 				if openObs.begun.Load() != int64(want.Requests) || openObs.ended.Load() != int64(want.Requests) || want.MaxInFlight != 1 {
-					t.Fatalf("open: %+v, the store made %+v", open, want)
+					t.Fatalf("open: the store made %+v, the observer saw %d/%d", want, openObs.begun.Load(), openObs.ended.Load())
 				}
 				var obs countingObserver
 				ctx := fakestore.WithObserver(context.Background(), &obs)
@@ -542,12 +539,11 @@ func TestStorageRequestCounting(t *testing.T) {
 			obs = countingObserver{}
 		}
 		source := fakeSource{src}
-		var open seekparquet.ReadStats
 		rec := src.Begin("open")
-		d, err := seekparquet.OpenDataset(ctx, source, seekparquet.OpenOptions{OpenStats: &open})
+		d, err := seekparquet.OpenDataset(ctx, source, seekparquet.OpenOptions{})
 		must(t, err)
 		defer d.Close()
-		check("open", open, rec, 1)
+		check("open", seekparquet.ReadStats{}, rec, 1)
 		for _, temp := range []string{"cold", "warm"} {
 			var st seekparquet.ReadStats
 			rec := src.Begin(temp)
@@ -631,7 +627,7 @@ func TestVerifyPhysicalPeak(t *testing.T) {
 			made := rec.End().Summary()
 			if made.MaxInFlight != n || obs.begun.Load() != int64(made.Requests) || obs.ended.Load() != int64(made.Requests) ||
 				st.PartsOpened != int64(fx.spec.parts) {
-				t.Fatalf("Concurrency %d: %+v, the store made %+v", n, st, made)
+				t.Fatalf("storage MaxInFlight %d: %+v, the store made %+v, the observer saw %d/%d", n, st, made, obs.begun.Load(), obs.ended.Load())
 			}
 		})
 	}

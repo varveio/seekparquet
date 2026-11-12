@@ -29,14 +29,14 @@ import (
 // part has its key bounds and row count; otherwise every part is checked
 // when the reader opens.
 type reader struct {
-	concurrency int // internal limit for independent logical reads
 	// id identifies the Dataset handle the reader serves, for the row
 	// positions it makes (RowPosition): never zero, never reused.
-	id     uint64
-	key    Key
-	limits Limits
-	policy ReadPolicy
-	parts  []*part
+	id          uint64
+	key         Key
+	limits      Limits
+	policy      ReadPolicy
+	concurrency int // internal limit for independent logical reads
+	parts       []*part
 	// rows is the dataset's row count.
 	rows int64
 	// bounded reports that every part has its key bounds, so reads are

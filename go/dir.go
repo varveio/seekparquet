@@ -34,16 +34,14 @@ func OpenDir(ctx context.Context, path string, opt OpenOptions) (*Dataset, error
 	if opt.Read.MetadataPrefetchBytes == 0 {
 		opt.Read.MetadataPrefetchBytes = footerWindow
 	}
-	st, spare := takeStats(opt.OpenStats)
-	defer dropStats(spare)
-	if err := prepareOpen(ctx, &opt); err != nil {
+	if err := prepareOpen(&opt); err != nil {
 		return nil, err
 	}
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return nil, err
 	}
-	d, err := openDataset(ctx, dirSource{root}, opt, st, local)
+	d, err := openDataset(ctx, dirSource{root}, opt, local)
 	if err != nil {
 		_ = root.Close()
 		return nil, err

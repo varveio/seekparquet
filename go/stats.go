@@ -20,10 +20,8 @@ import "sync"
 // storage layer, not by ReadStats. All fields are plain
 // integers; a ReadStats must not be shared between concurrent requests.
 //
-// OpenOptions.OpenStats receives these counters for opening. Manifest
-// reads are excluded from SourceReads and SourceBytes. Work shared
-// with earlier requests is counted only where a field says so: a part
-// checked by an earlier request, or by Verify, is not checked again, a key
+// Work shared with earlier requests is counted only where a field says
+// so: a part checked by an earlier request, or by Verify, is not checked again, a key
 // page index loaded by an earlier request is reused, not loaded, a
 // projected column chunk's OffsetIndex kept by an earlier request
 // (Limits.OffsetIndexMemory) is not read again, and a decoded first key is

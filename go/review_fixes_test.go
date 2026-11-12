@@ -166,7 +166,7 @@ func (changedManifestSource) ReadManifest(context.Context, int64) ([]byte, strin
 
 // TestOpenClassification: a manifest whose pin broke is the environment's
 // error, not no_manifest, through Open and through ReadManifest alike;
-// OpenDir resets OpenStats and checks its options before any I/O.
+// OpenDir checks its options before any I/O.
 func TestOpenClassification(t *testing.T) {
 	for _, src := range []Source{changedOpenSource{}, changedManifestSource{}} {
 		_, err := OpenDataset(ctx, src, OpenOptions{})
@@ -174,9 +174,8 @@ func TestOpenClassification(t *testing.T) {
 			t.Errorf("%T: %v", src, err)
 		}
 	}
-	st := ReadStats{SourceReads: 7}
-	if _, err := OpenDir(ctx, "/nonexistent-dataset", OpenOptions{OpenStats: &st}); err == nil || st != (ReadStats{}) {
-		t.Fatalf("OpenDir of a missing directory: %v, stats %+v", err, st)
+	if _, err := OpenDir(ctx, "/nonexistent-dataset", OpenOptions{}); err == nil {
+		t.Fatalf("OpenDir of a missing directory: %v", err)
 	}
 	if _, err := OpenDir(ctx, "/nonexistent-dataset", OpenOptions{Read: ReadPolicy{MetadataPrefetchBytes: -1}}); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("OpenDir with an invalid policy: %v", err)

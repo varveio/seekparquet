@@ -105,12 +105,6 @@ type OpenOptions struct {
 	Limits Limits
 	// Read controls tail reads and optional speculation.
 	Read ReadPolicy
-	// OpenStats, when non-nil, is reset on entry to OpenDataset or
-	// OpenDir and filled on every exit with logical and format counters.
-	// Manifest reads are excluded from SourceReads and SourceBytes; the
-	// storage layer observes physical requests.
-	// The Dataset does not retain it.
-	OpenStats *ReadStats
 }
 
 // Key declares the exact key column and whether keys must be unique.
@@ -206,17 +200,15 @@ type Dataset struct {
 //
 // Dataset.Close closes every part file the dataset opened.
 func OpenDataset(ctx context.Context, src Source, opt OpenOptions) (*Dataset, error) {
-	st, spare := takeStats(opt.OpenStats)
-	defer dropStats(spare)
-	if err := prepareOpen(ctx, &opt); err != nil {
+	if err := prepareOpen(&opt); err != nil {
 		return nil, err
 	}
-	return openDataset(ctx, src, opt, st, false)
+	return openDataset(ctx, src, opt, false)
 }
 
 // prepareOpen checks opt before any I/O,
 // and sets opt's defaults.
-func prepareOpen(ctx context.Context, opt *OpenOptions) error {
+func prepareOpen(opt *OpenOptions) error {
 	if err := opt.Limits.check(); err != nil {
 		return err
 	}
@@ -229,7 +221,7 @@ func prepareOpen(ctx context.Context, opt *OpenOptions) error {
 
 // openDataset opens the dataset at src with checked options; local reads
 // as OpenDir's zero policy says (reader.local).
-func openDataset(ctx context.Context, src Source, opt OpenOptions, st *ReadStats, local bool) (*Dataset, error) {
+func openDataset(ctx context.Context, src Source, opt OpenOptions, local bool) (*Dataset, error) {
 	raw, identity, err := readManifest(ctx, src, opt.Limits.ManifestBytes)
 	if err != nil {
 		return nil, err

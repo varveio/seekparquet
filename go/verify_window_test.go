@@ -76,8 +76,8 @@ func newVersionSource(t testing.TB, dir string) *versionSource {
 // as a local directory when local is set (OpenDir's zero policy).
 func openWith(t testing.TB, c context.Context, src Source, opt OpenOptions, local bool) *Dataset {
 	t.Helper()
-	must(t, prepareOpen(c, &opt))
-	d, err := openDataset(c, src, opt, new(ReadStats), local)
+	must(t, prepareOpen(&opt))
+	d, err := openDataset(c, src, opt, local)
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	return d
