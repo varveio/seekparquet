@@ -36,6 +36,9 @@ const (
 	tSet    = 10
 	tMap    = 11
 	tStruct = 12
+	// tUUID is 16 raw bytes. parquet-go's decoder skips it (a field or
+	// element it does not know), so it is walked, and charged, too.
+	tUUID = 13
 )
 
 // maxDepth bounds nesting, so that hostile input cannot exhaust the stack
@@ -181,6 +184,12 @@ func (w *walker) value(kind byte, typ reflect.Type, depth int) error {
 		}
 		w.pos += 8
 		return nil
+	case tUUID:
+		if len(w.data)-w.pos < 16 {
+			return w.malformed("truncated")
+		}
+		w.pos += 16
+		return w.charge(16)
 	case tBinary:
 		v, err := w.uvarint()
 		if err != nil {
