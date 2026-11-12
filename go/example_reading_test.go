@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"testing"
 
 	seekparquet "github.com/varveio/seekparquet/go"
 	"github.com/varveio/seekparquet/go/internal/testutil/fakestore"
@@ -309,6 +310,29 @@ func ExampleReadStats() {
 	// value pages decoded: true
 }
 
+func ExampleReadStats_listing() {
+	ctx := context.Background()
+	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/delimiter", seekparquet.OpenOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer d.Close()
+	var stats seekparquet.ReadStats
+	entries, err := d.List(ctx, seekparquet.ListQuery{Prefix: []byte("a/"), Delimiter: '/', Limit: 3, Columns: []string{"size"}}, &stats)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("entries:", len(entries))
+	fmt.Println("logical part reads:", stats.SourceReads > 0)
+	fmt.Println("key pages decoded:", stats.KeyPagesDecoded > 0)
+	fmt.Println("value pages decoded:", stats.ValuePagesDecoded > 0)
+	// Output:
+	// entries: 3
+	// logical part reads: true
+	// key pages decoded: true
+	// value pages decoded: true
+}
+
 func ExampleCursor_Encode() {
 	row, err := seekparquet.RowCursor([]byte("logs/a"), 2).Encode()
 	if err != nil {
@@ -383,7 +407,7 @@ func ExampleDataset_BuildListIndex() {
 	// entries: 3
 }
 
-func ExampleOpenDataset_memorySource() {
+func TestGuideMemorySource(t *testing.T) {
 	ctx := context.Background()
 	objects := make(map[string]fakestore.Object)
 	err := filepath.WalkDir("../conformance/datasets/multipart", func(path string, entry os.DirEntry, err error) error {
@@ -405,21 +429,24 @@ func ExampleOpenDataset_memorySource() {
 		return nil
 	})
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 	store := fakestore.New(objects, fakestore.Options{})
 	defer store.Close()
 	// fakeSource is the existing test-only Source implementation; see the guide.
 	d, err := seekparquet.OpenDataset(ctx, fakeSource{store}, seekparquet.OpenOptions{})
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 	defer d.Close()
 	rows, err := d.Rows(ctx, seekparquet.Query{Limit: 1}, nil)
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
-	fmt.Println(string(rows[0].Key))
-	// Output:
-	// README
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1", len(rows))
+	}
+	if got := string(rows[0].Key); got != "README" {
+		t.Fatalf("first key = %q, want README", got)
+	}
 }

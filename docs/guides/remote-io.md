@@ -4,9 +4,9 @@ Separate what the reader chooses to read from how storage executes it.
 The reader routes by metadata, loads page indexes, and fetches demanded and speculative ranges.
 Your Source schedules physical requests, retries them, caches bytes, and records wire traffic.
 
-> Pending: WP-L/W9 real-store latency and throughput need a dated SeekParquet-stack receipt naming store, region, geometry, and cache state.
+> Pending: WP-L step W9 (real-store run) needs a dated SeekParquet-stack receipt naming store, region, geometry, and cache state.
 
-> Pending: WP-L Java examples wait for Java API alignment (`claude/java-api-alignment`).
+> Pending: WP-L Java examples and the batched/sized SPI wait for Java API alignment (`claude/java-api-alignment`).
 
 <!-- java: pending alignment -->
 
@@ -32,7 +32,7 @@ Reader metadata reuse and storage byte-cache reuse are separate variables.
 
 ## Compare counts on the fake store
 
-The following are counts on the fake store, copied from `ioBudgets` and `ioCapableBudgets` in
+The following are counts on the fake store asserted by `TestReadBudgets`, from `ioBudgets` and `ioCapableBudgets` in
 [`go/iobudget_test.go`](../../go/iobudget_test.go).
 They describe the unique-key `ioSmall` geometry in
 [`go/iobudget_fixture_test.go`](../../go/iobudget_fixture_test.go).
@@ -80,7 +80,8 @@ See the test's `ioScenario` steps for projections, priming, and setup.
 | `browse/sum-prefix` | 1 / 1 | 1 / 1 | 6,153 / 6,153 |
 
 Plan, split, shard scans, and verification have separate rows because their costs occur at separate steps.
-These counts show that read-ahead can increase physical requests and rounds for this fixture.
+For cold page 1, the fixed `ra8` cap made more physical requests and rounds than adaptive `ra0`:
+plain storage used 25 / 21 versus 17 / 11; capable storage used 24 / 18 versus 17 / 9.
 Compare the full tables, including repeated keys, before interpreting one row as a tuning recommendation.
 
 Not guaranteed: these counts on another store, geometry, cache state, reader version, or query.
@@ -121,25 +122,25 @@ Pass a fresh `ReadStats` to each operation and inspect logical I/O and decoding 
 
 **Go**
 
-<!-- snippet: go/example_reading_test.go#ExampleReadStats -->
+<!-- snippet: go/example_reading_test.go#ExampleReadStats_listing -->
 ```go
 ctx := context.Background()
-d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/delimiter", seekparquet.OpenOptions{})
 if err != nil {
 	log.Fatal(err)
 }
 defer d.Close()
 var stats seekparquet.ReadStats
-rows, err := d.Rows(ctx, seekparquet.Query{Limit: 1, Columns: []string{"size"}}, &stats)
+entries, err := d.List(ctx, seekparquet.ListQuery{Prefix: []byte("a/"), Delimiter: '/', Limit: 3, Columns: []string{"size"}}, &stats)
 if err != nil {
 	log.Fatal(err)
 }
-fmt.Println("rows:", len(rows))
+fmt.Println("entries:", len(entries))
 fmt.Println("logical part reads:", stats.SourceReads > 0)
 fmt.Println("key pages decoded:", stats.KeyPagesDecoded > 0)
 fmt.Println("value pages decoded:", stats.ValuePagesDecoded > 0)
 // Output:
-// rows: 1
+// entries: 3
 // logical part reads: true
 // key pages decoded: true
 // value pages decoded: true
@@ -162,10 +163,7 @@ If storage reports more physical requests with similar `SourceReads`, investigat
 Then compare `ReadAheadUnusedBytes` with speculation disabled to assess overfetch.
 Do not infer physical requests from `SourceBatches` or `SourceReads`.
 
-The [statistics reference](../reference/read-stats.md) defines each counter and its exclusions.
-`SourceReads` and `SourceBytes` exclude manifest I/O.
-Statistics are reset per operation and remain available on failure
-([`ReadStats`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ReadStats)).
+See [`ReadStats`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ReadStats) and the [statistics reference](../reference/read-stats.md) for reset, failure, and exclusion rules.
 For plan-plus-scan totals, add their completed statistics with `ReadStats.Add`.
 
 ## Record a reproducible measurement

@@ -279,8 +279,8 @@ for _, entry := range entries {
 
 `ListEntry.Rows` describes the candidate rows represented by the entry, subject to the query's bounds and cursor.
 Its boundaries can be unknown. Use the [counting guide](counting.md) to resolve and count them.
-A prefix filtered by `End` can still appear if a candidate key rolls up to it
-([LIST-5](../../spec/format-1.md#list-5)).
+A common prefix appears when any candidate key below `End` rolls up to it,
+even if other keys under it are at or above `End` ([LIST-7](../../spec/format-1.md#list-7)).
 
 ## Paginate a listing
 
@@ -404,7 +404,7 @@ for i, value := range rows[0].Values {
 <!-- /snippet -->
 
 An absent column is distinct from a stored null ([COL-2](../../spec/format-1.md#col-2)).
-A name containing a dot is a literal top-level name, not a nested field path.
+A name containing a dot is a literal top-level name, not a nested field path ([COL-6](../../spec/format-1.md#col-6)).
 Nested or repeated projection reports `UnsupportedError` ([`Query`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Query), [`Dataset.Rows`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Rows)).
 
 ## Stream borrowed batches
@@ -484,8 +484,7 @@ if err != nil {
 
 > The batch, keys, views, and byte values are borrowed until the callback returns.
 > Copy anything you retain; `Batch.Row` and `Batch.Cursor` make owning copies.
-> Do not call `Dataset.Close` in the callback or wait for a goroutine that calls it.
-> Close waits for the callback ([`Dataset.Scan`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Scan)).
+> See [`Dataset.Scan`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Scan) for callback shutdown restrictions.
 
 Not guaranteed: a fixed batch size, delivery of remaining rows after `Stop`, or rollback of callbacks
 already delivered before a read error. See [`Batch`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Batch) and [`Dataset.Scan`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Scan).
@@ -624,6 +623,10 @@ Physical compatibility across checked parts does not compare logical annotations
 ([`Dataset.Columns`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Columns), [COL-5](../../spec/format-1.md#col-5)).
 Inspect each part if your application depends on those annotations or on a column being present everywhere.
 
+Physical schema compatibility does not prove semantic consistency.
+Before stable adoption, decide whether producer `schema_id` governs logical meaning or stronger annotation checks are needed,
+while preserving the physical-value API ([COL-1](../../spec/format-1.md#col-1)).
+
 ## Measure a read
 
 Start with `SourceReads`, `KeyPagesDecoded`, and `ValuePagesDecoded` to separate logical I/O from decoding work.
@@ -655,20 +658,15 @@ fmt.Println("value pages decoded:", stats.ValuePagesDecoded > 0)
 ```
 <!-- /snippet -->
 
-Use a separate `ReadStats` for every concurrent operation. Each operation resets it, including on failure
-([`ReadStats`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ReadStats)). Combine completed operations with `Add`.
-See the [statistics reference](../reference/read-stats.md) and [remote I/O guide](remote-io.md) for interpretation.
+See [`ReadStats`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ReadStats) for operation accounting and concurrency rules,
+and the [remote I/O guide](remote-io.md#diagnose-a-costly-listing) for interpretation.
 
 Not guaranteed: identical counts across versions, languages, geometries, or storage implementations.
 Physical requests, retries, wire bytes, and byte-cache hits belong to your Source's instrumentation.
 
 ## Cancel and close
 
-Pass a context with your deadline to each operation and close the dataset after its users finish.
-`RangeReader` receives the operation context directly; `ContextBinder` binds scalar reads to it.
-A plain `ReadAt` cannot be interrupted mid-call ([`ContextBinder`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ContextBinder)).
-`Close` cancels active operations, waits for their cancellation points and callbacks, then closes part files
-([`Dataset.Close`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Close)). See [operating](operating.md#coordinate-concurrency-cancellation-and-close).
+See [operating](operating.md#coordinate-concurrency-cancellation-and-close) to coordinate concurrency, cancellation, and close.
 
 ## Classify errors
 

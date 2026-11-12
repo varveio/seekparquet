@@ -38,8 +38,9 @@ When an established pin fails, return `ErrObjectChanged`; do not combine bytes f
 
 ## Open an in-memory dataset
 
-This runnable example loads a fixture into the repository's existing in-memory test store.
+This test loads a fixture into the repository's existing in-memory test store.
 It uses `fakestore` and `fakeSource` from the reader's tests, not public library packages.
+The snippet comes from `TestGuideMemorySource`; it is not published as a godoc example.
 The imports are in [`go/example_reading_test.go`](../../go/example_reading_test.go).
 The thin `Source` and file implementation is in
 [`go/iobudget_fixture_test.go`](../../go/iobudget_fixture_test.go); the byte store is in
@@ -48,7 +49,7 @@ Use those as contract examples when implementing your own Source.
 
 **Go**
 
-<!-- snippet: go/example_reading_test.go#ExampleOpenDataset_memorySource -->
+<!-- snippet: go/example_reading_test.go#TestGuideMemorySource -->
 ```go
 ctx := context.Background()
 objects := make(map[string]fakestore.Object)
@@ -71,34 +72,32 @@ err := filepath.WalkDir("../conformance/datasets/multipart", func(path string, e
 	return nil
 })
 if err != nil {
-	log.Fatal(err)
+	t.Fatal(err)
 }
 store := fakestore.New(objects, fakestore.Options{})
 defer store.Close()
 // fakeSource is the existing test-only Source implementation; see the guide.
 d, err := seekparquet.OpenDataset(ctx, fakeSource{store}, seekparquet.OpenOptions{})
 if err != nil {
-	log.Fatal(err)
+	t.Fatal(err)
 }
 defer d.Close()
 rows, err := d.Rows(ctx, seekparquet.Query{Limit: 1}, nil)
 if err != nil {
-	log.Fatal(err)
+	t.Fatal(err)
 }
-fmt.Println(string(rows[0].Key))
-// Output:
-// README
+if len(rows) != 1 {
+	t.Fatalf("got %d rows, want 1", len(rows))
+}
+if got := string(rows[0].Key); got != "README" {
+	t.Fatalf("first key = %q, want README", got)
+}
 ```
 <!-- /snippet -->
 
 ## Carry cancellation to scalar reads
 
-Implement [`ContextBinder`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ContextBinder) when scalar reads can block on a connection, retry, or remote response.
-`WithContext` returns an independent reader view; keep context out of shared mutable handle state.
-Propagate the operation context's values to your storage instrumentation and cache policy too.
-Without this capability, a plain `ReadAt` already in progress cannot be interrupted by the reader.
-The original file's `RangeReader` capability is discovered before `ContextBinder` is applied
-([`RangeReader`](https://pkg.go.dev/github.com/varveio/seekparquet/go#RangeReader)).
+See [`ContextBinder`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ContextBinder) for scalar cancellation and context propagation, and [`RangeReader`](https://pkg.go.dev/github.com/varveio/seekparquet/go#RangeReader) for batch context and capability discovery.
 
 ## Add optional capabilities
 
@@ -134,13 +133,14 @@ zero-length ranges through EOF require no I/O ([`RangeReader`](https://pkg.go.de
 
 The caller owns the buffers. Destination regions must not overlap; file ranges may overlap or repeat.
 Do not retain buffers or descriptors after returning, including on cancellation.
-The operation context governs waits, physical requests, and retries.
+See [`RangeReader`](https://pkg.go.dev/github.com/varveio/seekparquet/go#RangeReader) for the operation-context contract.
 
 Return nil only when every buffer is completely valid.
 A `BatchError.Errs` entry corresponds to its input range, not completion order; nil means that range succeeded.
 Any other returned error invalidates every range ([`BatchError`](https://pkg.go.dev/github.com/varveio/seekparquet/go#BatchError), [`RangeReader`](https://pkg.go.dev/github.com/varveio/seekparquet/go#RangeReader)).
-Consume errors in semantic range order; a failed unused speculative range does not invalidate a successful demanded range.
-The reader handles that distinction in its [storage I/O layer](../../go/storageio.go).
+The reader consumes errors in semantic range order in its [storage I/O layer](../../go/storageio.go).
+An unused speculative failure does not invalidate a successful demanded range;
+see the [window implementation](../../go/windows.go#L243-L246) for speculative-failure handling.
 
 ## Return errors the reader can classify
 
@@ -165,10 +165,9 @@ Panics from `ReadAt` and `ReadRanges` become environment errors containing the r
 Choose retry, connection, request concurrency, and byte-cache policy in your Source.
 Keep cached bytes bound to the same immutable identity as uncached reads.
 A storage-specific cache bypass should preserve identity, size checks, and error semantics.
-Context values are one way to carry these choices through a `ContextBinder` view.
+See [`ContextBinder`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ContextBinder) for propagating context values to storage policy.
 
-`ReadStats` counts logical part reads and reader work. It excludes manifest reads and does not count physical requests or wire bytes
-([`ReadStats`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ReadStats)). Instrument those at storage, including retries and cache hits.
+See [`ReadStats`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ReadStats) for counter scope and exclusions; instrument physical requests, wire bytes, retries, and cache hits at storage.
 A `ReadRanges` call may produce several physical requests or none if storage serves cached bytes.
 See [remote I/O](remote-io.md).
 
@@ -193,6 +192,5 @@ Run the [conformance suite](../../conformance/README.md) through your reader int
 
 Scans and projected reads can fetch windows through your batched capability;
 without it, the reader uses concurrent scalar reads under an internal limit.
-Window bounds apply to fetched, undecoded bytes per operation, not total dataset or process memory
-([`ReadPolicy`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ReadPolicy)). See [operating](operating.md#account-for-per-operation-memory).
+See [`ReadPolicy`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ReadPolicy) for window bounds and [operating](operating.md#account-for-per-operation-memory) for memory sizing.
 Your Source still owns physical scheduling and byte caching.

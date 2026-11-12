@@ -126,19 +126,32 @@ class DocumentationContracts(unittest.TestCase):
                 for text in ('ErrObjectChanged', 'storage.PartChangedException',
                              'never a refusal', 'reopen the dataset'):
                     self.assertIn(text, page)
+        for name in ('go/storage.go', 'docs/guides/troubleshooting.md'):
+            with self.subTest(manifest_contract=name):
+                page = self.read(name)
                 for text in ('ErrObjectTooLarge', '*LimitError', 'ManifestBytes'):
                     self.assertIn(text, page)
 
     def test_go_storage_capabilities_and_defaults(self):
         page = self.read('docs/concepts.md')
-        for text in ('SizedSource.OpenSized', 'ManifestReader.ReadManifest', 'ErrObjectTooLarge',
-                     '*LimitError', 'ManifestBytes',
-                     'Storage owns physical request execution, byte caching, and request observation.',
-                     'Go bounds independent reads internally; the Source bounds physical concurrency.',
-                     '| `MetadataPrefetchBytes` | 2 MiB; 64 KiB with `OpenDir` |',
-                     '| `DisableSpeculation` | `false` |'):
-            with self.subTest(contract=text):
-                self.assertIn(text, page)
+        io = page.split('### Go reader I/O', 1)[1].split('## Glossary', 1)[0]
+        for target in ('guides/storage-sources.md', 'guides/remote-io.md', 'reference/limits.md'):
+            with self.subTest(guide=target):
+                self.assertIn(f']({target})', io)
+        for default in ('2 MiB', '64 KiB', '| `MetadataPrefetchBytes` |'):
+            self.assertNotIn(default, io)
+        # API contracts and defaults live in godoc, not the concept overview.
+        contracts = {
+            'go/storage.go': ('type SizedSource interface', 'type ManifestReader interface',
+                              'ErrObjectTooLarge', '*LimitError', 'ManifestBytes',
+                              "2 MiB; OpenDir's default is 64 KiB."),
+            'docs/guides/storage-sources.md': ('executes reads, caches bytes, and observes physical requests',),
+            'docs/guides/operating.md': ('Your Source governs physical scheduling, connection limits',),
+        }
+        for name, texts in contracts.items():
+            for text in texts:
+                with self.subTest(page=name, contract=text):
+                    self.assertIn(text, self.read(name))
         for removed in ('CacheMode', 'CacheDefault', 'CacheBypass', 'WithCacheMode',
                         '| `Concurrency` |'):
             self.assertNotIn(removed, page)

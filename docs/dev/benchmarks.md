@@ -36,7 +36,10 @@ pages or a huge repeated-key group.
 `OpenDataset` plus close over the same directory source wrapped to count actual
 `SourceFile.ReadAt` calls and their requested buffer lengths. Opening reads the
 manifest and opens no part, so an open is one read whose size grows with the
-manifest. Queries exclude open, close and priming from timing and counters.
+manifest. Query benchmarks also use `OpenDataset` over that directory Source,
+selecting the non-local read policy rather than `OpenDir`
+([benchmark implementation](../../go/workloads_bench_test.go#L102-L113)).
+Queries exclude open, close and priming from timing and counters.
 Each cold query starts with a new dataset, so it includes the first touch of
 every part it routes to: opening the part and reading and checking its footer.
 Each warm query first executes the identical query once on that dataset, so

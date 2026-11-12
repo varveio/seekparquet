@@ -50,8 +50,10 @@ It renders:
   ```
 
   For a `.go` file, the snippet is the body of the named function: write it as an `Example` function with
-  an `// Output:` comment, so `go test` runs it and checks what it prints. For any other file, the snippet
-  is the lines between comments containing `tag::NAME[]` and `end::NAME[]`. Java snippets live in
+  an `// Output:` comment, so `go test` runs it and checks what it prints.
+  For snippets requiring internal test types, use a `Test` function with assertions so godoc does not
+  publish it as an example. For any other file, the snippet is the lines between comments containing
+  `tag::NAME[]` and `end::NAME[]`. Java snippets live in
   `java/seekparquet/src/test/java/io/varve/seekparquet/docs/DocSnippetsTest.java`, a JUnit test that
   checks their output. Without `#NAME`, the snippet is the whole file.
 
@@ -175,7 +177,7 @@ Run Example functions and the documentation checks for snippet changes.
 | Independent scalar contexts (`go/dataset.go`: ContextBinder) | `TestContextBinding` |
 | Plan exactness and projected extents (`go/selection.go`) | `TestPlanCountsUseOnlyCheckedParts`, `TestPlanSharedDictionary`, `ExampleDataset_Plan` |
 | Split union, key-group boundaries, independent scans (`go/split.go`) | `TestSplitConformanceOracle`, `TestSplitGeometries`, `TestSplitConcurrentScans`, `ExamplePlan_Split` |
-| Known positions, no-I/O selection, value-only scans (`go/rows.go`) | `TestScanValuesReadsNoKeyPage`, examples in the counting guide |
+| Known positions and no-I/O selection (`go/rows.go`); value-only scans (`go/valuescan.go`) | `TestScanValuesReadsNoKeyPage`, examples in the counting guide |
 | List-index accounting and option reuse (`go/listindex.go`) | `TestListIndexSharedMemoryIsolation`, `TestListIndexEmptyCacheAndEffectiveOptions`, `ExampleDataset_BuildListIndex` |
 | Storage batch outcomes, fallback, and cancellation (`go/storage.go`, `go/storageio.go`) | `TestReadRangesBatched`, `TestReadRangesFallback`, `TestReadRangesCancelled`, `TestSourceErrorClassification`, `TestOnlyEOFBounded` |
 

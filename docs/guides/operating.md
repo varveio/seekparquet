@@ -31,7 +31,7 @@ Size for the largest touched-part set; opening a fresh dataset for the same broa
 ## Choose resource limits
 
 Set limits from your producer's geometry, expected result size, and acceptable service concurrency.
-These illustrative profiles are exercised against the fixture; they are not universal deployment presets.
+These illustrative profiles are accepted at open; they are not universal deployment presets.
 
 **Go**
 
@@ -91,7 +91,7 @@ The estimates below come from [`Limits`](https://pkg.go.dev/github.com/varveio/s
 | Optional scalar page | Slots for non-null values and row-aligned values + decoded byte payload |
 | Key page | Byte payload plus offsets or dictionary indexes; `PageMemory` uses the conservative scalar estimate |
 | Projected scratch | High-water capacity retained per projected column until the operation ends; allow for header and dictionary buffers too |
-| Fetched, undecoded windows | Per-operation retention, separate from decoded-page memory; see `ReadPolicy` |
+| Fetched, undecoded windows | See [`ReadPolicy`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ReadPolicy) for the retention bound and exclusions |
 | Owning rows and values | Result cardinality × actual key/value sizes; use `Scan` to process borrowed batches |
 | Concurrent operations or shards | Sum their independent scratch, decoded pages, windows, and results |
 
@@ -163,18 +163,15 @@ Benchmark build cost and steady-state listings separately.
 
 ## Coordinate concurrency, cancellation, and close
 
-Give concurrent operations their own contexts, `ReadStats`, scratch in callbacks, and result destinations.
-`Dataset` is concurrency-safe, but a `ReadStats` is not ([`ReadStats`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ReadStats)).
+Give concurrent operations their own contexts, scratch in callbacks, and result destinations.
+See [`Dataset`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset) and [`ReadStats`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ReadStats) for concurrency contracts.
 Your Source governs physical scheduling, connection limits, retries, and storage-specific observation.
 The reader's internal scheduling is not a caller-configured concurrency limit.
 
-`RangeReader` receives the operation context. Scalar reads use an independent `ContextBinder` view when available.
-Without it, a blocked `ReadAt` delays cancellation until it returns ([`ContextBinder`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ContextBinder)).
-Close cancels operations, joins active reads and callbacks, and closes part files; later reads report `ErrClosed`
-([`Dataset.Close`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Close)). The caller still owns the Source and closes it after its datasets.
+See [`ContextBinder`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ContextBinder) and [`RangeReader`](https://pkg.go.dev/github.com/varveio/seekparquet/go#RangeReader) for operation-context contracts.
 
-> Do not close the dataset inside a scan callback, or wait there for another goroutine to close it.
-> Close waits for that callback to return ([`Dataset.Scan`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Scan)).
+On shutdown, stop admitting work, close the dataset, then release your Source.
+See [`Dataset.Close`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Close) for shutdown semantics and [`Dataset.Scan`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Scan) for callback restrictions.
 
 ## Monitor reader work and storage work separately
 

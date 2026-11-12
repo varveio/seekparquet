@@ -1,11 +1,11 @@
 # Local workload smoke receipt: 2026-11-11
 
 Reader revision: not recorded in the source measurement. Treat this as a historical smoke receipt,
-not a measurement of the current reader. Source: the repository's workload measurement record.
+not a measurement of the current reader. Source: `e98bb77:docs/workloads.md`.
 [Recipes and fixture geometry](../benchmarks.md#reproduce-local-measurements) supply the commands and workload setup.
 
-
-Both commands above were run on 2026-11-11 on Linux amd64, Intel(R) Xeon(R)
+The two commands in [Reproduce local measurements](../benchmarks.md#reproduce-local-measurements)
+were run on 2026-11-11 on Linux amd64, Intel(R) Xeon(R)
 Processor @ 2.10GHz (as `/proc/cpuinfo` names it), Go 1.27.4, and
 `GOMAXPROCS=2`, in a shared managed workspace. No cache flush or resource
 isolation was performed. The table is from the second command: each elapsed
@@ -38,10 +38,9 @@ The open runs occur sequentially, so their times cannot isolate instrumentation
 overhead. This harness does not measure retained heap, retained footer/index
 bytes, peak descriptors, remote retries, no-OffsetIndex value-header walks or
 read-ahead amplification. Add those scenarios and measurements before making
-production capacity or remote-cost claims. No object-store adapter ships here;
-remote qualification remains open. A future adapter must preserve immutable
-object identity across reads/retries and propagate cancellation and storage
-errors. Measure actual requests and bytes at that adapter separately from
-reader counters. The benchmark does not relax CHECK-1: every part a query
+production capacity or remote-cost claims. No object-store Source implementation ships here;
+remote qualification remains open. See [storage Sources](../../guides/storage-sources.md) for the implementation contract
+and [remote I/O](../../guides/remote-io.md) for physical-request measurement.
+The benchmark does not relax [CHECK-1](../../../spec/format-1.md#check-1): every part a query
 touches is checked on that first touch.
 

@@ -7,8 +7,9 @@
 //
 // # Write and seal a part
 //
-// [NewPart] installs the profile stamps, sorting metadata, and page indexes
-// (STAMP-1, KEY-5, RG-1 to RG-5). [PartOptions] selects encoding and geometry.
+// [NewPart] installs the profile stamps and sorting metadata (STAMP-1,
+// KEY-5, RG-1). It writes ColumnIndex and OffsetIndex on every column with
+// exact page bounds (RG-5). [PartOptions] selects encoding and geometry.
 // [PartWriter.WriteRows] copies input byte values and checks keys for
 // nonempty values, order, and required UTF-8 (KEY-2, KEY-3, KEY-6).
 // [PartWriter.WritePage] fills columns without an owning copy of every row;

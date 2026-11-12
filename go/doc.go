@@ -36,11 +36,11 @@
 // # Planned selections
 //
 // [Dataset.Plan] resolves key selections before scanning projected values.
-// [Plan.Count] and [Plan.ProjectedBytes] return estimates with exactness
-// flags; inspect the flags before admission decisions. [Plan.Split] creates
-// shards for caller-managed concurrent scans, keeping key groups whole at
-// shard boundaries. It can return fewer shards than requested. Planning
-// and splitting can perform reads. See the [reading guide].
+// [Plan.Count] and [Plan.ProjectedBytes] report results that are exact when
+// their exactness flags say so; inspect the flags before admission decisions.
+// [Plan.Split] creates shards for caller-managed concurrent scans, keeping
+// key groups whole at shard boundaries. It can return fewer shards than
+// requested. Planning and splitting can perform reads. See the [reading guide].
 //
 // [Dataset.PlanRows] accepts known [RowSpan] boundaries produced by this
 // dataset, including known [ListEntry.Rows] boundaries. Without columns it
@@ -77,8 +77,8 @@
 // [Source] implementations own physical request execution, byte caching,
 // and request observation. Optional [ManifestReader], [SizedSource], and
 // [RangeReader] capabilities supply whole manifests, opens with expected
-// sizes, and batched logical ranges. The reader discovers RangeReader on
-// the original file before applying [ContextBinder] to scalar reads.
+// sizes, and batched logical ranges. See [ContextBinder] and [RangeReader]
+// for operation contexts and capability discovery.
 // [ErrObjectChanged] is an environment error; an initial
 // [SizeMismatchError] maps to part_mismatch. See the [Source guide].
 //
@@ -86,20 +86,14 @@
 //
 // [Limits] bounds declared sizes, decoding, and selected metadata retention.
 // Cache budgets differ from failing limits; zero fields select defaults.
-// [ReadPolicy] controls tail reads and speculation. Reader windows retain
-// bounded fetched, undecoded bytes per operation; decoded pages, retained
-// metadata, results, and concurrent operations add memory outside that
-// bound. There is no aggregate dataset memory limit or eviction of checked
-// footers and open part files. See the [operating guide].
+// See [ReadPolicy] for tail reads, speculation, and window bounds, and the
+// [operating guide] for dataset retention and memory sizing.
 //
 // # Statistics
 //
-// Pass an independent [ReadStats] to each operation to count logical part
-// reads and format work, including on failure. Operations reset the struct;
-// [ReadStats.Add] combines completed operations. Counts exclude manifest
-// reads and physical requests; instrument wire bytes, retries, and storage
-// byte-cache hits at the Source. Counters are diagnostics, not a format
-// contract. See the [remote I/O guide].
+// See [ReadStats] for operation accounting, reset behavior, and exclusions,
+// and [ReadStats.Add] to combine completed operations. The [remote I/O guide]
+// shows how to interpret counters and measure storage traffic.
 //
 // # Errors
 //
@@ -120,13 +114,10 @@
 //
 // # Concurrency and cancellation
 //
-// A [Dataset] is safe for concurrent use; each operation has independent
-// scan scratch and statistics. RangeReader receives the operation context;
-// ContextBinder supplies context-bound scalar reads. A plain ReadAt cannot
-// be interrupted mid-call. [Dataset.Close] cancels active operations, waits
-// for reads and callbacks, and closes part files. Do not call Close from a
-// scan callback or wait there for another goroutine to close it. The caller
-// owns the Source. See the [operating guide].
+// Each operation takes its own [ReadStats] and owns scan scratch.
+// See [Dataset], [Dataset.Close], and [Dataset.Scan] for concurrency, shutdown,
+// and callback contracts, and [ContextBinder] and [RangeReader] for operation
+// contexts. The [operating guide] covers service coordination.
 //
 // [concepts]: https://github.com/varveio/seekparquet/blob/main/docs/concepts.md
 // [reading guide]: https://github.com/varveio/seekparquet/blob/main/docs/guides/reading.md
