@@ -639,3 +639,26 @@ func TestScanBypassesCache(t *testing.T) {
 		}
 	})
 }
+
+// TestVerifyPhysicalPeak: Verify(ctx, &st) counts the physical requests
+// of a reporting store, at most ReadPolicy.Concurrency of them in flight
+// at once, and as many as that while it fetches parts together.
+func TestVerifyPhysicalPeak(t *testing.T) {
+	fx := ioFixtureOf(t, ioTiny)
+	for _, n := range []int{1, 3} {
+		synctest.Test(t, func(t *testing.T) {
+			src := fakestore.New(fx.objects, ioOptions)
+			d, err := seekparquet.OpenDataset(context.Background(), fakeSource{src}, seekparquet.OpenOptions{Read: seekparquet.ReadPolicy{Concurrency: n}})
+			must(t, err)
+			defer d.Close()
+			var st seekparquet.ReadStats
+			rec := src.Begin("verify")
+			must(t, d.Verify(context.Background(), &st))
+			made := rec.End().Summary()
+			if st.PeakPhysicalRequests != int64(n) || st.PhysicalRequests != int64(made.Requests) || st.UnreportedIOCalls != 0 ||
+				st.PartsOpened != int64(fx.spec.parts) {
+				t.Fatalf("Concurrency %d: %+v, the store made %+v", n, st, made)
+			}
+		})
+	}
+}
