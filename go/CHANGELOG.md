@@ -5,6 +5,18 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- A manifest nested deeper than 512 JSON objects and arrays (the manifest object counting 1), in
+  extensions or anywhere else, is a `*LimitError` for the new `LimitManifestNesting` (wrapping
+  `ErrLimitExceeded`), as in the Java reader, from `ParseManifest`, opening and validation: the syntax check
+  no longer recurses without bound, which a deeply nested manifest within `Limits.ManifestBytes` could
+  exhaust the stack with. Depth 512 is read.
+- `PartInfo.Extensions`: a part's `extensions` object (spec §3.4, EXT-1 to EXT-5), kept exactly as written by
+  `ParseManifest` and `Dataset.Metadata`, and written by `MarshalManifest` (and so `local.Commit`) after the
+  part's `sha256`, compacted, and left out when empty, as the top-level `Extensions` is. A part's `extensions`
+  that is not an object, or has an empty namespace name, is `invalid_manifest`. The reader ignores
+  extensions (EXT-3). The reader already checked both magics (CHECK-1) and decoded LZ4_RAW, now in the ENC-1
+  baseline; BROTLI stays supported.
+
 - **Breaking: the read API is redesigned** before any stability promise (no deprecated aliases):
   - Requests: `Range`, `KeyRange` and `PrefixRange` are replaced by `Span` (`KeySpan`, exactly
     `[key, key+0x00)`, and `PrefixSpan`), `Selection` (a span and a row cursor) and `Query` (a selection,

@@ -55,8 +55,9 @@ python conformance/harness/run.py --adapter 'python conformance/validator/valida
   --targets validator-structural,validator-profile,validator-full,validator-digest
 ```
 
-`test_validator_corpus.py` runs the 207 validator cases, validates the 21 valid corpus datasets at every level
-(all complete), and requires each of the 124 invalid ones to fail at some level. `test_validate.py` builds
-temporary fixtures for page V1 and V2, the four mandatory codecs, omitted physical pages, corruption confined
+`test_validator_corpus.py` runs every validator case, validates every valid corpus dataset at every level
+(all complete), and requires each invalid one to fail at some level, except a fault whose outcome is
+unsupported (an encrypted part), whose structural level must be incomplete. `test_validate.py` builds
+temporary fixtures for page V1 and V2, four of the mandatory codecs, omitted physical pages, corruption confined
 to a value page, digest independence, limits, unsupported codecs and malformed manifests. No binary fixtures
 are committed.

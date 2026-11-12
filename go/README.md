@@ -73,7 +73,8 @@ manifest. `PartWriter.WriteRows` copies the rows it is given, so they may be reu
 `PartWriter.WritePage` takes a page column by column from a fill function and copies nothing, for a
 producer that keeps its own rows until the page is written. The part writer enforces the profile (key column, key order, page indexes with exact bounds,
 `sorting_columns`, stamps, column orders) and cannot be configured out of it.
-`seekparquet.MarshalManifest` and `ParseManifest` write and read a manifest; `InspectFooter` and
+`seekparquet.MarshalManifest` and `ParseManifest` write and read a manifest, keeping the top-level
+`Extensions` and each `PartInfo.Extensions` as written (a producer sets a part's before `Commit`); `InspectFooter` and
 `InspectKeyPages` read a part's footer and key page index without reading its pages.
 
 The recipe, the guarantees and what `WriteDir` does not do are in [docs/producing.md](../docs/producing.md).

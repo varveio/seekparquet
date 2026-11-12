@@ -5,8 +5,10 @@ package seekparquet
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -134,6 +136,70 @@ func TestManifestExtensionsPreserved(t *testing.T) {
 	}
 }
 
+// TestManifestPartExtensionsPreserved: a part's extensions round-trip
+// through MarshalManifest and ParseManifest as the top-level object does,
+// unknown namespaces and the reserved seekparquet namespace alike (EXT-2,
+// EXT-3), and reach Dataset.Metadata unchanged.
+func TestManifestPartExtensionsPreserved(t *testing.T) {
+	ext := `{"swath":{"source":{"n":[1.50,-0.0,null,1e400]}},"seekparquet":{"unknown":{"version":99}}}`
+	m := Manifest{Key: Key{Column: "key", Unique: true}, Version: Version{FormatVersion, DraftRevision}, SchemaID: "s",
+		Parts: []PartInfo{
+			{Path: "data/a.parquet", Rows: 1, Bytes: 1, MinKey: []byte("a"), MaxKey: []byte("a"), Extensions: json.RawMessage(ext)},
+			{Path: "data/b.parquet", Rows: 1, Bytes: 1, MinKey: []byte("b"), MaxKey: []byte("b")},
+		}}
+	out, err := MarshalManifest(m)
+	must(t, err)
+	got, err := ParseManifest(out, Limits{})
+	must(t, err)
+	var compact bytes.Buffer
+	must(t, json.Compact(&compact, got.Parts[0].Extensions))
+	if compact.String() != ext || got.Parts[1].Extensions != nil {
+		t.Errorf("part extensions became %s and %q", compact.String(), got.Parts[1].Extensions)
+	}
+	again, err := MarshalManifest(got)
+	must(t, err)
+	if !bytes.Equal(again, out) {
+		t.Errorf("second marshal differs:\n%s\n%s", again, out)
+	}
+	m.Parts[0].Extensions = json.RawMessage(" {} ")
+	if out, err := MarshalManifest(m); err != nil || bytes.Contains(out, []byte("extensions")) {
+		t.Errorf("empty part extensions: %v\n%s", err, out)
+	}
+}
+
+// TestMetadataPartExtensions: an opened dataset exposes each part's
+// extensions as written and answers as without them (EXT-2, EXT-3).
+func TestMetadataPartExtensions(t *testing.T) {
+	ctx := context.Background()
+	with := open(t, "../conformance/datasets/part-extensions", OpenOptions{})
+	without := open(t, "../conformance/datasets/multipart", OpenOptions{})
+	parts := with.Metadata().Parts
+	if len(parts) != 3 || !bytes.Contains(parts[1].Extensions, []byte(`"future_accelerator"`)) {
+		t.Fatalf("part extensions: %+v", parts)
+	}
+	for i, p := range without.Metadata().Parts {
+		if p.Extensions != nil {
+			t.Errorf("multipart part %d has extensions %s", i, p.Extensions)
+		}
+		p.Extensions = parts[i].Extensions
+		if !reflect.DeepEqual(p, parts[i]) {
+			t.Errorf("part %d differs beyond its extensions", i)
+		}
+	}
+	parts[1].Extensions[0] = 'x'
+	if with.Metadata().Parts[1].Extensions[0] != '{' {
+		t.Error("Metadata shares the part extensions' bytes")
+	}
+	q := Query{Limit: 1000, Columns: []string{"size", "storage_class"}}
+	a, err := with.Rows(ctx, q, nil)
+	must(t, err)
+	b, err := without.Rows(ctx, q, nil)
+	must(t, err)
+	if len(a) != 134 || !reflect.DeepEqual(a, b) {
+		t.Errorf("%d rows with part extensions, %d without, or they differ", len(a), len(b))
+	}
+}
+
 func mustExtension(t *testing.T, raw []byte) json.RawMessage {
 	t.Helper()
 	m, err := ParseManifest(raw, Limits{})
@@ -181,18 +247,21 @@ func TestMarshalManifestRefuses(t *testing.T) {
 		edit func(*Manifest)
 		code RefusalCode
 	}{
-		"zero version":      {func(m *Manifest) { m.Version = Version{} }, CodeInvalidManifest},
-		"later revision":    {func(m *Manifest) { m.Version.DraftRevision = 2 }, CodeUnsupportedVersion},
-		"empty schema id":   {func(m *Manifest) { m.SchemaID = "" }, CodeInvalidManifest},
-		"invalid UTF-8":     {func(m *Manifest) { m.SchemaID = "\xff" }, CodeInvalidManifest},
-		"empty key column":  {func(m *Manifest) { m.Key.Column = "" }, CodeInvalidManifest},
-		"empty key":         {func(m *Manifest) { m.Parts[0].MinKey = nil }, CodeInvalidManifest},
-		"inverted bounds":   {func(m *Manifest) { m.Parts[0].MinKey = []byte("b") }, CodeInvalidManifest},
-		"zero rows":         {func(m *Manifest) { m.Parts[0].Rows = 0 }, CodeInvalidManifest},
-		"escaping path":     {func(m *Manifest) { m.Parts[0].Path = "../a.parquet" }, CodeInvalidManifest},
-		"uppercase sha256":  {func(m *Manifest) { m.Parts[0].SHA256 = strings.Repeat("A", 64) }, CodeInvalidManifest},
-		"duplicate path":    {func(m *Manifest) { m.Parts = append(m.Parts, m.Parts[0]) }, CodeInvalidManifest},
-		"invalid extension": {func(m *Manifest) { m.Extensions = json.RawMessage(`{"a":`) }, CodeInvalidManifest},
+		"zero version":           {func(m *Manifest) { m.Version = Version{} }, CodeInvalidManifest},
+		"later revision":         {func(m *Manifest) { m.Version.DraftRevision = 2 }, CodeUnsupportedVersion},
+		"empty schema id":        {func(m *Manifest) { m.SchemaID = "" }, CodeInvalidManifest},
+		"invalid UTF-8":          {func(m *Manifest) { m.SchemaID = "\xff" }, CodeInvalidManifest},
+		"empty key column":       {func(m *Manifest) { m.Key.Column = "" }, CodeInvalidManifest},
+		"empty key":              {func(m *Manifest) { m.Parts[0].MinKey = nil }, CodeInvalidManifest},
+		"inverted bounds":        {func(m *Manifest) { m.Parts[0].MinKey = []byte("b") }, CodeInvalidManifest},
+		"zero rows":              {func(m *Manifest) { m.Parts[0].Rows = 0 }, CodeInvalidManifest},
+		"escaping path":          {func(m *Manifest) { m.Parts[0].Path = "../a.parquet" }, CodeInvalidManifest},
+		"uppercase sha256":       {func(m *Manifest) { m.Parts[0].SHA256 = strings.Repeat("A", 64) }, CodeInvalidManifest},
+		"duplicate path":         {func(m *Manifest) { m.Parts = append(m.Parts, m.Parts[0]) }, CodeInvalidManifest},
+		"invalid extension":      {func(m *Manifest) { m.Extensions = json.RawMessage(`{"a":`) }, CodeInvalidManifest},
+		"invalid part extension": {func(m *Manifest) { m.Parts[0].Extensions = json.RawMessage(`{"a":`) }, CodeInvalidManifest},
+		"part extension array":   {func(m *Manifest) { m.Parts[0].Extensions = json.RawMessage(`[1]`) }, CodeInvalidManifest},
+		"part extension dup":     {func(m *Manifest) { m.Parts[0].Extensions = json.RawMessage(`{"a":1,"a":2}`) }, CodeInvalidManifest},
 	} {
 		m := good()
 		c.edit(&m)
@@ -205,5 +274,55 @@ func TestMarshalManifestRefuses(t *testing.T) {
 func TestFormatConstants(t *testing.T) {
 	if got := SupportedVersions(); len(got) != 1 || got[0] != (Version{FormatVersion, DraftRevision}) {
 		t.Errorf("SupportedVersions() = %v, want the written version only", got)
+	}
+}
+
+// TestManifestNestingLimit: a manifest nested deeper than 512 objects and
+// arrays, the manifest object counting 1, is a limit of the reader
+// (LimitManifestNesting, CHECK-5), not invalid_manifest, wherever the
+// nesting is: in the top-level extensions, a part's, or a core member.
+// Depth 512 itself is read. The Java reader has the same boundary.
+func TestManifestNestingLimit(t *testing.T) {
+	const maxNesting = 512
+	nest := func(n int) string { return strings.Repeat("[", n) + strings.Repeat("]", n) }
+	base := `{"format":"seekparquet","format_version":0,"draft_revision":1,"schema_id":%s,` +
+		`"key":{"column":"key","unique":true},"parts":[{"path":"data/a.parquet","rows":1,"bytes":1,` +
+		`"min_key_base64":"YQ==","max_key_base64":"YQ==","extensions":{"t":%s}}],"extensions":{"t":%s}}`
+	manifestWith := func(schemaID, part, top string) []byte {
+		return []byte(fmt.Sprintf(base, schemaID, part, top))
+	}
+	// Depths of a value: under the top-level extensions 2, under a part's 4,
+	// for schema_id 1.
+	for _, c := range []struct {
+		name  string
+		at    func(depth int) []byte
+		valid bool
+	}{
+		{"top-level extensions", func(d int) []byte { return manifestWith(`"s"`, "1", nest(d-2)) }, true},
+		{"part extensions", func(d int) []byte { return manifestWith(`"s"`, nest(d-4), "1") }, true},
+		{"core member", func(d int) []byte { return manifestWith(nest(d-1), "1", "1") }, false},
+	} {
+		_, err := ParseManifest(c.at(maxNesting), Limits{})
+		if c.valid && err != nil || !c.valid && RefusalCodeOf(err) != CodeInvalidManifest {
+			t.Errorf("%s at depth 512: %v", c.name, err)
+		}
+		_, err = ParseManifest(c.at(maxNesting+1), Limits{})
+		var le *LimitError
+		if !errors.As(err, &le) || le.Limit != LimitManifestNesting || !errors.Is(err, ErrLimitExceeded) || RefusalCodeOf(err) != "" {
+			t.Errorf("%s at depth 513: %v", c.name, err)
+		}
+	}
+	// Opening and validation report the same limit.
+	dir := t.TempDir()
+	must(t, os.WriteFile(filepath.Join(dir, ManifestName), manifestWith(`"s"`, nest(maxNesting-3), "1"), 0o644))
+	if _, err := OpenDir(context.Background(), dir, OpenOptions{}); !errors.Is(err, ErrLimitExceeded) {
+		t.Errorf("OpenDir: %v", err)
+	}
+	for _, level := range []Level{LevelStructural, LevelDigest} {
+		report, err := ValidateDir(context.Background(), dir, ValidateOptions{Level: level})
+		must(t, err)
+		if lr := report.Levels[0]; lr.Result != Incomplete || !errors.Is(lr.Err, ErrLimitExceeded) {
+			t.Errorf("validate %s: %s", level, describeReport(report))
+		}
 	}
 }

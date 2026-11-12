@@ -1,6 +1,6 @@
 {
   "dataset": "optional-codecs",
-  "description": "Valid, but two value columns use codecs outside the ENC-1 baseline: lz4col is LZ4_RAW and brcol is BROTLI. The key and size columns are SNAPPY. A reader or validator may support these codecs or report them unsupported.",
+  "description": "Valid. Value column brcol is BROTLI, outside the ENC-1 baseline: a reader or validator may support it or report it unsupported, but not when a request does not need it. Value column lz4col is LZ4_RAW, in the baseline. The key and size columns are SNAPPY.",
   "schema_id": "conformance/objects/v1",
   "key_type": "binary",
   "columns": [

@@ -56,6 +56,12 @@ claimed target is a failure. Without `--targets`, the adapter must claim the sui
 stage, a missing, duplicate or out-of-order response, an adapter crash or timeout, an unknown capability or
 target name, or an unsupported format version. The exit status is 0 only when everything passed.
 
+A fault declaration's `outcome` defaults to `refused`; `unsupported` selects an unsupported-feature response
+instead. Both outcomes use the declared detection stage and the same open/read/verify lifecycle. An acceptable
+outcome during open completes that path; otherwise a `touch` case checks the first routed read and, when
+claimed, verification on a fresh handle. Validation represents unsupported features as `incomplete` with a
+non-empty reason, never as a failed level.
+
 Refusal cases follow the state machine in protocol.md: the harness sends `open`; an acceptable refusal
 there completes the case; for `detect: read` it then sends the case's request (an unbounded range whose limit
 covers every row, so every correct access path decodes the faulty data); for `detect: touch` (a fault in a
@@ -81,9 +87,21 @@ optimization changes no conformance answer. This is an adapter test setting, not
 it adds no query semantics or fixture expectations. Index budgets, caps and page-count guards live in
 each implementation's tests and benchmarks.
 
-**Optional features.** Cases on `optional-codecs` (LZ4_RAW and BROTLI value columns) accept the values or
-`unsupported` (`unsupported_encoding`); full validation of it may be `complete` or `incomplete`, never
-`failed`.
+**Optional features.** Cases on `optional-codecs` that project its BROTLI value column accept the values or
+`unsupported` (`unsupported_encoding`); its LZ4_RAW column is in the ENC-1 baseline, and requests that do not
+need the BROTLI column must succeed. Full validation of it may be `complete` or `incomplete`, never `failed`.
+`brotli-key` has a BROTLI key: requests may answer `unsupported`. Structural validation completes. If the
+key's BROTLI codec is unavailable, profile is incomplete with code `unsupported_encoding` and a non-empty
+reason; full is then incomplete because its prerequisite did not complete. A level cannot complete unless its
+prerequisite completed. Encrypted parts (`PARE` magic at either end of a part of at least 12
+bytes, or encryption declared in the footer: `invalid/encrypted-*`, faults whose `outcome` is `unsupported`)
+are answered `unsupported` (`unsupported_encryption`), and their structural validation is `incomplete` with
+that code.
+
+**Implementation limits, not cases.** A manifest nested deeper than 512 JSON objects and arrays (the manifest
+object counting 1) is a resource limit of both the Go and the Java reader, not `invalid_manifest`; depth 512
+is read (CHECK-5). The suite has no case for it, since a limit is the implementation's, and so does not
+pin it.
 
 Passing this semantic suite does not claim indexed access (the planned indexed-access suite, which
 has no target until its cases exist) or performance.
@@ -104,9 +122,10 @@ Invalid fixtures' faults are declared by hand in [generators/faults.json](genera
 fault id (the dataset name), when a reader must detect it (`open`, `touch`, `read`, or only by validation), its
 lowest validation level, its codes, the requirements it breaks, its location, and any unavoidable secondary
 fault with a justification. Refusal and validation cases are built from that file; nothing is inferred
-from codes. Validation is one case per fault at its lowest detecting level, plus 15 prerequisite cases
-(six structural faults with distinct entry paths requested at profile and full, and three profile faults
-requested at full) and six distinct digest behaviours.
+from codes. Validation is one case per fault at its lowest detecting level, plus prerequisite cases
+(six structural faults with distinct entry paths requested at profile and full, three profile faults
+requested at full, and three unsupported parts requested at profile and full) and six distinct digest
+behaviours.
 
 
 Every valid dataset is generated from a rows document in [generators/rows/](generators/rows/): keys in

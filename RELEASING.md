@@ -22,7 +22,8 @@ Each component is versioned and released on its own. One commit may carry severa
 
 ## Specification
 
-- A draft revision is edited in place until it is tagged (`spec/v1.0.0-draft.N`). After that tag, a change that
+- A draft revision is edited in place until it is first released: tagged (`spec/v1.0.0-draft.N`), or written by
+  an implementation release for others to read, whichever comes first (VER-2). After that, a change that
   affects valid files, query results or refusal codes goes to draft revision N+1, through a proposal, and the
   on-disk `draft_revision` moves with it; readers refuse the pair they do not support (MAN-7). Editorial changes
   stay within the tagged draft.
