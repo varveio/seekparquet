@@ -2,12 +2,12 @@
 
 The tests below are deterministic regression evidence for the current readers.
 They do **not** complete the mandatory indexed-access qualification gate in
-[GOVERNANCE.md](../GOVERNANCE.md). The common regression runner below exercises both readers and emits JSON
+[GOVERNANCE.md](../../GOVERNANCE.md). The common regression runner below exercises both readers and emits JSON
 observations, but a normative cross-reader qualification protocol and complete
 coverage remain open. Shared semantic conformance alone also does not establish
 access efficiency.
 
-All new scenarios generate temporary Parquet files from readable source rows.
+The scenarios generate temporary Parquet files from readable source rows.
 Expected keys, projected values and prefixes come from those rows, independently
 of the reader's routing decisions. The Go writer is parquet-go; the Java test
 writer emits PLAIN, uncompressed V1 pages. These access tests are not independent
@@ -15,7 +15,7 @@ encoding interoperability evidence.
 
 | Scenario | Go evidence | Java evidence | Scope or remaining gap |
 | --- | --- | --- | --- |
-| Cold/warm point and five-row range; 16 parts × 16 groups; 128-byte shared stem | `TestIndexedAccessColdWarmLongPrefix` counts `SourceFile.ReadAt` calls and requested bytes through public `Range` | `SeekCostTest.manyPartsWithLongPrefixesHaveBoundedColdAndWarmShortRangesAndLists` counts `PartSource.read` through public `range` | Each range size starts on a fresh handle; warm repeats reuse it. Open counters are reset separately. Local logical reads, not remote requests. |
+| Cold/warm point and five-row range; 16 parts × 16 groups; 128-byte shared stem | `TestIndexedAccessColdWarmLongPrefix` counts `SourceFile.ReadAt` calls and requested bytes through public `Rows` | `SeekCostTest.manyPartsWithLongPrefixesHaveBoundedColdAndWarmShortRangesAndLists` counts `PartSource.read` through public `range` | Each range size starts on a fresh handle; warm repeats reuse it. Open counters are reset separately. Local logical reads, not remote requests. |
 | Cold/warm delimiter listing on the same geometry | Same Go test, public `List`, exact 16 directory prefixes | Same Java test, public `list`, exact 16 directory prefixes | One directory per group; budgets permit index loading and key-page routing per emitted prefix. |
 | Many groups | `TestIndexedAccessNonMonotoneScaling`: 10/100/1,000 groups; above test: 256 groups across 16 parts | `coldFinalKeyUsesLogarithmicProbesAndBoundedIndexOverfetch`: 10/100/1,000 groups, read and byte budgets | No 100,000-part open or remote workload qualification. |
 | Broad and nonmonotone bounds | `TestIndexedAccessNonMonotoneScaling` measures reads/bytes/decodes on alternating broad bounds; `TestLongKeys` checks overlapping-bound results | Alternating broad nonmonotone bounds above; `nonMonotoneBoundsKeepThePredecessorOfARepeatedGroup` checks complete repeated group | Broad bounds can require scanning within a group; no universal constant-read promise. The scaling case holds candidate group size constant at 16 rows. |
@@ -45,7 +45,7 @@ each loaded page. Disabling request-local value-page reuse makes both variants
 fail on a repeated load. This establishes the narrow load/decode-call
 correspondence, rather than treating generic source reads as decoder counts.
 
-The new source budgets allow one index load and routing/key-page reads per
+The logical-read budgets allow one index load and routing/key-page reads per
 visited group or emitted directory, plus selected value work. Warm ranges allow
 three source reads because locating/projecting a physical row can require a
 key-page reread as well as the selected value page. Byte ceilings account for
@@ -57,8 +57,9 @@ Retained index and first-key charges exclude transient decoding buffers, parsed
 footers, handles and returned results. Completing qualification still requires a
 complete cross-reader report of reads, requested bytes, distinct pages, repeated
 decodes and retained metadata, the gaps in the table, and
-measurements using the actual remote adapter with cache/prefetch behavior stated.
-See [read costs](read-costs.md) for cold-open and producer geometry guidance.
+measurements using the actual Source implementation with cache/prefetch behavior stated.
+See [remote I/O](../guides/remote-io.md) for read phases and measurement, and
+[producer geometry](../guides/producing.md#choose-geometry) for layout choices.
 
 Run both readers' selected access suites and save the machine-readable report:
 
@@ -75,8 +76,8 @@ uses two Go processors/Gradle workers, and sets finite per-reader timeouts
 nonzero exit; tests are never silently skipped. The JSON includes per-test status
 and selected fixture-specific read/byte/decode observations, with
 `freeze_qualified: false`. Existing assertions supply the regression budgets;
-this report is a repository tool, not a new normative format contract. It does
-not yet aggregate every metric for every scenario.
+this report is a repository tool, not a normative format contract. It does
+not aggregate every metric for every scenario.
 
 Run the full affected suites with `go test -race -p 1 ./...` from `go/` and
 `./gradlew --max-workers=2 build` from `java/` using the declared toolchains.

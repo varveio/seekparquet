@@ -159,3 +159,23 @@ exempt.
 | the optional listing accelerator | **list index** | "boundary index", "slash listing index" |
 | a column a part lacks | **absent** | "missing column", "null" |
 | fresh and reused | **cold** (first operation on a fresh dataset), **warm** (repeated on the same dataset) | "first visit", "revisit" |
+
+### Tested contracts cited by the Go guides
+
+Guides cite the canonical godoc or implementation alongside a behavior claim.
+This register names existing evidence; it does not require broad runtime suites for a docs-only change.
+Run Example functions and the documentation checks for snippet changes.
+
+| Contract and canonical source | Regression evidence |
+|---|---|
+| `Dataset.Get`: GetRows failure and paging with KeySpan (`go/dataset.go`) | `TestGet`, `TestGetCapOne`, `ExampleDataset_Get_largeGroup` |
+| Cursor tokens and same-query pagination (`go/cursor.go`, `go/query.go`; PAGE-1/PAGE-2) | `TestCursorTokenVectors`, `TestCursorTokenLength`, `TestCursorTokenPagination`, `Example_paginate` |
+| Scan borrowing and owning copies (`go/batch.go`, `go/dataset.go`) | `TestScanBatchesPoisonRetiredStorage`, `TestScanBatchesBoundariesAndValues` |
+| Close joins operations; callback restrictions (`go/dataset.go`) | `TestCloseWhileReading`, `TestRequestInsideScanWhileClosing` |
+| Independent scalar contexts (`go/dataset.go`: ContextBinder) | `TestContextBinding` |
+| Plan exactness and projected extents (`go/selection.go`) | `TestPlanCountsUseOnlyCheckedParts`, `TestPlanSharedDictionary`, `ExampleDataset_Plan` |
+| Split union, key-group boundaries, independent scans (`go/split.go`) | `TestSplitConformanceOracle`, `TestSplitGeometries`, `TestSplitConcurrentScans`, `ExamplePlan_Split` |
+| Known positions, no-I/O selection, value-only scans (`go/rows.go`) | `TestScanValuesReadsNoKeyPage`, examples in the counting guide |
+| List-index accounting and option reuse (`go/listindex.go`) | `TestListIndexSharedMemoryIsolation`, `TestListIndexEmptyCacheAndEffectiveOptions`, `ExampleDataset_BuildListIndex` |
+| Storage batch outcomes, fallback, and cancellation (`go/storage.go`, `go/storageio.go`) | `TestReadRangesBatched`, `TestReadRangesFallback`, `TestReadRangesCancelled`, `TestSourceErrorClassification`, `TestOnlyEOFBounded` |
+
