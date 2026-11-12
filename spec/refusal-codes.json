@@ -177,7 +177,7 @@
     },
     {
       "status": "unsupported",
-      "meaning": "A needed feature is unsupported; unrecognized numeric encoding/codec values follow ENC-1 without certifying validity.",
+      "meaning": "A needed feature is unsupported; the dataset may be valid. Unrecognized numeric encoding/codec values follow ENC-1 without certifying validity.",
       "requirements": [
         "ENC-1",
         "COL-3",

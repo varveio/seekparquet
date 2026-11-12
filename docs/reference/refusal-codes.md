@@ -72,7 +72,7 @@ Go reports a refusal as a `*RefusalError` whose `Code` is a `RefusalCode`; `Refu
 | Outcome | Meaning | Go | Java |
 |---|---|---|---|
 | invalid_request | The request itself is malformed: a limit that is not a positive integer, a delimiter that is not one byte, malformed base64, a malformed cursor, a prefix cursor in a range request. | `ErrInvalidRequest` | `IllegalArgumentException` |
-| unsupported | A needed feature is unsupported; unrecognized numeric encoding/codec values follow ENC-1 without certifying validity. | `*UnsupportedError` | `UnsupportedFeatureException` |
+| unsupported | A needed feature is unsupported; the dataset may be valid. Unrecognized numeric encoding/codec values follow ENC-1 without certifying validity. | `*UnsupportedError` | `UnsupportedFeatureException` |
 | error | Anything else, such as a failure to read storage. Not a statement about the data. | the `Source`'s error, `ErrClosed`, or the context's error | `StorageException`, `IllegalStateException`, or `CancellationException` |
 
 A limit exceeded is none of these: see [limits](limits.md).

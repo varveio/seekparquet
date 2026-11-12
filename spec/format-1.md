@@ -437,7 +437,14 @@ A reader checks what it reads. It does not certify data it skips.
   (`refused` or `unsupported`) and code. A reader MAY check every part on open instead.
 
   For every leaf, including unprojected leaves, readers MUST check that recognized logical and converted
-  annotations satisfy Parquet's physical-type and parameter restrictions (`invalid_footer`). Missing
+  annotations satisfy the physical-type and parameter restrictions in Apache parquet-format revision
+  `ec90dd4661ff1c4d77f06b5b5232c5aedf68ffc5`
+  ([LogicalTypes.md](https://github.com/apache/parquet-format/blob/ec90dd4661ff1c4d77f06b5b5232c5aedf68ffc5/LogicalTypes.md)
+  and [parquet.thrift](https://github.com/apache/parquet-format/blob/ec90dd4661ff1c4d77f06b5b5232c5aedf68ffc5/src/main/thrift/parquet.thrift))
+  (`invalid_footer`). That revision defines which annotations and parameter alternatives are recognized
+  for this check; readers MUST use that set regardless of their library's supported types. In particular,
+  LogicalType members 19 (`FILE`) and 20 (`FINITE_VECTOR`) are group-only annotations: every reader MUST
+  report `invalid_footer` for either on a leaf, even if its library does not recognize that member. Missing
   required annotation parameters or empty required unions are invalid; an unknown union alternative is
   not equivalent to either. Unrecognized annotations or parameter alternatives MUST NOT by themselves
   prevent reading value columns as physical values (COL-3); KEY-1 still applies.
@@ -471,8 +478,8 @@ A reader checks what it reads. It does not certify data it skips.
   `invalid_page_index`. In a decoded header, negative counts or sizes and invalid V2 level lengths are
   `invalid_parquet`, and MUST NOT be reclassified as index disagreement. Otherwise, a non-data page, a
   header-plus-payload extent inconsistent with RG-3, or a valid declared row count differing from the
-  indexed interval is `invalid_page_index`. These rules determine precedence for these header/index
-  failures; §10's allowance for independent faults does not override them.
+  indexed interval is `invalid_page_index`. For one indexed page, these classifications take precedence
+  over §10's allowance for independent faults. That allowance continues to apply to faults on different pages.
 - <a id="check-6"></a>[CHECK-6] A part's bytes are one immutable object (COMMIT-2), and a reader MUST NOT combine bytes of two
   versions of a part: in particular, metadata it keeps from a part (its footer, page indexes, the outcome of
   its checks) MUST NOT be used with the bytes of a replacement, even one of the same size. The storage layer

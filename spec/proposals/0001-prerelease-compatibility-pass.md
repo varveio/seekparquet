@@ -72,17 +72,19 @@ Draft revision 1 is unreleased and edited in place (VER-2), so this change keeps
    Its TIMESTAMP section explicitly permits INT64 and FIXED_LEN_BYTE_ARRAY(12), with a signed
    little-endian 96-bit count for the latter. This permission is for the logical TIMESTAMP annotation;
    converted TIMESTAMP_MILLIS/MICROS still require INT64. INT96 remains the legacy unannotated physical
-   carrier. Unknown time-unit alternatives retain physical fallback; absent or empty units are invalid.
+   carrier. LogicalType members 19 (`FILE`) and 20 (`FINITE_VECTOR`) are group-only; all readers
+   recognize their numbers and refuse them on leaves, including libraries lacking those types.
+   Unknown time-unit alternatives retain physical fallback; absent or empty units are invalid.
 
 ## Compatibility
 
-Items 1–4 change no query result. Manifests with per-part `extensions` become
-valid; readers built before this change refuse them (`invalid_manifest`), which is acceptable before the
-first release. `go/v0.1.0` is a reader-only release and does not end in-place editing under VER-2. Its
-readers reject manifests containing per-part extensions. Producers needing compatibility with that release
-must omit per-part extensions. A reader without `LZ4_RAW` no longer conforms. A part with a corrupt leading magic was already
-invalid; a reader now must detect it on first touch. No new refusal code. No new draft revision or format
-version: draft revision 1 is unreleased (VER-2).
+1. **Per-part extensions.** Manifests with per-part `extensions` become valid; older readers refuse them
+   (`invalid_manifest`), which is acceptable before the first release. `go/v0.1.0` is a reader-only release
+   and does not end in-place editing under VER-2; producers needing compatibility must omit per-part extensions.
+2. **Codecs.** A reader without `LZ4_RAW` no longer conforms. Valid supported queries keep their rows.
+3. **Magic.** A part with corrupt leading magic was already invalid; readers must detect it on first touch.
+4. **Release policy and reader limits.** No query result, refusal code, draft revision or format version
+   changes. Draft revision 1 remains unreleased under VER-2.
 
 5. **Classification rulings (#37, #38).** Recognized annotations violating physical or parameter
    restrictions are explicitly invalid at first touch, independent of projection. Unknown enum values
@@ -111,7 +113,8 @@ version: draft revision 1 is unreleased (VER-2).
   and their validation levels are incomplete with the unsupported code.
 - The suite revision moves to `0.1.0-draft.5`.
 
-5. **Classification rulings (#37, #38).** Part B adds the following cases after the Java fixes, without
+5. **Classification rulings (#37, #38).** Part B adds the following cases after the Java fixes to the
+   unpublished suite revision `0.1.0-draft.5` (`suite.json` status `draft`), without a revision bump or
    changing shared fixtures or cases in part A. Reader `ok` answers come from unchanged source rows.
 
    | Case name | Target | Expected answer |
@@ -122,15 +125,16 @@ version: draft revision 1 is unreleased (VER-2).
    | `unknown-codec-99-projected` | reader; validator-full | reader unsupported with `unsupported_encoding`; structural/profile complete, full incomplete with the code |
    | `unknown-codec-99-unprojected` | reader | `ok` |
    | `ignored-enums-99` | reader | `ok`; boundary order and non-repeated key/value repetition encodings ignored |
-   | `missing-boundary-order` | reader | `refused/invalid_page_index` |
-   | `missing-repetition-encoding-value` | reader | `refused/invalid_parquet` |
+   | `missing-boundary-order` | reader | `refused/invalid_page_index`; `key` column's ColumnIndex |
+   | `missing-repetition-encoding-value` | reader | `refused/invalid_parquet`; projected optional `value` column |
    | `metadata-no-value` | reader | `ok`; ordinary and unknown seekparquet metadata, including duplicates |
    | `stamp-duplicate-one-valueless` | reader | `refused/stamp_mismatch` at touch |
    | `key-header-negative-num-values-v1` | reader | `refused/invalid_parquet` |
    | `key-index-undecodable-header` | reader | `refused/invalid_page_index` |
    | `annotation-physical-fallback-controls` | reader | `ok`; legal DECIMAL ceilings, TIMESTAMP FLBA(12), unknown logical/converted/time-unit alternatives |
-   | `key-index-valid-row-count-mismatch` | reader | `refused/invalid_page_index` |
+   | `key-index-valid-row-count-mismatch` | reader | `refused/invalid_page_index`; positive V1 header `num_values` mutation; index unchanged (negative-count counterpart) |
    | `annotation-decimal-int64-p19-unprojected` | reader; validator-structural | reader refused with `invalid_footer` at touch; structural failed with the code |
+   | `annotation-timestamp-empty-unit` | reader; validator-structural | `refused/invalid_footer`; empty required TIMESTAMP unit union |
 
    Implementation unit tests cover V2 encodings and counts, header extents and valid row disagreement,
    individual valueless stamps, other annotation restrictions, and unknown key codecs without an
