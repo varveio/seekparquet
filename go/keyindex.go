@@ -175,8 +175,8 @@ type pageLog struct {
 	unique bool
 	spans  []pageSpan
 	// memo holds the raw key pages the request read, so that it reads
-	// none twice; nil until it reads one.
-	memo *pageMemo
+	// none twice.
+	memo pageMemo
 }
 
 // requestMemoBytes bounds the raw key pages one request keeps (pageMemo).
@@ -188,9 +188,13 @@ const requestMemoBytes = 4 << 20
 // page, a page Verify fetched ahead) is taken from it, then decoded and
 // checked as any page read. It is safe for concurrent use.
 type pageMemo struct {
-	mu    sync.Mutex
-	used  int64
-	pages map[memoKey][]byte
+	mu   sync.Mutex
+	used int64
+	// The first page is held inline and the rest in pages, made for a
+	// second: most requests read one or two pages.
+	first    memoKey
+	firstRaw []byte
+	pages    map[memoKey][]byte
 }
 
 type memoKey struct {
@@ -198,13 +202,8 @@ type memoKey struct {
 	off, size int64
 }
 
-// memo returns the log's page memo, making it on first use.
-func (l *pageLog) pageMemo() *pageMemo {
-	if l.memo == nil {
-		l.memo = &pageMemo{pages: map[memoKey][]byte{}}
-	}
-	return l.memo
-}
+// pageMemo returns the log's page memo.
+func (l *pageLog) pageMemo() *pageMemo { return &l.memo }
 
 // get returns the size bytes at off of p the request read, or nil.
 func (m *pageMemo) get(p *part, off, size int64) []byte {
@@ -213,7 +212,11 @@ func (m *pageMemo) get(p *part, off, size int64) []byte {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.pages[memoKey{p, off, size}]
+	key := memoKey{p, off, size}
+	if m.firstRaw != nil && m.first == key {
+		return m.firstRaw
+	}
+	return m.pages[key]
 }
 
 // put keeps raw, the size bytes at off of p, when there is room. raw must
@@ -222,10 +225,17 @@ func (m *pageMemo) put(p *part, off int64, raw []byte) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := memoKey{p, off, int64(len(raw))}
-	if _, ok := m.pages[key]; ok || m.used+int64(len(raw)) > requestMemoBytes {
+	if m.firstRaw != nil && m.first == key || m.pages[key] != nil || m.used+int64(len(raw)) > requestMemoBytes {
 		return
 	}
-	m.pages[key] = raw
+	switch {
+	case m.firstRaw == nil:
+		m.first, m.firstRaw = key, raw
+	case m.pages == nil:
+		m.pages = map[memoKey][]byte{key: raw}
+	default:
+		m.pages[key] = raw
+	}
 	m.used += int64(len(raw))
 }
 
