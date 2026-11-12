@@ -126,14 +126,14 @@ func decodeBounded(raw []byte, v any, budget int64) (int, error) {
 // maxWindow of 0 reads the trailer alone, then the footer: the file's head
 // and footer, nothing else (InspectFooter). Nothing is allocated from the
 // declared footer length before it is checked.
-func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits, st *ReadStats, maxWindow int64, concurrency int) (_ *parquet.File, _ footerTail, err error) {
+func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits, st *ReadStats, maxWindow int64, concurrency int, deferHead bool) (_ *parquet.File, tail footerTail, err error) {
 	reports := reportsIO(file)
 	at := storageReader{r: bind(ctx, file), st: st, src: &sourceInfo{name: name, unreported: !reports}}
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidFooter, name, -1, format, args...)
 	}
 	if size < 12 {
-		return nil, footerTail{}, bad("the file is too short to be Parquet")
+		return nil, tail, bad("the file is too short to be Parquet")
 	}
 	window := min(size, max(maxWindow, 8))
 	if lim.FooterBytes < window-8 {
@@ -141,35 +141,46 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	}
 	win := make([]byte, window)
 	var head []byte
-	if window < size {
+	if window < size && deferHead {
+		// The caller establishes the head later (checkPart): the window
+		// alone is read now, the head taken to be PAR1 until then, and
+		// every verdict reached before then judged again with the real
+		// head (magicFirst).
+		tail.headDeferred = true
+		if err := readFull(at, win, size-window); err != nil {
+			return nil, tail, footerError(ctx, name, err)
+		}
+		head = []byte("PAR1")
+	} else if window < size {
 		// The head magic and the window are read together; a failure of
 		// the head is reported first, as when it was read first.
 		head = make([]byte, 4)
 		ranges := []ReadRange{{Off: 0, Buf: head}, {Off: size - window, Buf: win}}
 		for _, err := range readRanges(ctx, rangeFile{file: file, name: name, reports: reports, concurrency: concurrency}, ranges, st) {
 			if err != nil {
-				return nil, footerTail{}, footerError(ctx, name, err)
+				return nil, tail, footerError(ctx, name, err)
 			}
 		}
 	} else if err := readFull(at, win, size-window); err != nil {
-		return nil, footerTail{}, footerError(ctx, name, err)
+		return nil, tail, footerError(ctx, name, err)
 	}
+	tail.data, tail.off = win, size-window
 	if head == nil {
 		head = win[:4:4]
 	}
-	tail := win[window-8:]
-	if string(head) == "PARE" || string(tail[4:]) == "PARE" {
-		return nil, footerTail{}, errEncrypted()
+	trailer := win[window-8:]
+	if string(head) == "PARE" || string(trailer[4:]) == "PARE" {
+		return nil, tail, errEncrypted()
 	}
-	if string(head) != "PAR1" || string(tail[4:]) != "PAR1" {
-		return nil, footerTail{}, bad("the file does not begin and end with PAR1")
+	if string(head) != "PAR1" || string(trailer[4:]) != "PAR1" {
+		return nil, tail, bad("the file does not begin and end with PAR1")
 	}
-	n := int64(binary.LittleEndian.Uint32(tail[:4]))
+	n := int64(binary.LittleEndian.Uint32(trailer[:4]))
 	if n > size-12 {
-		return nil, footerTail{}, bad("the footer length %d does not fit in the file", n)
+		return nil, tail, bad("the footer length %d does not fit in the file", n)
 	}
 	if n > lim.FooterBytes {
-		return nil, footerTail{}, exceeded(LimitFooterBytes, n, lim.FooterBytes, "part %s: the footer", name)
+		return nil, tail, exceeded(LimitFooterBytes, n, lim.FooterBytes, "part %s: the footer", name)
 	}
 	var raw []byte
 	if n+8 <= window {
@@ -179,23 +190,23 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 		raw = make([]byte, n+8)
 		copy(raw[n+8-window:], win)
 		if err := readFull(at, raw[:n+8-window], size-8-n); err != nil {
-			return nil, footerTail{}, footerError(ctx, name, err)
+			return nil, tail, footerError(ctx, name, err)
 		}
 	}
 	var meta format.FileMetaData
 	used, err := decodeBounded(raw[:n], &meta, lim.MetadataMemory)
 	switch {
 	case errors.Is(err, ErrLimitExceeded):
-		return nil, footerTail{}, fmt.Errorf("part %s: footer: %w", name, err)
+		return nil, tail, fmt.Errorf("part %s: footer: %w", name, err)
 	case err != nil:
-		return nil, footerTail{}, bad("decode the footer: %v", err)
+		return nil, tail, bad("decode the footer: %v", err)
 	case int64(used) == n-28:
-		return nil, footerTail{}, errEncrypted() // a signed plaintext footer
+		return nil, tail, errEncrypted() // a signed plaintext footer
 	case int64(used) != n:
-		return nil, footerTail{}, bad("the footer has %d bytes after its metadata", n-int64(used))
+		return nil, tail, bad("the footer has %d bytes after its metadata", n-int64(used))
 	}
 	if err := checkMetadata(name, &meta); err != nil {
-		return nil, footerTail{}, err
+		return nil, tail, err
 	}
 	// parquet-go decodes the footer again from the bytes it reads. When the
 	// checked footer holds what the dependency would refuse or mishandle
@@ -205,7 +216,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	if forParquetGo(&meta) {
 		encoded, err := thrift.Marshal(new(thrift.CompactProtocol), &meta)
 		if err != nil {
-			return nil, footerTail{}, bad("re-encode the footer: %v", err)
+			return nil, tail, bad("re-encode the footer: %v", err)
 		}
 		footer = binary.LittleEndian.AppendUint32(encoded, uint32(len(encoded)))
 		footer = append(footer, "PAR1"...)
@@ -230,9 +241,10 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	f, err := parquet.OpenFile(retained, end,
 		parquet.SkipPageIndex(true), parquet.SkipBloomFilters(true), parquet.ReadBufferSize(4096))
 	if err != nil {
-		return nil, footerTail{}, footerError(ctx, name, err)
+		return nil, tail, footerError(ctx, name, err)
 	}
-	return f, footerTail{off: size - window, data: win, footerStart: size - 8 - n}, nil
+	tail.off, tail.footerStart = size-window, size-8-n
+	return f, tail, nil
 }
 
 // footerTail is the end of a part that readFooter read: window data at
@@ -240,6 +252,8 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 type footerTail struct {
 	off, footerStart int64
 	data             []byte
+	// headDeferred is set when the head was not read (deferHead).
+	headDeferred bool
 }
 
 // footerError classifies an error reading a footer: the environment's own
@@ -720,4 +734,44 @@ func leafCount(schema []format.SchemaElement) int {
 		}
 	}
 	return n
+}
+
+// magicFirst judges again, with the part's real head, an error reached
+// while its head was deferred (readFooter's deferHead): every verdict on
+// the data, and every limit, came after the head magic was checked when
+// the head was read first, so the head's verdict comes first. The error
+// of the environment or the context is kept as is.
+func magicFirst(ctx context.Context, name string, file io.ReaderAt, size int64, tail footerTail, st *ReadStats, err error) error {
+	var se *storageError
+	if ctx.Err() != nil || errors.As(err, &se) || errors.Is(err, ErrClosed) {
+		return err
+	}
+	at := storageReader{r: bind(ctx, file), st: st, src: &sourceInfo{name: name, unreported: !reportsIO(file)}}
+	head := make([]byte, 4)
+	if e := readFull(at, head, 0); e != nil {
+		return footerError(ctx, name, e)
+	}
+	return headVerdict(ctx, name, at, size, head, tail, err)
+}
+
+// headVerdict returns readFooter's verdict on a part's magic given its
+// head, or err when the head is PAR1. The end's magic is taken from tail,
+// or read when tail lacks it.
+func headVerdict(ctx context.Context, name string, at io.ReaderAt, size int64, head []byte, tail footerTail, err error) error {
+	if string(head) == "PAR1" {
+		return err
+	}
+	end := []byte(nil)
+	if len(tail.data) >= 4 && tail.off+int64(len(tail.data)) == size {
+		end = tail.data[len(tail.data)-4:]
+	} else {
+		end = make([]byte, 4)
+		if e := readFull(at, end, size-4); e != nil {
+			return footerError(ctx, name, e)
+		}
+	}
+	if string(head) == "PARE" || string(end) == "PARE" {
+		return errEncrypted()
+	}
+	return refusePart(CodeInvalidFooter, name, -1, "the file does not begin and end with PAR1")
 }

@@ -373,6 +373,16 @@ func scanRows(ctx context.Context, plan *Plan, st *ReadStats, fn func(Row) error
 	})
 }
 
+// memoNeutral returns st with the key pages it reused from its request's
+// memo counted as read: for comparing the stats of paths that keep
+// different pages (a scan's scratch keeps none), by the bytes each
+// fetched or reused.
+func memoNeutral(st ReadStats) ReadStats {
+	st.SourceBytes += st.RequestMemoHitBytes
+	st.SourceReads, st.UnreportedIOCalls, st.RequestMemoHitBytes = 0, 0, 0
+	return st
+}
+
 // selectionOf returns the selection of a query, for planning it.
 func selectionOf(q Query) Selection { return q.Selection }
 

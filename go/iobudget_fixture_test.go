@@ -78,13 +78,16 @@ type ioFixture struct {
 	indexRegion map[string][2]int64
 }
 
-var ioSchema = parquet.NewSchema("object", parquet.Group{
-	"key":           parquet.Encoded(parquet.String(), &parquet.DeltaByteArray),
-	"size":          parquet.Int(64),
-	"last_modified": parquet.Timestamp(parquet.Microsecond),
-	"etag":          parquet.Encoded(parquet.String(), &parquet.Plain),
-	"storage_class": parquet.String(), // the writer's default: dictionary
-})
+// ioObject is the schema, in swath's column order: the key first.
+type ioObject struct {
+	Key          string `parquet:"key,delta"`
+	Size         int64  `parquet:"size"`
+	LastModified int64  `parquet:"last_modified,timestamp(microsecond)"`
+	ETag         string `parquet:"etag,plain"`
+	StorageClass string `parquet:"storage_class"` // the writer's default: dictionary
+}
+
+var ioSchema = parquet.SchemaOf(ioObject{})
 
 // ioColumns is the two-column projection of the lookups.
 var ioColumns = []string{"size", "last_modified"}
@@ -126,8 +129,8 @@ func tenantKeys(rng *rand.Rand, t, n, perFolder int) []string {
 	return keys
 }
 
-// objectRow appends one row's values, in the schema's column order (etag,
-// key, last_modified, size, storage_class), with values drawn as the
+// objectRow appends one row's values, in the schema's column order (key,
+// size, last_modified, etag, storage_class), with values drawn as the
 // audit drew them.
 func objectRow(rng *rand.Rand, key string, row parquet.Row) parquet.Row {
 	size := int64(math.Exp(rng.NormFloat64()*2.5 + 9))
@@ -146,10 +149,10 @@ func objectRow(rng *rand.Rand, key string, row parquet.Row) parquet.Row {
 	}
 	mtime := 1_704_067_200_000_000 + rng.Int64N(2*365*86400*1_000_000)
 	return append(row[:0],
-		parquet.ByteArrayValue([]byte(etag)).Level(0, 0, 0),
-		parquet.ByteArrayValue([]byte(key)).Level(0, 0, 1),
+		parquet.ByteArrayValue([]byte(key)).Level(0, 0, 0),
+		parquet.Int64Value(size).Level(0, 0, 1),
 		parquet.Int64Value(mtime).Level(0, 0, 2),
-		parquet.Int64Value(size).Level(0, 0, 3),
+		parquet.ByteArrayValue([]byte(etag)).Level(0, 0, 3),
 		parquet.ByteArrayValue([]byte(class)).Level(0, 0, 4),
 	)
 }

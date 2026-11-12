@@ -247,6 +247,9 @@ func TestBatchKeyReuseEquivalence(t *testing.T) {
 				traceBatches(t, func(fn func(*Batch) error) (ReadStats, error) { return scan(keyReuse{}, fn) })
 				on := traceBatches(t, func(fn func(*Batch) error) (ReadStats, error) { return scan(keyReuse{}, fn) })
 				off := traceBatches(t, func(fn func(*Batch) error) (ReadStats, error) { return scan(keyReuse{off: true}, fn) })
+				// Without key reuse, the walker's pages are its own, kept in the
+				// request's memo: compare the bytes each fetched or reused.
+				on.stats, off.stats = memoNeutral(on.stats), memoNeutral(off.stats)
 				if !reflect.DeepEqual(on, off) {
 					t.Fatalf("%s: reusing key pages differs: lens %v / %v, stats %+v / %+v", label, on.lens, off.lens, on.stats, off.stats)
 				}

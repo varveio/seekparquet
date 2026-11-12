@@ -69,14 +69,25 @@ func checkStats(t *testing.T, name string, st, want ReadStats, src *accessSource
 	if src.reads.Load() != st.SourceReads || src.bytes.Load() != st.SourceBytes {
 		t.Errorf("%s: Source saw %d reads, %d bytes; stats say %d, %d", name, src.reads.Load(), src.bytes.Load(), st.SourceReads, st.SourceBytes)
 	}
-	// Bytes follow from the encoding, not from the geometry.
+	// Bytes follow from the encoding, not from the geometry: want says
+	// only whether pages are reused from the request's memo (any value).
 	want.SourceBytes = st.SourceBytes
+	if (want.RequestMemoHitBytes != 0) != (st.RequestMemoHitBytes != 0) {
+		t.Errorf("%s: %d bytes reused from the request's pages, want some: %v", name, st.RequestMemoHitBytes, want.RequestMemoHitBytes != 0)
+	}
+	want.RequestMemoHitBytes = st.RequestMemoHitBytes
 	// The counting Source does not report its physical requests: every
 	// read is a storage call it leaves unreported.
 	if st.UnreportedIOCalls != st.SourceReads {
 		t.Errorf("%s: %d unreported storage calls for %d reads", name, st.UnreportedIOCalls, st.SourceReads)
 	}
 	want.UnreportedIOCalls = st.UnreportedIOCalls
+	// A key page index's ColumnIndex and OffsetIndex are read together,
+	// through concurrent ReadAt calls on this Source.
+	if st.ScalarFallbackReads != 2*st.IndexLoads {
+		t.Errorf("%s: %d reads together for %d index loads", name, st.ScalarFallbackReads, st.IndexLoads)
+	}
+	want.ScalarFallbackReads = st.ScalarFallbackReads
 	if st != want {
 		t.Errorf("%s:\n got %+v\nwant %+v", name, st, want)
 	}
@@ -166,13 +177,14 @@ func TestReadStatsDelimitedListing(t *testing.T) {
 	// "d0" is above every part's maximum key. Pages: 1+3+1+1+1 = 7 of 20 keys;
 	// groups opened: 0, 3, 5, 4 (4 loads), then 3 again (routing ended in
 	// it), 4 and 5 again (reuses), 7 in all; four resumes at a successor;
-	// reads: 4 loads x 2 + 7 pages.
+	// reads: 4 loads x 2 + 5 pages: the walk's page 0 of groups 4 and 5 is
+	// the one their routing probes read, taken from the request's memo.
 	entries := list(&st, 100, nil)
 	if len(entries) != 4 {
 		t.Fatalf("%d entries", len(entries))
 	}
 	checkStats(t, "cold listing", st, ReadStats{KeyPagesDecoded: 7, KeysDecoded: 140, RowGroupsOpened: 7, IndexLoads: 4,
-		PageIndexSeeks: 2, PrefixSkips: 4, SourceReads: 15}, src)
+		PageIndexSeeks: 2, PrefixSkips: 4, SourceReads: 13, RequestMemoHitBytes: 1}, src)
 
 	// The same listing warm: groups 0, 3, 4 and 5 are known (first keys
 	// decoded, indexes loaded), group 1 is not. From the start, group 0's

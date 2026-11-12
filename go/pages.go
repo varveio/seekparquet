@@ -142,6 +142,8 @@ type chunk struct {
 	// ahead, when set, holds key pages a listing read ahead: located takes
 	// a page's bytes from it instead of reading them (readAhead).
 	ahead *readAhead
+	// memo, when set, holds the key pages the request read (pageMemo).
+	memo *pageMemo
 }
 
 // openChunk checks a column chunk before any of its pages is read: a codec
@@ -188,7 +190,23 @@ func (c *chunk) located(off, size, rows int64) (*format.PageHeader, int64, []byt
 	if c.ahead != nil {
 		pre, _ = c.ahead.take(c.p, off, size)
 	}
-	return c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, rows, c.end, c.stats, c.scratch, pre)
+	if pre == nil {
+		if kept := c.memo.get(c.p, off, size); kept != nil {
+			c.stats.RequestMemoHitBytes += size
+			pre = kept
+			// A scan decodes into its scratch, which its next page
+			// overwrites: it decodes a copy, as if it had read the page.
+			if c.scratch != nil {
+				pre = c.scratch.readBuffer(int(size))
+				copy(pre, kept)
+			}
+		}
+	}
+	h, n, raw, err := c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, rows, c.end, c.stats, c.scratch, pre)
+	if err == nil && pre == nil && c.memo != nil && c.scratch == nil {
+		c.memo.put(c.p, off, raw)
+	}
+	return h, n, raw, err
 }
 
 // payload returns the page data after a header of length n at off, from
@@ -1253,6 +1271,11 @@ func (p *part) loadOffsetIndex(ctx context.Context, physical, column int, st *Re
 	if err != nil {
 		return nil, err
 	}
+	return p.decodeOffsetIndex(raw)
+}
+
+// decodeOffsetIndex decodes an OffsetIndex, bounded like a footer.
+func (p *part) decodeOffsetIndex(raw []byte) (*format.OffsetIndex, error) {
 	var index format.OffsetIndex
 	if _, err := decodeBounded(raw, &index, p.r.limits.MetadataMemory); err != nil {
 		return nil, err
@@ -1260,14 +1283,23 @@ func (p *part) loadOffsetIndex(ctx context.Context, physical, column int, st *Re
 	return &index, nil
 }
 
+// checkIndexExtent checks that a page index of length bytes at off lies in
+// the file and within Limits.PageIndexBytes.
+func (p *part) checkIndexExtent(physical int, off int64, length int32) error {
+	if off < 0 || length <= 0 || off > p.size-int64(length) {
+		return refusePart(CodeInvalidPageIndex, p.name, physical, "a page index lies outside the file")
+	}
+	if int64(length) > p.r.limits.PageIndexBytes {
+		return exceeded(LimitPageIndexBytes, int64(length), p.r.limits.PageIndexBytes, "part %s: a page index", p.name)
+	}
+	return nil
+}
+
 // readIndexBytes reads a page index of length bytes at off, after checking
 // that it lies in the file and within Limits.PageIndexBytes.
 func (p *part) readIndexBytes(ctx context.Context, physical int, off int64, length int32, st *ReadStats) ([]byte, error) {
-	if off < 0 || length <= 0 || off > p.size-int64(length) {
-		return nil, refusePart(CodeInvalidPageIndex, p.name, physical, "a page index lies outside the file")
-	}
-	if int64(length) > p.r.limits.PageIndexBytes {
-		return nil, exceeded(LimitPageIndexBytes, int64(length), p.r.limits.PageIndexBytes, "part %s: a page index", p.name)
+	if err := p.checkIndexExtent(physical, off, length); err != nil {
+		return nil, err
 	}
 	if raw := p.retainedBytes(off, int64(length)); raw != nil {
 		if st != nil {

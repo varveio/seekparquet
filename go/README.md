@@ -299,7 +299,13 @@ touches, independent of the part count. The page-index bytes that read holds (a 
 OffsetIndexes sit between its data and its footer) are kept, within `Limits.MetadataCacheMemory` (128 MiB,
 least recently used parts evicted first), and serve the part's later index loads without a read
 (`ReadStats.MetadataHitBytes`); an index is still decoded and checked only when a request needs it.
-`ReadPolicy.DisableSpeculation` reads a 64 KiB window and keeps only the footer. Within the part, a read is routed by a binary search over its row groups' first
+`ReadPolicy.DisableSpeculation` reads a 64 KiB window and keeps only the footer. A key column chunk's
+ColumnIndex and OffsetIndex not kept that way are read together. Within one request, a key page read twice
+(a routing probe's first page that the walk then reaches, a cursor's page) is read once and taken from what the
+request kept the second time (`ReadStats.RequestMemoHitBytes`, at most 4 MiB a request). `Verify` checks up to
+`ReadPolicy.Concurrency` parts at once, each in two rounds of reads (its end; then its row groups' first key
+pages and its last key page, its head merged into the first when that page begins within 64 KiB), and reports
+the first fault in manifest order; a second `Verify` of the same `Dataset` reads nothing. Within the part, a read is routed by a binary search over its row groups' first
 keys; the first time a row group is needed, its key page index is loaded and its first key page decoded, and
 both are kept (`Limits.IndexMemory` accounts for key-page entries, their bound bytes,
 and decoded row-group first-key bytes). This budget does not include allocator overhead,

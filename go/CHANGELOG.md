@@ -21,6 +21,12 @@ versioning; while it is v0, minor versions may change the API.
   `Limits.MetadataCacheMemory` (default 128 MiB, least recently used parts evicted, never a failure): later
   ColumnIndex and OffsetIndex loads of the part read nothing. `ReadPolicy.DisableSpeculation` restores the
   64 KiB window and keeps only the footer; answers are the same either way.
+- A key ColumnIndex and OffsetIndex not retained are read together. A request reads each key page once:
+  a page it reads again (a routing probe's page the walk reaches, a cursor's page) comes from what it kept
+  (new `ReadStats.RequestMemoHitBytes`, at most 4 MiB a request). `Verify` checks parts concurrently (at most
+  `ReadPolicy.Concurrency`), fetching each part's first key pages and last key page together, its head merged
+  into the first, and still reports the first fault in manifest and row-group order; checked first keys and last
+  pages are not checked again, so a repeated `Verify` reads nothing.
 
 - **Breaking: the read API is redesigned** before any stability promise (no deprecated aliases):
   - Requests: `Range`, `KeyRange` and `PrefixRange` are replaced by `Span` (`KeySpan`, exactly

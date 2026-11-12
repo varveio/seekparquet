@@ -101,6 +101,11 @@ type ReadStats struct {
 	// indexes the reader served from the part metadata it retained
 	// (ReadPolicy.MetadataPrefetchBytes) instead of reading them.
 	ByteCacheHitBytes, MetadataHitBytes int64
+	// RequestMemoHitBytes are the bytes of key pages the request had read
+	// already and took from what it kept of them instead of reading them
+	// again: a routing probe's page that the walk reached, a cursor's page,
+	// a page Verify fetched together with others.
+	RequestMemoHitBytes int64
 	// UnreportedIOCalls is the number of storage calls (ReadAt,
 	// ReadRanges, Open, OpenSized, ReadManifest) made on a source or file
 	// that does not report its physical requests: the physical counters
@@ -155,6 +160,7 @@ func (st *ReadStats) Add(o ReadStats) {
 	st.PlannedOverReadBytes += o.PlannedOverReadBytes
 	st.ByteCacheHitBytes += o.ByteCacheHitBytes
 	st.MetadataHitBytes += o.MetadataHitBytes
+	st.RequestMemoHitBytes += o.RequestMemoHitBytes
 	st.UnreportedIOCalls += o.UnreportedIOCalls
 	// A peak of several operations is the largest of theirs, not a
 	// measurement of their concurrent peak.

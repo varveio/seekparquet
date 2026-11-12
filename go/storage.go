@@ -292,7 +292,8 @@ type ReadPolicy struct {
 	// Concurrency bounds the logical ranges one operation has outstanding
 	// at once when the reader issues several reads together, through a
 	// RangeReader or, without one, through concurrent ReadAt calls on a
-	// ContextBinder view. Default 64.
+	// ContextBinder view; Verify checks at most this many parts at once.
+	// Default 64.
 	Concurrency int
 	// MetadataPrefetchBytes is the speculative read of a part's end when
 	// the part is first checked: the footer and, when they fit, its page

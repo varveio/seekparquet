@@ -55,6 +55,9 @@ func (r *reader) loadKeyPages(ctx context.Context, g groupRef, log *pageLog, st 
 	if err != nil {
 		return nil, err
 	}
+	if log != nil {
+		c.memo = log.pageMemo()
+	}
 	return &keyPages{r: r, part: p, g: g, index: index, chunk: c, at: -1, log: log}, nil
 }
 

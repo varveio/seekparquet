@@ -44,7 +44,7 @@ type reader struct {
 	// fetch opens part i, checks it against its manifest entry and reads
 	// its footer, the first time a read touches it; nil when the parts were
 	// given open.
-	fetch func(ctx context.Context, i int, st *ReadStats) (partInput, error)
+	fetch func(ctx context.Context, i int, st *ReadStats, deferHead bool) (partInput, error)
 	// release, when set, is closed with the reader.
 	release io.Closer
 	// columnsMu guards columns: the signature of every top-level column of
@@ -136,6 +136,9 @@ type part struct {
 	// chunks, by physical row group and column, published on first use
 	// within Limits.OffsetIndexMemory (openColumn, reader.keepLocations).
 	locs [][]atomic.Pointer[[]pageLoc]
+	// lastChecked is set once Verify decoded and checked the part's last
+	// key page against its bounds.
+	lastChecked atomic.Bool
 	// meta holds the page-index bytes of the part's end that its check
 	// read, nil when none are kept (reader.retainTail); metaUsed is when a
 	// load last used them, on the reader's metaClock.
@@ -295,6 +298,14 @@ func (r *reader) checkBounds(i int) error {
 // a limit), and any failure once ctx is done, are not kept, so a later read
 // checks the part again.
 func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) {
+	return r.partWith(ctx, i, st, nil)
+}
+
+// partWith is part with a hook for a check that defers the part's head:
+// when finish is not nil, a part's end is read alone (readFooter's
+// deferHead), and finish, called before the rest of the check, must
+// establish the head (Verify merges it into its first page reads).
+func (r *reader) partWith(ctx context.Context, i int, st *ReadStats, finish func(*partInput) error) (*part, error) {
 	p := r.parts[i]
 	if p.ready.Load() {
 		return p, nil
@@ -311,7 +322,7 @@ func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) 
 	case p.err != nil:
 		return nil, detach(p.err)
 	}
-	if err := r.checkPart(ctx, i, st); err != nil {
+	if err := r.checkPart(ctx, i, st, finish); err != nil {
 		if ctx.Err() != nil { // a check cut short is not an outcome: the part stays unchecked
 			return nil, ctx.Err()
 		}
@@ -331,13 +342,19 @@ func (r *reader) part(ctx context.Context, i int, st *ReadStats) (*part, error) 
 
 // checkPart opens part i when the reader fetches its parts, checks it and
 // fills it in. The caller holds p.check.
-func (r *reader) checkPart(ctx context.Context, i int, st *ReadStats) error {
+func (r *reader) checkPart(ctx context.Context, i int, st *ReadStats, finish func(*partInput) error) error {
 	p := r.parts[i]
 	in := partInput{name: p.name, file: p.file, size: p.size, footer: p.footer}
 	if r.fetch != nil { // counts the part opened once the Source opens it
 		var err error
-		if in, err = r.fetch(ctx, i, st); err != nil {
+		if in, err = r.fetch(ctx, i, st, finish != nil); err != nil {
 			return err
+		}
+		if in.tail.headDeferred {
+			if err := finish(&in); err != nil {
+				closeFile(in.file)
+				return err
+			}
 		}
 	} else {
 		st.PartsOpened++
@@ -354,7 +371,7 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 	footer := in.footer
 	if footer == nil {
 		var err error
-		if footer, in.tail, err = readFooter(ctx, in.name, in.file, in.size, &r.limits, st, r.policy.tailWindow(), r.policy.Concurrency); err != nil {
+		if footer, in.tail, err = readFooter(ctx, in.name, in.file, in.size, &r.limits, st, r.policy.tailWindow(), r.policy.Concurrency, false); err != nil {
 			return err
 		}
 	}
@@ -449,20 +466,25 @@ func (r *reader) checkParts(ctx context.Context, st *ReadStats) error {
 
 // verify checks every part, then decodes every row group's first key page
 // and each bounded part's last key page, in dataset order, as one request
-// (CHECK-3).
+// (CHECK-3). Parts are checked, and the pages it needs fetched, by at most
+// ReadPolicy.Concurrency parts at once (verifyFetch); then the checks and
+// decodes run in order, the pages taken from the request's memo, so that
+// the first fault reported is the first in dataset and check order,
+// whatever order the reads completed in. A part whose last page it
+// checked once is not checked again.
 func (r *reader) verify(ctx context.Context) error {
 	var st ReadStats
-	if err := r.checkParts(ctx, &st); err != nil {
+	log := pageLog{unique: r.key.Unique}
+	if err := r.verifyFetch(ctx, log.pageMemo()); err != nil {
 		return err
 	}
-	log := pageLog{unique: r.key.Unique}
 	for i, p := range r.parts {
 		for j := range p.groups {
 			g := groupRef{i, j}
 			if _, err := r.first(ctx, g, &log, &st); err != nil {
 				return err
 			}
-			if j == len(p.groups)-1 && p.maxKey != nil {
+			if j == len(p.groups)-1 && p.maxKey != nil && !p.lastChecked.Load() {
 				k, err := r.keyPages(ctx, g, &log, &st)
 				if err != nil {
 					return err
@@ -470,8 +492,204 @@ func (r *reader) verify(ctx context.Context) error {
 				if err := k.decode(len(k.index.pages) - 1); err != nil {
 					return err
 				}
+				p.lastChecked.Store(true)
 			}
 		}
+	}
+	return nil
+}
+
+// verifyFetch checks the parts no read has checked, and fetches the key
+// pages Verify will decode into memo, by at most Concurrency parts at once,
+// their reads together within the operation's limit. A part's end is read
+// first, alone; its head is read with its first row group's first key
+// page, as one range when that page begins within 64 KiB of the head
+// (verifyHead). It returns the check failure of the first part in
+// manifest order that failed; a page it could not fetch is read again,
+// and fails, when Verify reaches it.
+func (r *reader) verifyFetch(ctx context.Context, memo *pageMemo) error {
+	ctx = withOpLimit(ctx, r.policy.Concurrency)
+	errs := make([]error, len(r.parts))
+	slots := make(chan struct{}, r.policy.Concurrency)
+	var wg sync.WaitGroup
+	for i, p := range r.parts {
+		if p.ready.Load() && !r.wantsProbes(p) {
+			continue
+		}
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			errs[i] = ctx.Err()
+			continue
+		}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			var st ReadStats // counted nowhere: Verify reports none
+			if p.ready.Load() {
+				_ = r.fetchProbes(ctx, p, p.file, p.size, p.footer, p.retainedBytes, nil, memo, &st)
+				return
+			}
+			_, errs[i] = r.partWith(ctx, i, &st, func(in *partInput) error {
+				return r.verifyHead(ctx, p, in, memo, &st)
+			})
+		})
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// wantsProbes reports whether Verify would read a page of checked part p:
+// a row group's first key page not yet known, or its last.
+func (r *reader) wantsProbes(p *part) bool {
+	if p.maxKey != nil && !p.lastChecked.Load() && len(p.groups) > 0 {
+		return true
+	}
+	for _, g := range p.groups {
+		if g.first.Load() == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// verifyHead establishes part p's deferred head while its check is in
+// progress: it reads the head with the key pages Verify will decode
+// (fetchProbes), and judges the head as readFooter would have.
+func (r *reader) verifyHead(ctx context.Context, p *part, in *partInput, memo *pageMemo, st *ReadStats) error {
+	tail := in.tail
+	lookup := func(off, length int64) []byte {
+		if off < tail.off || off-tail.off > int64(len(tail.data))-length || length < 0 {
+			return nil
+		}
+		return tail.data[off-tail.off : off-tail.off+length]
+	}
+	head := make([]byte, 4)
+	if err := r.fetchProbes(ctx, p, in.file, in.size, in.footer, lookup, head, memo, st); err != nil {
+		return footerError(ctx, in.name, err)
+	}
+	at := storageReader{r: bind(ctx, in.file), st: st, src: &sourceInfo{name: in.name, unreported: !reportsIO(in.file)}}
+	return headVerdict(ctx, in.name, at, in.size, head, tail, nil)
+}
+
+// headMergeGap is how far into a part its first key page may begin for
+// Verify to read the head with it in one range.
+const headMergeGap = 64 << 10
+
+// fetchProbes reads together, into memo, the key pages Verify will decode
+// in part p whose footer is footer: the first page of each row group whose
+// first key is not known and, when p has bounds and they were not checked,
+// its last page; and, when head is not nil, the part's 4-byte head into
+// head, merged into the first group's page when it begins within
+// headMergeGap. Page locations come from the key OffsetIndexes that lookup
+// finds in retained bytes, decoded but not checked: a page whose location
+// cannot be found this way is not fetched, and Verify reads it itself,
+// checking its index first. Only the pages within requestMemoBytes are
+// fetched. It returns the head's error; a page that fails is not kept.
+func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, size int64, footer *parquet.File, lookup func(off, length int64) []byte, head []byte, memo *pageMemo, st *ReadStats) error {
+	type probe struct{ off, size int64 }
+	var probes []probe
+	leaf, ok := footer.Schema().Lookup(r.key.Column)
+	groups := footer.Metadata().RowGroups
+	lastGroup := -1
+	for g := range groups {
+		if groups[g].NumRows > 0 {
+			lastGroup = g
+		}
+	}
+	located := func(g int, last bool) (probe, bool) {
+		if !ok || leaf.ColumnIndex >= len(groups[g].Columns) {
+			return probe{}, false
+		}
+		c := &groups[g].Columns[leaf.ColumnIndex]
+		raw := lookup(c.OffsetIndexOffset, int64(c.OffsetIndexLength))
+		if raw == nil {
+			return probe{}, false
+		}
+		var index format.OffsetIndex
+		if _, err := decodeBounded(raw, &index, r.limits.MetadataMemory); err != nil || len(index.PageLocations) == 0 {
+			return probe{}, false
+		}
+		loc := index.PageLocations[0]
+		if last {
+			loc = index.PageLocations[len(index.PageLocations)-1]
+		}
+		n := int64(loc.CompressedPageSize)
+		if n <= 0 || loc.Offset < 0 || loc.Offset > size-n || n > r.limits.PageBytes+r.limits.headerBytes() {
+			return probe{}, false
+		}
+		return probe{loc.Offset, n}, true
+	}
+	known := func(physical int) bool {
+		if !p.ready.Load() {
+			return false
+		}
+		for _, grp := range p.groups {
+			if grp.physical == physical {
+				return grp.first.Load() != nil
+			}
+		}
+		return true
+	}
+	budget := requestMemoBytes / max(1, int64(len(r.parts)))
+	for g := range groups {
+		if groups[g].NumRows == 0 || known(g) {
+			continue
+		}
+		if pr, ok := located(g, false); ok {
+			probes = append(probes, pr)
+		}
+	}
+	if p.maxKey != nil && !p.lastChecked.Load() && lastGroup >= 0 {
+		if pr, ok := located(lastGroup, true); ok {
+			probes = append(probes, pr)
+		}
+	}
+	var ranges []ReadRange
+	var kept []probe
+	headRange := -1
+	if head != nil {
+		ranges = append(ranges, ReadRange{Off: 0, Buf: head})
+		headRange = 0
+	}
+	total := int64(0)
+	for i, pr := range probes {
+		if total+pr.size > budget || memo.get(p, pr.off, pr.size) != nil {
+			continue
+		}
+		total += pr.size
+		if i == 0 && head != nil && pr.off >= 4 && pr.off+pr.size <= headMergeGap {
+			ranges[0].Buf = make([]byte, pr.off+pr.size)
+		} else {
+			ranges = append(ranges, ReadRange{Off: pr.off, Buf: make([]byte, pr.size)})
+		}
+		kept = append(kept, pr)
+	}
+	if len(ranges) == 0 {
+		return nil
+	}
+	errs := readRanges(ctx, rangeFile{file: file, name: p.name, reports: reportsIO(file), concurrency: r.policy.Concurrency}, ranges, st)
+	if headRange == 0 && (errs == nil || errs[0] == nil) {
+		copy(head, ranges[0].Buf[:4])
+	}
+	// Keep each fetched page by its extent.
+	for _, pr := range kept {
+		for j, rg := range ranges {
+			if errs != nil && errs[j] != nil {
+				continue
+			}
+			if rg.Off <= pr.off && pr.off+pr.size <= rg.Off+int64(len(rg.Buf)) {
+				memo.put(p, pr.off, rg.Buf[pr.off-rg.Off:pr.off-rg.Off+pr.size:pr.off-rg.Off+pr.size])
+				break
+			}
+		}
+	}
+	if headRange == 0 && errs != nil && errs[0] != nil {
+		return errs[0]
 	}
 	return nil
 }

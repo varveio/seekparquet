@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"sync"
 	"unicode/utf8"
 	"unsafe"
 
@@ -74,7 +75,7 @@ func (p *part) loadKeyIndex(ctx context.Context, physical int, st *ReadStats, re
 	if !ok || end > p.size {
 		return nil, refusePart(CodeInvalidFooter, p.name, physical, "column chunk %d lies outside the file", p.key.index)
 	}
-	raw, err := p.readIndexBytes(ctx, physical, meta.ColumnIndexOffset, meta.ColumnIndexLength, st)
+	raw, rawOffsets, offsetsErr, err := p.readIndexPair(ctx, physical, meta, st)
 	if err != nil {
 		return nil, p.indexError(ctx, physical, "ColumnIndex", err)
 	}
@@ -82,9 +83,12 @@ func (p *part) loadKeyIndex(ctx context.Context, physical int, st *ReadStats, re
 	if _, err := decodeBounded(raw, &columns, p.r.limits.MetadataMemory); err != nil {
 		return nil, p.indexError(ctx, physical, "ColumnIndex", err)
 	}
-	offsets, err := p.loadOffsetIndex(ctx, physical, p.key.index, st)
-	if err != nil {
-		return nil, p.indexError(ctx, physical, "OffsetIndex", err)
+	var offsets *format.OffsetIndex
+	if offsetsErr == nil {
+		offsets, offsetsErr = p.decodeOffsetIndex(rawOffsets)
+	}
+	if offsetsErr != nil {
+		return nil, p.indexError(ctx, physical, "OffsetIndex", offsetsErr)
 	}
 	index, err := checkKeyIndex(&columns, offsets, p.footer.Metadata().RowGroups[physical].NumRows, start, end, p.utf8Key)
 	if err != nil {
@@ -170,6 +174,59 @@ type pageSpan struct {
 type pageLog struct {
 	unique bool
 	spans  []pageSpan
+	// memo holds the raw key pages the request read, so that it reads
+	// none twice; nil until it reads one.
+	memo *pageMemo
+}
+
+// requestMemoBytes bounds the raw key pages one request keeps (pageMemo).
+const requestMemoBytes = 4 << 20
+
+// pageMemo holds the raw extents of the key pages one request read, by
+// part and extent, up to requestMemoBytes: a page read again by the same
+// request (a routing probe's first page reached by the walk, a cursor's
+// page, a page Verify fetched ahead) is taken from it, then decoded and
+// checked as any page read. It is safe for concurrent use.
+type pageMemo struct {
+	mu    sync.Mutex
+	used  int64
+	pages map[memoKey][]byte
+}
+
+type memoKey struct {
+	p         *part
+	off, size int64
+}
+
+// memo returns the log's page memo, making it on first use.
+func (l *pageLog) pageMemo() *pageMemo {
+	if l.memo == nil {
+		l.memo = &pageMemo{pages: map[memoKey][]byte{}}
+	}
+	return l.memo
+}
+
+// get returns the size bytes at off of p the request read, or nil.
+func (m *pageMemo) get(p *part, off, size int64) []byte {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.pages[memoKey{p, off, size}]
+}
+
+// put keeps raw, the size bytes at off of p, when there is room. raw must
+// not change afterwards.
+func (m *pageMemo) put(p *part, off int64, raw []byte) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := memoKey{p, off, int64(len(raw))}
+	if _, ok := m.pages[key]; ok || m.used+int64(len(raw)) > requestMemoBytes {
+		return
+	}
+	m.pages[key] = raw
+	m.used += int64(len(raw))
 }
 
 // ordered reports whether page before may precede page after: after begins
@@ -203,4 +260,32 @@ func (l *pageLog) add(s pageSpan) error {
 	copy(l.spans[i+1:], l.spans[i:])
 	l.spans[i] = s
 	return nil
+}
+
+// readIndexPair reads a key column chunk's ColumnIndex and OffsetIndex,
+// both together (readRanges) when neither is retained and both lie in the
+// file within Limits.PageIndexBytes, and otherwise one after the other.
+// Errors keep the order of reading them in turn: the ColumnIndex's (err)
+// first; the OffsetIndex's (offsetsErr) is the caller's to report after
+// decoding the ColumnIndex.
+func (p *part) readIndexPair(ctx context.Context, physical int, meta *format.ColumnChunk, st *ReadStats) (columns, offsets []byte, offsetsErr, err error) {
+	ci, oi := [2]int64{meta.ColumnIndexOffset, int64(meta.ColumnIndexLength)}, [2]int64{meta.OffsetIndexOffset, int64(meta.OffsetIndexLength)}
+	together := p.checkIndexExtent(physical, ci[0], int32(ci[1])) == nil && p.checkIndexExtent(physical, oi[0], int32(oi[1])) == nil &&
+		p.retainedBytes(ci[0], ci[1]) == nil && p.retainedBytes(oi[0], oi[1]) == nil
+	if !together {
+		if columns, err = p.readIndexBytes(ctx, physical, meta.ColumnIndexOffset, meta.ColumnIndexLength, st); err != nil {
+			return nil, nil, nil, err
+		}
+		offsets, offsetsErr = p.readIndexBytes(ctx, physical, meta.OffsetIndexOffset, meta.OffsetIndexLength, st)
+		return columns, offsets, offsetsErr, nil
+	}
+	ranges := []ReadRange{{Off: ci[0], Buf: make([]byte, ci[1])}, {Off: oi[0], Buf: make([]byte, oi[1])}}
+	errs := readRanges(ctx, rangeFile{file: p.file, name: p.name, reports: p.reports, concurrency: p.r.policy.Concurrency}, ranges, st)
+	if errs != nil && errs[0] != nil {
+		return nil, nil, nil, errs[0]
+	}
+	if errs != nil && errs[1] != nil {
+		return ranges[0].Buf, nil, errs[1], nil
+	}
+	return ranges[0].Buf, ranges[1].Buf, nil, nil
 }

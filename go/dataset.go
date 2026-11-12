@@ -216,8 +216,8 @@ func OpenDataset(ctx context.Context, src Source, opt OpenOptions) (*Dataset, er
 		return nil, err
 	}
 	r.sourceReports = reports
-	r.fetch = func(ctx context.Context, i int, st *ReadStats) (partInput, error) {
-		return openDatasetPart(ctx, src, m, m.Parts[i], r, st)
+	r.fetch = func(ctx context.Context, i int, st *ReadStats, deferHead bool) (partInput, error) {
+		return openDatasetPart(ctx, src, m, m.Parts[i], r, st, deferHead)
 	}
 	return &Dataset{meta: meta, r: r}, nil
 }
@@ -295,27 +295,33 @@ func openPartFile(ctx context.Context, src Source, entry manifest.Part, reports 
 
 // openDatasetPart opens one part, checks its size, footer, stamps and row
 // count against its manifest entry, and returns it with its footer. It
-// closes the file when it fails.
-func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, r *reader, st *ReadStats) (_ partInput, err error) {
+// closes the file when it fails. With deferHead the part's head is not
+// read with its end when the window does not reach it (readFooter): the
+// caller establishes it (partInput.tail.headDeferred), and a verdict
+// reached before is judged again with the real head (magicFirst).
+func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, r *reader, st *ReadStats, deferHead bool) (_ partInput, err error) {
 	f, err := openPartFile(ctx, src, entry, r.sourceReports, st)
 	if err != nil {
 		return partInput{}, err
 	}
 	st.PartsOpened++
+	in := partInput{name: entry.Path, file: f, size: f.Size(), minKey: entry.MinKey, maxKey: entry.MaxKey, rows: entry.Rows}
 	defer func() {
 		if err != nil {
+			if in.tail.headDeferred {
+				err = magicFirst(ctx, entry.Path, f, in.size, in.tail, st, err)
+			}
 			_ = f.Close()
 		}
 	}()
-	in := partInput{name: entry.Path, file: f, size: f.Size(), minKey: entry.MinKey, maxKey: entry.MaxKey, rows: entry.Rows}
 	if in.size != entry.Bytes {
 		return partInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the file is %d bytes, its manifest entry %d", in.size, entry.Bytes)
 	}
-	footer, tail, err := readFooter(ctx, entry.Path, f, in.size, &r.limits, st, r.policy.tailWindow(), r.policy.Concurrency)
+	footer, tail, err := readFooter(ctx, entry.Path, f, in.size, &r.limits, st, r.policy.tailWindow(), r.policy.Concurrency, deferHead)
+	in.tail = tail
 	if err != nil {
 		return partInput{}, err
 	}
-	in.tail = tail
 	if err := checkStamps(entry.Path, footer, m); err != nil {
 		return partInput{}, err
 	}
@@ -385,6 +391,15 @@ func (d *Dataset) Metadata() Metadata { return d.meta.clone() }
 // a long-lived reader of local files, or a caller that wants every part's
 // fault before its first query. A part it refuses stays refused for later
 // reads. It does not read every row (CHECK-4) or check digests (PART-5).
+//
+// Parts are checked, and the pages Verify decodes fetched, by up to
+// ReadPolicy.Concurrency parts at once: a part's end first, then its row
+// groups' first key pages and its last key page together, the part's head
+// read with its first page when that page begins near it. The checks and
+// decodes themselves run in manifest and row-group order, so the fault
+// Verify reports is the first in that order, whichever read ends first. A
+// row group's first key and a part's last key page, once checked, are not
+// checked again by a later Verify of the same Dataset.
 func (d *Dataset) Verify(ctx context.Context) (err error) {
 	rctx, end, err := d.r.begin(ctx, nil)
 	if err != nil {
