@@ -314,7 +314,6 @@ leave it off there.
 | `ReadStats` via `Range.Stats`, `List.Stats` | `ReadStats` via a `Consumer<ReadStats>` argument | Same fields and counting rules. `groupsSkipped` is always 0: Java's listing has no row-group shortcut. The access paths differ, so counts for the same request can differ. |
 | `List.ReadAhead` | `ListQuery.readAhead()`, `ListQuery.Builder.readAhead(n)` | Same default (0, off), maximum (64), per-slot budget (1 MiB), pending bound (4 per slot), prediction and list-index rule. A negative value is `IllegalArgumentException` when the query is built, where Go returns `ErrInvalidRequest`. Reads run on virtual threads; a `Throwable` from the storage read is a failed read ahead, as a panic of Go's `ReadAt` is. Go ends the reads ahead before it projects values; Java projects each entry's values as it emits it, so it ends them when the listing returns. |
 | `ReadStats.ReadAheadReads`, `ReadAheadUnused`, `ReadAheadUnusedBytes` | `readAheadReads()`, `readAheadUnused()`, `readAheadUnusedBytes()` | Same counting rules. |
-| Footer reads | | Java reads a part's end once (bounded as Go bounds it, by the 64 KiB window and `maxFooterBytes`) and the footer bytes before that window when the footer is larger. It does not read or check the part's leading `PAR1`, where Go reads it apart for a part above 64 KiB and refuses a part that does not begin with it. |
 
 ### Options, limits and cancellation
 
@@ -477,6 +476,8 @@ request needs to route, so no part file is opened.
 before using any of its data checks:
 
 - that the part exists and has exactly the manifest's size;
+- that it begins and ends with `PAR1` (`PARE` at either end is `unsupported_encryption`, anything else
+  `invalid_footer`);
 - that each footer is readable, unencrypted and self-contained (no `file_path`), with row group
   counts that sum to the footer's row count, which must equal the manifest's;
 - the `seekparquet.*` stamps;
@@ -534,7 +535,7 @@ interval; decoded page boundaries are held for the request to check their relati
 **Cost model.** Opening reads the manifest: one read, whatever the number of parts. A cold request
 adds one footer read for each part it touches (the last 64 KiB, the whole part when smaller, never more than
 `maxFooterBytes` plus the 8-byte trailer; a footer larger than that costs a second read of the footer bytes before
-it), independent of the part
+it), and, for a part larger than that window, one 4-byte read of its leading magic (CHECK-1), independent of the part
 count, then the page indexes and pages above. The deterministic `SeekCostTest` counts a request's
 storage calls and requested bytes apart from those footer reads, independently of latency. With 1,000 ten-row groups, a cold final-key lookup uses 28 reads / 1,877 bytes (previously
 1,001 / 33,956,205); a warm lookup still uses one read. Paginating 10,000 identical keys in 100-row
@@ -557,8 +558,8 @@ data in the pages a request decodes is `invalid_parquet` (CHECK-5).
 - Writing datasets.
 - Projecting nested or repeated columns, or `INT96` (reported as `unsupported_projection`).
 - BROTLI, LZO and Hadoop-framed LZ4 compression, and modular encryption (reported as unsupported).
-  The Go reader also decodes BROTLI. Beyond the ENC-1 baseline, this reader decodes LZ4_RAW and, as the
-  Go reader does, `BYTE_STREAM_SPLIT` values of `FLOAT`, `DOUBLE`, `INT32`, `INT64` and
+  BROTLI is outside the ENC-1 baseline, which includes LZ4_RAW; the Go reader also decodes BROTLI. Beyond
+  the baseline, this reader decodes, as the Go reader does, `BYTE_STREAM_SPLIT` values of `FLOAT`, `DOUBLE`, `INT32`, `INT64` and
   `FIXED_LEN_BYTE_ARRAY` columns (another type is `invalid_parquet`).
 - The planned indexed-access conformance suite. The reader is index-guided, but passing the
   semantic suite does not prove that.
