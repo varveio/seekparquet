@@ -8,8 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -179,5 +181,113 @@ func TestCursorTokenPagination(t *testing.T) {
 		if !reflect.DeepEqual(entriesOf(entries), entriesOf(want)) {
 			t.Fatalf("list limit %d: %v, want %v", limit, entriesOf(entries), entriesOf(want))
 		}
+	}
+}
+
+// grammarRegexp translates the ABNF of spec/cursor-token-1.md into a
+// regular expression for rule: the subset that grammar uses, alternatives,
+// concatenation, repetition (*, *N), case-sensitive (%s"") and
+// case-insensitive ("") literals, %xAA-BB ranges, and ALPHA and DIGIT.
+func grammarRegexp(t *testing.T, spec, rule string) string {
+	t.Helper()
+	start := strings.Index(spec, "```\ntoken ")
+	end := strings.Index(spec[start+4:], "```")
+	if start < 0 || end < 0 {
+		t.Fatal("no grammar block in the specification")
+	}
+	rules := map[string]string{}
+	for _, line := range strings.Split(spec[start+4:start+4+end], "\n") {
+		line, _, _ = strings.Cut(line, ";")
+		name, def, ok := strings.Cut(line, "=")
+		if ok {
+			rules[strings.TrimSpace(name)] = strings.TrimSpace(def)
+		}
+	}
+	core := map[string]string{"ALPHA": "[A-Za-z]", "DIGIT": "[0-9]"}
+	var expand func(name string, depth int) string
+	expand = func(name string, depth int) string {
+		if re, ok := core[name]; ok {
+			return re
+		}
+		def, ok := rules[name]
+		if !ok || depth > 10 {
+			t.Fatalf("grammar rule %q undefined", name)
+		}
+		var alts []string
+		for _, alt := range strings.Split(def, " / ") {
+			var out strings.Builder
+			for _, el := range strings.Fields(alt) {
+				rep := ""
+				if strings.HasPrefix(el, "*") {
+					n := 0
+					i := 1
+					for i < len(el) && el[i] >= '0' && el[i] <= '9' {
+						n = n*10 + int(el[i]-'0')
+						i++
+					}
+					rep, el = "*", el[i:]
+					if i > 1 {
+						rep = fmt.Sprintf("{0,%d}", n)
+					}
+				}
+				var re string
+				switch {
+				case strings.HasPrefix(el, `%s"`):
+					re = regexp.QuoteMeta(strings.Trim(el[2:], `"`))
+				case strings.HasPrefix(el, `"`):
+					re = "(?i:" + regexp.QuoteMeta(strings.Trim(el, `"`)) + ")"
+				case strings.HasPrefix(el, "%x"):
+					lo, hi, _ := strings.Cut(el[2:], "-")
+					a, err1 := strconv.ParseUint(lo, 16, 8)
+					b, err2 := strconv.ParseUint(hi, 16, 8)
+					if err1 != nil || err2 != nil {
+						t.Fatalf("range %s", el)
+					}
+					re = fmt.Sprintf(`[\x%02x-\x%02x]`, a, b)
+				default:
+					re = expand(el, depth+1)
+				}
+				out.WriteString("(?:" + re + ")" + rep)
+			}
+			alts = append(alts, out.String())
+		}
+		return "(?:" + strings.Join(alts, "|") + ")"
+	}
+	return "^" + expand(rule, 0) + "$"
+}
+
+// TestCursorTokenGrammar: every valid vector matches the specification's
+// grammar as written, with an offset within its stated bound, so that the
+// document and the vectors cannot drift; the grammar's literals are
+// case-sensitive and its offset has at most 19 digits.
+func TestCursorTokenGrammar(t *testing.T) {
+	spec, err := os.ReadFile("../spec/cursor-token-1.md")
+	must(t, err)
+	re := regexp.MustCompile(grammarRegexp(t, string(spec), "token"))
+	raw, err := os.ReadFile("../conformance/vectors/cursor-token-1.json")
+	must(t, err)
+	var doc struct {
+		Valid []struct {
+			Token string `json:"token"`
+		} `json:"valid"`
+	}
+	must(t, json.Unmarshal(raw, &doc))
+	for _, v := range doc.Valid {
+		if !re.MatchString(v.Token) {
+			t.Errorf("valid vector %q does not match the grammar", v.Token)
+		}
+		if seg := strings.Split(v.Token, "."); seg[1] == "r" {
+			if _, err := strconv.ParseInt(seg[3], 10, 64); err != nil {
+				t.Errorf("valid vector %q: offset beyond the bound", v.Token)
+			}
+		}
+	}
+	for _, bad := range []string{"SPC1.r.YQ.0", "spc1.R.YQ.0", "spc1.P.YQ", "spc1.r.YQ.01", "spc1.r.YQ.12345678901234567890", "spc1.r.YQ=.0"} {
+		if re.MatchString(bad) {
+			t.Errorf("the grammar admits %q", bad)
+		}
+	}
+	if !re.MatchString("spc1.r.YQ.9223372036854775807") || !re.MatchString("spc1.p.") {
+		t.Error("the grammar rejects the largest offset or an empty payload")
 	}
 }
