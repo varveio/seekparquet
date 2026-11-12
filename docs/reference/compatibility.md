@@ -10,7 +10,7 @@ change is announced. The current versions are in [spec/status.json](../../spec/s
 | Files on disk | A dataset carries its version pair: `format_version` 0 and a `draft_revision` while format 1 is a draft. A reader refuses every pair it does not support ([VER-1](../../spec/format-1.md#ver-1)), but the pair alone does not establish compatibility between main commits before the first release identified by VER-2. | Draft revision 1 is edited in place until its first release. After that, any change to which files are valid, what a query returns, or which code a fault gets is a new draft revision ([VER-2](../../spec/format-1.md#ver-2)). Format 1 becomes final, stored as `format_version` 1, only through the freeze in [GOVERNANCE.md](../../GOVERNANCE.md). | [spec/CHANGELOG.md](../../spec/CHANGELOG.md), [proposals](../../spec/proposals/) |
 | Refusal codes | Names and meanings are stable ([§10](../../spec/format-1.md#10-refusal-codes)). Match on the code, never on error text. | Until the first release identified by VER-2, draft revision 1 may change in place. After that release, changes to validity, query semantics or required refusal classifications require a new revision. | [spec/refusal-codes.json](../../spec/refusal-codes.json), spec changelog |
 | Unsupported codes | Names are stable. | As refusal codes. A reader may come to support a feature, so an unsupported code can disappear for a dataset. | implementation changelogs |
-| Cursor tokens | The current Go and Java readers implement the shared `spc1` draft encoding ([cursor token, version 1](../../spec/cursor-token-1.md)). Readers implementing that encoding interpret its tokens identically; older releases may not support it. | A different encoding gets a different version prefix. | spec changelog |
+| Cursor tokens | The current Go and Java readers implement the shared stable `spc1` version 1 encoding ([cursor token, version 1](../../spec/cursor-token-1.md)). Readers implementing that encoding interpret its tokens identically; older releases may not support it. | A different encoding gets a different version prefix. | spec changelog |
 | Conformance suite | A published suite revision is immutable. The adapter protocol is versioned with the suite. | A new revision, recorded in `conformance/suite.json`. | [conformance/README.md](../../conformance/README.md) |
 
 ## What may change in any release
@@ -44,3 +44,8 @@ change the API.
 
 The specification and the conformance suite are platform-independent. The conformance harness needs Python
 3.11 or later.
+
+## Go writer support
+
+The Go `write` package is supported for producing one part at a time from sorted rows.
+It enforces the profile; the caller writes the manifest.

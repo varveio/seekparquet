@@ -1,6 +1,7 @@
 # SeekParquet cursor token, version 1
 
-**Status: draft.** This is a protocol-layer encoding of the continuation cursors of
+**Status: stable.** Version 1 is fixed; a different encoding gets a new version prefix.
+This is a protocol-layer encoding of the continuation cursors of
 [format 1](format-1.md) (PAGE-1) as one line of text, for an API, a URL or a log to carry between pages. It
 does not change the format, its draft revision, PAGE-1 or any query result: format-1.md leaves cursor wire
 encoding to protocols, and this document is one such encoding, shared by the implementations in this

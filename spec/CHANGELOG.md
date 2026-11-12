@@ -8,6 +8,11 @@ Unreleased draft revision 1 is edited in place; no format has been released.
   `spc1.p.<prefix>`), a canonical text encoding of PAGE-1 cursors for protocols, with golden vectors in
   `conformance/vectors/`. It affects no valid file and no query result, and needs no draft revision.
 
+## Cursor token version 1 (unreleased)
+
+- Marked the `spc1` encoding stable. Version 1 is fixed; a different encoding gets a new prefix.
+  This does not change dataset format validity or query results.
+
 ## Draft revision 1 (unreleased)
 
 First public draft of format 1. Files carry `format_version` 0, `draft_revision` 1.

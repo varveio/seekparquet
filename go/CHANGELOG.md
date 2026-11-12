@@ -5,6 +5,23 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Removed the physical request API: `IOObserver`, `IOReporter`, `IORequestKind`,
+  `IOMetadata`, `IORange`, `IOWholeObject`, `IORequest`, `IOResult`,
+  `WithIOObserver`, and `IOObserverFromContext` (including their reporting methods).
+  Physical execution and observation belong to the caller's storage layer.
+- Removed `ReadStats.PhysicalRequests`, `PhysicalBytes`, `PhysicalRetries`,
+  `PhysicalFailures`, `PlannedRanges`, `PlannedRequests`, `PlannedOverReadBytes`,
+  `ByteCacheHitBytes`, `UnreportedIOCalls`, and `PeakPhysicalRequests`.
+  Logical and format counters, `Add`, and `OpenOptions.OpenStats` remain.
+- Removed `CacheMode`, `CacheDefault`, `CacheBypass`, `WithCacheMode`, and
+  `CacheModeFromContext`. Scans and list-index builds leave source caching to storage;
+  `Plan.Scan` and `Plan.ScanValues` follow the same source-cache policy.
+  Reader metadata retention remains independent.
+- Removed `ReadPolicy.Concurrency`. Independent reads retain an internal limit;
+  the Source bounds physical request concurrency. No compatibility shims are provided.
+- Documented supported Go writing: one part at a time from sorted rows, with profile
+  enforcement; the caller writes the manifest. Cursor token version 1 is stable.
+
 - Added the row-position API: `RowPosition`, `RowSpan`, `ListEntry.Rows`,
   `Dataset.PlanRows`, `Plan.InputRowSpans`, `Plan.SelectRows`, `ValueBatch`, and
   `Plan.ScanValues`. Listings expose candidate-row boundaries without additional I/O;
