@@ -58,7 +58,7 @@
     },
     {
       "code": "invalid_footer",
-      "meaning": "A part does not begin and end with the PAR1 magic, its Parquet footer cannot be read, its row groups' row counts do not sum to the footer's row count, or a column chunk refers to another file (file_path set).",
+      "meaning": "A part is shorter than 12 bytes, has invalid magic under CHECK-1 after applying its encryption classification, its Parquet footer cannot be read, its row groups' row counts do not sum to the footer's row count, or a column chunk refers to another file (file_path set).",
       "requirements": [
         "CHECK-1",
         "FILE-1"
@@ -194,7 +194,7 @@
         },
         {
           "code": "unsupported_encryption",
-          "meaning": "an encrypted part (PARE magic at either end, or encryption declared in the footer)"
+          "meaning": "an encrypted part: PARE magic at either end of a part of at least 12 bytes (CHECK-1), or readable footer metadata declaring encryption (FILE-2)"
         }
       ]
     },

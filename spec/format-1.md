@@ -133,9 +133,10 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
 
 ### 3.4 Extensions
 
-The top level of the manifest, and each part, MAY have an `extensions` member: an object whose member names
-are non-empty namespaces chosen by producers (a tool or organisation name, for example `"swath"`), each
-holding any JSON value. Extensions are the one place where metadata can be added without a new format
+The manifest object and each part object MAY contain an `extensions` member whose value is an object. Each
+immediate member name of that object is a non-empty namespace name, chosen by producers (a tool or
+organisation name, for example `"swath"`); its value may be any JSON value. An empty extensions object is
+valid. Extensions are the one place where metadata can be added without a new format
 version or draft revision. An **accelerator** is extension metadata that lets a reader find or read data with
 fewer or smaller reads, and that a reader may ignore.
 
@@ -183,9 +184,8 @@ Each part is a Parquet file that any conforming Parquet reader can read.
 - [FILE-1] Every part is self-contained: its column data, dictionaries and indexes are in the part itself.
   No column chunk may set `file_path`. A reader MUST check this when it first touches the part (CHECK-1), before following any reference
   (`invalid_footer`).
-- [FILE-2] Parquet modular encryption is outside this draft. A reader MAY report an encrypted part as
-  unsupported (`unsupported_encryption`). A part whose leading or trailing magic is `PARE`, or whose footer
-  declares encryption, is an encrypted part (CHECK-1).
+- [FILE-2] Parquet modular encryption is outside this draft. A reader MUST report `unsupported_encryption`
+  when CHECK-1 identifies an encryption magic or when readable footer metadata declares encryption.
 
 ### 5.1 The key column
 
@@ -413,15 +413,19 @@ A reader checks what it reads. It does not certify data it skips.
   bounds, row count and size, which is all a reader needs to route a query, so opening needs no part file.
   **When a read first routes to a part**, or the reader verifies every part (CHECK-3), and before using any
   of the part's data, a reader MUST check that the part file exists and has the manifest's exact size; that
-  it begins and ends with the Parquet magic `PAR1`, checking both ends (a part whose leading or trailing magic
-  is `PARE` is encrypted and reported as `unsupported_encryption`, FILE-2; any other value is
-  `invalid_footer`); that its footer is readable and self-contained (FILE-1), and that its row groups' row counts sum to the footer's
+  its length and magic are valid (below); that its footer is readable and self-contained (FILE-1), and that its row groups' row counts sum to the footer's
   own row count (`invalid_footer` otherwise), which equals the manifest's `rows` (`part_mismatch`
   otherwise); that its stamps agree (§5.4); that its `key` column meets KEY-1 and KEY-5; COL-5 against the
   parts already checked; and RG-1 for every non-empty row group. A failure of the manifest refuses the
   dataset. A failure of a part ends the request that touched it with its code; the reader keeps the outcome
   for as long as the dataset is open, so every later request that touches the part is refused with the same
   code. A reader MAY check every part on open instead.
+
+  **Length and magic.** A part shorter than 12 bytes is `invalid_footer`. Otherwise, the reader MUST inspect
+  its first and last four bytes. If either is `PARE`, it MUST report `unsupported_encryption`. If neither is
+  `PARE` and either is not `PAR1`, it MUST report `invalid_footer`. Otherwise it proceeds with the footer
+  checks. These rules determine precedence among length and magic failures; §10 continues to apply to other
+  independent faults.
 - [CHECK-2] **On read**, for every row group a reader reads, whether or not it uses the page index, it MUST
   first check RG-2 to RG-4 (the parts of RG-3 that need page headers, as it reaches each page). For every key
   page it decodes, it MUST check that the page holds exactly the rows its OffsetIndex entry gives it, that
@@ -444,10 +448,12 @@ A reader checks what it reads. It does not certify data it skips.
   (§11), is not thereby invalid, and the reader reports the limit as such, distinct from every refusal code.
 - [CHECK-6] A part's bytes are one immutable object (COMMIT-2), and a reader MUST NOT combine bytes of two
   versions of a part: in particular, metadata it keeps from a part (its footer, page indexes, the outcome of
-  its checks) MUST NOT be used with the bytes of a replacement, even one of the same size. Establishing that
-  every read of a part, including retries and reads of any object an extension refers to, sees the same
-  object is the storage layer's responsibility (for example by a version identifier or a conditional read);
-  a reader whose storage reports that an object changed reports a storage error, not a refusal of the data.
+  its checks) MUST NOT be used with the bytes of a replacement, even one of the same size. The storage layer
+  is responsible for providing a stable version of each object across reads and retries. A reader MAY rely
+  on its source's guarantee of immutable bytes; this rule does not require an independent version probe or
+  digest check. If storage reports that a part changed, the reader MUST report a storage error, not a
+  refusal. If the report concerns an object used only by an optional accelerator, the reader MUST discard
+  that accelerator and follow EXT-3.
 
 ## 8. Validation
 
@@ -490,10 +496,11 @@ Several version identities move independently:
 - [VER-2] Draft revision 1 is edited in place until its first release: the first tag of this specification
   (`spec/v1.0.0-draft.1`), or the first implementation release that writes files of this draft for others to
   read, whichever comes first. That release records the version pair it writes and the conformance revision it
-  passed ([RELEASING.md](../RELEASING.md)). After it, a change that alters which bytes are valid or what a query returns
-  requires a new draft revision (while in draft) or a new format version (after format 1 is final). Adding an
-  accelerator inside `extensions` that obeys EXT-1 and EXT-3 alters neither, and needs no new revision; a
-  change that does alter them cannot be made through extensions (EXT-5).
+  passed ([RELEASING.md](../RELEASING.md)). After it, a change that alters which bytes are valid, what a query
+  returns, or the required refusal classifications requires a new draft revision (while in draft) or a new
+  format version (after format 1 is final). Adding an accelerator inside `extensions` that obeys EXT-1 and
+  EXT-3 alters none of these, and needs no new revision; a change that does alter them cannot be made through
+  extensions (EXT-5).
 
 ## 10. Refusal codes
 
