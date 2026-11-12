@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"os"
 	"reflect"
 	"slices"
 	"testing"
@@ -284,5 +285,52 @@ func TestCachedRefusalDetached(t *testing.T) {
 	r := &RefusalError{Code: CodeKeyOrder, Key: []byte("k")}
 	if c := detach(r).(*RefusalError); c == r || &c.Key[0] == &r.Key[0] || string(c.Key) != "k" {
 		t.Fatal("refusal detach shares its key")
+	}
+}
+
+// TestEncryptedErrorsDetached: each encrypted part, and each InspectFooter,
+// reports an UnsupportedError of its own: changing the one a read returned
+// changes neither another part's, another dataset's, nor InspectFooter's.
+func TestEncryptedErrorsDetached(t *testing.T) {
+	encrypt := func(dir string, i int) {
+		raw, err := os.ReadFile(partFile(dir, i))
+		must(t, err)
+		copy(raw[len(raw)-4:], "PARE")
+		must(t, os.WriteFile(partFile(dir, i), raw, 0o644))
+	}
+	dir := write(t, parts(testutil.Part{}, []string{"a", "b"}, []string{"c", "d"}))
+	encrypt(dir, 0)
+	encrypt(dir, 1)
+	d := open(t, dir, OpenOptions{})
+	read := func(d *Dataset, prefix string) *UnsupportedError {
+		_, err := d.Rows(ctx, Query{Selection: Selection{Span: PrefixSpan([]byte(prefix))}, Limit: 1}, nil)
+		var u *UnsupportedError
+		if !errors.As(err, &u) || u.Code != UnsupportedEncryption {
+			t.Fatalf("%s: %v", prefix, err)
+		}
+		return u
+	}
+	inspect := func() *UnsupportedError {
+		f, err := os.Open(partFile(dir, 1))
+		must(t, err)
+		defer f.Close()
+		info, err := f.Stat()
+		must(t, err)
+		_, err = InspectFooter(f, info.Size())
+		var u *UnsupportedError
+		if !errors.As(err, &u) || u.Code != UnsupportedEncryption {
+			t.Fatalf("InspectFooter: %v", err)
+		}
+		return u
+	}
+	first := read(d, "a")
+	want := *first
+	first.Code, first.Detail = "changed", "changed"
+	second := inspect()
+	second.Code, second.Detail = "changed", "changed"
+	for _, u := range []*UnsupportedError{read(d, "c"), read(d, "a"), read(open(t, dir, OpenOptions{}), "c"), inspect()} {
+		if u == first || u == second || *u != want {
+			t.Fatalf("a changed error leaked: %+v", u)
+		}
 	}
 }
