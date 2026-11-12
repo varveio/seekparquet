@@ -1,6 +1,7 @@
 """SeekParquet §8 validator, independent of the indexed reader seek path.
 
-Physical pages are walked from column-chunk extents before looking at OffsetIndex.
+Physical pages are walked independently from column-chunk extents. Indexed
+headers are first classified under CHECK-5, without trusting the index to enumerate pages.
 PyArrow decodes complete row groups without page-index filtering. The compact
 Thrift codec shares provenance with the fixture tooling; validation control flow
 and checks are implemented here. Only immutable local datasets are supported.
@@ -24,6 +25,8 @@ import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "generators"))
 import parquet_meta as p  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import parquet_rules as rules  # noqa: E402
 
 LEVELS = ('structural', 'profile', 'full')
 MAX_INT = (1 << 63) - 1
@@ -235,6 +238,7 @@ class Part:
                 self.pf = p.read_parquet(self.mapping)
             except p.SignedPlaintextFooter as e:
                 raise Incomplete(f'unsupported_encryption: {e}') from None
+            rules.annotations(self.pf)
             self.fields, self.leaves = field_tree(self.pf.schema)
             self._footer(m)
         except Exception:
@@ -293,12 +297,7 @@ class Part:
                         'missing_sorting_columns', 'key sorting declaration')
 
     def physical(self, cc):
-        try:
-            pages = p.chunk_pages(self.pf, cc, self.limits.pages_per_chunk)
-        except p.ParquetMetaError as e:
-            if str(e) == 'too many pages':
-                raise Incomplete('configured pages_per_chunk limit exceeded') from None
-            raise
+        pages = rules.physical_pages(self.pf, cc, self.limits.pages_per_chunk)
         for page in pages:
             if max(page.compressed_size, page.uncompressed_size) > self.limits.page_bytes:
                 raise Incomplete('configured page_bytes limit exceeded')
@@ -306,8 +305,6 @@ class Part:
 
     def key_index(self, group):
         cc = group.items_of(p.RG_COLUMNS)[self.key_leaf]
-        # Enumerate BEFORE reading either index: the index cannot hide a page.
-        physical = [page for page in self.physical(cc) if page.type in (0, 3)]
         for field in (p.CC_CI_LENGTH, p.CC_OI_LENGTH):
             length = cc.get(field)
             if integer(length) and length > self.limits.footer_bytes:
@@ -317,7 +314,11 @@ class Part:
         except (p.ParquetMetaError, p.ThriftError) as e:
             raise Invalid('invalid_page_index', str(e)) from None
         require(ci is not None and oi is not None, 'missing_page_index', 'key page indexes required')
+        rules.field(ci, p.CI_BOUNDARY, p.CT_I32, 'invalid_page_index')
         locations = oi.items_of(p.OI_PAGE_LOCATIONS)
+        rules.indexed_headers(self.pf, cc, locations, group.get(p.RG_NUM_ROWS))
+        # Independently enumerate the entire physical chunk: indexes cannot hide pages.
+        physical = [page for page in self.physical(cc) if page.type in (0, 3)]
         require(bool(locations) and len(locations) == len(physical), 'invalid_page_index', 'physical/index page count')
         positions, row = [], 0
         for page, loc in zip(physical, locations):
@@ -348,24 +349,14 @@ class Part:
                     pages = self.physical(self.pf.row_groups[ri].items_of(p.RG_COLUMNS)[ci])
                 except (p.ParquetMetaError, p.ThriftError) as e:
                     raise Invalid('invalid_parquet', str(e)) from None
-                metadata = self.pf.row_groups[ri].items_of(p.RG_COLUMNS)[ci].get(p.CC_META)
-                codec = metadata.get(p.CMD_CODEC)
-                require(integer(codec, 0, 7), 'invalid_parquet', 'unknown compression codec')
-                codec_names = {1: 'snappy', 2: 'gzip', 4: 'brotli', 5: 'lz4', 6: 'zstd', 7: 'lz4_raw'}
-                if codec == 3 or codec and not pa.Codec.is_available(codec_names[codec]):
-                    raise Incomplete(f'unsupported_encoding: compression codec {codec}')
-                for page in pages:
-                    if page.encoding is None:
-                        continue
-                    require(integer(page.encoding, 0, 9), 'invalid_parquet', 'unknown page encoding')
-                    if page.encoding in (1, 4):
-                        raise Incomplete(f'unsupported_encoding: legacy value encoding {page.encoding}')
+                rules.encoding_support(self.pf, self.pf.row_groups[ri].items_of(p.RG_COLUMNS)[ci], pages)
                 budget += sum(page.uncompressed_size for page in pages)
                 if budget > self.limits.uncompressed_bytes_per_group:
                     raise Incomplete('configured uncompressed_bytes_per_group limit exceeded')
-        # Open errors are storage failures; errors decoding a mapped source are
-        # Parquet corruption. Arrow owns this separate mapping and any buffers.
-        with pa.memory_map(str(self.path), 'r') as source:
+        # The checked footer is normalized for Arrow without changing stored
+        # page bodies. Unsupported unselected codecs must not block profile.
+        # Decoding errors on supported features remain Parquet corruption.
+        with pa.BufferReader(rules.arrow_bytes(self.pf, selected)) as source:
             try:
                 # No filter, no page-index-directed seek, no partition inference.
                 table = pq.ParquetFile(source, page_checksum_verification=True).read_row_group(
@@ -384,6 +375,10 @@ def _run_level(action):
     try:
         extra = action() or {}
         return {'result': 'complete', **extra}
+    except rules.RuleError as e:
+        if e.code.startswith('unsupported_'):
+            return {'result': 'incomplete', 'reason': str(e), 'category': 'unsupported', 'code': e.code}
+        return {'result': 'failed', 'code': e.code, 'message': str(e)}
     except Invalid as e:
         return {'result': 'failed', 'code': e.code, 'message': str(e)}
     except p.ResourceLimit as e:
