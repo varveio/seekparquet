@@ -49,6 +49,9 @@ type scan struct {
 	// ahead, when set, is a listing's read-ahead of key pages, given to
 	// every walker the scan opens (readAhead).
 	ahead *readAhead
+	// plan, when set, plans the scan's windows (readPlan): every walker
+	// the scan opens tells it of the pages it decodes.
+	plan *readPlan
 }
 
 func (r *reader) newScan(ctx context.Context, end []byte, st *ReadStats) *scan {
@@ -199,6 +202,9 @@ func (s *scan) keyPages(g groupRef) (*keyPages, error) {
 		return kp, err
 	}
 	kp.chunk.ahead, kp.chunk.walk = s.ahead, true
+	if s.plan != nil {
+		kp.scan, kp.plan = s, s.plan
+	}
 	if s.keyScratch == nil {
 		return kp, nil
 	}

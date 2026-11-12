@@ -226,7 +226,7 @@ func (c *chunk) payload(h *format.PageHeader, off, n int64, raw []byte) ([]byte,
 		data = raw[n : n+size : n+size]
 	} else {
 		data = c.scratch.readBuffer(int(size))
-		if err := c.p.at(c.ctx, c.stats).readFull(data, off+n); err != nil {
+		if err := c.p.read(c.ctx, c.stats, data, off+n); err != nil {
 			return nil, c.corrupt(err)
 		}
 	}
@@ -251,7 +251,7 @@ type crcField struct {
 func (c *chunk) hasCRC(off, n int64, raw []byte) bool {
 	if int64(len(raw)) < n {
 		raw = make([]byte, n)
-		if err := c.p.at(c.ctx, c.stats).readFull(raw, off); err != nil {
+		if err := c.p.read(c.ctx, c.stats, raw, off); err != nil {
 			return false // the header was read before; a failing reread is not the page's
 		}
 	}
@@ -1192,10 +1192,22 @@ func (p *part) badPage(physical, column int, off int64) func(string, ...any) err
 	}
 }
 
+// read fills buf with the bytes at off of the part's file: from the
+// windows of the operation ctx runs under when they hold all of them
+// (windows.copy), otherwise from storage.
+func (p *part) read(ctx context.Context, st *ReadStats, buf []byte, off int64) error {
+	if w := windowsOf(ctx); w != nil {
+		if ok, err := w.copy(p, buf, off); ok || err != nil {
+			return err
+		}
+	}
+	return p.at(ctx, st).readFull(buf, off)
+}
+
 // readPage reads n bytes of a column chunk at off.
 func (p *part) readPage(ctx context.Context, off, n int64, st *ReadStats, bad func(string, ...any) error, scratch *pageScratch) ([]byte, error) {
 	raw := scratch.readBuffer(int(n))
-	if err := p.at(ctx, st).readFull(raw, off); err != nil {
+	if err := p.read(ctx, st, raw, off); err != nil {
 		var refusal *RefusalError
 		if isEnvironment(ctx, err) || errors.As(err, &refusal) { // the source's own, or a part it found missing or resized
 			return nil, err

@@ -119,6 +119,20 @@ type ReadStats struct {
 	// PeakPhysicalRequests is the most physical requests a reporting
 	// source had in flight at once for the operation.
 	PeakPhysicalRequests int64
+	// SpeculativeBytes is the bytes the operation read ahead without
+	// knowing it would use them (ReadPolicy.SpeculativeBytes): windows
+	// beyond the rows a scan was sure to read, value pages fetched with
+	// their key page, routing probes. SpeculativeUnusedBytes is those of
+	// them read successfully that the operation never used. Neither is
+	// physical traffic: a source may have merged, cached or split them.
+	SpeculativeBytes, SpeculativeUnusedBytes int64
+	// SpeculativeFallbackReads counts reads made from storage because the
+	// speculative read that held their bytes failed; they are in
+	// SourceReads too.
+	SpeculativeFallbackReads int64
+	// PeakReadBufferBytes is the most bytes the operation held at once of
+	// what Limits.ReadMemory charges.
+	PeakReadBufferBytes int64
 }
 
 // takeStats zeroes st for a new operation. When the caller asked for no
@@ -187,4 +201,8 @@ func (st *ReadStats) Add(o ReadStats) {
 	// A peak of several operations is the largest of theirs, not a
 	// measurement of their concurrent peak.
 	st.PeakPhysicalRequests = max(st.PeakPhysicalRequests, o.PeakPhysicalRequests)
+	st.SpeculativeBytes += o.SpeculativeBytes
+	st.SpeculativeUnusedBytes += o.SpeculativeUnusedBytes
+	st.SpeculativeFallbackReads += o.SpeculativeFallbackReads
+	st.PeakReadBufferBytes = max(st.PeakReadBufferBytes, o.PeakReadBufferBytes)
 }

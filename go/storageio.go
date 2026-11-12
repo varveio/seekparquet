@@ -247,6 +247,8 @@ type operation struct {
 	context.Context // the operation's own: cancelled when it ends
 	c               atomic.Pointer[collector]
 	limit           opLimit
+	// win is the operation's bytes read ahead (windows), made on first use.
+	win atomic.Pointer[windows]
 	// r, stop and cancel are what end releases, r nil for an open.
 	r      *reader
 	stop   func() bool
@@ -259,7 +261,7 @@ type operationKey struct{}
 // concurrency at once.
 func newOperation(ctx context.Context, concurrency int) *operation {
 	o := &operation{Context: ctx}
-	o.limit.free, o.limit.size = concurrency, concurrency
+	o.limit.free, o.limit.size = int64(concurrency), int64(concurrency)
 	return o
 }
 
@@ -306,20 +308,23 @@ func limitOf(ctx context.Context) *opLimit {
 // (ReadPolicy.Concurrency): a weighted semaphore of size slots whose
 // waiters are served in arrival order and can give up when their context
 // ends. A nil *opLimit limits nothing.
+//
+// The same type bounds bytes (Limits.ReadMemory, DatasetReadMemory): its
+// weights are int64.
 type opLimit struct {
 	mu      sync.Mutex
-	free    int
-	size    int
+	free    int64
+	size    int64
 	waiters []*opWaiter
 }
 
 type opWaiter struct {
-	n     int
+	n     int64
 	ready chan struct{}
 }
 
 // acquire takes n slots, at most the limit's size.
-func (l *opLimit) acquire(ctx context.Context, n int) error {
+func (l *opLimit) acquire(ctx context.Context, n int64) error {
 	if l == nil {
 		return nil
 	}
@@ -357,7 +362,7 @@ func (l *opLimit) acquire(ctx context.Context, n int) error {
 
 // tryAcquire takes n slots when they are free now, with reserve more left
 // free, and no one waits: speculation never delays a read that is needed.
-func (l *opLimit) tryAcquire(n, reserve int) bool {
+func (l *opLimit) tryAcquire(n, reserve int64) bool {
 	if l == nil {
 		return true
 	}
@@ -370,7 +375,7 @@ func (l *opLimit) tryAcquire(n, reserve int) bool {
 	return true
 }
 
-func (l *opLimit) release(n int) {
+func (l *opLimit) release(n int64) {
 	if l == nil {
 		return
 	}
@@ -500,7 +505,7 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 	}
 	width = min(width, MaxReadRanges)
 	if limit != nil {
-		width = min(width, limit.size)
+		width = int(min(int64(width), limit.size))
 	}
 	errs := make([]error, len(ranges))
 	failed := false
@@ -522,11 +527,10 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 		}
 		err := ctx.Err()
 		if err == nil {
-			err = limit.acquire(ctx, n)
+			err = limit.acquire(ctx, int64(n))
 		}
 		if err == nil {
-			err = rr.ReadRanges(ctx, batch)
-			limit.release(n)
+			err = readBatch(ctx, rr, batch, limit)
 			if st != nil {
 				st.SourceBatches++
 				st.SourceReads += int64(n)
@@ -556,6 +560,13 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 		return nil
 	}
 	return errs
+}
+
+// readBatch calls ReadRanges with the batch's slots of limit held, and
+// releases them however the call ends, a panic of the source included.
+func readBatch(ctx context.Context, rr RangeReader, batch []ReadRange, limit *opLimit) error {
+	defer limit.release(int64(len(batch)))
+	return rr.ReadRanges(ctx, batch)
 }
 
 // batchError classifies one range's error from ReadRanges.

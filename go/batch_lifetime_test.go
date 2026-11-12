@@ -51,6 +51,9 @@ func TestScanBatchesPoisonRetiredStorage(t *testing.T) {
 				{Rows: records[:1024], GroupRows: 512, PageBytes: 512, DictionaryMaxBytes: 1024, Compression: parquet.Compression(&zstd.Codec{})},
 				{Rows: records[1024:], GroupRows: 512, PageBytes: 512, DictionaryMaxBytes: 1024, Compression: parquet.Compression(&zstd.Codec{})},
 			}})
+			// The hook observes each page read on demand.
+			testNoWindows = true
+			t.Cleanup(func() { testNoWindows = false })
 			src := &retiringSource{Source: dirOf(t, dir)}
 			d, err := OpenDataset(ctx, src, OpenOptions{})
 			must(t, err)

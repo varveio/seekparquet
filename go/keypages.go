@@ -32,6 +32,10 @@ type keyPages struct {
 	// reuse, when set, is called before a page is decoded into the
 	// chunk's scratch, overwriting the page before it.
 	reuse func()
+	// scan and plan, when set, are the scan the walker belongs to and the
+	// plan of its windows (readPlan.page), told of each page it decodes.
+	scan *scan
+	plan *readPlan
 }
 
 // keyPages opens a walker on row group g, loading the group's key page
@@ -128,6 +132,9 @@ func (k *keyPages) decode(i int) error {
 	}
 	p := k.part
 	meta := k.index.pages[i]
+	if k.plan != nil {
+		k.plan.page(k.scan, k, i)
+	}
 	if c.scratch != nil && k.reuse != nil {
 		k.reuse()
 	}
