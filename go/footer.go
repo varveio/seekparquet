@@ -58,9 +58,10 @@ func errEncrypted() *UnsupportedError {
 
 // prefetched serves reads that fall inside data, the bytes at off, or
 // inside head, the file's first bytes, from memory, and every other read
-// from r.
+// from r. parquet-go keeps it with the footer, so r counts in no
+// operation's statistics.
 type prefetched struct {
-	r    io.ReaderAt
+	r    storageReader
 	off  int64
 	data []byte
 	head []byte
@@ -135,7 +136,7 @@ func decodeBounded(raw []byte, v any, budget int64) (int, error) {
 // declared footer length before it is checked.
 func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits, st *ReadStats, maxWindow int64, concurrency int, deferHead bool) (_ *parquet.File, tail footerTail, err error) {
 	reports := reportsIO(file)
-	at := storageReader{r: bind(ctx, file), st: st, src: &sourceInfo{name: name, unreported: unreported(ctx, reports)}}
+	at := storageReader{r: bind(ctx, file), st: st, name: name, unreported: unreported(ctx, reports)}
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidFooter, name, -1, format, args...)
 	}
@@ -154,7 +155,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 		// every verdict reached before then judged again with the real
 		// head (magicFirst).
 		tail.headDeferred = true
-		if err := readFull(at, win, size-window); err != nil {
+		if err := at.readFull(win, size-window); err != nil {
 			return nil, tail, footerError(ctx, name, err)
 		}
 		head = []byte("PAR1")
@@ -168,7 +169,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 				return nil, tail, footerError(ctx, name, err)
 			}
 		}
-	} else if err := readFull(at, win, size-window); err != nil {
+	} else if err := at.readFull(win, size-window); err != nil {
 		return nil, tail, footerError(ctx, name, err)
 	}
 	tail.data, tail.off = win, size-window
@@ -196,7 +197,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 		// The footer starts before the window: read the bytes before it.
 		raw = make([]byte, n+8)
 		copy(raw[n+8-window:], win)
-		if err := readFull(at, raw[:n+8-window], size-8-n); err != nil {
+		if err := at.readFull(raw[:n+8-window], size-8-n); err != nil {
 			return nil, tail, footerError(ctx, name, err)
 		}
 	}
@@ -241,7 +242,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	}()
 	// parquet-go reads the head magic and the footer again: both are served
 	// from the bytes checked above, not read from the source a second time.
-	retained := prefetched{r: at, off: size - 8 - n, data: footer, head: head}
+	retained := prefetched{r: storageReader{r: at.r, name: name, unreported: at.unreported}, off: size - 8 - n, data: footer, head: head}
 	if testFooterRetained != nil {
 		testFooterRetained(retained, win)
 	}
@@ -753,9 +754,9 @@ func magicFirst(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	if ctx.Err() != nil || errors.As(err, &se) || errors.Is(err, ErrClosed) {
 		return err
 	}
-	at := storageReader{r: bind(ctx, file), st: st, src: &sourceInfo{name: name, unreported: unreported(ctx, reportsIO(file))}}
+	at := storageReader{r: bind(ctx, file), st: st, name: name, unreported: unreported(ctx, reportsIO(file))}
 	head := make([]byte, 4)
-	if e := readFull(at, head, 0); e != nil {
+	if e := at.readFull(head, 0); e != nil {
 		return footerError(ctx, name, e)
 	}
 	return headVerdict(ctx, name, at, size, head, tail, err)
@@ -764,7 +765,7 @@ func magicFirst(ctx context.Context, name string, file io.ReaderAt, size int64, 
 // headVerdict returns readFooter's verdict on a part's magic given its
 // head, or err when the head is PAR1. The end's magic is taken from tail,
 // or read when tail lacks it.
-func headVerdict(ctx context.Context, name string, at io.ReaderAt, size int64, head []byte, tail footerTail, err error) error {
+func headVerdict(ctx context.Context, name string, at storageReader, size int64, head []byte, tail footerTail, err error) error {
 	if string(head) == "PAR1" {
 		return err
 	}
@@ -773,7 +774,7 @@ func headVerdict(ctx context.Context, name string, at io.ReaderAt, size int64, h
 		end = tail.data[len(tail.data)-4:]
 	} else {
 		end = make([]byte, 4)
-		if e := readFull(at, end, size-4); e != nil {
+		if e := at.readFull(end, size-4); e != nil {
 			return footerError(ctx, name, e)
 		}
 	}

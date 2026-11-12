@@ -199,28 +199,28 @@ type Dataset struct {
 //
 // Dataset.Close closes every part file the dataset opened.
 func OpenDataset(ctx context.Context, src Source, opt OpenOptions) (*Dataset, error) {
-	st, err := prepareOpen(ctx, &opt)
-	if err != nil {
+	st, spare := takeStats(opt.OpenStats)
+	defer dropStats(spare)
+	if err := prepareOpen(ctx, &opt); err != nil {
 		return nil, err
 	}
 	return openDataset(ctx, src, opt, st, false)
 }
 
-// prepareOpen resets opt.OpenStats and checks opt and the context's cache
-// mode, before any I/O, and sets opt's defaults.
-func prepareOpen(ctx context.Context, opt *OpenOptions) (*ReadStats, error) {
-	st := resetStats(opt.OpenStats)
+// prepareOpen checks opt and the context's cache mode, before any I/O,
+// and sets opt's defaults.
+func prepareOpen(ctx context.Context, opt *OpenOptions) error {
 	if err := opt.Limits.check(); err != nil {
-		return st, err
+		return err
 	}
 	if err := opt.Read.check(); err != nil {
-		return st, err
+		return err
 	}
 	if err := checkCacheMode(ctx); err != nil {
-		return st, err
+		return err
 	}
 	opt.Limits, opt.Read = opt.Limits.withDefaults(), opt.Read.withDefaults()
-	return st, nil
+	return nil
 }
 
 // openDataset opens the dataset at src with checked options; local reads
@@ -253,7 +253,7 @@ func openDataset(ctx context.Context, src Source, opt OpenOptions, st *ReadStats
 		return nil, err
 	}
 	r.sourceReports, r.local = reports, local
-	r.fetch = func(ctx context.Context, i int, st *ReadStats, deferHead bool) (partInput, error) {
+	r.fetch = func(ctx context.Context, i int, st *ReadStats, deferHead bool) (fetchedInput, error) {
 		return openDatasetPart(ctx, src, m, m.Parts[i], r, st, deferHead)
 	}
 	return &Dataset{meta: meta, r: r}, nil
@@ -305,8 +305,8 @@ func readManifest(ctx context.Context, src Source, limit int64, reports bool, st
 	if unreported(ctx, reportsIO(f)) {
 		st.UnreportedIOCalls++
 	}
-	at := storageReader{r: bind(ctx, f), src: &sourceInfo{name: ManifestName}}
-	if err := readFull(at, raw, 0); err != nil {
+	at := storageReader{r: bind(ctx, f), name: ManifestName}
+	if err := at.readFull(raw, 0); err != nil {
 		return nil, "", fmt.Errorf("read %s: %w", ManifestName, err)
 	}
 	return raw, "", nil
@@ -346,15 +346,15 @@ func openPartFile(ctx context.Context, src Source, entry manifest.Part, reports 
 // count against its manifest entry, and returns it with its footer. It
 // closes the file when it fails. With deferHead the part's head is not
 // read with its end when the window does not reach it (readFooter): the
-// caller establishes it (partInput.tail.headDeferred), and a verdict
+// caller establishes it (fetchedInput.tail.headDeferred), and a verdict
 // reached before is judged again with the real head (magicFirst).
-func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, r *reader, st *ReadStats, deferHead bool) (_ partInput, err error) {
+func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, r *reader, st *ReadStats, deferHead bool) (_ fetchedInput, err error) {
 	f, err := openPartFile(ctx, src, entry, r.sourceReports, st)
 	if err != nil {
-		return partInput{}, err
+		return fetchedInput{}, err
 	}
 	st.PartsOpened++
-	in := partInput{name: entry.Path, file: f, size: f.Size(), minKey: entry.MinKey, maxKey: entry.MaxKey, rows: entry.Rows}
+	in := fetchedInput{partInput: partInput{name: entry.Path, file: f, size: f.Size(), minKey: entry.MinKey, maxKey: entry.MaxKey, rows: entry.Rows}}
 	defer func() {
 		if err != nil {
 			if in.tail.headDeferred {
@@ -364,18 +364,18 @@ func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entr
 		}
 	}()
 	if in.size != entry.Bytes {
-		return partInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the file is %d bytes, its manifest entry %d", in.size, entry.Bytes)
+		return fetchedInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the file is %d bytes, its manifest entry %d", in.size, entry.Bytes)
 	}
 	footer, tail, err := readFooter(ctx, entry.Path, f, in.size, &r.limits, st, r.policy.tailWindow(), r.width(), deferHead)
 	in.tail = tail
 	if err != nil {
-		return partInput{}, err
+		return fetchedInput{}, err
 	}
 	if err := checkStamps(entry.Path, footer, m); err != nil {
-		return partInput{}, err
+		return fetchedInput{}, err
 	}
 	if footer.NumRows() != entry.Rows {
-		return partInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the part holds %d rows, its manifest entry %d", footer.NumRows(), entry.Rows)
+		return fetchedInput{}, refusePart(CodePartMismatch, entry.Path, -1, "the part holds %d rows, its manifest entry %d", footer.NumRows(), entry.Rows)
 	}
 	in.footer = footer
 	return in, nil
@@ -453,7 +453,8 @@ func (d *Dataset) Metadata() Metadata { return d.meta.clone() }
 // When st is not nil, Verify resets it on entry and fills it on every
 // exit, including failure; Verify does not retain it.
 func (d *Dataset) Verify(ctx context.Context, st *ReadStats) (err error) {
-	st = resetStats(st)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
 	rctx, end, err := d.r.begin(ctx, st)
 	if err != nil {
 		return err

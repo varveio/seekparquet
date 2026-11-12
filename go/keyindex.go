@@ -182,24 +182,38 @@ type pageLog struct {
 // requestMemoBytes bounds the raw key pages one request keeps (pageMemo).
 const requestMemoBytes = 4 << 20
 
-// pageMemo holds the raw extents of the key pages one request read, by
-// part and extent, up to requestMemoBytes: a page read again by the same
-// request (a routing probe's first page reached by the walk, a cursor's
-// page, a page Verify fetched ahead) is taken from it, then decoded and
-// checked as any page read. It is safe for concurrent use.
+// pageMemo holds the raw extents of key pages one request read, by part
+// and extent: a page read again by the same request is taken from it, then
+// decoded and checked as any page read. It keeps every page a routing probe
+// or Verify read, up to requestMemoBytes (a probe's first page that the
+// walk reaches, a page Verify fetched ahead), and the last page a scan's
+// walker read (recent), which a listing reads again when it resumes in the
+// group after a common prefix. It is safe for concurrent use.
 type pageMemo struct {
 	mu   sync.Mutex
 	used int64
-	// The first page is held inline and the rest in pages, made for a
-	// second: most requests read one or two pages.
-	first    memoKey
-	firstRaw []byte
-	pages    map[memoKey][]byte
+	// The first page kept is held inline and the rest in pages, made for
+	// a second: most requests probe one or two pages.
+	first memoPage
+	pages map[memoKey][]byte
+	// recent is the page a walker read last, replaced by the next.
+	recent memoPage
 }
 
 type memoKey struct {
 	p         *part
 	off, size int64
+}
+
+// memoPage is a page held inline: raw is the len(raw) bytes at off of p.
+type memoPage struct {
+	p   *part
+	off int64
+	raw []byte
+}
+
+func (e *memoPage) is(key memoKey) bool {
+	return e.raw != nil && e.p == key.p && e.off == key.off && int64(len(e.raw)) == key.size
 }
 
 // pageMemo returns the log's page memo.
@@ -213,24 +227,31 @@ func (m *pageMemo) get(p *part, off, size int64) []byte {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := memoKey{p, off, size}
-	if m.firstRaw != nil && m.first == key {
-		return m.firstRaw
+	switch {
+	case m.first.is(key):
+		return m.first.raw
+	case m.recent.is(key):
+		return m.recent.raw
 	}
 	return m.pages[key]
 }
 
-// put keeps raw, the size bytes at off of p, when there is room. raw must
-// not change afterwards.
-func (m *pageMemo) put(p *part, off int64, raw []byte) {
+// put keeps raw, the size bytes at off of p, when there is room, or as the
+// recent page when walk is set. raw must not change afterwards.
+func (m *pageMemo) put(p *part, off int64, raw []byte, walk bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if walk {
+		m.recent = memoPage{p, off, raw}
+		return
+	}
 	key := memoKey{p, off, int64(len(raw))}
-	if m.firstRaw != nil && m.first == key || m.pages[key] != nil || m.used+int64(len(raw)) > requestMemoBytes {
+	if m.first.is(key) || m.pages[key] != nil || m.used+int64(len(raw)) > requestMemoBytes {
 		return
 	}
 	switch {
-	case m.firstRaw == nil:
-		m.first, m.firstRaw = key, raw
+	case m.first.raw == nil:
+		m.first = memoPage{p, off, raw}
 	case m.pages == nil:
 		m.pages = map[memoKey][]byte{key: raw}
 	default:

@@ -711,13 +711,13 @@ func (v *validator) hashPart(path string, buf []byte) (string, error) {
 	}
 	defer func() { _ = f.Close() }()
 	h := sha256.New()
-	at := storageReader{r: bind(v.ctx, f), src: &sourceInfo{name: path}}
+	at := storageReader{r: bind(v.ctx, f), name: path}
 	for off, size := int64(0), f.Size(); off < size; {
 		if err := v.ctx.Err(); err != nil {
 			return "", err
 		}
 		n := int(min(int64(len(buf)), size-off))
-		if err := readFull(at, buf[:n], off); err != nil {
+		if err := at.readFull(buf[:n], off); err != nil {
 			if !errors.Is(err, io.ErrUnexpectedEOF) {
 				return "", err
 			}

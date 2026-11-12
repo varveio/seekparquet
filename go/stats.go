@@ -3,6 +3,8 @@
 
 package seekparquet
 
+import "sync"
+
 // ReadStats counts the work of one operation: Dataset.Rows, Get, Scan or
 // List, Dataset.Plan, Plan.Split or Plan.Scan. Pass a *ReadStats as the
 // operation's statistics argument to receive it: it is reset when the
@@ -120,15 +122,31 @@ type ReadStats struct {
 	PeakPhysicalRequests int64
 }
 
-// resetStats zeroes st for a new request, or returns a throwaway one when
-// the caller asked for none, so that counting never tests for nil.
-func resetStats(st *ReadStats) *ReadStats {
+// takeStats zeroes st for a new operation. When the caller asked for no
+// statistics (st is nil) it returns a zeroed throwaway from spareStats as
+// both the statistics and spare, so that counting never tests for nil; the
+// operation hands spare back with dropStats once it has ended and nothing
+// writes the throwaway any more. A throwaway is taken from a pool, not
+// allocated, because it cannot live on the stack: the operation's scans,
+// chunks and storage readers keep a pointer to it.
+func takeStats(st *ReadStats) (_, spare *ReadStats) {
 	if st == nil {
-		return new(ReadStats)
+		spare = spareStats.Get().(*ReadStats)
+		*spare = ReadStats{}
+		return spare, spare
 	}
 	*st = ReadStats{}
-	return st
+	return st, nil
 }
+
+// dropStats returns the throwaway takeStats handed out, if any.
+func dropStats(spare *ReadStats) {
+	if spare != nil {
+		spareStats.Put(spare)
+	}
+}
+
+var spareStats = sync.Pool{New: func() any { return new(ReadStats) }}
 
 // Add sums counters and takes the maximum of each peak: the work of several
 // operations, such as a plan, its split and the scans of its shards.

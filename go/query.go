@@ -287,7 +287,8 @@ func (p *part) checkProjection(columns []string) error {
 // readRange returns the rows of q; see Dataset.Rows. It discovers every
 // selected key before projecting any value, and returns no rows on error.
 func (r *reader) readRange(ctx context.Context, q Query, st *ReadStats) (_ []Row, err error) {
-	st = resetStats(st)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
 	if q.Limit > int64(math.MaxInt) {
 		return nil, invalidRequest("limit %d is beyond a slice's length", q.Limit)
 	}
@@ -302,7 +303,8 @@ func (r *reader) readRange(ctx context.Context, q Query, st *ReadStats) (_ []Row
 
 // readGet returns the group of key; see Dataset.Get.
 func (r *reader) readGet(ctx context.Context, key []byte, st *ReadStats, columns []string) (_ []Row, err error) {
-	st = resetStats(st)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
 	ctx, done, err := r.request(ctx, st, nil, false, 1, false, columns)
 	if err != nil {
 		return nil, err
@@ -362,7 +364,8 @@ func (r *reader) collect(ctx context.Context, sel Selection, limit int, probe bo
 
 // readList returns the entries of req; see Dataset.List.
 func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ []ListEntry, err error) {
-	st = resetStats(st)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
 	if req.ReadAhead < 0 {
 		return nil, invalidRequest("read-ahead %d is negative", req.ReadAhead)
 	}

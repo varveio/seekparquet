@@ -41,7 +41,8 @@ import (
 // A cancelled ctx, or a Close, fails a split whether or not it reads.
 // Splitting is a convenience of this reader, not a rule of the format.
 func (plan *Plan) Split(ctx context.Context, n int, st *ReadStats) (_ []*Plan, err error) {
-	st = resetStats(st)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
 	if n < 1 {
 		return nil, invalidRequest("split into %d shards", n)
 	}

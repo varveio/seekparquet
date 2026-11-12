@@ -50,18 +50,13 @@ func sourceError(name string, err error) error {
 // reader follows is first checked to lie inside the file, so reading past
 // its end means the data lied.
 //
-// Page reads call its readFull method, so that it is never boxed into an
-// io.ReaderAt and allocated: what it knows of the file is behind src.
+// Reads call its readFull method, so that it is not boxed into an
+// io.ReaderAt and allocated for every read. name names the file in
+// errors, and unreported is set when the file leaves its physical requests
+// unreported (IOReporter), each call then counting in UnreportedIOCalls.
 type storageReader struct {
-	r   io.ReaderAt
-	st  *ReadStats // counts the reads of a request, nil for none
-	src *sourceInfo
-}
-
-// sourceInfo is what classifying a file's reads needs: its name for
-// errors, and whether it leaves its physical requests unreported
-// (IOReporter), each call then counting in UnreportedIOCalls.
-type sourceInfo struct {
+	r          io.ReaderAt
+	st         *ReadStats // counts the reads of a request, nil for none
 	name       string
 	unreported bool
 }
@@ -70,18 +65,18 @@ func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
 	if s.st != nil {
 		s.st.SourceReads++
 		s.st.SourceBytes += int64(len(p))
-		if s.src.unreported {
+		if s.unreported {
 			s.st.UnreportedIOCalls++
 		}
 	}
 	n, err := s.r.ReadAt(p, off)
 	switch {
 	case err != nil && (!errors.Is(err, io.EOF) || errors.Is(err, ErrObjectChanged)):
-		err = sourceError(s.src.name, err)
+		err = sourceError(s.name, err)
 	case n < len(p):
 		// Every extent the reader reads lies inside the file's Size: a
 		// short read is the source's failure, not the data's.
-		err = shortRead(s.src.name, n, len(p), off, err)
+		err = shortRead(s.name, n, len(p), off, err)
 	default:
 		err = nil
 	}
@@ -326,8 +321,7 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 	errs := make([]error, len(ranges))
 	var failed atomic.Bool
 	var calls, bytes atomic.Int64
-	at := bind(ctx, rf.file)
-	src := &sourceInfo{name: rf.name}
+	at := storageReader{r: bind(ctx, rf.file), name: rf.name}
 	read := func(i int) {
 		if limit != nil {
 			if err := limit.acquire(ctx, 1); err != nil {
@@ -344,7 +338,7 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 		}
 		calls.Add(1)
 		bytes.Add(int64(len(ranges[i].Buf)))
-		if err := readFull(storageReader{r: at, src: src}, ranges[i].Buf, ranges[i].Off); err != nil {
+		if err := at.readFull(ranges[i].Buf, ranges[i].Off); err != nil {
 			errs[i] = err
 			failed.Store(true)
 		}
@@ -477,6 +471,8 @@ func batchError(ctx context.Context, name string, err error) error {
 type retained struct {
 	off  int64
 	data []byte
+	// used is when a load last used the bytes, on the metaCache's clock.
+	used atomic.Int64
 }
 
 // retainTail keeps, from the end of part p's file that its check read,
@@ -508,25 +504,46 @@ func (r *reader) retainTail(p *part, tail footerTail) {
 	if size <= 0 || size > r.limits.PageIndexCacheMemory {
 		return
 	}
-	r.metaMu.Lock()
-	defer r.metaMu.Unlock()
-	for r.metaMemory+size > r.limits.PageIndexCacheMemory {
+	c := r.metaCache()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for c.memory+size > r.limits.PageIndexCacheMemory {
 		lru := 0
-		for i, q := range r.metaParts {
-			if q.metaUsed.Load() < r.metaParts[lru].metaUsed.Load() {
+		for i, q := range c.parts {
+			if q.meta.Load().used.Load() < c.parts[lru].meta.Load().used.Load() {
 				lru = i
 			}
 		}
-		q := r.metaParts[lru]
-		r.metaMemory -= int64(len(q.meta.Load().data))
+		q := c.parts[lru]
+		c.memory -= int64(len(q.meta.Load().data))
 		q.meta.Store(nil)
-		r.metaParts = append(r.metaParts[:lru], r.metaParts[lru+1:]...)
+		c.parts = append(c.parts[:lru], c.parts[lru+1:]...)
 	}
-	r.metaMemory += size // reserved before the copy is allocated
+	c.memory += size // reserved before the copy is allocated
 	kept := &retained{off: start, data: ownCopy(tail.data[start-tail.off : tail.footerStart-tail.off])}
-	p.metaUsed.Store(r.metaClock.Add(1))
+	kept.used.Store(c.clock.Add(1))
 	p.meta.Store(kept)
-	r.metaParts = append(r.metaParts, p)
+	c.parts = append(c.parts, p)
+}
+
+// metaCache accounts for the parts' retained metadata: mu guards parts,
+// those that hold some, and memory, their bytes within
+// Limits.PageIndexCacheMemory; clock orders their uses for eviction.
+type metaCache struct {
+	mu     sync.Mutex
+	parts  []*part
+	memory int64
+	clock  atomic.Int64
+}
+
+// metaCache returns the reader's metaCache, made by the first part that
+// keeps metadata: a reader that keeps none, as a local one, never has one.
+func (r *reader) metaCache() *metaCache {
+	if c := r.meta.Load(); c != nil {
+		return c
+	}
+	r.meta.CompareAndSwap(nil, new(metaCache))
+	return r.meta.Load()
 }
 
 // retainedBytes returns the length bytes at off from the part's retained
@@ -537,7 +554,7 @@ func (p *part) retainedBytes(off, length int64) []byte {
 	if m == nil || length <= 0 || off < m.off || length > int64(len(m.data)) || off-m.off > int64(len(m.data))-length {
 		return nil
 	}
-	p.metaUsed.Store(p.r.metaClock.Add(1))
+	m.used.Store(p.r.meta.Load().clock.Add(1))
 	return m.data[off-m.off : off-m.off+length : off-m.off+length]
 }
 
@@ -553,7 +570,7 @@ func (p *part) retainedSuffix(off, length int64) (int64, []byte) {
 	if n <= 0 || n >= length {
 		return 0, nil
 	}
-	p.metaUsed.Store(p.r.metaClock.Add(1))
+	m.used.Store(p.r.meta.Load().clock.Add(1))
 	return n, m.data[:n]
 }
 

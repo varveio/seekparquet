@@ -99,8 +99,12 @@ func TestRetainedMetadataEviction(t *testing.T) {
 				held += int64(len(m.data))
 			}
 		}
-		if held != d.r.metaMemory || held > budget || budget < one && kept != 0 || budget >= one && kept == 0 || budget == 1<<30 && kept != 4 {
-			t.Fatalf("budget %d: %d parts keep %d bytes (charged %d)", budget, kept, held, d.r.metaMemory)
+		charged := int64(0)
+		if c := d.r.meta.Load(); c != nil {
+			charged = c.memory
+		}
+		if held != charged || held > budget || budget < one && kept != 0 || budget >= one && kept == 0 || budget == 1<<30 && kept != 4 {
+			t.Fatalf("budget %d: %d parts keep %d bytes (charged %d)", budget, kept, held, charged)
 		}
 	}
 }

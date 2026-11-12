@@ -219,3 +219,30 @@ func TestSourceErrorClassification(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestThrowawayStats: an operation whose caller passes no statistics
+// counts into a pooled ReadStats, zeroed when taken, and allocates none
+// once the pool holds one; a caller's statistics are zeroed and never
+// returned to the pool.
+func TestThrowawayStats(t *testing.T) {
+	st, spare := takeStats(nil)
+	if st == nil || spare != st {
+		t.Fatalf("takeStats(nil) = %p, %p", st, spare)
+	}
+	st.SourceReads = 7
+	dropStats(spare)
+	if allocs := testing.AllocsPerRun(100, func() {
+		st, spare := takeStats(nil)
+		if *st != (ReadStats{}) {
+			t.Fatalf("a pooled ReadStats is not zeroed: %+v", *st)
+		}
+		st.SourceReads++
+		dropStats(spare)
+	}); allocs != 0 {
+		t.Errorf("%v allocations per operation without statistics", allocs)
+	}
+	mine := &ReadStats{SourceReads: 3}
+	if got, spare := takeStats(mine); got != mine || spare != nil || *mine != (ReadStats{}) {
+		t.Errorf("takeStats(mine) = %p, %p, %+v", got, spare, *mine)
+	}
+}

@@ -137,8 +137,10 @@ type chunk struct {
 	first    int64
 	dict     parquet.Dictionary
 	dictRead bool
-	stats    *ReadStats
-	pages    *int64 // the counter of the data pages decoded: key or value pages
+	// walk is set on a scan's walker: its pages are the memo's recent one.
+	walk  bool
+	stats *ReadStats
+	pages *int64 // the counter of the data pages decoded: key or value pages
 	// ahead, when set, holds key pages a listing read ahead: located takes
 	// a page's bytes from it instead of reading them (readAhead).
 	ahead *readAhead
@@ -204,7 +206,7 @@ func (c *chunk) located(off, size, rows int64) (*format.PageHeader, int64, []byt
 	}
 	h, n, raw, err := c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, rows, c.end, c.stats, c.scratch, pre)
 	if err == nil && pre == nil && c.memo != nil && c.scratch == nil {
-		c.memo.put(c.p, off, raw)
+		c.memo.put(c.p, off, raw, c.walk)
 	}
 	return h, n, raw, err
 }

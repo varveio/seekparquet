@@ -98,7 +98,7 @@ func TestStorageReadClassification(t *testing.T) {
 		return readerFunc(func(p []byte, off int64) (int, error) { return copy(p[:n], data[off:]), err })
 	}
 	read := func(r io.ReaderAt, want int) error {
-		return storageReader{r: r, src: &sourceInfo{name: "p"}}.readFull(make([]byte, want), 0)
+		return storageReader{r: r, name: "p"}.readFull(make([]byte, want), 0)
 	}
 	var se *storageError
 	changed := fmt.Errorf("pin: %w %w", ErrObjectChanged, io.EOF)

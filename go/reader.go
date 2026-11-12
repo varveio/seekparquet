@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -29,17 +30,7 @@ type reader struct {
 	key    Key
 	limits Limits
 	policy ReadPolicy
-	// sourceReports is set when the Source reports its physical requests
-	// (IOReporter): each request then carries a collector for them.
-	sourceReports bool
-	// fileReports is set once a checked part's file reports its physical
-	// requests: every request then carries a collector.
-	fileReports atomic.Bool
-	// local reads as suits a local file (OpenDir with a zero ReadPolicy):
-	// one range at a time, no part metadata kept beyond the footer, no
-	// request memo.
-	local bool
-	parts []*part
+	parts  []*part
 	// rows is the dataset's row count.
 	rows int64
 	// bounded reports that every part has its key bounds, so reads are
@@ -47,13 +38,24 @@ type reader struct {
 	// row group in dataset order, and reads are routed by probing their
 	// first keys.
 	bounded bool
-	flat    []groupRef
+	// local reads as suits a local file (OpenDir with a zero ReadPolicy):
+	// one range at a time, no part metadata kept beyond the footer, no
+	// request memo.
+	local bool
+	// sourceReports is set when the Source reports its physical requests
+	// (IOReporter): each request then carries a collector for them.
+	sourceReports bool
+	// fileReports is set once a checked part's file reports its physical
+	// requests: every request then carries a collector.
+	fileReports atomic.Bool
+	flat        []groupRef
 	// fetch opens part i, checks it against its manifest entry and reads
 	// its footer, the first time a read touches it; nil when the parts were
 	// given open.
-	fetch func(ctx context.Context, i int, st *ReadStats, deferHead bool) (partInput, error)
-	// release, when set, is closed with the reader.
-	release io.Closer
+	fetch func(ctx context.Context, i int, st *ReadStats, deferHead bool) (fetchedInput, error)
+	// root, when set, is the directory OpenDir opened, closed with the
+	// reader.
+	root *os.Root
 	// columnsMu guards columns: the signature of every top-level column of
 	// the checked parts, and the first checked part holding it (COL-5).
 	columnsMu sync.Mutex
@@ -62,13 +64,9 @@ type reader struct {
 	listIndex atomic.Pointer[listIndex]
 	listBuild sync.Mutex
 
-	// metaMu guards metaParts, the parts that hold retained metadata, and
-	// metaMemory, their bytes within Limits.PageIndexCacheMemory; metaClock
-	// orders their uses for eviction.
-	metaMu     sync.Mutex
-	metaParts  []*part
-	metaMemory int64
-	metaClock  atomic.Int64
+	// meta accounts for the parts' retained metadata, once a part's check
+	// first kept some (retainTail).
+	meta atomic.Pointer[metaCache]
 
 	indexMemory atomic.Int64
 	// indexMu serializes retained-index admission and publication, including
@@ -89,10 +87,10 @@ type reader struct {
 	mu        sync.Mutex
 	idle      sync.Cond
 	active    int
-	closed    bool
 	closing   context.Context
 	closeNow  context.CancelCauseFunc
 	closeOnce sync.Once
+	closed    bool // guarded by mu, beside closeOnce to fill its padding
 	closeErr  error
 }
 
@@ -116,8 +114,8 @@ type part struct {
 	check chan struct{}
 	err   error
 	ready atomic.Bool
-	// refused is set once err is kept, for readers not holding check.
-	refused atomic.Bool
+	// flags holds partRefused and partLastChecked.
+	flags atomic.Uint32
 
 	// The fields below are set by the check, before ready; file and size
 	// are set from the start when the part was given open, and footer when
@@ -126,16 +124,13 @@ type part struct {
 	file   io.ReaderAt
 	size   int64
 	footer *parquet.File
-	// reports is set when file reports its physical requests, and src
-	// classifies its reads (storageReader).
-	reports        bool
-	src            sourceInfo
-	srcUncollected sourceInfo
-	key            leaf
+	key    leaf
 	// groups are the part's non-empty row groups.
 	groups []*group
 	// utf8Key reports a key column annotated STRING or UTF8 (KEY-6).
 	utf8Key bool
+	// reports is set when file reports its physical requests (IOReporter).
+	reports bool
 	// leaves are the top-level non-repeated leaf columns by name, key
 	// included; unsupported are the top-level names that are groups or
 	// repeated (COL-3).
@@ -146,15 +141,20 @@ type part struct {
 	// chunks, by physical row group and column, published on first use
 	// within Limits.OffsetIndexMemory (openColumn, reader.keepLocations).
 	locs [][]atomic.Pointer[[]pageLoc]
-	// lastChecked is set once Verify decoded and checked the part's last
-	// key page against its bounds.
-	lastChecked atomic.Bool
 	// meta holds the page-index bytes of the part's end that its check
-	// read, nil when none are kept (reader.retainTail); metaUsed is when a
-	// load last used them, on the reader's metaClock.
-	meta     atomic.Pointer[retained]
-	metaUsed atomic.Int64
+	// read, nil when none are kept (reader.retainTail).
+	meta atomic.Pointer[retained]
 }
+
+// The flags of a part.
+const (
+	// partRefused is set once the part's err is kept, for readers not
+	// holding its check.
+	partRefused uint32 = 1 << iota
+	// partLastChecked is set once Verify decoded and checked the part's
+	// last key page against its bounds.
+	partLastChecked
+)
 
 // group is one non-empty row group.
 type group struct {
@@ -191,8 +191,6 @@ type partInput struct {
 	file   io.ReaderAt
 	size   int64
 	footer *parquet.File
-	// reports is set when file reports its physical requests.
-	reports bool
 	// minKey and maxKey, when set, are the part's exact first and last
 	// keys. They route reads to the part without decoding its keys, and a
 	// decoded key outside them, or a first or last key that differs from
@@ -201,7 +199,12 @@ type partInput struct {
 	minKey, maxKey []byte
 	// rows, when positive, is the part's exact row count.
 	rows int64
-	// tail is the end of the file readFooter read, when it did.
+}
+
+// fetchedInput is a part's input as a check opened it, with the end of its
+// file that readFooter read, when it did.
+type fetchedInput struct {
+	partInput
 	tail footerTail
 }
 
@@ -345,10 +348,10 @@ func (r *reader) partWith(ctx context.Context, i int, st *ReadStats, pre *fetche
 		switch {
 		case errors.As(err, &refusal):
 			p.err = detach(refusal)
-			p.refused.Store(true)
+			p.flags.Or(partRefused)
 		case errors.As(err, &unsupported):
 			p.err = detach(unsupported)
-			p.refused.Store(true)
+			p.flags.Or(partRefused)
 		}
 		return nil, err
 	}
@@ -360,7 +363,7 @@ func (r *reader) partWith(ctx context.Context, i int, st *ReadStats, pre *fetche
 // fills it in. The caller holds p.check.
 func (r *reader) checkPart(ctx context.Context, i int, st *ReadStats, pre *fetchedPart) error {
 	p := r.parts[i]
-	in := partInput{name: p.name, file: p.file, size: p.size, footer: p.footer}
+	in := fetchedInput{partInput: partInput{name: p.name, file: p.file, size: p.size, footer: p.footer}}
 	switch {
 	case pre != nil: // fetched by Verify, which counted it
 		if pre.err != nil {
@@ -383,7 +386,7 @@ func (r *reader) checkPart(ctx context.Context, i int, st *ReadStats, pre *fetch
 }
 
 // fill checks the footer of a part's file and fills in the part.
-func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats) error {
+func (r *reader) fill(ctx context.Context, p *part, in fetchedInput, st *ReadStats) error {
 	footer := in.footer
 	if footer == nil {
 		var err error
@@ -465,8 +468,6 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 		p.rows = rows
 	}
 	p.file, p.size, p.groups, p.reports = in.file, in.size, groups, reportsIO(in.file)
-	p.src = sourceInfo{name: p.name, unreported: !p.reports}
-	p.srcUncollected = sourceInfo{name: p.name, unreported: true}
 	if p.reports {
 		r.fileReports.Store(true)
 	}
@@ -504,7 +505,7 @@ func (r *reader) verify(ctx context.Context, st *ReadStats) error {
 			if _, err := r.first(ctx, g, &log, st); err != nil {
 				return err
 			}
-			if j == len(p.groups)-1 && p.maxKey != nil && !p.lastChecked.Load() {
+			if j == len(p.groups)-1 && p.maxKey != nil && p.flags.Load()&partLastChecked == 0 {
 				k, err := r.keyPages(ctx, g, &log, st)
 				if err != nil {
 					return err
@@ -512,7 +513,7 @@ func (r *reader) verify(ctx context.Context, st *ReadStats) error {
 				if err := k.decode(len(k.index.pages) - 1); err != nil {
 					return err
 				}
-				p.lastChecked.Store(true)
+				p.flags.Or(partLastChecked)
 			}
 		}
 	}
@@ -523,7 +524,7 @@ func (r *reader) verify(ctx context.Context, st *ReadStats) error {
 // opened, its footer read and checked against its manifest entry and its
 // head established, or the error doing so.
 type fetchedPart struct {
-	in  partInput
+	in  fetchedInput
 	err error
 }
 
@@ -548,7 +549,7 @@ func (r *reader) verifyParts(ctx context.Context, memo *pageMemo, st *ReadStats)
 	slots := make(chan struct{}, r.policy.Concurrency)
 	var wg sync.WaitGroup
 	for i, p := range r.parts {
-		check := r.fetch != nil && !p.ready.Load() && !p.refused.Load()
+		check := r.fetch != nil && !p.ready.Load() && p.flags.Load()&partRefused == 0
 		probes := !r.local && p.ready.Load() && r.wantsProbes(p)
 		if !check && !probes {
 			continue
@@ -617,7 +618,7 @@ func (r *reader) prefetchPart(ctx context.Context, i int, st *ReadStats, memo *p
 	}
 	head, headErr := r.fetchProbes(ctx, p, in.file, in.size, in.footer, lookup, tail.headDeferred, memo, st)
 	if tail.headDeferred && headErr == nil {
-		at := storageReader{r: bind(ctx, in.file), st: st, src: &sourceInfo{name: in.name, unreported: unreported(ctx, reportsIO(in.file))}}
+		at := storageReader{r: bind(ctx, in.file), st: st, name: in.name, unreported: unreported(ctx, reportsIO(in.file))}
 		headErr = headVerdict(ctx, in.name, at, in.size, head, tail, nil)
 	}
 	if headErr != nil {
@@ -630,7 +631,7 @@ func (r *reader) prefetchPart(ctx context.Context, i int, st *ReadStats, memo *p
 // wantsProbes reports whether Verify would read a page of checked part p:
 // a row group's first key page not yet known, or its last.
 func (r *reader) wantsProbes(p *part) bool {
-	if p.maxKey != nil && !p.lastChecked.Load() && len(p.groups) > 0 {
+	if p.maxKey != nil && p.flags.Load()&partLastChecked == 0 && len(p.groups) > 0 {
 		return true
 	}
 	for _, g := range p.groups {
@@ -715,7 +716,7 @@ func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, siz
 			probes = append(probes, pr)
 		}
 	}
-	if p.maxKey != nil && !p.lastChecked.Load() && lastGroup >= 0 {
+	if p.maxKey != nil && p.flags.Load()&partLastChecked == 0 && lastGroup >= 0 {
 		if pr, ok := located(lastGroup, true); ok {
 			probes = append(probes, pr)
 		}
@@ -754,7 +755,7 @@ func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, siz
 			if int64(len(rg.Buf)) != pr.size {
 				page = ownCopy(page) // keep the page, not the head before it
 			}
-			memo.put(p, pr.off, page)
+			memo.put(p, pr.off, page, false)
 			break
 		}
 	}
@@ -774,7 +775,7 @@ func (r *reader) fetchProbes(ctx context.Context, p *part, file io.ReaderAt, siz
 		return nil, err
 	}
 	defer limit.release(1)
-	at := storageReader{r: bind(ctx, file), st: st, src: &sourceInfo{name: p.name, unreported: unreported(ctx, reportsIO(file))}}
+	at := storageReader{r: bind(ctx, file), st: st, name: p.name, unreported: unreported(ctx, reportsIO(file))}
 	head = make([]byte, 4)
 	if err := at.readFull(head, 0); err != nil {
 		return nil, err
@@ -1011,11 +1012,9 @@ func bind(ctx context.Context, file io.ReaderAt) io.ReaderAt {
 // at returns the part's file for reads under ctx, its errors marked as
 // the source's own, its calls counted in st.
 func (p *part) at(ctx context.Context, st *ReadStats) storageReader {
-	src := &p.src
-	if p.reports && !collected(ctx) {
-		src = &p.srcUncollected // its requests reach no collector
-	}
-	return storageReader{r: bind(ctx, p.file), st: st, src: src}
+	// A reporting file's requests reach no collector when the operation
+	// began before the reader knew of them (reader.begin).
+	return storageReader{r: bind(ctx, p.file), st: st, name: p.name, unreported: !p.reports || !collected(ctx)}
 }
 
 // begin takes a read lease that close waits for, and returns the request's
@@ -1083,8 +1082,8 @@ func (r *reader) close() error {
 				errs = append(errs, fmt.Errorf("close %s: %w", p.name, err))
 			}
 		}
-		if r.release != nil {
-			if err := r.release.Close(); err != nil {
+		if r.root != nil {
+			if err := r.root.Close(); err != nil {
 				errs = append(errs, err)
 			}
 		}

@@ -120,7 +120,8 @@ type keyReuse struct {
 }
 
 func (plan *Plan) scanBatches(ctx context.Context, st *ReadStats, kr keyReuse, fn func(*Batch) error) (err error) {
-	st = resetStats(st)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
 	if fn == nil {
 		return invalidRequest("a nil batch callback")
 	}
@@ -161,7 +162,8 @@ const unlimited = math.MaxInt64
 
 // rangeBatches hands fn the rows of q as batches; see Dataset.Scan.
 func (r *reader) rangeBatches(ctx context.Context, q Query, st *ReadStats, kr keyReuse, fn func(*Batch) error) (err error) {
-	st = resetStats(st)
+	st, spare := takeStats(st)
+	defer dropStats(spare)
 	if fn == nil {
 		return invalidRequest("a nil batch callback")
 	}

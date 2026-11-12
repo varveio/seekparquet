@@ -171,7 +171,7 @@ func TestVerifyConcurrency(t *testing.T) {
 			t.Fatalf("Concurrency %d: %d reads at once", n, src.most.Load())
 		}
 		for i, p := range d.r.parts {
-			if !p.ready.Load() || !p.lastChecked.Load() {
+			if !p.ready.Load() || p.flags.Load()&partLastChecked == 0 {
 				t.Fatalf("part %d not verified", i)
 			}
 		}
