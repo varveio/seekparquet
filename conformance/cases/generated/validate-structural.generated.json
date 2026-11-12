@@ -2732,6 +2732,90 @@
       }
     },
     {
+      "id": "validate-structural/encrypted-footer-signature-long",
+      "description": "The footer declares encryption, but 29 bytes, not a 28-byte signature, follow its metadata: a malformed footer.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-signature-long",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signature-long",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "failed",
+            "code": "invalid_footer"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-signed-algorithm",
+      "description": "A signed plaintext footer declaring encryption by encryption_algorithm alone, then a 28-byte signature.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-signed-algorithm",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signed-algorithm",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-structural/encrypted-footer-signed-empty-key",
+      "description": "A signed plaintext footer whose only declaration is footer_signing_key_metadata present as an empty binary, then a 28-byte signature: the field's presence declares encryption.",
+      "family": "validate-structural/fault-at-lowest-level",
+      "fault_id": "encrypted-footer-signed-empty-key",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:structural"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signed-empty-key",
+      "request": {
+        "op": "validate",
+        "level": "structural"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-structural/invalid-footer-trailing-28",
       "description": "28 bytes follow the footer metadata, which declares no encryption: a malformed footer, not a signature.",
       "family": "validate-structural/fault-at-lowest-level",

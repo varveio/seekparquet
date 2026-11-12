@@ -7,7 +7,7 @@
     "requirements": "generators/requirements.txt"
   },
   "reproducibility": "Byte-reproducible with the pinned pyarrow on Python 3.13: generators/check_reproducible.py regenerates everything in a temporary directory and compares it with the checked-in files (pyarrow 26.0.1 footers carry no timestamps). If a future writer is not byte-reproducible, the checked-in bytes stay authoritative and STRUCTURE.txt must remain identical.",
-  "total_bytes": 831593,
+  "total_bytes": 841275,
   "largest_file_bytes": 9285,
   "datasets": [
     {
@@ -4098,7 +4098,7 @@
       "producer": "generators/mutate_metadata.py",
       "derived_from": "datasets/basic",
       "changes": [
-        "data/part-00000.parquet: footer re-encoded declaring encryption, followed by 28 bytes the footer length covers",
+        "data/part-00000.parquet: footer re-encoded declaring encryption (True), followed by 28 bytes the footer length covers",
         "manifest: parts[0].bytes 2828 -> 2877"
       ],
       "fault_id": "encrypted-footer-signed",
@@ -4130,7 +4130,7 @@
       "producer": "generators/mutate_metadata.py",
       "derived_from": "datasets/basic",
       "changes": [
-        "data/part-00000.parquet: footer re-encoded declaring encryption, followed by 27 bytes the footer length covers",
+        "data/part-00000.parquet: footer re-encoded declaring encryption (True), followed by 27 bytes the footer length covers",
         "manifest: parts[0].bytes 2828 -> 2876"
       ],
       "fault_id": "encrypted-footer-signature-short",
@@ -4154,6 +4154,102 @@
       ]
     },
     {
+      "name": "encrypted-footer-signature-long",
+      "dir": "datasets/invalid/encrypted-footer-signature-long",
+      "valid": false,
+      "description": "The footer declares encryption, but 29 bytes, not a 28-byte signature, follow its metadata: a malformed footer.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "data/part-00000.parquet: footer re-encoded declaring encryption (True), followed by 29 bytes the footer length covers",
+        "manifest: parts[0].bytes 2828 -> 2878"
+      ],
+      "fault_id": "encrypted-footer-signature-long",
+      "files": [
+        {
+          "path": "datasets/invalid/encrypted-footer-signature-long/data/part-00000.parquet",
+          "bytes": 2878,
+          "sha256": "ae03158c75484d60565b03ecadec02528a2b16832957d9ea2f5f5a97fa253984",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/encrypted-footer-signature-long/manifest.json",
+          "bytes": 362,
+          "sha256": "d8c974bf03235535b427a04eb2cb8ccb1fdcdaf9a759c314f207eb7196fead2e",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "encrypted-footer-signed-algorithm",
+      "dir": "datasets/invalid/encrypted-footer-signed-algorithm",
+      "valid": false,
+      "description": "A signed plaintext footer declaring encryption by encryption_algorithm alone, then a 28-byte signature.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "data/part-00000.parquet: footer re-encoded declaring encryption (algorithm), followed by 28 bytes the footer length covers",
+        "manifest: parts[0].bytes 2828 -> 2860"
+      ],
+      "fault_id": "encrypted-footer-signed-algorithm",
+      "files": [
+        {
+          "path": "datasets/invalid/encrypted-footer-signed-algorithm/data/part-00000.parquet",
+          "bytes": 2860,
+          "sha256": "775625e68523e20be34fd46066153993d7bd505e558c3c349cbcf101f54b1e8c",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/encrypted-footer-signed-algorithm/manifest.json",
+          "bytes": 362,
+          "sha256": "4e2156b3e96a49abd0056ed19f2dee97d0fa8c2c06bb0938347ef46f9ba12d43",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
+      "name": "encrypted-footer-signed-empty-key",
+      "dir": "datasets/invalid/encrypted-footer-signed-empty-key",
+      "valid": false,
+      "description": "A signed plaintext footer whose only declaration is footer_signing_key_metadata present as an empty binary, then a 28-byte signature: the field's presence declares encryption.",
+      "provenance": "mutated",
+      "producer": "generators/mutate_metadata.py",
+      "derived_from": "datasets/basic",
+      "changes": [
+        "data/part-00000.parquet: footer re-encoded declaring encryption (empty-key), followed by 28 bytes the footer length covers",
+        "manifest: parts[0].bytes 2828 -> 2858"
+      ],
+      "fault_id": "encrypted-footer-signed-empty-key",
+      "files": [
+        {
+          "path": "datasets/invalid/encrypted-footer-signed-empty-key/data/part-00000.parquet",
+          "bytes": 2858,
+          "sha256": "33bd77317ba374f7af6498da02c6adee8b99023ffb17d0ca9614dfb84bebe416",
+          "producer": "pyarrow 26.0.1 + generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        },
+        {
+          "path": "datasets/invalid/encrypted-footer-signed-empty-key/manifest.json",
+          "bytes": 362,
+          "sha256": "e013e02a9a53ce67334e18934b00aca8a161dfd766f8bd92c54eb1fe9c86c90f",
+          "producer": "generators/mutate_metadata.py",
+          "provenance": "mutated",
+          "command": "python generators/regenerate.py"
+        }
+      ]
+    },
+    {
       "name": "invalid-footer-trailing-28",
       "dir": "datasets/invalid/invalid-footer-trailing-28",
       "valid": false,
@@ -4162,7 +4258,7 @@
       "producer": "generators/mutate_metadata.py",
       "derived_from": "datasets/basic",
       "changes": [
-        "data/part-00000.parquet: footer re-encoded, followed by 28 bytes the footer length covers",
+        "data/part-00000.parquet: footer re-encoded (False), followed by 28 bytes the footer length covers",
         "manifest: parts[0].bytes 2828 -> 2856"
       ],
       "fault_id": "invalid-footer-trailing-28",
