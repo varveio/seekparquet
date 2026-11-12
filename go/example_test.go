@@ -74,7 +74,7 @@ func ExamplePrefixSpan() {
 		for _, row := range rows {
 			fmt.Printf("page %d: %s\n", page, row.Key)
 		}
-		if int64(len(rows)) < rng.Limit {
+		if len(rows) == 0 {
 			break
 		}
 		rng.Cursor = rows[len(rows)-1].Cursor()

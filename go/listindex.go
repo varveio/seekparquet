@@ -14,8 +14,17 @@ import (
 	"time"
 )
 
-// ListIndexOptions configures the optional in-memory slash listing index.
-// Zero fields use 64 MiB, one worker, and eight directory changes per page.
+// ListIndexOptions configures the optional in-memory slash list index.
+// Zero fields use 64 MiB, one worker, and eight prefix-run changes per page.
+//
+// Retained storage is charged as 256 bytes for a nonempty index plus, for
+// each admitted row group, 256 + R(base bytes) + R(suffix bytes) +
+// R(40 * anchor count). R(0) is zero; otherwise R rounds up to a power of
+// two. This is allocator-independent accounting, not a measurement of heap
+// use. Existing footers, routing metadata, page indexes, and build scratch
+// are outside MaxBytes. Workers bounds concurrent row-group decoding, not
+// physical storage requests. Negative fields are ErrInvalidRequest.
+// See [Dataset.BuildListIndex] for publication, failures, and reuse.
 type ListIndexOptions struct {
 	// MaxBytes bounds all retained index storage, including containers and anchors.
 	// Existing footer, routing and Parquet page-index caches have their own Limits.

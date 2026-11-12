@@ -1,17 +1,6 @@
 // Copyright 2026 Varve Systems Ltd
 // SPDX-License-Identifier: Apache-2.0
 
-// Package write writes SeekParquet part files (format 1, draft revision 1):
-// streaming, from rows already in key order, with everything the profile
-// requires of a part and nothing a caller can switch off.
-//
-// A part written by NewPart has the seekparquet.* stamps (STAMP-1),
-// TYPE_ORDER column orders (KEY-5), the key column ascending as every row
-// group's first sorting column (RG-1), a ColumnIndex and an OffsetIndex on
-// every column, the key column's among them (RG-2 to RG-4), with exact
-// page bounds (RG-5), and key pages of at most 1,024 rows by default
-// (GEO-1). Its keys are checked as they arrive (KEY-2, KEY-3, KEY-6).
-// Publishing parts and committing a manifest is package local's.
 package write
 
 import (

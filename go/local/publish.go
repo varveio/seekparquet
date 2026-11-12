@@ -1,13 +1,6 @@
 // Copyright 2026 Varve Systems Ltd
 // SPDX-License-Identifier: Apache-2.0
 
-// Package local publishes SeekParquet datasets in a local directory,
-// durably and confined to the dataset root, with swath's protocol: parts
-// first, each synced and renamed into place with its directory synced,
-// then the manifest, written whole, synced and renamed into place, which
-// commits the dataset (COMMIT-1), and its directory synced. A dataset root
-// belongs to one writer at a time; WriteDir, which composes these steps
-// with package write, writes only into a directory it creates.
 package local
 
 import (

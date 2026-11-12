@@ -144,7 +144,7 @@ def main():
             readers[name] = runner(root, env, args.timeout)
     report = {"report": "indexed-access-regressions",
               "passed": all(result["passed"] for result in readers.values()),
-              "freeze_qualified": False, "coverage": "docs/indexed-access.md",
+              "freeze_qualified": False, "coverage": "docs/dev/indexed-access.md",
               "readers": readers}
     rendered = json.dumps(report, indent=2) + "\n"
     if args.output:
