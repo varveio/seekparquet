@@ -127,15 +127,16 @@ type specStatus struct {
 // are marked pending.
 func newGenerator(root, javaDir string) (*generator, error) {
 	g := &generator{root: root, goPkgs: map[string]*goPackage{}}
-	for file, v := range map[string]any{
+	data := map[string]any{
 		"docs/data/limits.json":          &g.limits,
 		"docs/data/read-stats.json":      &g.stats,
 		"docs/data/refusal-actions.json": &g.actions,
 		"docs/data/parity.json":          &g.parity,
 		"spec/refusal-codes.json":        &g.codes,
 		"spec/status.json":               &g.status,
-	} {
-		if err := g.readJSON(file, v); err != nil {
+	}
+	for _, file := range sortedKeys(data) {
+		if err := g.readJSON(file, data[file]); err != nil {
 			return nil, err
 		}
 	}
@@ -207,8 +208,9 @@ func (g *generator) run(write bool) ([]string, error) {
 		return nil, err
 	}
 	want := map[string]string{}
-	for file, render := range g.generatedFiles() {
-		text, err := render()
+	generated := g.generatedFiles()
+	for _, file := range sortedKeys(generated) {
+		text, err := generated[file]()
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", file, err)
 		}
@@ -233,7 +235,8 @@ func (g *generator) run(write bool) ([]string, error) {
 		want[page] = text
 	}
 	var changed []string
-	for file, text := range want {
+	for _, file := range sortedKeys(want) {
+		text := want[file]
 		full := filepath.Join(g.root, filepath.FromSlash(file))
 		old, err := os.ReadFile(full)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -259,10 +262,9 @@ func (g *generator) run(write bool) ([]string, error) {
 // skipDirs are directories never searched for Markdown.
 var skipDirs = map[string]bool{".git": true, "build": true, ".gradle": true, "node_modules": true, ".venv": true, "datasets": true}
 
-// markdownFiles returns the repository's Markdown files: those git tracks
-// or would track (not ignored), or, outside a git checkout, every one.
+// markdownFiles returns tracked Markdown files, or every one outside git.
 func (g *generator) markdownFiles() ([]string, error) {
-	cmd := exec.Command("git", "-C", g.root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.md")
+	cmd := exec.Command("git", "-C", g.root, "ls-files", "-z", "--cached", "--", "*.md")
 	if out, err := cmd.Output(); err == nil {
 		var files []string
 		for _, f := range strings.Split(string(out), "\x00") {
@@ -605,15 +607,17 @@ func (g *generator) checkJava() []error {
 		for _, f := range s.Fields {
 			listed[f.Java] = true
 			names[upperSnake(f.Java)] = true
-			if f.Derived {
-				continue // both running values are checked against the page by LimitsDocTest (Java) and TestLimitsDoc (Go)
-			}
-			goDefault, err := g.goDefault(s.Go, f.Go, false)
+			goDefault, err := g.goDefault(s.Go, f.Go, f.Derived)
 			if err != nil {
 				errs = append(errs, err)
 				continue
 			}
-			javaDefault, err := g.java.limitDefault(upperSnake(f.Java))
+			var javaDefault int64
+			if f.Derived {
+				javaDefault, err = g.java.derivedDefault(g.goPkgs[""].defaults[s.Go])
+			} else {
+				javaDefault, err = g.java.limitDefault(upperSnake(f.Java))
+			}
 			if err != nil {
 				errs = append(errs, err)
 				continue
@@ -697,7 +701,7 @@ func keysOf(m map[string]string) map[string]bool {
 	return out
 }
 
-func sortedKeys(m map[string]bool) []string {
+func sortedKeys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

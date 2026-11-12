@@ -4,8 +4,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"os"
@@ -18,12 +20,15 @@ import (
 // source: its exported names, typed string constants, struct field
 // comments, integer constants and the defaults Limits.withDefaults sets.
 type goPackage struct {
-	symbols    map[string]bool             // "Name" and "Type.Member"
-	consts     map[string]goConst          // typed constants with string values
-	ints       map[string]int64            // untyped or int constants with constant values
-	fields     map[string][]goField        // struct type → fields in order
-	defaults   map[string]map[string]int64 // type → field → constant default
-	defaultSet map[string]map[string]bool  // type → field → has a default, constant or not
+	symbols      map[string]bool             // "Name" and "Type.Member"
+	consts       map[string]goConst          // typed constants with string values
+	ints         map[string]int64            // untyped or int constants with constant values
+	fields       map[string][]goField        // struct type → fields in order
+	defaults     map[string]map[string]int64 // type → field → constant default
+	defaultSet   map[string]map[string]bool  // type → field → has a default, constant or not
+	defaultExprs map[string]map[string]ast.Expr
+	funcs        map[string]*ast.FuncDecl
+	constExprs   map[string]ast.Expr
 	// errs are declarations of documented constant types in a form the
 	// parser does not read; they fail the check rather than go unseen.
 	errs []error
@@ -50,6 +55,8 @@ func parseGoPackage(dir string) (*goPackage, error) {
 	p := &goPackage{
 		symbols: map[string]bool{}, consts: map[string]goConst{}, ints: map[string]int64{},
 		fields: map[string][]goField{}, defaults: map[string]map[string]int64{}, defaultSet: map[string]map[string]bool{},
+		defaultExprs: map[string]map[string]ast.Expr{}, funcs: map[string]*ast.FuncDecl{},
+		constExprs: map[string]ast.Expr{},
 	}
 	fset := token.NewFileSet()
 	found := false
@@ -68,7 +75,40 @@ func parseGoPackage(dir string) (*goPackage, error) {
 	if !found {
 		return nil, fmt.Errorf("no Go source in %s", dir)
 	}
+	// A constant can acquire a code type from another constant, including
+	// one declared later or in another file. Reject inferred forms we did
+	// not extract instead of losing them from reverse coverage.
+	for _, name := range sortedKeys(p.constExprs) {
+		if _, read := p.consts[name]; !read && p.codeType(p.constExprs[name], map[string]bool{name: true}) != "" {
+			p.errs = append(p.errs, fmt.Errorf("constant %s has a code type but is not a string literal docgen reads", name))
+		}
+	}
 	return p, nil
+}
+
+func (p *goPackage) codeType(e ast.Expr, seen map[string]bool) string {
+	switch e := e.(type) {
+	case *ast.ParenExpr:
+		return p.codeType(e.X, seen)
+	case *ast.CallExpr:
+		if id, ok := e.Fun.(*ast.Ident); ok && codeTypes[id.Name] {
+			return id.Name
+		}
+	case *ast.Ident:
+		if c, ok := p.consts[e.Name]; ok && codeTypes[c.typ] {
+			return c.typ
+		}
+		if !seen[e.Name] {
+			seen[e.Name] = true
+			return p.codeType(p.constExprs[e.Name], seen)
+		}
+	case *ast.BinaryExpr:
+		if typ := p.codeType(e.X, seen); typ != "" {
+			return typ
+		}
+		return p.codeType(e.Y, seen)
+	}
+	return ""
 }
 
 func (p *goPackage) add(f *ast.File) {
@@ -77,6 +117,7 @@ func (p *goPackage) add(f *ast.File) {
 		case *ast.FuncDecl:
 			if d.Recv == nil {
 				p.symbols[d.Name.Name] = true
+				p.funcs[d.Name.Name] = d
 				continue
 			}
 			recv := receiverName(d.Recv.List[0].Type)
@@ -164,13 +205,16 @@ func (p *goPackage) addValueSpec(tok token.Token, s *ast.ValueSpec, lastType *st
 			}
 		case *ast.CallExpr:
 			if fn, isIdent := v.Fun.(*ast.Ident); isIdent && len(v.Args) == 1 {
-				if lit, isLit := v.Args[0].(*ast.BasicLit); isLit && lit.Kind == token.STRING && t == "" {
+				if t == "" {
 					t = fn.Name
+				}
+				if lit, isLit := v.Args[0].(*ast.BasicLit); isLit && lit.Kind == token.STRING {
 					value, ok = unquote(lit.Value)
 				}
 			}
 		}
 		if tok == token.CONST {
+			p.constExprs[n.Name] = s.Values[i]
 			if ok && t != "" {
 				p.consts[n.Name] = goConst{n.Name, t, value}
 			} else if codeTypes[t] {
@@ -198,9 +242,11 @@ func (p *goPackage) addDefaults(typ string, body *ast.BlockStmt) {
 	if p.defaults[typ] == nil {
 		p.defaults[typ] = map[string]int64{}
 		p.defaultSet[typ] = map[string]bool{}
+		p.defaultExprs[typ] = map[string]ast.Expr{}
 	}
 	record := func(field string, value ast.Expr) {
 		p.defaultSet[typ][field] = true
+		p.defaultExprs[typ][field] = value
 		if v, ok := evalInt(value, p.ints); ok {
 			p.defaults[typ][field] = v
 		}
@@ -234,6 +280,37 @@ func (p *goPackage) addDefaults(typ string, body *ast.BlockStmt) {
 		}
 		return true
 	})
+}
+
+// compactGo formats an AST node without comments or whitespace. Derived
+// defaults are deliberately fail-closed: when their implementation changes
+// shape, teach the extractor that shape rather than render a guessed formula.
+func compactGo(n ast.Node) string {
+	var b bytes.Buffer
+	if err := format.Node(&b, token.NewFileSet(), n); err != nil {
+		return ""
+	}
+	return strings.Join(strings.Fields(b.String()), "")
+}
+
+func (p *goPackage) derivedDefault(typ, field string) (int64, error) {
+	call := p.defaultExprs[typ][field]
+	fn := p.funcs["worstPageMemory"]
+	const body = "{per:=int64(optionalValueSlices*valueBytes);ifpageValues>(maxInt64-pageBytes)/per{returnmaxInt64};returnpageValues*per+pageBytes}"
+	// go/format separates statements with newlines rather than semicolons.
+	wantBody := strings.ReplaceAll(body, ";", "")
+	if field != "PageMemory" || call == nil || compactGo(call) != "worstPageMemory(l.PageValues,l.PageBytes)" ||
+		fn == nil || compactGo(fn.Type) != "func(pageValues,pageBytesint64)int64" || compactGo(fn.Body) != wantBody {
+		return 0, fmt.Errorf("%s.%s: cannot extract derived default; update docgen for its implementation", typ, field)
+	}
+	slices, ok1 := p.ints["optionalValueSlices"]
+	size, ok2 := p.ints["valueBytes"]
+	values, ok3 := p.defaults[typ]["PageValues"]
+	pageBytes, ok4 := p.defaults[typ]["PageBytes"]
+	if !ok1 || !ok2 || !ok3 || !ok4 {
+		return 0, fmt.Errorf("%s.%s: cannot derive its default; update docgen", typ, field)
+	}
+	return slices*size*values + pageBytes, nil
 }
 
 // evalInt evaluates an integer constant expression of literals, known

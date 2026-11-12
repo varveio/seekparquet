@@ -88,24 +88,15 @@ func (g *generator) pending(page string) string {
 }
 
 // goDefault returns the default Go's withDefaults sets for a Limits field.
-// A derived default (PageMemory) is computed as the field's comment and
-// worstPageMemory state it; TestLimitsDoc in the root package checks the
-// rendered amount against the running withDefaults. A default docgen cannot
-// read fails.
+// Derived defaults require a recognized implementation as well as a matching
+// comment. TestLimitsDoc also compares the page against the running defaults.
 func (g *generator) goDefault(typ, field string, derived bool) (int64, error) {
 	p := g.goPkgs[""]
 	if !p.defaultSet[typ][field] {
 		return 0, fmt.Errorf("%s.withDefaults sets no default for %s", typ, field)
 	}
 	if derived {
-		slices, ok1 := p.ints["optionalValueSlices"]
-		size, ok2 := p.ints["valueBytes"]
-		values, ok3 := p.defaults[typ]["PageValues"]
-		pageBytes, ok4 := p.defaults[typ]["PageBytes"]
-		if !ok1 || !ok2 || !ok3 || !ok4 {
-			return 0, fmt.Errorf("%s.%s: cannot derive its default; update docgen", typ, field)
-		}
-		return slices*size*values + pageBytes, nil
+		return p.derivedDefault(typ, field)
 	}
 	v, ok := p.defaults[typ][field]
 	if !ok {

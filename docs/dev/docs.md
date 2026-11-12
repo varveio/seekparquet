@@ -68,6 +68,15 @@ docgen also checks the data against the code, in both directions:
 - every Go and Java name in `docs/data/parity.json`, `limits.json` and `read-stats.json` exists, and Java's
   limit defaults equal Go's.
 
+Java names are matched to public declarations on their owner type, including nested types and record
+components. The complete builder-setting and statistics-component lists are compared both ways. A default
+that cannot be extracted fails the check; derived defaults require a recognized implementation in each
+language. Go's `TestLimitsDoc` and Java's `LimitsDocTest` also compare the rendered defaults with the
+running implementations.
+
+Both Markdown scanners inspect tracked files in a checkout, excluding untracked scratch files. Outside
+Git they scan Markdown files under the supplied root.
+
 When Go or Java gains a field, a limit or a code, the check fails until its entry exists. To skip the Java
 checks while Java lags behind Go, set `java_pending` in `parity.json` to the PR or branch that will catch up;
 every generated page that shows Java names then says so. `-java DIR` checks the Java names against another

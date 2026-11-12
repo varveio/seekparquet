@@ -5,6 +5,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -171,14 +172,27 @@ func TestCheckCatchesDrift(t *testing.T) {
 		name, file, old, new, want string
 	}{
 		{"java default changed", limitsJava, "DEFAULT_PAGE_BYTES = 64 * MIB", "DEFAULT_PAGE_BYTES = 128 * MIB", "pageBytes default"},
+		{"java parenthesized default changed", limitsJava, "DEFAULT_PAGE_BYTES = 64 * MIB", "DEFAULT_PAGE_BYTES = (128 * MIB)", "pageBytes default"},
 		{"java default unparsable", limitsJava, "DEFAULT_PAGE_BYTES = 64 * MIB", "DEFAULT_PAGE_BYTES = Math.multiplyExact(64, MIB)", "cannot evaluate Limits.DEFAULT_PAGE_BYTES"},
 		{"java default missing", limitsJava, "DEFAULT_PAGE_BYTES = 64 * MIB", "DEFAULT_PAGE_BYTEZ = 64 * MIB", "no public constant DEFAULT_PAGE_BYTES"},
 		{"java builder method removed, field kept", limitsJava, "public Builder pageBytes(", "public Builder pageByteCount(", "no public method pageBytes"},
 		{"java record component added", statsJava, "long readAheadUnusedBytes)", "long readAheadUnusedBytes, long somethingNew)", "somethingNew is not in read-stats.json"},
+		{"java record component removed", statsJava, ",\n        long readAheadUnusedBytes)", ")", "no component readAheadUnusedBytes"},
+		{"java derived default changed", "java/" + javaMain + "/PageDecoder.java", "return 48L * pageValues + pageBytes;", "return 49L * pageValues + pageBytes;", "pageMemory default"},
+		{"java derived helper missing", "java/" + javaMain + "/PageDecoder.java", "static long worstPageMemory(", "static long differentMemory(", "cannot extract derived default"},
+		{"java derived helper unparsable", "java/" + javaMain + "/PageDecoder.java", "return 48L * pageValues + pageBytes;", "return Math.multiplyExact(48L, pageValues) + pageBytes;", "cannot evaluate derived default"},
+		{"java derived getter changed", limitsJava, "PageDecoder.worstPageMemory(pageValues(), pageBytes())", "832L << 20", "cannot extract derived default"},
 		{"go comment states another default", "go/limits.go", "Default\n\t// 64 MiB.", "Default\n\t// 65 MiB.", "does not state its default"},
 		{"go default not constant", "go/limits.go", "set(&l.PageBytes, 64<<20)", "set(&l.PageBytes, pageBytesDefault())", "not a constant expression"},
+		{"go default missing", "go/limits.go", "set(&l.PageBytes, 64<<20)", "", "sets no default for PageBytes"},
+		{"go derived call changed", "go/limits.go", "worstPageMemory(l.PageValues, l.PageBytes)", "worstPageMemory(l.PageValues, l.PageBytes) + 1", "cannot extract derived default"},
+		{"go derived helper changed", "go/limits.go", "return pageValues*per + pageBytes", "return pageValues*per + pageBytes + 1", "cannot extract derived default"},
+		{"go derived parameters reversed", "go/limits.go", "func worstPageMemory(pageValues, pageBytes int64)", "func worstPageMemory(pageBytes, pageValues int64)", "cannot extract derived default"},
+		{"go derived default missing", "go/limits.go", "set(&l.PageMemory, worstPageMemory(l.PageValues, l.PageBytes))", "", "sets no default for PageMemory"},
 		{"go code in conversion form", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch = RefusalCode(\"digest_mismatch\")\n\tCodeNewOne = RefusalCode(\"new_one\")", "RefusalCode constants"},
 		{"go code in an unread form", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch RefusalCode = \"digest_\" + \"mismatch\"", "not a string literal"},
+		{"go conversion in an unread form", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch = RefusalCode(\"digest_\" + \"mismatch\")", "not a string literal"},
+		{"go inferred typed expression", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch RefusalCode = \"digest_mismatch\"\n CodeNewOne = CodeDigestMismatch + \"_new\"", "CodeNewOne has a code type"},
 		{"documented limit without a LimitName", "go/limits.go", "LimitGetRows           LimitName = \"GetRows\"", "", "no LimitName LimitGetRows"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -191,6 +205,86 @@ func TestCheckCatchesDrift(t *testing.T) {
 	}
 	if got := checkErr(t, mutableTree(t)); got != "" {
 		t.Errorf("the unchanged tree fails:\n%s", got)
+	}
+}
+
+func TestParenthesizedDefault(t *testing.T) {
+	root := mutableTree(t)
+	edit(t, root, "java/"+javaMain+"/Limits.java", "DEFAULT_PAGE_BYTES = 64 * MIB", "DEFAULT_PAGE_BYTES = (64 * MIB)")
+	if got := checkErr(t, root); got != "" {
+		t.Fatal(got)
+	}
+}
+
+func TestJavaPublicOwners(t *testing.T) {
+	j := &javaSource{types: map[string]*javaType{}, constants: map[string]string{}}
+	err := j.parse("", `public class Limits {
+		private long pageBytes;
+		public long pageBytes() { return pageBytes; }
+		public static class Builder {
+			private long pageBytes;
+			private Builder pageBytes(long n) { return this; }
+			public Builder other(long n) { return this; }
+		}
+		public record Stats(long rows, long bytes) {}
+		private static class Hidden { public void other() {} }
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]bool{
+		"Limits.pageBytes": true, "Limits.Builder.pageBytes": false,
+		"Limits.Builder.other": true, "Limits.other": false,
+		"Limits.Stats.rows": true, "Limits.Stats.bytes": true,
+		"Limits.Hidden": false, "Limits.Hidden.other": false,
+	} {
+		if got := j.has(name); got != want {
+			t.Errorf("has(%s) = %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestDeterministicChecksAndAliases(t *testing.T) {
+	g, err := newGenerator(mutableTree(t), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := g.goPkgs[""]
+	p.consts["ZAlias"] = goConst{"ZAlias", "RefusalCode", "no_manifest"}
+	p.consts["AAlias"] = goConst{"AAlias", "RefusalCode", "no_manifest"}
+	delete(p.consts, "LimitParts")
+	delete(p.consts, "LimitGetRows")
+	want := g.check().Error()
+	for i := 0; i < 20; i++ {
+		if got := g.check().Error(); got != want {
+			t.Fatalf("error ordering changed:\n%s\nwant:\n%s", got, want)
+		}
+		if got := g.goConstFor("RefusalCode", "no_manifest"); got != "AAlias" {
+			t.Fatalf("alias selection = %s", got)
+		}
+	}
+}
+
+func TestMarkdownFilesTrackedOnly(t *testing.T) {
+	root := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"add", "tracked.md"}} {
+		if args[0] == "add" {
+			for _, name := range []string{"tracked.md", "untracked.md"} {
+				if err := os.WriteFile(filepath.Join(root, name), []byte("# Example\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s: %v", args, out, err)
+		}
+	}
+	g := &generator{root: root}
+	got, err := g.markdownFiles()
+	if err != nil || len(got) != 1 || got[0] != "tracked.md" {
+		t.Fatalf("markdownFiles = %v, %v", got, err)
 	}
 }
 

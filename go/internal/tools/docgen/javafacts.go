@@ -23,6 +23,7 @@ type javaSource struct {
 	// constants are each source file's static final fields with their
 	// initializer text, for defaults: "Limits.DEFAULT_PAGE_BYTES" → "64 * MIB".
 	constants map[string]string
+	sources   map[string]string // includes package-private decoding helpers
 }
 
 type javaType struct {
@@ -41,7 +42,7 @@ const javaMain = "seekparquet/src/main/java/io/varve/seekparquet"
 
 func loadJava(javaDir string) (*javaSource, error) {
 	base := filepath.Join(javaDir, filepath.FromSlash(javaMain))
-	j := &javaSource{types: map[string]*javaType{}, constants: map[string]string{}}
+	j := &javaSource{types: map[string]*javaType{}, constants: map[string]string{}, sources: map[string]string{}}
 	err := filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".java") {
 			return err
@@ -58,6 +59,7 @@ func loadJava(javaDir string) (*javaSource, error) {
 		if err != nil {
 			return err
 		}
+		j.sources[strings.TrimSuffix(rel, ".java")] = blank(string(src))
 		return j.parse(prefix, string(src))
 	})
 	if err != nil {
@@ -67,6 +69,26 @@ func loadJava(javaDir string) (*javaSource, error) {
 		return nil, fmt.Errorf("no Java sources under %s", base)
 	}
 	return j, nil
+}
+
+// derivedDefault checks the actual getter and helper instead of assuming
+// Java uses Go's formula. Unrecognized implementations fail extraction.
+func (j *javaSource) derivedDefault(defaults map[string]int64) (int64, error) {
+	getter := regexp.MustCompile(`public\s+long\s+pageMemory\s*\(\s*\)\s*\{([^{}]*)\}`).FindStringSubmatch(j.sources["Limits"])
+	if getter == nil || strings.Join(strings.Fields(getter[1]), "") !=
+		"returnpageMemory==0?PageDecoder.worstPageMemory(pageValues(),pageBytes()):pageMemory;" {
+		return 0, fmt.Errorf("java: cannot extract derived default Limits.pageMemory; update docgen")
+	}
+	helper := regexp.MustCompile(`static\s+long\s+worstPageMemory\s*\(int\s+pageValues,\s*int\s+pageBytes\)\s*\{\s*return\s+([^;{}]+);\s*\}`).FindStringSubmatch(j.sources["PageDecoder"])
+	if helper == nil {
+		return 0, fmt.Errorf("java: cannot extract derived default PageDecoder.worstPageMemory; update docgen")
+	}
+	expr := strings.NewReplacer("pageValues", strconv.FormatInt(defaults["PageValues"], 10),
+		"pageBytes", strconv.FormatInt(defaults["PageBytes"], 10)).Replace(helper[1])
+	if n, ok := evalJava(expr, j.constants); ok {
+		return n, nil
+	}
+	return 0, fmt.Errorf("java: cannot evaluate derived default PageDecoder.worstPageMemory = %s", helper[1])
 }
 
 var (
@@ -372,7 +394,7 @@ func evalJava(expr string, consts map[string]string) (int64, bool) {
 	for strings.HasPrefix(expr, "(") && matchingParen(expr) == len(expr)-1 {
 		expr = strings.TrimSpace(expr[1 : len(expr)-1])
 	}
-	for _, op := range []string{"+", "<<", "*"} {
+	for _, op := range []string{"<<", "+", "*"} {
 		if i := topLevelIndex(expr, op); i >= 0 {
 			x, ok1 := evalJava(expr[:i], consts)
 			y, ok2 := evalJava(expr[i+len(op):], consts)
