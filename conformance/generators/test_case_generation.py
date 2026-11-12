@@ -73,6 +73,9 @@ class Generation(unittest.TestCase):
         for fid, f in faults.items():
             if f["validation_level"] == "digest":
                 continue
+            if fid in make_cases.RULING_DATASETS:
+                # 0001 admits an exact, narrower matrix; assert it separately below.
+                continue
             self.assertEqual(len(lowest.get(fid, [])), 1, fid)
             self.assertTrue(lowest[fid][0].startswith(f"validate-{f['validation_level']}/"), fid)
 
@@ -86,9 +89,53 @@ class Generation(unittest.TestCase):
         faults = make_cases.load_faults()
         allc = {c["id"]: c for c in self.allgen + [c for _d, c in self.core.values()]}
         for fid, f in faults.items():
+            if fid in make_cases.RULING_DATASETS:
+                continue  # checked by test_0001_part_b_exact_matrix
             o, r = allc.get(f"refusals-open/{fid}"), allc.get(f"refusals-read/{fid}")
             self.assertEqual(o is not None, f["reader_detect"] in ("open", "touch"), fid)
             self.assertEqual(r is not None, f["reader_detect"] == "read", fid)
+
+    def test_0001_part_b_exact_matrix(self):
+        readers = [c for c in self.allgen if c["id"].startswith("rulings/")]
+        names = {c["id"].split("/", 1)[1] for c in readers}
+        self.assertEqual(names, (make_cases.RULING_DATASETS - {"unknown-codec-99", "unknown-value-encoding-99"}) |
+                         {"unknown-codec-99-projected", "unknown-codec-99-unprojected",
+                          "unknown-value-encoding-99-projected", "unknown-value-encoding-99-unprojected"})
+        faults = make_cases.load_faults()
+        for c in readers:
+            if c["id"].endswith(("unknown-value-encoding-99-unprojected", "unknown-codec-99-unprojected")):
+                self.assertNotIn("RG-6", c["requirements"])
+            if c.get("fault_id"):
+                f = faults[c["fault_id"]]
+                self.assertEqual(c["detect"], f["reader_detect"])
+                self.assertEqual(c["expect"]["code"], f["codes"][0])
+                self.assertEqual(c["expect"]["status"], f.get("outcome", "refused"))
+            else:
+                self.assertEqual(c["expect"]["status"], "ok")
+        validators = [c for c in self.allgen if c.get("fault_id") in make_cases.RULING_DATASETS
+                      and c["request"]["op"] == "validate"]
+        self.assertEqual({c["fault_id"] for c in validators}, {
+            "unknown-key-encoding-99-v1", "unknown-value-encoding-99", "unknown-codec-99",
+            "annotation-decimal-int64-p19-unprojected", "annotation-timestamp-empty-unit"})
+        self.assertEqual(len(validators), 5)
+        for c in validators:
+            self.assertFalse(c["id"].endswith("-projected"))
+            f = faults[c["fault_id"]]
+            low = f["validation_level"]
+            levels = c["expect"]["levels"]
+            self.assertEqual(levels[low], {"result": "incomplete" if f.get("outcome") == "unsupported" else "failed",
+                                          "code": f["codes"][0]})
+            for lower in make_cases.LEVELS[:make_cases.LEVELS.index(low)]:
+                self.assertEqual(levels[lower], {"result": "complete"})
+            self.assertEqual(c["request"]["level"], "full" if f.get("outcome") == "unsupported" else "structural")
+
+    def test_valid_rulings_use_generic_valid_dataset_families(self):
+        import rulings
+        for name in rulings.VALID:
+            for family in ("open", "validate-structural", "validate-profile", "validate-full"):
+                case = next(c for c in self.allgen if c["id"] == f"{family}/{name}")
+                self.assertEqual(case["family"], f"{family}/valid-dataset")
+                self.assertEqual(case["expect"]["status"], "ok")
 
     def test_incomplete_never_broadly_accepted(self):
         allowed = set(make_cases.OPTIONAL) | set(make_cases.NESTED_COLUMNS)

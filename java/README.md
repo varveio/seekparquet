@@ -209,6 +209,10 @@ waits for the visitor to return, and closing the dataset from inside the visitor
 `IllegalStateException`. Concurrent and nested requests have storage of their own. `rows` keeps its own row
 path; the batch path returns the same rows (tested over every conformance dataset).
 
+Unknown numeric encodings and codecs produce `unsupported_encoding` when needed by the request
+([ENC-1](../spec/format-1.md#enc-1)). For indexed key headers, intrinsic corruption takes precedence over
+index disagreements ([CHECK-5](../spec/format-1.md#check-5)).
+
 ### Typed columns
 
 `Dataset.columns(part)` returns one part's top-level columns, in schema order, from the footer the dataset
@@ -217,6 +221,8 @@ and `FIXED_LEN_BYTE_ARRAY` length, its `LogicalType` (the `logical_type` annotat
 `converted_type` normalized into one), repetition, and whether it is the key. There is no dataset-wide schema
 call: COL-5 holds physical declarations equal in every part that has a column, but a part may lack it and
 logical annotations are not compared, so a caller that needs every part's columns asks for each part.
+Unknown time-unit alternatives have no reported logical type; values retain their physical representation
+([COL-3](../spec/format-1.md#col-3)).
 
 ### Optional slash listing index
 
@@ -337,7 +343,7 @@ listed below remain. The correspondence, Go (package `seekparquet`) to Java (pac
 | Go | Java |
 |---|---|
 | `OpenDataset(ctx, src, OpenOptions)`, `OpenDir(ctx, path, OpenOptions)` | `Dataset.open(storage, OpenOptions, Cancellation)`, `Dataset.open(path[, OpenOptions, Cancellation])` |
-| `OpenOptions{Limits}` | `OpenOptions(limits, verifyConcurrency)` |
+| `OpenOptions{Limits}` | `OpenOptions(limits)` |
 | `Limits{...}`, zero for a default, negative invalid | `Limits.builder()...build()`, `toBuilder()`; 0 for a default, negative `IllegalArgumentException` |
 | `Span`, `PrefixSpan(p)`, `KeySpan(k)`, `Span{}` | `Span`, `Span.prefix(p)`, `Span.key(k)`, `Span.all()`, `Span.builder()` |
 | `Selection{Span, Cursor}` | `Selection(span, Optional<Cursor.RowPosition>)`, `Selection.of`, `Selection.after` |
@@ -410,8 +416,7 @@ annotation provenance (use `columns(part)` for each part).
 
 ```java
 OpenOptions options = OpenOptions.DEFAULT
-        .withLimits(Limits.builder().footerBytes(8 << 20).parts(100_000).getRows(10_000).build())
-        .withVerifyConcurrency(32);     // verify() reads footers concurrently, on virtual threads
+        .withLimits(Limits.builder().footerBytes(8 << 20).parts(100_000).getRows(10_000).build());
 
 Cancellation cancel = Cancellation.create();
 try (Dataset dataset = Dataset.open(storage, options, cancel)) {   // reads the manifest only
@@ -446,7 +451,6 @@ progress, waits for them to return, then closes the part sources.
 | manifest nesting | fixed capacity | 512 |
 | schema nesting | deeper is `invalid_footer` | 64 |
 | dataset row total | fixed capacity, refused at open | 2^63 − 1 |
-| `OpenOptions.verifyConcurrency` | parts `verify` checks at once | 1 |
 | `ListIndexOptions` | bytes, workers, changes per page | 64 MiB, 1, 8 |
 | `ListQuery.readAhead` | key pages read ahead | 0 (off), at most 64 |
 
@@ -484,7 +488,9 @@ page over it fails with `LimitExceededException` naming `PAGE_MEMORY`. Its defau
 byte-array dictionary near both `pageValues` and `pageBytes` can exceed it under this reader's estimate; set it
 higher to admit such a page. `metadataMemory` is charged in the protocol the Thrift decoder reads a footer, page index or page header
 through, before each string, binary or container is allocated, so it holds whatever element types the bytes
-declare: 48 bytes per structure, 16 per list element (32 per map entry), 48 plus the length of each binary, and
+declare: 96 bytes per structure (generated object and wire record), or 48 for an OffsetIndex or its
+PageLocations, which need no wire tracking; 32 per unknown enum integer recorded, 16 per list element
+(32 per map entry), 48 plus the length of each binary, and
 48 plus twice the encoded length of each string (a Java string can take two bytes per UTF-8 byte), each declared
 length checked against the bytes left. A page header of unknown length is read in windows of at most min(16 MiB,
 `metadataMemory`). The parts limit is enforced before materializing more than the permitted number of part
@@ -503,7 +509,7 @@ Every domain failure, what the data, the limits or storage make of a well-formed
 | Exception | Meaning |
 |---|---|
 | `RefusalException` | The data breaks the specification. `code()` is a stable `RefusalCode` (`key_order`, `invalid_manifest`, ...) and `part()` names the part at fault. `rowGroup()` (`OptionalInt`, physical, in the part's footer), `row()` (`OptionalLong`, within the row group) and `key()` (`Optional<Bytes>`) locate it further where the reader has the value in hand, as the Go reader's `RefusalError` does; each is empty otherwise (a manifest or part-level fault has no row group, only `invalid_key` and `key_order` in a page have a row, only `key_order` a key). Only `code()` is a contract; the message is for people. |
-| `UnsupportedFeatureException` | The data is valid but uses something this reader does not implement: `UnsupportedCode.ENCODING` (`unsupported_encoding`), `PROJECTION` (`unsupported_projection`: nested or repeated columns), `ENCRYPTION` (`unsupported_encryption`). |
+| `UnsupportedFeatureException` | The request needs a feature this reader does not implement: `UnsupportedCode.ENCODING` (`unsupported_encoding`), `PROJECTION` (`unsupported_projection`: nested or repeated columns), `ENCRYPTION` (`unsupported_encryption`). |
 | `LimitExceededException` | Input or a result beyond a `Limits` setting or a fixed capacity: `limit()` is a `LimitName`, with `declared()` and `maximum()`. |
 | `StorageException` | Reading storage failed. Says nothing about the data. |
 
@@ -593,6 +599,8 @@ before using any of its data checks:
   `invalid_footer`);
 - that each footer is readable, unencrypted and self-contained (no `file_path`), with row group
   counts that sum to the footer's row count, which must equal the manifest's;
+- every leaf’s recognized annotation restrictions, including nested and unprojected leaves
+  ([CHECK-1](../spec/format-1.md#check-1));
 - the `seekparquet.*` stamps;
 - the key column (KEY-1, KEY-5, with one `column_orders` entry per leaf);
 - that every column has the same physical type, type length, repetition and nesting as in every part
@@ -607,15 +615,14 @@ Concurrent first touches wait for one check.
 
 A touched part stays open, with its checked footer in memory, until the dataset closes, and no limit
 bounds how many: `Limits.parts()` bounds the manifest, the index memory budget the retained page indexes,
-and `verifyConcurrency` how many parts `verify()` checks at a time, not how many stay open.
+and an internal bound controls concurrent part checks during `verify()`.
 `LocalStorage` keeps a file channel per part, and on POSIX systems a directory handle too. Size file descriptors and memory for
 the most parts one dataset will touch (`verify()` touches them all): a single pass over more parts than
 that fails when the process runs out, and opening a fresh dataset for it does not help. This is a known
 limitation, documented rather than solved: there is no cap that refuses such a pass early, and no eviction.
 
-**Verify (CHECK-3).** `Dataset.verify()` checks every part not yet checked, `verifyConcurrency` at a
-time (1 by default; the Go reader fetches parts ahead up to an internal limit and checks them in
-manifest order), then decodes every row group's first key page and each part's last, and compares
+**Verify (CHECK-3).** `Dataset.verify()` fetches unchecked parts concurrently up to an internal bound
+and checks them in manifest order, then decodes every row group's first key page and each part's last, and compares
 each part's first and last key with the manifest (`bounds_mismatch`). It throws the first failure in
 manifest order. It reads one footer per unchecked part plus a page index and one or two key pages per
 row group, never every row. Use it for eager, fail-fast checks of a long-lived local reader.

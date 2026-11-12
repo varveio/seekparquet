@@ -314,7 +314,10 @@ class ApiAlignmentTest {
         // The schema nesting bound of go/footer.go's checkSchema.
         String footer = Files.readString(go.resolve("footer.go"), StandardCharsets.UTF_8);
         assertEquals(Long.parseLong(group(footer, "if depth > (\\d+) \\{\\s*return errors.New\\(\"the schema is nested too deeply\"\\)")), PartSchema.MAX_NESTING);
-        assertEquals(1, OpenOptions.DEFAULT.verifyConcurrency(), "Java verifies one part at a time by default");
+        String storageIO = Files.readString(go.resolve("storageio.go"), StandardCharsets.UTF_8);
+        assertEquals(Integer.parseInt(group(storageIO, "const readConcurrency = (\\d+)")), Dataset.VERIFY_CONCURRENCY);
+        assertEquals(List.of("limits"), java.util.Arrays.stream(OpenOptions.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName).toList());
         assertEquals(ReadOptions.DEFAULT.cancellation(), Cancellation.none());
     }
 

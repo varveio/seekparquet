@@ -287,7 +287,7 @@ func TestJavaReadStatsDifferences(t *testing.T) {
 	}
 }
 
-func TestVerifyConcurrencyParity(t *testing.T) {
+func TestNoPublicVerifyConcurrencyOption(t *testing.T) {
 	g, err := newGenerator(mutableTree(t), "")
 	if err != nil {
 		t.Fatal(err)
@@ -299,8 +299,10 @@ func TestVerifyConcurrencyParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(page, "| Verify concurrency | — | `OpenOptions.verifyConcurrency` | Java bounds concurrent part checks") {
-		t.Error("parity reference is missing Java's independent verify concurrency setting")
+	for _, removed := range []string{"Verify concurrency", "verifyConcurrency", "WithVerifyConcurrency"} {
+		if strings.Contains(page, removed) {
+			t.Errorf("parity reference exposes removed concurrency option %q", removed)
+		}
 	}
 }
 

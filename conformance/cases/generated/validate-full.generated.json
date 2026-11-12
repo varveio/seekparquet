@@ -7,7 +7,8 @@
   "families": {
     "validate-full/valid-dataset": "every valid dataset completes this level and its prerequisites",
     "validate-full/fault-at-lowest-level": "each fault at the lowest validation level that detects it (validation_level in generators/faults.json)",
-    "validate-full/prerequisite": "a lower-level fault with validation requested at a higher level: the failing level is reported failed and every dependent level incomplete with a reason"
+    "validate-full/prerequisite": "a lower-level fault with validation requested at a higher level: the failing level is reported failed and every dependent level incomplete with a reason",
+    "validate-full/0001": "Proposal 0001 part B validation classifications"
   },
   "cases": [
     {
@@ -756,6 +757,93 @@
       }
     },
     {
+      "id": "validate-full/annotation-physical-fallback-controls",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/annotation-physical-fallback-controls",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/ignored-enums-99",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/ignored-enums-99",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/metadata-no-value",
+      "family": "validate-full/valid-dataset",
+      "requirements": [
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/metadata-no-value",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "complete"
+          }
+        }
+      }
+    },
+    {
       "id": "validate-full/invalid-parquet-dictionary",
       "description": "The dictionary page of column s in part 0, row group 0 is malformed: its first value claims a length of 2^31-1 bytes.",
       "family": "validate-full/fault-at-lowest-level",
@@ -1193,6 +1281,102 @@
           },
           "full": {
             "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/unknown-key-encoding-99-v1",
+      "family": "validate-full/0001",
+      "fault_id": "unknown-key-encoding-99-v1",
+      "requirements": [
+        "ENC-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/unknown-key-encoding-99-v1",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "incomplete",
+            "code": "unsupported_encoding"
+          },
+          "full": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/unknown-value-encoding-99",
+      "family": "validate-full/0001",
+      "fault_id": "unknown-value-encoding-99",
+      "requirements": [
+        "ENC-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/unknown-value-encoding-99",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "incomplete",
+            "code": "unsupported_encoding"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-full/unknown-codec-99",
+      "family": "validate-full/0001",
+      "fault_id": "unknown-codec-99",
+      "requirements": [
+        "ENC-1",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:full"
+      ],
+      "dataset": "datasets/invalid/unknown-codec-99",
+      "request": {
+        "op": "validate",
+        "level": "full"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "complete"
+          },
+          "profile": {
+            "result": "complete"
+          },
+          "full": {
+            "result": "incomplete",
+            "code": "unsupported_encoding"
           }
         }
       }

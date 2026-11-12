@@ -14,9 +14,9 @@ an argument for completeness: the core descriptions and family descriptions say 
 
 ## LAYOUT-1
 
-- Evidence: 61 positive, 6 negative.
+- Evidence: 64 positive, 6 negative.
 - Core: `open/empty`, `open/basic`, `open/multipart`, `open/extensions-numbers`, `open/optional-codecs` and 7 more
-- Generated: `open/valid-dataset` (21), `range/boundary-part` (32), `range/whole-dataset` (1), `validate-full/prerequisite` (1)
+- Generated: `open/valid-dataset` (24), `range/boundary-part` (32), `range/whole-dataset` (1), `validate-full/prerequisite` (1)
 
 ## LAYOUT-2
 
@@ -30,9 +30,9 @@ No case. paths are relative to the root: exercised implicitly by every dataset.
 
 ## MAN-1
 
-- Evidence: 21 positive, 10 negative.
+- Evidence: 24 positive, 10 negative.
 - Core: `refusals-open/manifest-not-json`, `refusals-open/manifest-bom`, `refusals-open/manifest-unpaired-surrogate`
-- Generated: `open/valid-dataset` (21), `refusals-open/fault` (2), `validate-structural/fault-at-lowest-level` (5)
+- Generated: `open/valid-dataset` (24), `refusals-open/fault` (2), `validate-structural/fault-at-lowest-level` (5)
 
 ## MAN-2
 
@@ -42,9 +42,9 @@ No case. paths are relative to the root: exercised implicitly by every dataset.
 
 ## MAN-3
 
-- Evidence: 24 positive, 24 negative.
+- Evidence: 27 positive, 24 negative.
 - Core: `open/empty`, `open/empty-range`, `refusals-open/manifest-unknown-member`, `refusals-open/manifest-draft-without-revision`
-- Generated: `open/empty-dataset` (1), `open/valid-dataset` (21), `refusals-open/fault` (9), `validate-full/prerequisite` (1), `validate-profile/prerequisite` (1), `validate-structural/fault-at-lowest-level` (11)
+- Generated: `open/empty-dataset` (1), `open/valid-dataset` (24), `refusals-open/fault` (9), `validate-full/prerequisite` (1), `validate-profile/prerequisite` (1), `validate-structural/fault-at-lowest-level` (11)
 
 ## MAN-6
 
@@ -226,15 +226,15 @@ No case. scope statement (one snapshot per manifest): not testable.
 
 ## RG-6
 
-- Evidence: 196 positive, 0 negative.
+- Evidence: 197 positive, 1 negative.
 - Core: `range/truncated-bounds-2/seek-08`, `range/truncated-bounds-2/seek-44`
-- Generated: `list/other-datasets` (2), `range/end-at-key` (46), `range/seek-key` (90), `range/seek-with-columns` (12), `range/start-just-above-key` (41), `range/whole-dataset` (3)
+- Generated: `list/other-datasets` (2), `range/end-at-key` (46), `range/seek-key` (90), `range/seek-with-columns` (12), `range/start-just-above-key` (41), `range/whole-dataset` (3), `rulings/0001` (2)
 
 ## RG-7
 
-- Evidence: 0 positive, 37 negative.
+- Evidence: 0 positive, 40 negative.
 - Core: `refusals-read/missing-column-index-native`, `refusals-read/page-index-rows-mismatch`, `refusals-read/page-index-location-mismatch`, `refusals-read/page-index-shortened-ff-max`, `refusals-read/page-index-bound-not-utf8` and 2 more
-- Generated: `refusals-read/fault` (12), `validate-full/prerequisite` (2), `validate-profile/fault-at-lowest-level` (4), `validate-profile/prerequisite` (1), `validate-structural/fault-at-lowest-level` (11)
+- Generated: `refusals-read/fault` (12), `rulings/0001` (3), `validate-full/prerequisite` (2), `validate-profile/fault-at-lowest-level` (4), `validate-profile/prerequisite` (1), `validate-structural/fault-at-lowest-level` (11)
 
 ## ROUTE-1
 
@@ -254,9 +254,9 @@ No case. producer freedom: no reader obligation.
 
 ## COL-3
 
-- Evidence: 34 positive, 3 negative.
+- Evidence: 35 positive, 3 negative.
 - Core: `projection/column/f32`, `projection/column/f64`, `projection/column/u32`, `projection/column/u64`, `projection/column/a.b` and 5 more
-- Generated: `projection/annotated` (5), `projection/column-combination` (3), `projection/column-type` (7), `projection/nested` (2), `range/bounds` (1), `range/seek-with-columns` (8), `range/whole-dataset` (1)
+- Generated: `projection/annotated` (5), `projection/column-combination` (3), `projection/column-type` (7), `projection/nested` (2), `range/bounds` (1), `range/seek-with-columns` (8), `range/whole-dataset` (1), `rulings/0001` (1)
 - Note: partial: nested projection can only be tested as rejected (no protocol encoding).
 
 ## COL-4
@@ -289,9 +289,9 @@ No case. producer freedom: no reader obligation.
 
 ## STAMP-2
 
-- Evidence: 0 positive, 30 negative.
+- Evidence: 1 positive, 31 negative.
 - Core: `refusals-open/stamp-wrong-schema-id`, `refusals-open/stamp-noncanonical-revision`, `refusals-open/stamp-duplicate`, `refusals-open/stamp-key-column-missing`, `refusals-open/stamp-key-column-mismatch` and 7 more
-- Generated: `refusals-open/fault` (3), `validate-full/prerequisite` (1), `validate-profile/prerequisite` (1), `validate-structural/fault-at-lowest-level` (13)
+- Generated: `refusals-open/fault` (3), `rulings/0001` (2), `validate-full/prerequisite` (1), `validate-profile/prerequisite` (1), `validate-structural/fault-at-lowest-level` (13)
 - Note: partial: a draft_revision stamp on a format_version 1 file needs a reader that supports version 1.
 
 ## GEO-1
@@ -304,9 +304,9 @@ No case. writer's choice: not a reader obligation.
 
 ## ENC-1
 
-- Evidence: 92 positive, 4 negative.
+- Evidence: 98 positive, 8 negative.
 - Core: `open/multipart`, `open/optional-codecs`, `projection/optional-codecs/lz4col`
-- Generated: `open/valid-dataset` (3), `planning/plan` (4), `projection/encodings` (3), `projection/lz4-raw` (4), `projection/optional-codec` (4), `projection/other-datasets` (1), `range/seek-with-columns` (64), `range/whole-dataset` (3), `refusals-read/fault` (2), `validate-full/fault-at-lowest-level` (1), `validate-full/valid-dataset` (2), `validate-profile/fault-at-lowest-level` (1), `validate-profile/valid-dataset` (1)
+- Generated: `open/valid-dataset` (3), `planning/plan` (4), `projection/encodings` (3), `projection/lz4-raw` (4), `projection/optional-codec` (4), `projection/other-datasets` (1), `range/seek-with-columns` (64), `range/whole-dataset` (3), `refusals-read/fault` (2), `rulings/0001` (7), `validate-full/0001` (3), `validate-full/fault-at-lowest-level` (1), `validate-full/valid-dataset` (2), `validate-profile/fault-at-lowest-level` (1), `validate-profile/valid-dataset` (1)
 
 ## QUERY-1
 
@@ -394,9 +394,9 @@ No case. writer's choice: not a reader obligation.
 
 ## CHECK-1
 
-- Evidence: 42 positive, 190 negative.
+- Evidence: 46 positive, 194 negative.
 - Core: `open/empty`, `open/basic`, `open/multipart`, `open/extensions-numbers`, `open/optional-codecs` and 38 more
-- Generated: `open/valid-dataset` (21), `refusals-open/fault` (52), `refusals-open/unsupported` (10), `refusals-read/fault` (2), `validate-full/prerequisite` (7), `validate-profile/prerequisite` (7), `validate-structural/fault-at-lowest-level` (90)
+- Generated: `open/valid-dataset` (24), `refusals-open/fault` (52), `refusals-open/unsupported` (10), `refusals-read/fault` (2), `rulings/0001` (3), `validate-full/prerequisite` (7), `validate-profile/prerequisite` (7), `validate-structural/0001` (2), `validate-structural/fault-at-lowest-level` (90)
 
 ## CHECK-2
 
@@ -414,9 +414,9 @@ No case. gap: needs the planned indexed-access suite (a reader must not certify 
 
 ## CHECK-5
 
-- Evidence: 0 positive, 9 negative.
+- Evidence: 0 positive, 13 negative.
 - Core: `refusals-read/invalid-parquet-dictionary`, `validate-full/invalid-parquet-value-count`
-- Generated: `refusals-read/fault` (3), `validate-full/fault-at-lowest-level` (3), `validate-profile/fault-at-lowest-level` (1)
+- Generated: `refusals-read/fault` (3), `rulings/0001` (4), `validate-full/fault-at-lowest-level` (3), `validate-profile/fault-at-lowest-level` (1)
 - Note: partial: corrupt data is covered; that a reader's resource limit (for example its manifest nesting depth) is not a refusal has no shared case, since limits are each implementation's own.
 
 ## CHECK-6
@@ -425,9 +425,9 @@ No case. uncovered: storage identity (no bytes of two versions of a part combine
 
 ## VAL-1
 
-- Evidence: 94 positive, 158 negative.
+- Evidence: 106 positive, 160 negative.
 - Core: `refusals-read/invalid-parquet-dictionary`, `validate-full/projection`, `validate-full/invalid-parquet-value-count`, `validate-full/prerequisite/invalid-footer-magic`, `validate-full/prerequisite/key-order-across-pages` and 14 more
-- Generated: `refusals-read/fault` (2), `validate-full/fault-at-lowest-level` (3), `validate-full/prerequisite` (10), `validate-full/valid-dataset` (25), `validate-profile/fault-at-lowest-level` (15), `validate-profile/prerequisite` (8), `validate-profile/valid-dataset` (25), `validate-structural/fault-at-lowest-level` (121), `validate-structural/valid-dataset` (24)
+- Generated: `refusals-read/fault` (2), `validate-full/0001` (3), `validate-full/fault-at-lowest-level` (3), `validate-full/prerequisite` (10), `validate-full/valid-dataset` (28), `validate-profile/fault-at-lowest-level` (15), `validate-profile/prerequisite` (8), `validate-profile/valid-dataset` (28), `validate-structural/0001` (2), `validate-structural/fault-at-lowest-level` (121), `validate-structural/valid-dataset` (27)
 
 ## VAL-2
 

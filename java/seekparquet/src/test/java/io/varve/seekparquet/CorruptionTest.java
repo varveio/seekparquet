@@ -35,7 +35,7 @@ class CorruptionTest {
         }
         Random random = new Random(name.hashCode());
         Limits small = Limits.builder().manifestBytes(1 << 20).parts(1000).footerBytes(1 << 20).pageIndexBytes(1 << 20).pageBytes(4 << 20).pageValues(1 << 20).build();
-        OpenOptions options = OpenOptions.DEFAULT.withLimits(small).withVerifyConcurrency(1);
+        OpenOptions options = OpenOptions.DEFAULT.withLimits(small);
         for (int round = 0; round < 150; round++) {
             Path root = tmp.resolve(name + "-" + round);
             for (Path f : files) {
