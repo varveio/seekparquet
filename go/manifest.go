@@ -81,6 +81,8 @@ func parseManifest(raw []byte, lim *Limits) (*manifest.Manifest, error) {
 			return nil, refuse(RefusalCode(e.Code), "%s: %s", ManifestName, e.Detail)
 		case errors.Is(err, manifest.ErrTooManyParts):
 			return nil, exceeded(LimitParts, -1, int64(lim.Parts), "%s lists more parts", ManifestName)
+		case errors.Is(err, manifest.ErrTooDeep):
+			return nil, exceeded(LimitManifestNesting, -1, manifest.MaxDepth, "%s nests objects and arrays deeper", ManifestName)
 		}
 		return nil, err
 	}

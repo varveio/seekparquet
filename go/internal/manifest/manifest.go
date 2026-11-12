@@ -41,6 +41,14 @@ var Supported = []Version{{FormatVersion: 0, DraftRevision: 1}}
 // allows: a limit of the reader, not a fault of the manifest.
 var ErrTooManyParts = errors.New("too many parts")
 
+// MaxDepth is the deepest nesting of objects and arrays a manifest may
+// have, the manifest object itself at depth 1, as in the Java reader: a
+// limit of the reader (CHECK-5), not a fault of the manifest.
+const MaxDepth = 512
+
+// ErrTooDeep reports a manifest nested deeper than MaxDepth.
+var ErrTooDeep = errors.New("nested too deep")
+
 // splitArray returns the elements of a JSON array, failing with
 // ErrTooManyParts as soon as there are more than max.
 func splitArray(raw json.RawMessage, max int) ([]json.RawMessage, error) {
@@ -119,6 +127,9 @@ func Parse(raw []byte, maxParts int) (*Manifest, error) {
 		return nil, invalid("the manifest is not valid UTF-8")
 	}
 	if err := checkSyntax(raw); err != nil {
+		if errors.Is(err, ErrTooDeep) {
+			return nil, err
+		}
 		return nil, invalid("%v", err)
 	}
 	var top map[string]json.RawMessage
@@ -441,7 +452,7 @@ func checkSyntax(raw []byte) error {
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
-	if err := walk(dec); err != nil {
+	if err := walk(dec, 0); err != nil {
 		return err
 	}
 	if _, err := dec.Token(); err != io.EOF {
@@ -450,10 +461,16 @@ func checkSyntax(raw []byte) error {
 	return nil
 }
 
-func walk(dec *json.Decoder) error {
+// walk checks the value dec is at, nested depth containers deep, and
+// what it holds; a container beyond MaxDepth is ErrTooDeep, before it is
+// descended into, so that nesting never exhausts the stack.
+func walk(dec *json.Decoder, depth int) error {
 	tok, err := dec.Token()
 	if err != nil {
 		return fmt.Errorf("not valid JSON: %w", err)
+	}
+	if (tok == json.Delim('{') || tok == json.Delim('[')) && depth >= MaxDepth {
+		return ErrTooDeep
 	}
 	switch tok {
 	case json.Delim('{'):
@@ -471,7 +488,7 @@ func walk(dec *json.Decoder) error {
 				return fmt.Errorf("duplicate member name %q", key)
 			}
 			seen[key] = true
-			if err := walk(dec); err != nil {
+			if err := walk(dec, depth+1); err != nil {
 				return err
 			}
 		}
@@ -480,7 +497,7 @@ func walk(dec *json.Decoder) error {
 		}
 	case json.Delim('['):
 		for dec.More() {
-			if err := walk(dec); err != nil {
+			if err := walk(dec, depth+1); err != nil {
 				return err
 			}
 		}

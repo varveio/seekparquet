@@ -173,6 +173,10 @@ func validateOp(ctx context.Context, req map[string]json.RawMessage) response {
 			out["message"] = lr.Failure.Error()
 		case seekparquet.Incomplete:
 			out["reason"] = lr.Reason
+			var u *seekparquet.UnsupportedError
+			if errors.As(lr.Err, &u) {
+				out["code"] = string(u.Code) // an unsupported feature names its code
+			}
 		}
 		if lr.Level == seekparquet.LevelDigest {
 			out["checked"] = lr.Checked.Digests

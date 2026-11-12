@@ -5,6 +5,11 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- A manifest nested deeper than 512 JSON objects and arrays (the manifest object counting 1), in
+  extensions or anywhere else, is a `*LimitError` for the new `LimitManifestNesting` (wrapping
+  `ErrLimitExceeded`), as in the Java reader, from `ParseManifest`, opening and validation: the syntax check
+  no longer recurses without bound, which a deeply nested manifest within `Limits.ManifestBytes` could
+  exhaust the stack with. Depth 512 is read.
 - `PartInfo.Extensions`: a part's `extensions` object (spec §3.4, EXT-1 to EXT-5), kept exactly as written by
   `ParseManifest` and `Dataset.Metadata`, and written by `MarshalManifest` (and so `local.Commit`) after the
   part's `sha256`, compacted, and left out when empty, as the top-level `Extensions` is. A part's `extensions`

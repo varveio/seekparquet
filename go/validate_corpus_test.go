@@ -38,8 +38,8 @@ func TestValidateCorpus(t *testing.T) {
 			}
 		})
 	}
-	if valid != 23 {
-		t.Errorf("%d valid datasets, want 23", valid)
+	if valid != 26 {
+		t.Errorf("%d valid datasets, want 26", valid)
 	}
 	raw, err := os.ReadFile(filepath.Join(corpus, "generators", "faults.json"))
 	must(t, err)
@@ -56,8 +56,8 @@ func TestValidateCorpus(t *testing.T) {
 		} `json:"faults"`
 	}
 	must(t, json.Unmarshal(raw, &faults))
-	if len(faults.Faults) != 131 {
-		t.Errorf("%d invalid datasets, want 131", len(faults.Faults))
+	if len(faults.Faults) != 145 {
+		t.Errorf("%d invalid datasets, want 145", len(faults.Faults))
 	}
 	for _, f := range faults.Faults {
 		t.Run("invalid/"+f.ID, func(t *testing.T) {

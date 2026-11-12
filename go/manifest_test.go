@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -273,5 +274,55 @@ func TestMarshalManifestRefuses(t *testing.T) {
 func TestFormatConstants(t *testing.T) {
 	if got := SupportedVersions(); len(got) != 1 || got[0] != (Version{FormatVersion, DraftRevision}) {
 		t.Errorf("SupportedVersions() = %v, want the written version only", got)
+	}
+}
+
+// TestManifestNestingLimit: a manifest nested deeper than 512 objects and
+// arrays, the manifest object counting 1, is a limit of the reader
+// (LimitManifestNesting, CHECK-5), not invalid_manifest, wherever the
+// nesting is: in the top-level extensions, a part's, or a core member.
+// Depth 512 itself is read. The Java reader has the same boundary.
+func TestManifestNestingLimit(t *testing.T) {
+	const maxNesting = 512
+	nest := func(n int) string { return strings.Repeat("[", n) + strings.Repeat("]", n) }
+	base := `{"format":"seekparquet","format_version":0,"draft_revision":1,"schema_id":%s,` +
+		`"key":{"column":"key","unique":true},"parts":[{"path":"data/a.parquet","rows":1,"bytes":1,` +
+		`"min_key_base64":"YQ==","max_key_base64":"YQ==","extensions":{"t":%s}}],"extensions":{"t":%s}}`
+	manifestWith := func(schemaID, part, top string) []byte {
+		return []byte(fmt.Sprintf(base, schemaID, part, top))
+	}
+	// Depths of a value: under the top-level extensions 2, under a part's 4,
+	// for schema_id 1.
+	for _, c := range []struct {
+		name  string
+		at    func(depth int) []byte
+		valid bool
+	}{
+		{"top-level extensions", func(d int) []byte { return manifestWith(`"s"`, "1", nest(d-2)) }, true},
+		{"part extensions", func(d int) []byte { return manifestWith(`"s"`, nest(d-4), "1") }, true},
+		{"core member", func(d int) []byte { return manifestWith(nest(d-1), "1", "1") }, false},
+	} {
+		_, err := ParseManifest(c.at(maxNesting), Limits{})
+		if c.valid && err != nil || !c.valid && RefusalCodeOf(err) != CodeInvalidManifest {
+			t.Errorf("%s at depth 512: %v", c.name, err)
+		}
+		_, err = ParseManifest(c.at(maxNesting+1), Limits{})
+		var le *LimitError
+		if !errors.As(err, &le) || le.Limit != LimitManifestNesting || !errors.Is(err, ErrLimitExceeded) || RefusalCodeOf(err) != "" {
+			t.Errorf("%s at depth 513: %v", c.name, err)
+		}
+	}
+	// Opening and validation report the same limit.
+	dir := t.TempDir()
+	must(t, os.WriteFile(filepath.Join(dir, ManifestName), manifestWith(`"s"`, nest(maxNesting-3), "1"), 0o644))
+	if _, err := OpenDir(context.Background(), dir, OpenOptions{}); !errors.Is(err, ErrLimitExceeded) {
+		t.Errorf("OpenDir: %v", err)
+	}
+	for _, level := range []Level{LevelStructural, LevelDigest} {
+		report, err := ValidateDir(context.Background(), dir, ValidateOptions{Level: level})
+		must(t, err)
+		if lr := report.Levels[0]; lr.Result != Incomplete || !errors.Is(lr.Err, ErrLimitExceeded) {
+			t.Errorf("validate %s: %s", level, describeReport(report))
+		}
 	}
 }

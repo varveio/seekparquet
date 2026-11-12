@@ -20,8 +20,6 @@ import (
 	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/encoding/rle"
 	"github.com/parquet-go/parquet-go/format"
-
-	"github.com/varveio/seekparquet/go/internal/manifest"
 )
 
 // This file holds the validation levels. They reuse the reader's checked
@@ -667,15 +665,8 @@ func (v *validator) digest(lr *LevelReport) error {
 	if err != nil {
 		return err
 	}
-	m, err := manifest.Parse(raw, v.limits.Parts)
+	m, err := parseManifest(raw, &v.limits)
 	if err != nil {
-		var e *manifest.Error
-		switch {
-		case errors.As(err, &e):
-			return refuse(RefusalCode(e.Code), "%s: %s", ManifestName, e.Detail)
-		case errors.Is(err, manifest.ErrTooManyParts):
-			return exceeded(LimitParts, -1, int64(v.limits.Parts), "%s lists more parts", ManifestName)
-		}
 		return err
 	}
 	buf := make([]byte, 1<<20)
