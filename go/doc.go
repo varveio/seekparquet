@@ -2,187 +2,140 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package seekparquet reads and validates SeekParquet datasets: ordinary
-// Parquet files sorted by one manifest-named byte-string key column, split
-// into key-disjoint parts and committed by a manifest.json (SeekParquet
-// format 1, draft revision 1, stamped format_version 0).
-//
-// A read through keys is routed to a part by its manifest bounds and to a
-// row group by the decoded first keys of the row groups; the key column's ColumnIndex
-// and OffsetIndex locate the page that can hold the start; only that page
-// onward is decoded, in unsigned byte order of the keys. Keys are bytes;
-// nothing assumes UTF-8 unless the key column is annotated STRING.
+// Parquet files sorted by a byte-string key, split into key-disjoint parts,
+// and committed by manifest.json. Keys use unsigned byte order. See the
+// [concepts] and [reading guide] for the model and runnable examples.
 //
 // # Opening
 //
-// OpenDataset opens a dataset through a Source, a small interface any
-// storage can implement; OpenDir opens a local directory through an
-// os.Root. Opening reads and checks the manifest and nothing else
-// (CHECK-1): the manifest carries each part's exact key bounds, row count
-// and size, which is all a read needs to be routed. A part is checked the
-// first time a read routes to it: its existence, size, footer, stamps, row
-// count, key column, sorting_columns, and column consistency with the
-// parts already checked (COL-5). A part that fails is refused by every
-// read that touches it. Dataset.Verify checks every part at once, and
-// also every row group's first key page and each part's last (CHECK-3).
-// Dataset.Columns returns a part's top-level columns (physical type,
-// logical type with a legacy converted type normalized into it,
-// repetition, the key) from the footer the dataset checked and
-// holds for it, checking the part first if no read has.
-//
-// Every size a file declares is checked against OpenOptions.Limits before
-// anything is allocated for it, and so are the value counts and decoded
-// sizes inside each page; exceeding a limit is a *LimitError wrapping
-// ErrLimitExceeded.
+// [OpenDir] opens a local directory; [OpenDataset] accepts a caller-owned
+// [Source]. Opening checks the manifest; parts are checked on first touch
+// (CHECK-1). [Dataset.Columns] describes a checked part's columns, including
+// physical [Kind], [Repetition], and [Logical] annotations. [Dataset.Metadata]
+// returns an owned copy of the manifest metadata. See the [reading guide].
 //
 // # Reading
 //
-// A Query reads the rows of a Selection (a Span of keys, and a Cursor to
-// continue after), at most Limit of them, with the values of its Columns.
-// Dataset.Rows returns them as owning rows; Dataset.Scan hands them to a
-// callback as borrowed batches (Batch, ColumnView), and with a zero Limit
-// scans to the end of the span. Dataset.Get returns every row of one key,
-// up to Limits.GetRows. Dataset.List lists a prefix with delimiter rollups.
-//
-// Reads through keys check each key page index they use,
-// and every key page they decode (CHECK-2): the page header matches its
-// OffsetIndex entry, one non-empty key per row, in the declared order
-// (strictly ascending when keys are unique), inside the page's ColumnIndex
-// bounds and its part's manifest bounds, and in dataset order with every
-// other page the request decoded. A fault ends the request with a
-// *RefusalError carrying a stable RefusalCode.
-//
-// What is not certified: rows a request does not decode (CHECK-4), values
-// beyond decoding them, the parts' SHA-256 digests, and that the files are
-// unchanged after opening. Full certification is validation.
+// [Dataset.Rows] returns owning [Row] values for a [Query]; [Dataset.Scan]
+// visits borrowed [Batch] values. Rows requires a positive result limit;
+// Scan also accepts zero to read to the span's end. [Dataset.Get] reads one
+// key group up to [Limits.GetRows]. [Dataset.List] emits row entries and
+// common prefixes, optionally carrying an exact row ([ListEntry.Exact]).
+// Reads through keys check the indexes used and key pages decoded
+// (CHECK-2), not skipped data (CHECK-4). See the [reading guide].
 //
 // # Validation
 //
-// Validate and ValidateDir check a dataset at the specification's levels
-// (§8): structural, profile and full, each requiring the one before, and
-// digest on its own. Every column chunk a level checks is walked page
-// header by page header from its start, and its indexes are compared with
-// the pages found, so that no index decides what is visited. The Report
-// says, per level, whether it completed, failed (with the refusal code and
-// where) or is incomplete: an unsupported feature, a limit or a storage
-// error, never a statement about the data.
+// [Dataset.Verify] checks all parts and selected boundary key pages
+// (CHECK-3); it does not check every row or part digests. [Validate] and
+// [ValidateDir] produce a [Report] at structural, profile, full, or digest
+// levels. Unsupported features, resource limits, and storage failures leave
+// a level incomplete, rather than declaring data invalid. See the
+// [validation guide] for level selection and the command-line tool.
 //
 // # Planned selections
 //
-// Dataset.Plan plans reading every row of a set of selections before
-// reading it: Plan.Count is the number of rows, derived from the key pages
-// at the two ends of each selection (checked as Rows checks them),
-// row-group row counts and OffsetIndex row positions, and exact once every
-// part holding one of the rows is checked; Plan.ProjectedBytes is the
-// compressed bytes of the projected columns' pages, and dictionaries, that
-// Plan.Scan will request, each extent once, so that a caller can refuse a
-// read over budget before it reads a data page. Plan.Scan yields the rows
-// in dataset order as borrowed batches, checking every key page it
-// decodes. A count certifies only the rows at the ends it decoded
-// (CHECK-4).
+// [Dataset.Plan] resolves key selections before scanning projected values.
+// [Plan.Count] and [Plan.ProjectedBytes] return estimates with exactness
+// flags; inspect the flags before admission decisions. [Plan.Split] creates
+// shards for caller-managed concurrent scans, keeping key groups whole at
+// shard boundaries. It can return fewer shards than requested. Planning
+// and splitting can perform reads. See the [reading guide].
 //
-// Dataset.PlanRows plans RowSpan values from reader-produced RowPositions,
-// including ListEntry.Rows when both boundaries are known. With no
-// columns it performs no storage I/O; Count still reports whether the
-// contributing parts were checked at plan construction, even with known
-// positions. Unknown listing boundaries are not empty: use Dataset.Plan on
-// the corresponding key selection to resolve them, possibly reading storage.
-// Plan.InputRowSpans preserves overlaps and empties in the original input
-// spans before union normalization. Plan.SelectRows selects contained
-// spans with the same projection without I/O, including after Close.
-// Plan.ScanValues reads projected columns by row position as borrowed
-// ValueBatch batches, without implicit key decoding or equal-key offsets.
-// Source caching follows the storage layer's policy for both scan methods.
-// Scans fail with ErrClosed
-// after the Dataset closes; positions remain inspectable and in-memory plan
-// inspection and SelectRows remain usable. Split requires the open Dataset:
-// it can read key pages to keep groups of equal keys whole.
-//
-// Plan.Split divides a plan into shards along row-group boundaries,
-// never inside a group of equal keys, balanced by projected bytes (or rows
-// without exact bytes), for a caller to scan concurrently with its own
-// goroutines: the shards' scans together yield the plan's rows, each once,
-// and their counts and bytes add up to the plan's. Splitting is a
-// convenience of this package over the query model, not a format rule: the
-// specification and the conformance protocol do not define it. The Java
-// reader has it as Plan.split.
+// [Dataset.PlanRows] accepts known [RowSpan] boundaries produced by this
+// dataset, including known [ListEntry.Rows] boundaries. Without columns it
+// does no storage I/O; its count can still be provisional for unchecked
+// parts. [Plan.InputRowSpans] preserves input descriptions before union
+// normalization. [Plan.SelectRows] selects contained spans without I/O.
+// [Plan.ScanValues] visits borrowed [ValueBatch] values without implicit key
+// decoding or equal-key offsets. Unknown boundaries require resolution
+// through Dataset.Plan. See the [counting guide] for complete examples.
 //
 // # Equal keys and pagination
 //
-// When the manifest declares keys not unique, consecutive rows with equal
-// keys form a group in producer file order, and a group never crosses
-// parts. Each Row carries its Offset in its group. KeySpan selects one
-// whole group, and Get reads one. Every result is paginated the same way:
-// set the request's Cursor to the last entry's Cursor (Row.Cursor,
-// ListEntry.Cursor) and repeat it. A row cursor is the row's key and
-// offset; a listing may also continue after a common prefix. A page may
-// end inside a group, and a cursor deep inside a large group resumes there
-// through the page index without reading the rows before it.
-// Cursor.Encode and ParseCursor carry a cursor between pages as a text
-// token (spec/cursor-token-1.md).
-//
-// # Errors
-//
-// A *RefusalError reports data that breaks the specification (RefusalCodeOf
-// returns its code). ErrInvalidRequest reports a malformed request, such as
-// a limit that is not positive, a prefix cursor on a range or a malformed
-// cursor token. An *UnsupportedError reports valid data this reader does
-// not handle, such as a nested projected column or an encrypted part (its
-// Code is an UnsupportedCode). A *LimitError (ErrLimitExceeded) reports a
-// limit of the caller's policy. Anything else (storage failures, a
-// cancelled context, ErrClosed) is an error of the environment, not a
-// statement about the data.
+// Equal keys form a key group in producer file order and stay within a
+// part (KEY-7, PART-4). Span bounds select whole key groups, while a result
+// limit can split one across pages. Set the query cursor from the last
+// [Row.Cursor] or [ListEntry.Cursor] and repeat until the page is empty.
+// [Cursor.Encode] and [ParseCursor] carry row or prefix cursors as stable
+// version 1 tokens. Tokens bind neither query nor snapshot and provide no
+// authentication. See the [pagination guide] for service envelopes.
 //
 // # Values
 //
-// A projected Value is one of three states: absent, when the row's part
-// lacks the column (COL-2); a null stored in the column; or a physical
-// Parquet value of a Kind, read with typed accessors. Absent is not null.
-// A ColumnView reads one projected column of a Batch or ValueBatch in place.
-// Schema descriptions (Column) use this package's Kind, Repetition and Logical.
-// No parquet-go type appears in the read API; package write takes a
-// parquet-go schema.
+// A projected [Value] is absent, null, or a physical value of a [Kind].
+// Absent means the part lacks the column (COL-2), distinct from a stored
+// null. [ColumnView] accesses a projected column in place. Batches, views,
+// keys, and value bytes are borrowed until the callback returns;
+// [Batch.Row] and [Batch.Cursor] make owning copies. Nested and repeated
+// projections report [UnsupportedError]. See the [reading guide].
 //
-// A Source may offer optional capabilities for remote storage: a whole
-// manifest read (ManifestReader), part opens with the manifest's size and
-// no metadata request (SizedSource), batched range reads on its files
-// (RangeReader). Physical requests and byte caching belong to the Source.
-// ReadStats counts logical reads and format work. A Source with none is
-// read through Open and ReadAt. A part's first check reads its end in one
-// window (ReadPolicy.MetadataPrefetchBytes) and keeps the page-index bytes
-// it holds (Limits.PageIndexCacheMemory), so that later index loads of the
-// part read nothing.
+// # Storage
 //
-// With a non-local Source, scans, listings and projected reads can fetch
-// bounded windows through RangeReader, falling back to concurrent ReadAt
-// calls. Zero-policy OpenDir reads on demand; explicitly requesting listing
-// read-ahead or setting OpenOptions.Read opts into window fetching. The
-// windows hold at most 64 MiB of fetched, undecoded bytes per operation,
-// independently of other operations on the Dataset. This does not bound
-// decoded pages, dictionaries, metadata or results. Window scheduling respects
-// Limits.PageBytes before fetching page extents; demand reads still check
-// page headers and payloads. Panics in Source reads (ReadAt or ReadRanges)
-// become environment errors containing the recovered value.
+// A [SourceFile] supplies a stable size and bytes from one immutable object
+// version, including across concurrent reads and retries (CHECK-6).
+// [Source] implementations own physical request execution, byte caching,
+// and request observation. Optional [ManifestReader], [SizedSource], and
+// [RangeReader] capabilities supply whole manifests, opens with expected
+// sizes, and batched logical ranges. The reader discovers RangeReader on
+// the original file before applying [ContextBinder] to scalar reads.
+// [ErrObjectChanged] is an environment error; an initial
+// [SizeMismatchError] maps to part_mismatch. See the [Source guide].
 //
-// # Read statistics
+// # Limits and memory
 //
-// Passing a *ReadStats to a read (Rows, Get, Scan, List, Plan, Split,
-// PlanRows, Plan.Scan, Plan.ScanValues) makes it report the pages, keys,
-// row groups and Source reads it used, exactly, even when it fails. They
-// are diagnostics, not part of the format contract.
+// [Limits] bounds declared sizes, decoding, and selected metadata retention.
+// Cache budgets differ from failing limits; zero fields select defaults.
+// [ReadPolicy] controls tail reads and speculation. Reader windows retain
+// bounded fetched, undecoded bytes per operation; decoded pages, retained
+// metadata, results, and concurrent operations add memory outside that
+// bound. There is no aggregate dataset memory limit or eviction of checked
+// footers and open part files. See the [operating guide].
+//
+// # Statistics
+//
+// Pass an independent [ReadStats] to each operation to count logical part
+// reads and format work, including on failure. Operations reset the struct;
+// [ReadStats.Add] combines completed operations. Counts exclude manifest
+// reads and physical requests; instrument wire bytes, retries, and storage
+// byte-cache hits at the Source. Counters are diagnostics, not a format
+// contract. See the [remote I/O guide].
+//
+// # Errors
+//
+// [RefusalError] and [RefusalCodeOf] identify format refusals.
+// [UnsupportedError] identifies features the reader cannot handle.
+// [LimitError] wraps [ErrLimitExceeded] for caller policy or reader capacity.
+// [ErrInvalidRequest] covers invalid queries and malformed tokens.
+// Storage errors, context cancellation, [ErrObjectChanged], and [ErrClosed]
+// are environment errors. See [troubleshooting] for actions by code.
 //
 // # Manifests, parts and writing
 //
-// ParseManifest and MarshalManifest read and write a manifest.json as a
-// Manifest; InspectFooter and InspectKeyPages read one part's footer and
-// key page index without its pages. Package write writes part files and
-// package local publishes them and commits the manifest.
+// [ParseManifest] and [MarshalManifest] convert manifest bytes and [Manifest].
+// [InspectFooter] and [InspectKeyPages] inspect a part's metadata. Package
+// github.com/varveio/seekparquet/go/write writes parts; package
+// github.com/varveio/seekparquet/go/local publishes them and commits a
+// manifest locally. See the [producing guide].
 //
 // # Concurrency and cancellation
 //
-// A Dataset is safe for concurrent use; page indexes are loaded once per
-// row group and shared. Every source read is bounded by the request's
-// context when the part file implements ContextBinder; a plain io.ReaderAt
-// cannot be interrupted mid-call, and is checked between pages. Close ends
-// the reads in progress at their next cancellation point, waits for them,
-// and closes the part files.
+// A [Dataset] is safe for concurrent use; each operation has independent
+// scan scratch and statistics. RangeReader receives the operation context;
+// ContextBinder supplies context-bound scalar reads. A plain ReadAt cannot
+// be interrupted mid-call. [Dataset.Close] cancels active operations, waits
+// for reads and callbacks, and closes part files. Do not call Close from a
+// scan callback or wait there for another goroutine to close it. The caller
+// owns the Source. See the [operating guide].
+//
+// [concepts]: https://github.com/varveio/seekparquet/blob/main/docs/concepts.md
+// [reading guide]: https://github.com/varveio/seekparquet/blob/main/docs/guides/reading.md
+// [validation guide]: https://github.com/varveio/seekparquet/blob/main/docs/guides/validating.md
+// [counting guide]: https://github.com/varveio/seekparquet/blob/main/docs/guides/counting.md
+// [pagination guide]: https://github.com/varveio/seekparquet/blob/main/docs/guides/pagination.md
+// [Source guide]: https://github.com/varveio/seekparquet/blob/main/docs/guides/storage-sources.md
+// [operating guide]: https://github.com/varveio/seekparquet/blob/main/docs/guides/operating.md
+// [remote I/O guide]: https://github.com/varveio/seekparquet/blob/main/docs/guides/remote-io.md
+// [troubleshooting]: https://github.com/varveio/seekparquet/blob/main/docs/guides/troubleshooting.md
+// [producing guide]: https://github.com/varveio/seekparquet/blob/main/docs/guides/producing.md
 package seekparquet
