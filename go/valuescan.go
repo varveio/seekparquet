@@ -69,8 +69,7 @@ const maxValueBatch = len(absentValues)
 //
 // st is reset and filled on every exit. A nil fn is ErrInvalidRequest.
 // Cancellation, callback errors, Stop and Dataset lifetime follow Plan.Scan.
-// The caller's cache mode is honored; CacheDefault permits source-cache
-// lookup and admission, unlike Plan.Scan, which defaults to CacheBypass.
+// Source caching follows the storage layer's policy, as it does for Plan.Scan.
 // Each concurrent scan has independent borrowed storage.
 //
 // Value pages are located by their OffsetIndex row positions; a chunk

@@ -205,7 +205,7 @@ func (w *windows) read(wave []*window) {
 	for i, x := range wave {
 		ranges[i] = ReadRange{Off: x.off, Buf: x.buf}
 	}
-	errs = readRanges(w.ctx, rangeFile{file: p.file, name: p.name, reports: p.reports, concurrency: w.r.width()}, ranges, &st)
+	errs = readRanges(w.ctx, rangeFile{file: p.file, name: p.name, concurrency: w.r.width()}, ranges, &st)
 }
 
 // coverLocked returns the windows not dropped that hold, or are reading,

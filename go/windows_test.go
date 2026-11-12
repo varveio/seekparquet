@@ -58,7 +58,7 @@ func (f *windowFile) ReadRanges(ctx context.Context, ranges []ReadRange) error {
 func testWindows(t *testing.T, f io.ReaderAt) (*operation, *windows, *part) {
 	t.Helper()
 	op := newOperation(context.Background(), 2)
-	op.r = &reader{policy: ReadPolicy{Concurrency: 2}}
+	op.r = &reader{concurrency: 2}
 	w := op.windows()
 	p := &part{r: op.r, name: "p", file: f}
 	t.Cleanup(func() { w.close(nil) })
@@ -234,15 +234,13 @@ type blockedWindowFile struct {
 	closed                     atomic.Bool
 	afterClose                 atomic.Bool
 	inFlight                   atomic.Int64
+	calls, failures            atomic.Int64
 }
 
 func (f *blockedWindowFile) ReadRanges(ctx context.Context, ranges []ReadRange) error {
 	f.inFlight.Add(1)
 	defer f.inFlight.Add(-1)
-	if observer := IOObserverFromContext(ctx); observer != nil {
-		done := observer.Begin(IORequest{Kind: IORange, Path: "p", Offset: ranges[0].Off, Length: int64(len(ranges[0].Buf))})
-		defer func() { done(IOResult{Err: ctx.Err()}) }()
-	}
+	f.calls.Add(1)
 	close(f.started)
 	<-ctx.Done()
 	close(f.cancelled)
@@ -254,6 +252,7 @@ func (f *blockedWindowFile) ReadRanges(ctx context.Context, ranges []ReadRange) 
 	for _, rg := range ranges {
 		clear(rg.Buf)
 	}
+	f.failures.Add(1)
 	return ctx.Err()
 }
 func (f *blockedWindowFile) Close() error { f.closed.Store(true); return closeFile(f.ReaderAt) }
@@ -298,7 +297,7 @@ func TestWindowsCloseJoinsWave(t *testing.T) {
 		<-ended
 		must(t, <-closed)
 		if !f.closed.Load() || f.afterClose.Load() || f.inFlight.Load() != 0 || w.held != 0 || op.limit.free != op.limit.size ||
-			completed.SourceReads != 1 || completed.SourceBatches != 1 || completed.PhysicalRequests != 1 || completed.PhysicalFailures != 1 {
+			completed.SourceReads != 1 || completed.SourceBatches != 1 || f.calls.Load() != 1 || f.failures.Load() != 1 {
 			t.Fatal("wave leaked resources or used closed handle")
 		}
 	})

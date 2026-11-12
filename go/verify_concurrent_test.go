@@ -95,8 +95,12 @@ func TestVerifyOrder(t *testing.T) {
 	rewrite(t, dir, 1, func(m *format.FileMetaData) { m.KeyValueMetadata = nil })
 	rewrite(t, dir, 2, func(m *format.FileMetaData) { m.KeyValueMetadata = nil })
 	for range 20 {
-		for _, opt := range []OpenOptions{smallWindow, {}, {Read: ReadPolicy{Concurrency: 1}}} {
-			err := open(t, dir, opt).Verify(ctx, nil)
+		for i, opt := range []OpenOptions{smallWindow, {}, {Read: ReadPolicy{MetadataPrefetchBytes: footerWindow}}} {
+			d := open(t, dir, opt)
+			if i == 2 {
+				d.r.concurrency = 1
+			}
+			err := d.Verify(ctx, nil)
 			if RefusalCodeOf(err) != CodeStampMismatch || err.(*RefusalError).Part != testutil.PartPath(1) {
 				t.Fatalf("%+v: %v", opt.Read, err)
 			}
@@ -152,7 +156,7 @@ func (f limitFile) read(c context.Context, p []byte, off int64) (int, error) {
 	return f.SourceFile.ReadAt(p, off)
 }
 
-// TestVerifyConcurrency: Verify keeps at most ReadPolicy.Concurrency reads
+// TestVerifyConcurrency: Verify keeps at most the internal concurrency limit reads
 // in flight and checks every part in one read of its end, then one of each
 // row group's first key page, the first with the part's head, and one of
 // its last key page; a second Verify reads nothing.
@@ -169,8 +173,9 @@ func TestVerifyConcurrency(t *testing.T) {
 	}
 	for _, n := range []int{1, 3} {
 		src := &limitSource{Source: dirOf(t, dir)}
-		d, err := OpenDataset(ctx, src, OpenOptions{Read: ReadPolicy{Concurrency: n, MetadataPrefetchBytes: window}})
+		d, err := OpenDataset(ctx, src, OpenOptions{Read: ReadPolicy{MetadataPrefetchBytes: window}})
 		must(t, err)
+		d.r.concurrency = n
 		t.Cleanup(func() { _ = d.Close() })
 		must(t, d.Verify(ctx, nil))
 		if src.most.Load() > int64(n) {

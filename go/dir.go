@@ -26,8 +26,8 @@ import (
 // it reads each part's ranges one at a time, as it was read before the
 // storage capabilities, keeping no part metadata beyond the footer and no
 // request memo; Verify still checks several parts at once, and a listing
-// reads ahead when ListQuery.ReadAhead asks, both within the default
-// ReadPolicy.Concurrency. Any field of opt.Read set gives the policy of
+// reads ahead when ListQuery.ReadAhead asks, both within the internal
+// concurrency limit. Any field of opt.Read set gives the policy of
 // OpenDataset.
 func OpenDir(ctx context.Context, path string, opt OpenOptions) (*Dataset, error) {
 	local := opt.Read == ReadPolicy{}

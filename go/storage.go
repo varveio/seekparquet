@@ -13,9 +13,8 @@ import (
 // This file holds the optional storage capabilities a Source and its
 // files may offer beyond io.ReaderAt, and the operation context the reader
 // gives them: batched range reads (RangeReader), opens with the manifest's
-// size (SizedSource), a bounded whole-manifest read (ManifestReader),
-// cache control (CacheMode) and the reporting of physical requests
-// (IOObserver). Every capability is optional: a Source with none of them
+// size (SizedSource) and a bounded whole-manifest read (ManifestReader).
+// Every capability is optional: a Source with none of them
 // is read as before, through Open and ReadAt.
 
 // ReadRange requests exactly len(Buf) bytes beginning at Off.
@@ -197,119 +196,12 @@ var (
 	ErrObjectChanged = errors.New("seekparquet: object changed")
 )
 
-// CacheMode is an operation's use of a byte cache a Source may keep.
-//
-// Sources with a byte cache must honor CacheBypass for operations
-// carrying this context, including context-bound scalar reads.
-// Bypass affects neither identity verification nor reader metadata reuse.
-type CacheMode uint8
-
-const (
-	// CacheDefault permits lookup and admission under store policy.
-	CacheDefault CacheMode = iota
-	// CacheBypass performs neither byte-cache lookup nor admission.
-	// It does not disable identity checks or reader-owned metadata.
-	CacheBypass
-)
-
-type cacheModeKey struct{}
-
-// WithCacheMode derives an operation context. Unknown modes are rejected
-// by the reader before performing I/O, with ErrInvalidRequest.
-func WithCacheMode(ctx context.Context, mode CacheMode) context.Context {
-	return context.WithValue(ctx, cacheModeKey{}, mode)
-}
-
-// CacheModeFromContext returns ctx's cache mode, CacheDefault when none
-// was set.
-func CacheModeFromContext(ctx context.Context) CacheMode {
-	mode, _ := ctx.Value(cacheModeKey{}).(CacheMode)
-	return mode
-}
-
-// IORequestKind is the kind of a physical request.
-type IORequestKind uint8
-
-const (
-	// IOMetadata learns an object's size or identity.
-	IOMetadata IORequestKind = iota
-	// IORange reads part of an object.
-	IORange
-	// IOWholeObject reads a whole object.
-	IOWholeObject
-)
-
-// IORequest describes one physical request.
-type IORequest struct {
-	Kind   IORequestKind
-	Path   string
-	Offset int64 // For IORange.
-	Length int64 // Requested payload length; -1 for unknown whole length.
-	Retry  bool  // Another physical attempt for the same underlying work.
-}
-
-// IOResult is the outcome of one physical request.
-type IOResult struct {
-	Bytes int64 // Actual response payload consumed, including failed reads.
-	Err   error
-}
-
-// IOObserver receives physical events, not logical ReaderAt calls.
-// Implementations are concurrency-safe, quick, and must not call back
-// into the dataset. The reader installs its collector automatically,
-// composed with any observer already on the operation's context.
-type IOObserver interface {
-	// Begin is called when an actual attempt starts, after admission.
-	// Its completion function is called exactly once, after the body
-	// has been consumed or closed. No completion survives the operation.
-	Begin(IORequest) func(IOResult)
-
-	// CacheHit counts bytes supplied from the store's byte cache.
-	CacheHit(bytes int64)
-
-	// BatchPlanned reports the uncached range inputs, resulting physical
-	// spans before retries, and planned gap bytes. It reports a plan;
-	// cancellation may prevent some of those requests from starting.
-	BatchPlanned(ranges, requests, overReadBytes int64)
-}
-
-type observerKey struct{}
-
-// WithIOObserver derives an operation context whose physical requests
-// are reported to observer, as well as to the reader's own statistics.
-func WithIOObserver(ctx context.Context, observer IOObserver) context.Context {
-	return context.WithValue(ctx, observerKey{}, observer)
-}
-
-// IOObserverFromContext returns the observer of ctx, nil when it has
-// none. A Source that reports its physical requests calls it on the
-// context of each operation (Open, OpenSized, ReadManifest, a bound
-// ReadAt, ReadRanges).
-func IOObserverFromContext(ctx context.Context) IOObserver {
-	o, _ := ctx.Value(observerKey{}).(IOObserver)
-	return o
-}
-
-// IOReporter is optional on Source and SourceFile independently.
-// true promises complete observation for the receiver's operations,
-// including physical retries. Cache-only success legitimately reports
-// zero physical requests. Wrappers must preserve truthful reporting.
-type IOReporter interface {
-	ReportsIO() bool
-}
-
-// ReadPolicy controls the selection and scheduling of the reader's
+// ReadPolicy controls the selection of the reader's
 // logical reads. A zero field takes its default; a negative one is an
 // invalid request when the dataset is opened. Windows hold up to 64 MiB
 // of fetched, undecoded bytes per operation. Concurrent operations each
 // hold their own windows; this is not a per-Dataset bound.
 type ReadPolicy struct {
-	// Concurrency bounds concurrent scalar reads and part acquisition
-	// across one operation. A RangeReader receives the whole bounded
-	// batch, reserving up to Concurrency slots for its duration; the
-	// source owns its physical request scheduling and concurrency.
-	// Zero selects the default, 64; negative values are invalid.
-	Concurrency int
 	// MetadataPrefetchBytes is the speculative read of a part's end when
 	// the part is first checked: the footer and, when they fit, its page
 	// indexes in one read. The page-index bytes it holds are kept
@@ -330,9 +222,6 @@ type ReadPolicy struct {
 
 // check rejects a negative field.
 func (p ReadPolicy) check() error {
-	if p.Concurrency < 0 {
-		return invalidRequest("ReadPolicy.Concurrency is negative (%d)", p.Concurrency)
-	}
 	if p.MetadataPrefetchBytes < 0 {
 		return invalidRequest("ReadPolicy.MetadataPrefetchBytes is negative (%d)", p.MetadataPrefetchBytes)
 	}
@@ -349,9 +238,6 @@ func (p ReadPolicy) tailWindow() int64 {
 
 // withDefaults returns p with its zero fields set to their defaults.
 func (p ReadPolicy) withDefaults() ReadPolicy {
-	if p.Concurrency == 0 {
-		p.Concurrency = 64
-	}
 	if p.MetadataPrefetchBytes == 0 {
 		p.MetadataPrefetchBytes = 2 << 20
 	}

@@ -15,11 +15,13 @@ import "sync"
 //
 // They are diagnostics of this reader's access path, not part of the
 // SeekParquet format contract: another reader, or a later version of this
-// one, may do the same read with different counts. All fields are plain
+// one, may do the same read with different counts. Physical requests, wire
+// bytes, retries and storage byte-cache hits are observed by the caller's
+// storage layer, not by ReadStats. All fields are plain
 // integers; a ReadStats must not be shared between concurrent requests.
 //
-// The manifest read when the Dataset was opened is not counted here: pass
-// OpenOptions.OpenStats for it. Work shared
+// OpenOptions.OpenStats receives these counters for opening. Manifest
+// reads are excluded from SourceReads and SourceBytes. Work shared
 // with earlier requests is counted only where a field says so: a part
 // checked by an earlier request, or by Verify, is not checked again, a key
 // page index loaded by an earlier request is reused, not loaded, a
@@ -91,19 +93,6 @@ type ReadStats struct {
 	// to execute a logical batch without RangeReader.
 	SourceBatches, ScalarFallbackReads int64
 
-	// The physical counters come from a Source that reports its requests
-	// (IOReporter): the requests it made for the operation, opens and
-	// metadata requests included, their payload bytes, the retries among
-	// them and the attempts that failed. They are exact only when
-	// UnreportedIOCalls is zero.
-	PhysicalRequests, PhysicalBytes, PhysicalRetries, PhysicalFailures int64
-	// PlannedRanges, PlannedRequests and PlannedOverReadBytes are what a
-	// reporting source said it planned for the batches it was given
-	// (IOObserver.BatchPlanned); do not subtract them to infer requests.
-	PlannedRanges, PlannedRequests, PlannedOverReadBytes int64
-	// ByteCacheHitBytes are the bytes a reporting source served from its
-	// own byte cache.
-	ByteCacheHitBytes int64
 	// MetadataHitBytes counts raw page-index bytes supplied from retained
 	// metadata instead of storage, counted on each use.
 	MetadataHitBytes int64
@@ -114,15 +103,6 @@ type ReadStats struct {
 	// memo may be read again; its capacity and admission policy are
 	// implementation details.
 	RequestMemoHitBytes int64
-	// UnreportedIOCalls is the number of storage calls (ReadAt,
-	// ReadRanges, Open, OpenSized, ReadManifest) whose physical requests
-	// the physical counters leave out: those made on a source or file that
-	// does not report them (IOReporter). Every operation observes the
-	// requests of the receivers that do, from its first call.
-	UnreportedIOCalls int64
-	// PeakPhysicalRequests is the most physical requests a reporting
-	// source had in flight at once for the operation.
-	PeakPhysicalRequests int64
 }
 
 // takeStats zeroes st for a new operation. When the caller asked for no
@@ -151,10 +131,8 @@ func dropStats(spare *ReadStats) {
 
 var spareStats = sync.Pool{New: func() any { return new(ReadStats) }}
 
-// Add sums counters and takes the maximum of each peak: the work of several
-// operations, such as a plan, its split and the scans of its shards.
-// The resulting peak is the largest constituent operation peak,
-// not the peak of those operations running concurrently.
+// Add sums the logical and format counters of several operations, such as
+// a plan, its split and the scans of its shards.
 func (st *ReadStats) Add(o ReadStats) {
 	st.ListIndexSkips += o.ListIndexSkips
 	st.ListIndexDelimiter += o.ListIndexDelimiter
@@ -177,18 +155,6 @@ func (st *ReadStats) Add(o ReadStats) {
 	st.ReadAheadUnusedBytes += o.ReadAheadUnusedBytes
 	st.SourceBatches += o.SourceBatches
 	st.ScalarFallbackReads += o.ScalarFallbackReads
-	st.PhysicalRequests += o.PhysicalRequests
-	st.PhysicalBytes += o.PhysicalBytes
-	st.PhysicalRetries += o.PhysicalRetries
-	st.PhysicalFailures += o.PhysicalFailures
-	st.PlannedRanges += o.PlannedRanges
-	st.PlannedRequests += o.PlannedRequests
-	st.PlannedOverReadBytes += o.PlannedOverReadBytes
-	st.ByteCacheHitBytes += o.ByteCacheHitBytes
 	st.MetadataHitBytes += o.MetadataHitBytes
 	st.RequestMemoHitBytes += o.RequestMemoHitBytes
-	st.UnreportedIOCalls += o.UnreportedIOCalls
-	// A peak of several operations is the largest of theirs, not a
-	// measurement of their concurrent peak.
-	st.PeakPhysicalRequests = max(st.PeakPhysicalRequests, o.PeakPhysicalRequests)
 }
