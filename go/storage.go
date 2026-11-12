@@ -302,8 +302,10 @@ type IOReporter interface {
 // invalid request when the dataset is opened.
 type ReadPolicy struct {
 	// Concurrency bounds outstanding logical part ranges across one
-	// operation, including scalar reads, batches and speculative reads.
-	// It does not bound physical requests made by the source.
+	// operation, including scalar reads, batches, speculative reads,
+	// Verify's parts and a list-index build's workers: each range takes a
+	// slot while it is read. It does not bound physical requests made by
+	// the source.
 	// Zero selects the default, 64; negative values are invalid.
 	Concurrency int
 	// MetadataPrefetchBytes is the speculative read of a part's end when

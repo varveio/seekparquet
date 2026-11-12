@@ -112,10 +112,9 @@ type ReadStats struct {
 	RequestMemoHitBytes int64
 	// UnreportedIOCalls is the number of storage calls (ReadAt,
 	// ReadRanges, Open, OpenSized, ReadManifest) whose physical requests
-	// the physical counters leave out: made on a source or file that does
-	// not report them, or, for a file that does, by an operation that
-	// began before the Dataset knew any of its files reported (the first
-	// operation to open such a part, when the Source itself does not).
+	// the physical counters leave out: those made on a source or file that
+	// does not report them (IOReporter). Every operation observes the
+	// requests of the receivers that do, from its first call.
 	UnreportedIOCalls int64
 	// PeakPhysicalRequests is the most physical requests a reporting
 	// source had in flight at once for the operation.

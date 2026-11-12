@@ -137,7 +137,7 @@ func decodeBounded(raw []byte, v any, budget int64) (int, error) {
 // declared footer length before it is checked.
 func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits, st *ReadStats, maxWindow int64, concurrency int, deferHead bool) (_ *parquet.File, tail footerTail, err error) {
 	reports := reportsIO(file)
-	at := storageReader{r: bind(ctx, file), st: st, name: name, unreported: unreported(ctx, reports)}
+	at := storageReader{r: bind(ctx, file), op: operationOf(ctx), st: st, name: name, unreported: unreported(ctx, reports)}
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidFooter, name, -1, format, args...)
 	}
@@ -755,7 +755,7 @@ func magicFirst(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	if ctx.Err() != nil || errors.As(err, &se) || errors.Is(err, ErrClosed) {
 		return err
 	}
-	at := storageReader{r: bind(ctx, file), st: st, name: name, unreported: unreported(ctx, reportsIO(file))}
+	at := storageReader{r: bind(ctx, file), op: operationOf(ctx), st: st, name: name, unreported: unreported(ctx, reportsIO(file))}
 	head := make([]byte, 4)
 	if e := at.readFull(head, 0); e != nil {
 		return footerError(ctx, name, e)

@@ -91,11 +91,11 @@ func (d *Dataset) BuildListIndex(ctx context.Context, opt ListIndexOptions) (sta
 		opt.MaxChangesPerPage = 8
 	}
 	r := d.r
-	rctx, end, err := r.begin(bypassCache(ctx), nil)
+	rctx, err := r.begin(bypassCache(ctx))
 	if err != nil {
 		return stats, err
 	}
-	defer end()
+	defer rctx.end(nil)
 	for !r.listBuild.TryLock() {
 		timer := time.NewTimer(10 * time.Millisecond)
 		select {

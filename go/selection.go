@@ -114,14 +114,11 @@ func (r *reader) plan(ctx context.Context, selections []Selection, columns []str
 	if err := r.checkProjection(columns); err != nil {
 		return nil, err
 	}
-	rctx, end, err := r.begin(ctx, st)
+	rctx, err := r.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		err = finish(ctx, rctx, err)
-		end()
-	}()
+	defer rctx.done(ctx, &err, st)
 	plan := &Plan{r: r, columns: slices.Clone(columns)}
 	s := r.newScan(rctx, nil, st)
 	var spans []span

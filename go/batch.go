@@ -126,14 +126,11 @@ func (plan *Plan) scanBatches(ctx context.Context, st *ReadStats, kr keyReuse, f
 		return invalidRequest("a nil batch callback")
 	}
 	r := plan.r
-	rctx, end, err := r.begin(bypassCache(ctx), st)
+	rctx, err := r.begin(bypassCache(ctx))
 	if err != nil {
 		return err
 	}
-	defer func() {
-		err = finish(ctx, rctx, err)
-		end()
-	}()
+	defer rctx.done(ctx, &err, st)
 	w := newBatcher(rctx, plan.columns, st, true)
 	s := w.newScan(r, nil, kr)
 	for _, sp := range plan.spans {
@@ -167,11 +164,12 @@ func (r *reader) rangeBatches(ctx context.Context, q Query, st *ReadStats, kr ke
 	if fn == nil {
 		return invalidRequest("a nil batch callback")
 	}
-	ctx, done, err := r.request(bypassCache(ctx), st, q.Cursor, false, q.Limit, true, q.Columns)
+	op, err := r.request(bypassCache(ctx), q.Cursor, false, q.Limit, true, q.Columns)
 	if err != nil {
 		return err
 	}
-	defer done(&err)
+	defer op.done(ctx, &err, st)
+	ctx = op
 	from, exclusive, end := q.bounds()
 	if r.rows == 0 || end != nil && from != nil && bytes.Compare(from, end) >= 0 {
 		return nil

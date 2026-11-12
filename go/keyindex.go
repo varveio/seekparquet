@@ -260,6 +260,16 @@ func (m *pageMemo) put(p *part, off int64, raw []byte, walk bool) {
 	m.used += int64(len(raw))
 }
 
+// adopt puts into m, within its room, the pages that from holds.
+func (m *pageMemo) adopt(from *pageMemo) {
+	if from.first.raw != nil {
+		m.put(from.first.p, from.first.off, from.first.raw, false)
+	}
+	for k, raw := range from.pages {
+		m.put(k.p, k.off, raw, false)
+	}
+}
+
 // ordered reports whether page before may precede page after: after begins
 // above before's last key, or at it when keys may repeat and both pages
 // are in one part, since a group never crosses parts (PART-4, KEY-7).

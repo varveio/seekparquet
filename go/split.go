@@ -47,14 +47,11 @@ func (plan *Plan) Split(ctx context.Context, n int, st *ReadStats) (_ []*Plan, e
 		return nil, invalidRequest("split into %d shards", n)
 	}
 	r := plan.r
-	rctx, end, err := r.begin(ctx, st)
+	rctx, err := r.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		err = finish(ctx, rctx, err)
-		end()
-	}()
+	defer rctx.done(ctx, &err, st)
 	// Splitting reads nothing when keys are unique, so it observes its
 	// context itself: on entry and through its loops over the plan.
 	if err := rctx.Err(); err != nil {

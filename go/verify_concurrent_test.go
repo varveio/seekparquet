@@ -10,6 +10,7 @@ import (
 	"os"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/parquet-go/parquet-go/format"
 
@@ -103,10 +104,12 @@ func TestVerifyOrder(t *testing.T) {
 	}
 }
 
-// limitSource counts its reads in flight and the most at once.
+// limitSource counts its reads in flight and the most at once; each read
+// takes delay.
 type limitSource struct {
 	Source
 	inFlight, most, reads atomic.Int64
+	delay                 time.Duration
 }
 
 type limitFile struct {
@@ -137,6 +140,9 @@ func (f limitFile) read(c context.Context, p []byte, off int64) (int, error) {
 		if n <= m || f.s.most.CompareAndSwap(m, n) {
 			break
 		}
+	}
+	if f.s.delay > 0 {
+		time.Sleep(f.s.delay)
 	}
 	if c != nil {
 		if b, ok := f.SourceFile.(ContextBinder); ok {

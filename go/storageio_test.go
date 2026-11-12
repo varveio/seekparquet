@@ -123,7 +123,7 @@ func TestReadRangesBatched(t *testing.T) {
 		f := &batchTestFile{rangeTestFile: &rangeTestFile{data: data, fail: map[int64]error{70: errors.New("boom")}}}
 		var st ReadStats
 		ranges := testRanges(10, 10)
-		observed, _ := withCollector(context.Background()) // a reporting file counted by a collector
+		observed := newOperation(context.Background(), 64) // a reporting file observed by an operation
 		errs := readRanges(observed, rangeFile{file: f, name: "p", reports: true, concurrency: 4}, ranges, &st)
 		if fmt.Sprint(f.sizes) != "[4 4 2]" || st.SourceBatches != 3 || st.SourceReads != 10 || st.UnreportedIOCalls != 0 || st.ScalarFallbackReads != 0 {
 			t.Fatalf("calls %v, %+v", f.sizes, st)
@@ -166,7 +166,8 @@ func TestReadRangesCancelled(t *testing.T) {
 // taking slots.
 func TestOpLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		ctx := withOpLimit(context.Background(), 3)
+		op := newOperation(context.Background(), 3)
+		ctx := context.Context(op)
 		f := &rangeTestFile{data: make([]byte, 1000)}
 		var wg sync.WaitGroup
 		for range 4 {
@@ -178,7 +179,7 @@ func TestOpLimit(t *testing.T) {
 		if f.maxSeen.Load() != 3 {
 			t.Fatalf("%d in flight, limit 3", f.maxSeen.Load())
 		}
-		l := opLimitOf(ctx)
+		l := &op.limit
 		if err := l.acquire(context.Background(), 3); err != nil {
 			t.Fatal(err)
 		}

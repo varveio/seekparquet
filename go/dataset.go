@@ -226,14 +226,20 @@ func prepareOpen(ctx context.Context, opt *OpenOptions) error {
 // openDataset opens the dataset at src with checked options; local reads
 // as OpenDir's zero policy says (reader.local).
 func openDataset(ctx context.Context, src Source, opt OpenOptions, st *ReadStats, local bool) (*Dataset, error) {
-	reports := reportsIO(src)
+	// The manifest is read under an operation that observes the physical
+	// requests of whichever of the Source and the manifest's file report
+	// them; a local directory's files report none.
 	mctx := ctx
-	if reports {
-		var c *collector
-		mctx, c = withCollector(ctx)
-		defer c.addTo(st)
+	if _, ok := src.(dirSource); !ok {
+		op := newOperation(ctx, opt.Read.Concurrency)
+		mctx = op
+		defer func() {
+			if c := op.c.Load(); c != nil {
+				c.addTo(st)
+			}
+		}()
 	}
-	raw, identity, err := readManifest(mctx, src, opt.Limits.ManifestBytes, reports, st)
+	raw, identity, err := readManifest(mctx, src, opt.Limits.ManifestBytes, reportsIO(src), st)
 	if err != nil {
 		return nil, err
 	}
@@ -244,6 +250,9 @@ func openDataset(ctx context.Context, src Source, opt OpenOptions, st *ReadStats
 	meta := Metadata{Key: Key{Column: m.KeyColumn, Unique: m.KeyUnique}, Version: Version(m.Version), SchemaID: m.SchemaID,
 		Extensions: m.Extensions, Manifest: raw, ManifestIdentity: identity}
 	inputs := make([]partInput, 0, len(m.Parts))
+	if len(m.Parts) > 0 {
+		meta.Parts = make([]PartInfo, 0, len(m.Parts))
+	}
 	for _, entry := range m.Parts {
 		meta.Parts = append(meta.Parts, PartInfo(entry))
 		inputs = append(inputs, partInput{name: entry.Path, minKey: entry.MinKey, maxKey: entry.MaxKey, rows: entry.Rows})
@@ -252,7 +261,7 @@ func openDataset(ctx context.Context, src Source, opt OpenOptions, st *ReadStats
 	if err != nil {
 		return nil, err
 	}
-	r.sourceReports, r.local = reports, local
+	r.local = local
 	r.fetch = func(ctx context.Context, i int, st *ReadStats, deferHead bool) (fetchedInput, error) {
 		return openDatasetPart(ctx, src, m, m.Parts[i], r, st, deferHead)
 	}
@@ -305,7 +314,7 @@ func readManifest(ctx context.Context, src Source, limit int64, reports bool, st
 	if unreported(ctx, reportsIO(f)) {
 		st.UnreportedIOCalls++
 	}
-	at := storageReader{r: bind(ctx, f), name: ManifestName}
+	at := storageReader{r: bind(ctx, f), op: operationOf(ctx), name: ManifestName}
 	if err := at.readFull(raw, 0); err != nil {
 		return nil, "", fmt.Errorf("read %s: %w", ManifestName, err)
 	}
@@ -349,7 +358,7 @@ func openPartFile(ctx context.Context, src Source, entry manifest.Part, reports 
 // caller establishes it (fetchedInput.tail.headDeferred), and a verdict
 // reached before is judged again with the real head (magicFirst).
 func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, r *reader, st *ReadStats, deferHead bool) (_ fetchedInput, err error) {
-	f, err := openPartFile(ctx, src, entry, r.sourceReports, st)
+	f, err := openPartFile(ctx, src, entry, reportsIO(src), st)
 	if err != nil {
 		return fetchedInput{}, err
 	}
@@ -455,11 +464,11 @@ func (d *Dataset) Metadata() Metadata { return d.meta.clone() }
 func (d *Dataset) Verify(ctx context.Context, st *ReadStats) (err error) {
 	st, spare := takeStats(st)
 	defer dropStats(spare)
-	rctx, end, err := d.r.begin(ctx, st)
+	rctx, err := d.r.begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer end()
+	defer rctx.end(st)
 	return finish(ctx, rctx, d.r.verify(rctx, st))
 }
 
@@ -477,11 +486,11 @@ func (d *Dataset) Columns(ctx context.Context, i int) ([]Column, error) {
 	if i < 0 || i >= len(d.r.parts) {
 		return nil, invalidRequest("part %d of %d", i, len(d.r.parts))
 	}
-	rctx, end, err := d.r.begin(ctx, nil)
+	rctx, err := d.r.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer end()
+	defer rctx.end(nil)
 	p, err := d.r.part(rctx, i, new(ReadStats))
 	if err != nil {
 		return nil, finish(ctx, rctx, err)

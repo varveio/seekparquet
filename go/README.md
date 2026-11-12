@@ -306,7 +306,8 @@ extents not admitted may be read again. `Verify` checks up to `ReadPolicy.Concur
 two rounds of reads (its end; then its row groups' first key pages and its last key page, its head merged into
 the first when that page begins within 64 KiB), and reports the first failure in the part and check order of a
 serial check; a second `Verify` of the same `Dataset` reads nothing. `OpenDir` with a zero `ReadPolicy` reads as
-suits a local file: a 64 KiB window, one range at a time, no retained index bytes and no memo. Within the part, a read is routed by a binary search over its row groups' first
+suits a local file: a 64 KiB window, each part's ranges one at a time, no retained index bytes and no memo
+(`Verify` still checks several parts at once, and a listing reads ahead when asked). Within the part, a read is routed by a binary search over its row groups' first
 keys; the first time a row group is needed, its key page index is loaded and its first key page decoded, and
 both are kept (`Limits.IndexMemory` accounts for key-page entries, their bound bytes,
 and decoded row-group first-key bytes). This budget does not include allocator overhead,

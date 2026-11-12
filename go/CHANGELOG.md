@@ -42,12 +42,13 @@ versioning; while it is v0, minor versions may change the API.
   `RangeReader` with `ReadRange`, `BatchError`, `MaxReadRanges` and `MaxReadBatchBytes`, and `ErrObjectChanged`,
   `ErrObjectTooLarge` and `SizeMismatchError`. A size mismatch is refused `part_mismatch` and a missing object
   `missing_part` wherever they surface; a broken pin (`ErrObjectChanged`) stays an environment error, also on the
-  manifest; a short read, or a read that returned every byte with an error, is the environment's error, never a
-  refusal. Physical reporting: `IOReporter`, `IOObserver` (`WithIOObserver`, `IOObserverFromContext`) with
+  manifest; a short read, or a read that returned every byte with an error that says more than `io.EOF`, is the
+  environment's error, never a refusal, keeping a size mismatch or broken pin it carries. Physical reporting: `IOReporter`, `IOObserver` (`WithIOObserver`, `IOObserverFromContext`) with
   `IORequest`, `IORequestKind` and `IOResult`, counted in new `ReadStats` fields (`SourceBatches`,
   `ScalarFallbackReads`, `Physical*`, `Planned*`, `ByteCacheHitBytes`, `MetadataHitBytes`, `RequestMemoHitBytes`,
   `UnreportedIOCalls`, `PeakPhysicalRequests`; `Add` takes the larger peak) and in `OpenOptions.OpenStats` for
-  `OpenDataset` and `OpenDir`. Cache control: `CacheMode` with `WithCacheMode` and `CacheModeFromContext`;
+  `OpenDataset` and `OpenDir`; every operation observes the requests of each receiver that reports, Source or file,
+  from its first call. Cache control: `CacheMode` with `WithCacheMode` and `CacheModeFromContext`;
   `Dataset.Scan`, `Plan.Scan` and `BuildListIndex` ask for `CacheBypass`. `OpenOptions.Read` is a `ReadPolicy`:
   `Concurrency` (default 64) bounds an operation's outstanding ranges, read-ahead included;
   `MetadataPrefetchBytes`; `DisableSpeculation`, which also turns off `ListQuery.ReadAhead`.
@@ -60,9 +61,12 @@ versioning; while it is v0, minor versions may change the API.
   complete key-page extents admitted to a bounded request memo are reused. `Verify` checks up to
   `ReadPolicy.Concurrency` parts at once, reading each part's first key pages and last key page together, its
   head merged into the first, and commits each check and its verdict in manifest order, so it reports what a
-  serial check reports; checked first keys and last pages are not checked again. `OpenDir` with a zero
-  `ReadPolicy` reads as before these capabilities: a 64 KiB window, one range at a time, no retained index bytes
-  and no memo.
+  serial check reports; checked first keys and last pages are not checked again. It fetches at most
+  `ReadPolicy.Concurrency` parts ahead of the part it checks, so the part ends it holds stay bounded, and a page it
+  fetched is used only once the part's check adopts the handle it was read from. `ReadPolicy.Concurrency` bounds
+  every range an operation has in flight: scalar reads, batches, read-ahead and list-index workers. `OpenDir` with
+  a zero `ReadPolicy` reads as before these capabilities: a 64 KiB window, each part's ranges one at a time, no
+  retained index bytes and no memo (`Verify` still checks several parts at once).
 
 - `ListQuery.ReadAhead` (default 0, off; at most 64): a listing predicts from the checked key page index of the
   row group it is in the key pages it will decode next (after each common prefix, the first page whose

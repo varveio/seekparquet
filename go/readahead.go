@@ -46,6 +46,9 @@ type readAhead struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	slots  int
+	// limit is the operation's (operation.limit): a page is read ahead
+	// only on a slot free with another left for the scan's own reads.
+	limit  *opLimit
 	budget int64
 	// maxPending bounds len(pending): a small multiple of slots, so that
 	// the bookkeeping stays small however long the listing is.
@@ -118,7 +121,7 @@ func (r *reader) newReadAhead(ctx context.Context, n int) *readAhead {
 		return nil
 	}
 	actx, cancel := context.WithCancel(ctx)
-	return &readAhead{ctx: actx, cancel: cancel, slots: n, budget: int64(n) * readAheadPageBytes, maxPending: 4 * n,
+	return &readAhead{ctx: actx, cancel: cancel, slots: n, limit: limitOf(ctx), budget: int64(n) * readAheadPageBytes, maxPending: 4 * n,
 		maxPage: r.limits.PageBytes + r.limits.headerBytes(), pending: map[aheadKey]*aheadPage{}, lastAt: -1}
 }
 
@@ -144,7 +147,7 @@ func (a *readAhead) retire(e *aheadPage, used bool) {
 	}
 	a.reads++
 	a.readBytes += e.size
-	if !e.key.p.reports {
+	if unreported(a.ctx, e.key.p.reports) {
 		a.unreported++
 	}
 	if !used {
@@ -177,7 +180,8 @@ func (a *readAhead) fetch(p *part, g groupRef, i int, loc pageLoc) bool {
 	if _, ok := a.pending[key]; ok {
 		return true
 	}
-	if loc.size <= 0 || loc.size > a.maxPage || a.held+loc.size > a.budget || int(a.inflight.Load()) >= a.slots || len(a.pending) >= a.maxPending {
+	if loc.size <= 0 || loc.size > a.maxPage || a.held+loc.size > a.budget || int(a.inflight.Load()) >= a.slots || len(a.pending) >= a.maxPending ||
+		!a.limit.tryAcquire(1, 1) {
 		return false
 	}
 	e := &aheadPage{key: key, g: g, page: i, size: loc.size, done: make(chan struct{})}
@@ -193,6 +197,7 @@ func (a *readAhead) fetch(p *part, g groupRef, i int, loc pageLoc) bool {
 		defer a.wg.Done()
 		defer close(e.done)
 		defer a.inflight.Add(-1)
+		defer a.limit.release(1)
 		defer func() {
 			// A panic of the source ends the read ahead, not the process:
 			// the page is read again by the scan, which meets the panic, if

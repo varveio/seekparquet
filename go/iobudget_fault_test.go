@@ -507,7 +507,8 @@ func TestPhysicalStats(t *testing.T) {
 	}
 }
 
-// reportSource is fakeSource reporting, or not, as source and file say.
+// reportSource is fakeSource reporting, or not, as source and file say: a
+// receiver that does not report hides the observer from the store.
 type reportSource struct {
 	fakeSource
 	source, file bool
@@ -516,6 +517,9 @@ type reportSource struct {
 func (s reportSource) ReportsIO() bool { return s.source }
 
 func (s reportSource) Open(ctx context.Context, path string) (seekparquet.SourceFile, error) {
+	if !s.source {
+		ctx = seekparquet.WithIOObserver(ctx, nil)
+	}
 	f, err := s.fakeSource.Open(ctx, path)
 	if err != nil {
 		return nil, err
@@ -530,40 +534,78 @@ type reportFile struct {
 
 func (f reportFile) ReportsIO() bool { return f.reports }
 
+func (f reportFile) WithContext(ctx context.Context) io.ReaderAt {
+	if !f.reports {
+		ctx = seekparquet.WithIOObserver(ctx, nil)
+	}
+	return f.fakeFile.WithContext(ctx)
+}
+
 // TestPhysicalReportingCombinations: a Source and its files report their
-// physical requests independently. Counts are complete, with no
-// unreported call, only where every receiver reports; a file that reports
-// under a Source that does not is counted once the Dataset knows of it (a
-// warm handle), and before that its calls count as unreported, never as
-// zero work.
+// physical requests independently, and every operation observes those of
+// whichever receivers report them, from its first call: the open's
+// manifest read, a cold lookup, a cold listing reading ahead, a warm
+// lookup, and an operation whose first check fails. In this store each
+// call makes one request, so the requests counted and the calls left
+// unreported add up to the requests made, exactly.
 func TestPhysicalReportingCombinations(t *testing.T) {
 	fx := ioFixtureOf(t, ioTiny)
 	for _, c := range []struct{ source, file bool }{{true, true}, {true, false}, {false, true}, {false, false}} {
 		t.Run(fmt.Sprintf("source=%v/file=%v", c.source, c.file), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				src := fakestore.New(fx.objects, ioOptions)
-				d, err := seekparquet.OpenDataset(context.Background(), reportSource{fakeSource{src}, c.source, c.file}, seekparquet.OpenOptions{})
+				// opens is the Source's own calls the operation made: the
+				// manifest's open, or its parts'.
+				check := func(what string, st seekparquet.ReadStats, rec *fakestore.Operation, opens int64) {
+					t.Helper()
+					made := int64(len(rec.End().Requests))
+					switch {
+					case made == 0:
+						t.Fatalf("%s: no request", what)
+					case st.PhysicalRequests+st.UnreportedIOCalls != made:
+						t.Fatalf("%s: %d physical requests and %d unreported calls counted, %d requests made", what, st.PhysicalRequests, st.UnreportedIOCalls, made)
+					case c.source && c.file && st.UnreportedIOCalls != 0:
+						t.Fatalf("%s: %d unreported calls with every receiver reporting", what, st.UnreportedIOCalls)
+					case !c.source && !c.file && st.PhysicalRequests != 0:
+						t.Fatalf("%s: %d physical requests with no receiver reporting", what, st.PhysicalRequests)
+					case !c.source && c.file && st.UnreportedIOCalls != opens:
+						t.Fatalf("%s: %d unreported calls, want the Source's %d opens alone", what, st.UnreportedIOCalls, opens)
+					}
+				}
+				source := reportSource{fakeSource{src}, c.source, c.file}
+				var open seekparquet.ReadStats
+				rec := src.Begin("open")
+				d, err := seekparquet.OpenDataset(context.Background(), source, seekparquet.OpenOptions{OpenStats: &open})
 				must(t, err)
 				defer d.Close()
+				check("open", open, rec, 1)
 				for _, temp := range []string{"cold", "warm"} {
 					var st seekparquet.ReadStats
 					rec := src.Begin(temp)
 					_, err := d.Get(context.Background(), fx.mid, &st, ioColumns...)
 					must(t, err)
-					made := int64(len(rec.End().Requests))
-					switch {
-					case made == 0:
-						t.Fatalf("%s: no request", temp)
-					case st.UnreportedIOCalls == 0 && st.PhysicalRequests != made:
-						t.Fatalf("%s: %d physical requests counted, %d made, none unreported", temp, st.PhysicalRequests, made)
-					case c.source && c.file && st.UnreportedIOCalls != 0:
-						t.Fatalf("%s: %d unreported calls with every receiver reporting", temp, st.UnreportedIOCalls)
-					case !c.file && st.UnreportedIOCalls == 0:
-						t.Fatalf("%s: a file that does not report left no unreported call", temp)
-					case c.file && !c.source && temp == "warm" && (st.UnreportedIOCalls != 0 || st.PhysicalRequests != made):
-						t.Fatalf("warm: %+v, %d requests made", st, made)
-					}
+					check(temp, st, rec, st.PartsOpened)
 				}
+				listed, err := seekparquet.OpenDataset(context.Background(), source, seekparquet.OpenOptions{})
+				must(t, err)
+				defer listed.Close()
+				var st seekparquet.ReadStats
+				rec = src.Begin("list")
+				_, err = listed.List(context.Background(), seekparquet.ListQuery{Prefix: fx.listPrefix, Limit: 300, ReadAhead: 4}, &st)
+				must(t, err)
+				if st.ReadAheadReads == 0 {
+					t.Fatalf("list: nothing read ahead: %+v", st)
+				}
+				check("cold list", st, rec, st.PartsOpened)
+				failing, err := seekparquet.OpenDataset(context.Background(), source, seekparquet.OpenOptions{})
+				must(t, err)
+				defer failing.Close()
+				st = seekparquet.ReadStats{}
+				rec = src.Begin("failed", fakestore.Fault{At: 2, Kind: fakestore.Fail})
+				if _, err := failing.Get(context.Background(), fx.mid, &st, ioColumns...); err == nil {
+					t.Fatal("the failed check succeeded")
+				}
+				check("failed check", st, rec, st.PartsOpened)
 			})
 		})
 	}

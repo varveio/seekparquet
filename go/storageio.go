@@ -54,14 +54,24 @@ func sourceError(name string, err error) error {
 // io.ReaderAt and allocated for every read. name names the file in
 // errors, and unreported is set when the file leaves its physical requests
 // unreported (IOReporter), each call then counting in UnreportedIOCalls.
+//
+// A read under an operation (op) takes one slot of its limit for its
+// duration, and is counted once it has one.
 type storageReader struct {
 	r          io.ReaderAt
+	op         *operation // nil for none
 	st         *ReadStats // counts the reads of a request, nil for none
 	name       string
 	unreported bool
 }
 
 func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
+	if s.op != nil && len(p) > 0 {
+		if err := s.op.limit.acquire(s.op, 1); err != nil {
+			return 0, err
+		}
+		defer s.op.limit.release(1)
+	}
 	if s.st != nil {
 		s.st.SourceReads++
 		s.st.SourceBytes += int64(len(p))
@@ -155,12 +165,6 @@ type collector struct {
 	cacheHits, inFlight, peak               atomic.Int64
 }
 
-// withCollector returns ctx with a new collector for an operation.
-func withCollector(ctx context.Context) (context.Context, *collector) {
-	c := &collector{parent: IOObserverFromContext(ctx)}
-	return WithIOObserver(ctx, c), c
-}
-
 // addTo adds the collector's counts to st.
 func (c *collector) addTo(st *ReadStats) {
 	if c == nil || st == nil {
@@ -229,13 +233,83 @@ func checkCacheMode(ctx context.Context) error {
 	return nil
 }
 
+// operation is the scope of one operation (reader.begin), or of opening a
+// dataset (openDataset): the context its reads run under, carrying it. As
+// the operation's IOObserver it counts the physical requests reporting
+// receivers make for it, in a collector made on the first observation, so
+// that an operation whose receivers report nothing pays for none; and its
+// limit bounds the ranges the operation has outstanding at once
+// (ReadPolicy.Concurrency), wherever they are read. Every range is charged
+// once, where it is read: a scalar read (storageReader), a ReadRanges call
+// (readBatches) or a page read ahead (readAhead.fetch). Nothing holds a
+// slot while it calls code that takes one.
+type operation struct {
+	context.Context // the operation's own: cancelled when it ends
+	c               atomic.Pointer[collector]
+	limit           opLimit
+	// r, stop and cancel are what end releases, r nil for an open.
+	r      *reader
+	stop   func() bool
+	cancel context.CancelCauseFunc
+}
+
+type operationKey struct{}
+
+// newOperation returns an operation under ctx whose ranges are limited to
+// concurrency at once.
+func newOperation(ctx context.Context, concurrency int) *operation {
+	o := &operation{Context: ctx}
+	o.limit.free, o.limit.size = concurrency, concurrency
+	return o
+}
+
+// operationOf returns the operation ctx runs under, nil for none.
+func operationOf(ctx context.Context) *operation {
+	o, _ := ctx.Value(operationKey{}).(*operation)
+	return o
+}
+
+func (o *operation) Value(key any) any {
+	switch key.(type) {
+	case operationKey:
+		return o
+	case observerKey:
+		return IOObserver(o)
+	}
+	return o.Context.Value(key)
+}
+
+// collector returns the operation's collector, made on first use.
+func (o *operation) collector() *collector {
+	if c := o.c.Load(); c != nil {
+		return c
+	}
+	o.c.CompareAndSwap(nil, &collector{parent: IOObserverFromContext(o.Context)})
+	return o.c.Load()
+}
+
+func (o *operation) Begin(req IORequest) func(IOResult) { return o.collector().Begin(req) }
+func (o *operation) CacheHit(bytes int64)               { o.collector().CacheHit(bytes) }
+func (o *operation) BatchPlanned(ranges, requests, overReadBytes int64) {
+	o.collector().BatchPlanned(ranges, requests, overReadBytes)
+}
+
+// limitOf returns the limit of the operation ctx runs under, nil for none.
+func limitOf(ctx context.Context) *opLimit {
+	if o := operationOf(ctx); o != nil {
+		return &o.limit
+	}
+	return nil
+}
+
 // opLimit bounds the logical ranges an operation has outstanding at once
-// (ReadPolicy.Concurrency) when it reads from several goroutines (Verify):
-// a weighted semaphore whose waiters are served in arrival order and can
-// give up when their context ends.
+// (ReadPolicy.Concurrency): a weighted semaphore of size slots whose
+// waiters are served in arrival order and can give up when their context
+// ends. A nil *opLimit limits nothing.
 type opLimit struct {
 	mu      sync.Mutex
 	free    int
+	size    int
 	waiters []*opWaiter
 }
 
@@ -244,21 +318,11 @@ type opWaiter struct {
 	ready chan struct{}
 }
 
-type opLimitKey struct{}
-
-// withOpLimit returns ctx carrying a limit of n outstanding ranges for the
-// operation's concurrent reads.
-func withOpLimit(ctx context.Context, n int) context.Context {
-	return context.WithValue(ctx, opLimitKey{}, &opLimit{free: n})
-}
-
-func opLimitOf(ctx context.Context) *opLimit {
-	l, _ := ctx.Value(opLimitKey{}).(*opLimit)
-	return l
-}
-
-// acquire takes n slots, n at most the limit's size.
+// acquire takes n slots, at most the limit's size.
 func (l *opLimit) acquire(ctx context.Context, n int) error {
+	if l == nil {
+		return nil
+	}
 	l.mu.Lock()
 	if len(l.waiters) == 0 && l.free >= n {
 		l.free -= n
@@ -291,7 +355,25 @@ func (l *opLimit) acquire(ctx context.Context, n int) error {
 	}
 }
 
+// tryAcquire takes n slots when they are free now, with reserve more left
+// free, and no one waits: speculation never delays a read that is needed.
+func (l *opLimit) tryAcquire(n, reserve int) bool {
+	if l == nil {
+		return true
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.waiters) > 0 || l.free-n < reserve {
+		return false
+	}
+	l.free -= n
+	return true
+}
+
 func (l *opLimit) release(n int) {
+	if l == nil {
+		return
+	}
 	l.mu.Lock()
 	l.free += n
 	l.grant()
@@ -325,8 +407,8 @@ type rangeFile struct {
 // MaxReadBatchBytes per call), and otherwise as concurrent ReadAt calls on
 // ContextBinder views by at most Concurrency workers, never one goroutine
 // per range. A single range, or a Concurrency of 1, is read on the
-// caller's goroutine. When ctx carries an operation's limit (opLimit), its
-// ranges count against it. Errors are classified as every read's are
+// caller's goroutine. When ctx runs under an operation, each range counts
+// against its limit (opLimit) while it is read. Errors are classified as every read's are
 // (sourceError, shortRead). Every read it starts has ended when it
 // returns. Counts reach st, on the caller's goroutine, only for the calls
 // actually made.
@@ -341,24 +423,15 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 		return nil
 	}
 	width := max(1, rf.concurrency)
-	limit := opLimitOf(ctx)
 	uncounted := unreported(ctx, rf.reports)
 	if rr, ok := rf.file.(RangeReader); ok {
-		return readBatches(ctx, rf, rr, ranges, todo, width, limit, uncounted, st)
+		return readBatches(ctx, rf, rr, ranges, todo, width, limitOf(ctx), uncounted, st)
 	}
 	errs := make([]error, len(ranges))
 	var failed atomic.Bool
 	var calls, bytes atomic.Int64
-	at := storageReader{r: bind(ctx, rf.file), name: rf.name}
+	at := storageReader{r: bind(ctx, rf.file), op: operationOf(ctx), name: rf.name}
 	read := func(i int) {
-		if limit != nil {
-			if err := limit.acquire(ctx, 1); err != nil {
-				errs[i] = err
-				failed.Store(true)
-				return
-			}
-			defer limit.release(1)
-		}
 		if err := ctx.Err(); err != nil {
 			errs[i] = err
 			failed.Store(true)
@@ -426,6 +499,9 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 		}
 	}
 	width = min(width, MaxReadRanges)
+	if limit != nil {
+		width = min(width, limit.size)
+	}
 	errs := make([]error, len(ranges))
 	failed := false
 	fail := func(of int, err error) {
@@ -445,14 +521,12 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 			batch[j] = pieces[j].rg
 		}
 		err := ctx.Err()
-		if err == nil && limit != nil {
+		if err == nil {
 			err = limit.acquire(ctx, n)
 		}
 		if err == nil {
 			err = rr.ReadRanges(ctx, batch)
-			if limit != nil {
-				limit.release(n)
-			}
+			limit.release(n)
 			if st != nil {
 				st.SourceBatches++
 				st.SourceReads += int64(n)
@@ -611,17 +685,11 @@ func (r *reader) width() int {
 	return r.policy.Concurrency
 }
 
-// collected reports whether ctx carries an operation's collector.
-func collected(ctx context.Context) bool {
-	_, ok := IOObserverFromContext(ctx).(*collector)
-	return ok
-}
-
 // unreported reports whether a storage call under ctx on a receiver that
 // reports (or not) its requests leaves them out of the operation's counts:
-// it does not report them, or no collector counts them.
+// it does not report them, or it runs under no operation to count them.
 func unreported(ctx context.Context, reports bool) bool {
-	return !reports || !collected(ctx)
+	return !reports || operationOf(ctx) == nil
 }
 
 // bypassCache returns ctx asking a Source's byte cache to be bypassed
