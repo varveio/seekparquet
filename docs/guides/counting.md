@@ -130,7 +130,9 @@ Compute `start + int64(i)`; converting a dataset ordinal to `int` can truncate i
 `Column(c)` uses the projection order returned by `Plan.Columns()`.
 Copying a `ValueBatch` or `ColumnView` does not retain values.
 Use `Column(c).Value(i).Clone()` before the callback returns to retain an owning value.
-The scan does not decode key pages unless the key column is explicitly projected.
+The scan executes row positions without decoding interior key pages for positioning or computing equal-key offsets.
+Selected parts and projected pages still receive their normal structural and decoding checks.
+A key column explicitly included in the projection is read as requested; success does not certify unread key pages.
 
 ## Resolve unknown rows
 

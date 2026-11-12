@@ -11,6 +11,42 @@ import (
 	"github.com/varveio/seekparquet/go/internal/testutil"
 )
 
+func TestRowContractPlanRowsRejectsInvalidBeforeIO(t *testing.T) {
+	dir := write(t, parts(testutil.Part{GroupRows: 10}, fixtureKeys(30)))
+	reads := &accessSource{Source: dirOf(t, dir)}
+	src := &countingSource{Source: reads}
+	d, err := OpenDataset(ctx, src, OpenOptions{})
+	must(t, err)
+	t.Cleanup(func() { _ = d.Close() })
+	other, err := OpenDataset(ctx, src, OpenOptions{})
+	must(t, err)
+	t.Cleanup(func() { _ = other.Close() })
+	for _, tc := range []struct {
+		name string
+		span RowSpan
+	}{
+		{"zero", RowSpan{}},
+		{"unknown-end", RowSpan{Start: d.r.pos(1)}},
+		{"other-handle", other.r.rowSpan(1, 2)},
+		{"reversed", d.r.rowSpan(2, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opened := src.opened.Load()
+			reads.reset()
+			st := ReadStats{SourceReads: 1}
+			// A projection would read part metadata for the valid first span
+			// if planning started before all input spans were validated.
+			_, err := d.PlanRows(ctx, []RowSpan{d.r.rowSpan(0, 1), tc.span}, []string{"size"}, &st)
+			if !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("invalid span: %v, want ErrInvalidRequest", err)
+			}
+			if opens, n := src.opened.Load()-opened, reads.reads.Load(); opens != 0 || n != 0 || st != (ReadStats{}) {
+				t.Fatalf("invalid span performed I/O: opens %d, reads %d, stats %+v", opens, n, st)
+			}
+		})
+	}
+}
+
 func TestInputRowSpansPreservesInputs(t *testing.T) {
 	d := open(t, write(t, parts(testutil.Part{GroupRows: 10}, fixtureKeys(30))), OpenOptions{})
 	inputs := []RowSpan{d.r.rowSpan(5, 15), d.r.rowSpan(2, 8), d.r.rowSpan(4, 4)}
@@ -146,7 +182,16 @@ func TestValueBatchAggregationAcrossInputSpans(t *testing.T) {
 }
 
 func TestListingBoundaryContracts(t *testing.T) {
-	for _, delimiter := range []byte{'/', '|'} {
+	// The optional list index applies only to slash listings.
+	for _, scenario := range []struct {
+		delimiter byte
+		mode      string
+	}{
+		{'/', "plain"},
+		{'|', "plain"},
+		{'/', "indexed"},
+	} {
+		delimiter, mode := scenario.delimiter, scenario.mode
 		key := func(s string) string {
 			b := []byte(s)
 			for i := range b {
@@ -157,61 +202,71 @@ func TestListingBoundaryContracts(t *testing.T) {
 			return string(b)
 		}
 		keys := []string{key("a/"), key("a/b"), key("a/c"), key("a/d"), key("b/a")}
-		d := open(t, write(t, parts(testutil.Part{GroupRows: 3, PageBytes: 32}, keys)), OpenOptions{})
-		for _, tc := range []struct {
-			name      string
-			limit     int
-			end       []byte
-			cursor    *Cursor
-			start     int64
-			endKnown  bool
-			wantCount int64
-		}{
-			{name: "at-limit", limit: 1, wantCount: 4},
-			{name: "traversed", limit: 3, endKnown: true, wantCount: 4},
-			{name: "end-clipped", limit: 3, end: []byte(key("a/c")), wantCount: 2},
-			{name: "row-cursor", limit: 3, cursor: RowCursor([]byte(key("a/b")), 0), start: 2, endKnown: true, wantCount: 2},
-			{name: "prefix-cursor", limit: 3, cursor: PrefixCursor([]byte(key("a/b"))), start: 2, endKnown: true, wantCount: 2},
-		} {
-			t.Run(string(delimiter)+"/"+tc.name, func(t *testing.T) {
-				q := ListQuery{Delimiter: delimiter, Limit: tc.limit, End: tc.end, Cursor: tc.cursor}
-				entries, err := d.List(ctx, q, nil)
+		dir := write(t, parts(testutil.Part{GroupRows: 3, PageBytes: 32}, keys))
+		t.Run(string(delimiter)+"/"+mode, func(t *testing.T) {
+			d := open(t, dir, OpenOptions{})
+			if mode == "indexed" {
+				st, err := d.BuildListIndex(ctx, ListIndexOptions{})
 				must(t, err)
-				if len(entries) == 0 || string(entries[0].CommonPrefix) != key("a/") {
-					t.Fatal(entries)
+				if !st.HasIndex || st.GroupsIndexed != 2 {
+					t.Fatalf("fixture not fully indexed: %+v", st)
 				}
-				e := entries[0]
-				if start, known := e.Rows.Start.Ordinal(); !known || start != tc.start {
-					t.Fatalf("start %d known %v, want %d", start, known, tc.start)
-				}
-				if _, known := e.Rows.End.Ordinal(); known != tc.endKnown {
-					t.Fatalf("end known %v, want %v", known, tc.endKnown)
-				}
-				if !tc.endKnown {
-					if _, err := d.PlanRows(ctx, []RowSpan{e.Rows}, nil, nil); !errors.Is(err, ErrInvalidRequest) {
-						t.Fatalf("unknown end accepted as input: %v", err)
+			}
+			for _, tc := range []struct {
+				name      string
+				limit     int
+				end       []byte
+				cursor    *Cursor
+				start     int64
+				endKnown  bool
+				wantCount int64
+			}{
+				{name: "at-limit", limit: 1, wantCount: 4},
+				{name: "traversed", limit: 3, endKnown: true, wantCount: 4},
+				{name: "end-clipped", limit: 3, end: []byte(key("a/c")), wantCount: 2},
+				{name: "row-cursor", limit: 3, cursor: RowCursor([]byte(key("a/b")), 0), start: 2, endKnown: true, wantCount: 2},
+				{name: "prefix-cursor", limit: 3, cursor: PrefixCursor([]byte(key("a/b"))), start: 2, endKnown: true, wantCount: 2},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					q := ListQuery{Delimiter: delimiter, Limit: tc.limit, End: tc.end, Cursor: tc.cursor}
+					entries, err := d.List(ctx, q, nil)
+					must(t, err)
+					if len(entries) == 0 || string(entries[0].CommonPrefix) != key("a/") {
+						t.Fatal(entries)
 					}
-				}
-				// Resolve the entry's candidate rows while preserving restrictions.
-				sel := Selection{Span: PrefixSpan(e.CommonPrefix)}
-				sel.Span.End = q.End
-				if q.Cursor != nil {
-					if q.Cursor.Key != nil {
-						sel.Cursor = q.Cursor
-					} else {
-						var ok bool
-						sel.Span.Start, ok = successor(q.Cursor.Prefix)
-						if !ok {
-							t.Fatal("fixture cursor must have a successor")
+					e := entries[0]
+					if start, known := e.Rows.Start.Ordinal(); !known || start != tc.start {
+						t.Fatalf("start %d known %v, want %d", start, known, tc.start)
+					}
+					if _, known := e.Rows.End.Ordinal(); known != tc.endKnown {
+						t.Fatalf("end known %v, want %v", known, tc.endKnown)
+					}
+					if !tc.endKnown {
+						if _, err := d.PlanRows(ctx, []RowSpan{e.Rows}, nil, nil); !errors.Is(err, ErrInvalidRequest) {
+							t.Fatalf("unknown end accepted as input: %v", err)
 						}
 					}
-				}
-				p, err := d.Plan(ctx, []Selection{sel}, nil, nil)
-				must(t, err)
-				if n, exact := p.Count(); n != tc.wantCount || !exact {
-					t.Fatalf("fallback count %d exact %v, want %d", n, exact, tc.wantCount)
-				}
-			})
-		}
+					// Resolve the entry's candidate rows while preserving restrictions.
+					sel := Selection{Span: PrefixSpan(e.CommonPrefix)}
+					sel.Span.End = q.End
+					if q.Cursor != nil {
+						if q.Cursor.Key != nil {
+							sel.Cursor = q.Cursor
+						} else {
+							var ok bool
+							sel.Span.Start, ok = successor(q.Cursor.Prefix)
+							if !ok {
+								t.Fatal("fixture cursor must have a successor")
+							}
+						}
+					}
+					p, err := d.Plan(ctx, []Selection{sel}, nil, nil)
+					must(t, err)
+					if n, exact := p.Count(); n != tc.wantCount || !exact {
+						t.Fatalf("fallback count %d exact %v, want %d", n, exact, tc.wantCount)
+					}
+				})
+			}
+		})
 	}
 }

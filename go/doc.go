@@ -152,11 +152,13 @@
 // it holds (Limits.PageIndexCacheMemory), so that later index loads of the
 // part read nothing.
 //
-// Scans, listings and projected reads can fetch bounded windows through
-// RangeReader, falling back to concurrent ReadAt calls. The windows hold
-// at most 64 MiB of fetched, undecoded bytes per operation, independently
-// of other operations on the Dataset. This does not bound decoded pages,
-// dictionaries, metadata or results. Window scheduling respects
+// With a non-local Source, scans, listings and projected reads can fetch
+// bounded windows through RangeReader, falling back to concurrent ReadAt
+// calls. Zero-policy OpenDir reads on demand; explicitly requesting listing
+// read-ahead or setting OpenOptions.Read opts into window fetching. The
+// windows hold at most 64 MiB of fetched, undecoded bytes per operation,
+// independently of other operations on the Dataset. This does not bound
+// decoded pages, dictionaries, metadata or results. Window scheduling respects
 // Limits.PageBytes before fetching page extents; demand reads still check
 // page headers and payloads. Panics in Source reads (ReadAt or ReadRanges)
 // become environment errors containing the recovered value.

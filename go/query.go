@@ -177,10 +177,11 @@ type ListQuery struct {
 	Columns []string
 	// ReadAhead caps the future key pages considered by each listing
 	// prediction. Zero selects adaptive read-ahead toward Limit+1 over a
-	// remote Source; zero-policy OpenDir reads on demand. Positive values
-	// cap the same predictor; negative values are invalid. Adjacent pages
-	// are fetched together in bounded windows and checked on use. Windows
-	// hold up to 64 MiB of fetched, undecoded bytes per operation; concurrent
+	// non-local Source; zero-policy OpenDir reads on demand. Positive values
+	// cap the same predictor and opt into read-ahead even with OpenDir;
+	// negative values are invalid. Adjacent pages are fetched together in
+	// bounded windows and checked on use. Windows hold up to 64 MiB of
+	// fetched, undecoded bytes per operation; concurrent
 	// operations each hold their own, independently of the Dataset.
 	// ReadPolicy.DisableSpeculation disables this optional fetching.
 	ReadAhead int

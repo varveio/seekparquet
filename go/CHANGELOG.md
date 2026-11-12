@@ -20,8 +20,8 @@ versioning; while it is v0, minor versions may change the API.
   defaults to bypass. Counts and projected bytes report their exactness. No format change.
 - Renamed `Plan.RowSpans` to `Plan.InputRowSpans` (pending Java name
   `inputRowSpans`) to identify original inputs, including overlaps and empties,
-  rather than the normalized union. This is a breaking change to an API merged
-  hours ago with no release; callers rename the method. Positions remain inspectable
+  rather than the normalized union. This is a breaking change to an API
+  not yet in a release; callers rename the method. Positions remain inspectable
   after close, and `SelectRows` remains allowed; scans and `Split` require the open Dataset.
 - Scans, listings, and projected reads fetch bounded windows through `RangeReader`
   when available, with scalar `ReadAt` fallback. Windows hold up to 64 MiB of fetched,

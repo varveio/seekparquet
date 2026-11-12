@@ -384,7 +384,8 @@ them in `ReadStats` (`PhysicalRequests`, `PhysicalBytes`, `PeakPhysicalRequests`
 for the open) and passes them on to an observer the caller set with `WithIOObserver`. `WithCacheMode` asks a
 source's byte cache to be bypassed (`CacheBypass`).
 
-Scans, listings, and projected reads can fetch bounded windows through `RangeReader`; scalar sources use concurrent `ReadAt` calls.
+With a non-local Source, scans, listings, and projected reads can fetch bounded windows through `RangeReader`; scalar sources use concurrent `ReadAt` calls.
+Zero-policy `OpenDir` reads on demand; explicitly requesting listing read-ahead or setting `OpenOptions.Read` opts into window fetching.
 Windows hold up to 64 MiB of fetched, undecoded bytes **per operation**, not per `Dataset`.
 Concurrent operations each hold their own windows; decoded pages, dictionaries, metadata, and results add to that memory.
 Window scheduling honors `Limits.PageBytes` before fetching page extents, leaving oversized candidates to demand-time checks.
@@ -528,7 +529,7 @@ and otherwise only when no part between the ends is still untouched. `ProjectedB
 bytes `Scan` will request for the projected columns: the extent of each page holding a selected row and of
 its chunk's dictionary, once each however many selections share them; it is not exact when a projected
 chunk has no OffsetIndex. `plan.Scan(ctx, stats, fn func(*Batch) error)` yields the rows in dataset order
-with their values as borrowed batches, fetching bounded windows of the needed extents, and checks every key page
+with their values as borrowed batches, fetching bounded windows of the needed extents for a non-local Source, and checks every key page
 it decodes, reading a chunk's dictionary before its first page whether or not the pages use it. Windowing and storage batching can join or split extents; page extents do not predict physical requests.
 `Rows` and `List` read a dictionary only for a page that uses it. A projected key column is read as a value column and its chunk counts
 in `ProjectedBytes`; the Java reader takes key values from its key pages and counts nothing for it (see
