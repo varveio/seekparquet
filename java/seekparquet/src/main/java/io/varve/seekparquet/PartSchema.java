@@ -168,6 +168,80 @@ final class PartSchema {
         });
     }
 
+    /** CHECK-1: the pinned Parquet annotation restrictions apply to every leaf at first touch. */
+    private static void checkAnnotation(SchemaElement se) throws DataException {
+        org.apache.parquet.format.Type t = se.getType();
+        int length = se.getType_length();
+        boolean valid = true;
+        if (se instanceof Thrift.RawSchema raw) {
+            Thrift.Wire logical = raw.wire.child("LogicalType");
+            if (logical != null && (logical.alternative == 19 || logical.alternative == 20)) valid = false;
+        }
+        if (se.isSetLogicalType() && se.getLogicalType().getSetField() != null) {
+            var lt = se.getLogicalType();
+            valid &= switch (lt.getSetField()) {
+                case STRING, ENUM, JSON, BSON, GEOMETRY, GEOGRAPHY -> t == org.apache.parquet.format.Type.BYTE_ARRAY;
+                case UUID -> t == org.apache.parquet.format.Type.FIXED_LEN_BYTE_ARRAY && length == 16;
+                case FLOAT16 -> t == org.apache.parquet.format.Type.FIXED_LEN_BYTE_ARRAY && length == 2;
+                case DECIMAL -> decimalOK(se, lt.getDECIMAL().getPrecision(), lt.getDECIMAL().getScale());
+                case DATE -> t == org.apache.parquet.format.Type.INT32;
+                case TIME -> {
+                    var unit = checkedUnit(se, lt.getTIME().getUnit(), "TimeType");
+                    yield unit.isEmpty() || (unit.get() == LogicalType.TimeUnit.MILLIS
+                            ? t == org.apache.parquet.format.Type.INT32 : t == org.apache.parquet.format.Type.INT64);
+                }
+                case TIMESTAMP -> {
+                    var unit = checkedUnit(se, lt.getTIMESTAMP().getUnit(), "TimestampType");
+                    yield unit.isEmpty() || t == org.apache.parquet.format.Type.INT64
+                            || t == org.apache.parquet.format.Type.FIXED_LEN_BYTE_ARRAY && length == 12;
+                }
+                case INTEGER -> {
+                    int bits = lt.getINTEGER().getBitWidth();
+                    yield bits == 64 ? t == org.apache.parquet.format.Type.INT64
+                            : (bits == 8 || bits == 16 || bits == 32) && t == org.apache.parquet.format.Type.INT32;
+                }
+                case MAP, LIST, VARIANT -> false;
+                case UNKNOWN -> true;
+            };
+        }
+        if (se.isSetConverted_type()) {
+            valid &= switch (se.getConverted_type()) {
+                case UTF8, ENUM, JSON, BSON -> t == org.apache.parquet.format.Type.BYTE_ARRAY;
+                case DATE, TIME_MILLIS, INT_8, INT_16, INT_32, UINT_8, UINT_16, UINT_32 -> t == org.apache.parquet.format.Type.INT32;
+                case TIME_MICROS, TIMESTAMP_MILLIS, TIMESTAMP_MICROS, INT_64, UINT_64 -> t == org.apache.parquet.format.Type.INT64;
+                case INTERVAL -> t == org.apache.parquet.format.Type.FIXED_LEN_BYTE_ARRAY && length == 12;
+                case DECIMAL -> se.isSetPrecision() && decimalOK(se, se.getPrecision(), se.getScale());
+                case MAP, MAP_KEY_VALUE, LIST -> false;
+            };
+        }
+        if (!valid) throw new DataException("column " + se.getName() + ": annotation does not apply to its physical type or parameters");
+    }
+
+    private static boolean decimalOK(SchemaElement se, int precision, int scale) {
+        if (precision <= 0 || scale < 0 || scale > precision) return false;
+        return switch (se.getType()) {
+            case INT32 -> precision <= 9;
+            case INT64 -> precision <= 18;
+            case BYTE_ARRAY -> true;
+            case FIXED_LEN_BYTE_ARRAY -> precision <= Math.floor((8L * se.getType_length() - 1) * Math.log10(2));
+            default -> false;
+        };
+    }
+
+    private static Optional<LogicalType.TimeUnit> checkedUnit(SchemaElement se, org.apache.parquet.format.TimeUnit unit,
+            String kind) throws DataException {
+        if (unit != null && unit.getSetField() != null) return unit(unit);
+        if (unit != null && se instanceof Thrift.RawSchema raw) {
+            Thrift.Wire logical = raw.wire.child("LogicalType");
+            Thrift.Wire time = logical == null ? null : logical.child(kind);
+            Thrift.Wire wireUnit = time == null ? null : time.child("TimeUnit");
+            if (wireUnit != null && wireUnit.members > 0 && (wireUnit.alternative < 1 || wireUnit.alternative > 3)) {
+                return Optional.empty(); // unknown alternative: COL-3; a malformed known alternative is invalid
+            }
+        }
+        throw new DataException("column " + se.getName() + ": absent or empty time unit");
+    }
+
     private static final class Walker {
         final List<SchemaElement> schema;
         final List<SchemaElement> leaves = new ArrayList<>();
@@ -216,6 +290,7 @@ final class PartSchema {
                 if (t == Column.Type.FIXED_LEN_BYTE_ARRAY && (!se.isSetType_length() || se.getType_length() <= 0)) {
                     throw new DataException("a FIXED_LEN_BYTE_ARRAY column without a positive type length");
                 }
+                checkAnnotation(se);
                 leaves.add(se);
                 leafPaths.add(List.copyOf(path));
                 path.removeLast();

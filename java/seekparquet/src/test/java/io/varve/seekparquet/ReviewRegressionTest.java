@@ -5,6 +5,7 @@ package io.varve.seekparquet;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -253,8 +254,18 @@ class ReviewRegressionTest {
 
     @Test
     void interruptedVerifyDrainsSuccessfulTasksAndPreservesTheFlag() throws Exception {
+        interruptedVerify(2);
+    }
+
+    @Test
+    void interruptedVerifyDrainsTasksAtTheInternalBound() throws Exception {
+        interruptedVerify(0);
+    }
+
+    private void interruptedVerify(int concurrency) throws Exception {
         Path root = dataset(3);
-        CountDownLatch reading = new CountDownLatch(2);
+        int expectedOpened = concurrency == 0 ? 3 : 2;
+        CountDownLatch reading = new CountDownLatch(expectedOpened);
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch cancelled = new CountDownLatch(1);
         AtomicInteger opened = new AtomicInteger();
@@ -283,10 +294,12 @@ class ReviewRegressionTest {
         };
         AtomicReference<Throwable> failure = new AtomicReference<>();
         AtomicBoolean interrupted = new AtomicBoolean();
-        Dataset ds = Dataset.open(storage, OpenOptions.DEFAULT.withVerifyConcurrency(2), Cancellation.none());
+        Dataset ds = Dataset.open(storage, OpenOptions.DEFAULT, Cancellation.none());
+        Parts parts = new Parts(storage, Manifest.parse(Files.readAllBytes(root.resolve("manifest.json")), Limits.DEFAULT), Limits.DEFAULT);
         Thread opener = Thread.ofPlatform().start(() -> {
             try {
-                ds.verify();
+                if (concurrency == 0) ds.verify();
+                else parts.checkAll(concurrency, new ReadContext(Cancellation.none(), Limits.DEFAULT));
                 failure.set(new AssertionError("verify should have been cancelled"));
             } catch (Throwable e) {
                 failure.set(e);
@@ -303,8 +316,9 @@ class ReviewRegressionTest {
         }
         assertTrue(failure.get() instanceof CancellationException, String.valueOf(failure.get()));
         assertTrue(interrupted.get());
-        assertEquals(2, opened.get());
+        assertEquals(expectedOpened, opened.get());
         ds.close();
+        assertNull(parts.close());
         assertEquals(opened.get(), closed.get());
     }
 

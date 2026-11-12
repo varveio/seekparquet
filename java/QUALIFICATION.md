@@ -68,7 +68,10 @@ Two choices follow from wanting malformed input to be refused cleanly rather tha
   allocation that large. The reader decodes these structures itself with the Thrift runtime that
   `parquet-format-structures` shades (`shaded.parquet.org.apache.thrift`), with the message, string
   and container limits set to the length of the buffer. These are public classes of that artifact.
-  The coupling is to its shading layout, and it is confined to one class (`Thrift.java`).
+  The coupling is to its shading layout, and it is confined to one class (`Thrift.java`). Its bounded
+  protocol retains raw unknown enum integers through generated required-field validation, then applies
+  [ENC-1](../spec/format-1.md#enc-1) and [RG-6](../spec/format-1.md#rg-6). `PartSchema` checks every leaf’s
+  recognized annotation restrictions at first touch ([CHECK-1](../spec/format-1.md#check-1)).
 - **Structure checks before decoding.** parquet-java's decoders allocate from counts declared in the
   stream (a bit-packed run's group count, a delta block's value count, a dictionary's size). Before
   any decoder sees a stream, the reader walks it (`EncodingChecks.java`) and checks those counts
@@ -146,10 +149,10 @@ The other direct library dependencies are implementation dependencies. The adapt
 with `slf4j-nop` 1.7.36; this also resolves its SLF4J API to 1.7.36. The library binds no logger.
 
 Scope limits: validation and SHA-256 verification are not implemented; no validator target is
-claimed. Nested/repeated value projection and INT96 are unsupported, as permitted by COL-3.
-BROTLI, LZO, framed LZ4 and modular encryption are unsupported. LZ4_RAW is supported in addition
-to the mandatory codecs, and `BYTE_STREAM_SPLIT` (decoded by the reader itself, not parquet-java) in
-addition to the mandatory encodings. No format requirement for the reader target is intentionally omitted.
+claimed. Nested/repeated value projection is unsupported, as permitted by COL-3; INT96 values retain their raw bits.
+BROTLI, LZO, framed LZ4 and modular encryption are unsupported. LZ4_RAW is one of the mandatory codecs
+([ENC-1](../spec/format-1.md#enc-1)). `BYTE_STREAM_SPLIT` is decoded by the reader itself, in addition to the
+mandatory encodings. No format requirement for the reader target is intentionally omitted.
 
 ## Notes for maintenance
 

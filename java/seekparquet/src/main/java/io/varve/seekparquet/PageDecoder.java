@@ -135,6 +135,24 @@ final class PageDecoder {
         }
     }
 
+    /** Intrinsic header corruption precedes indexed type, extent and row disagreements (CHECK-5). */
+    static void checkHeader(PageHeader h) throws DataException {
+        if (h.getCompressed_page_size() < 0 || h.getUncompressed_page_size() < 0)
+            throw new DataException("a negative page size");
+        if (h.getType() == PageType.DATA_PAGE && h.isSetData_page_header() && h.getData_page_header().getNum_values() < 0)
+            throw new DataException("a negative V1 value count");
+        if (h.getType() == PageType.DICTIONARY_PAGE && h.isSetDictionary_page_header() && h.getDictionary_page_header().getNum_values() < 0)
+            throw new DataException("a negative dictionary value count");
+        if (h.getType() == PageType.DATA_PAGE_V2 && h.isSetData_page_header_v2()) {
+            var v = h.getData_page_header_v2();
+            int rl = v.getRepetition_levels_byte_length(), dl = v.getDefinition_levels_byte_length();
+            if (v.getNum_values() < 0 || v.getNum_rows() < 0 || v.getNum_nulls() < 0
+                    || rl < 0 || dl < 0 || (long) rl + dl > h.getCompressed_page_size()
+                    || (long) rl + dl > h.getUncompressed_page_size())
+                throw new DataException("invalid V2 counts or level lengths");
+        }
+    }
+
     /** {@return the number of rows of a data page header: v1 values or v2 rows} */
     static long rowsOf(PageHeader header) throws DataException {
         if (header.getType() == PageType.DATA_PAGE) {
@@ -193,6 +211,7 @@ final class PageDecoder {
         if (header.getType() != PageType.DICTIONARY_PAGE || h == null) {
             throw new DataException("the column chunk's dictionary page is missing");
         }
+        checkHeader(header);
         checkPageMemory(header, col, limits, where);
         checkCrc(header, body, codecs);
         int size = uncompressedSize(header, limits, where);
@@ -246,6 +265,7 @@ final class PageDecoder {
     static ColumnPage decodeData(PageHeader header, ByteBuffer body, ColumnSpec col, CompressionCodec codec,
             DictionarySupplier dictionary, Limits limits, String where, PageScratch scratch, Codecs.State codecs)
             throws DataException {
+        checkHeader(header);
         checkPageMemory(header, col, limits, where);
         checkCrc(header, body, codecs);
         int size = uncompressedSize(header, limits, where);

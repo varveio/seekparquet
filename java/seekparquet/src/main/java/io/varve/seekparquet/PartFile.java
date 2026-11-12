@@ -653,6 +653,11 @@ final class PartFile implements AutoCloseable {
         } catch (DataException e) {
             throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "its OffsetIndex entry does not locate a page header");
         }
+        try {
+            PageDecoder.checkHeader(header);
+        } catch (DataException e) {
+            throw refuse(RefusalCode.INVALID_PARQUET, physical, where + e.getMessage());
+        }
         if (header.getType() != PageType.DATA_PAGE && header.getType() != PageType.DATA_PAGE_V2) {
             throw refuse(RefusalCode.INVALID_PAGE_INDEX, physical, where + "its OffsetIndex entry locates a " + header.getType() + ", not a data page");
         }

@@ -341,7 +341,7 @@ invalid requests when opening.
 | `DisableSpeculation` | `false` | When true, disables optional fetching, including listing read-ahead; the tail read is at most 64 KiB and retains only the footer. Demanded batching and available-byte reuse remain enabled. |
 
 Go bounds independent reads internally; the Source bounds physical concurrency.
-Java `OpenOptions.verifyConcurrency` controls concurrent part checks during verify.
+Java bounds concurrent part checks during verify internally; storage bounds physical concurrency.
 
 With a zero `OpenOptions.Read`, `OpenDir` reads each part's ranges one at a time, keeps only the footer,
 and uses no request memo. Verify and explicit listing read-ahead still use the internal limit.

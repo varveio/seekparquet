@@ -5,6 +5,20 @@ independent of the specification's draft revisions.
 
 ## Unreleased
 
+### Changed: proposal 0001 classification rulings and concurrency parity
+
+- Unknown numeric page encodings and column codecs retain wire presence and raw values through bounded
+  Thrift decoding. Needed data reports `unsupported_encoding`; unprojected values do not block a read.
+  Unknown boundary order and unused V1 repetition encodings are ignored; required fields remain required.
+- Intrinsic indexed key-header corruption, including negative V1 counts and V2 level lengths, reports
+  `invalid_parquet` before index extent or row disagreement. Undecodable headers remain `invalid_page_index`.
+- Every leaf’s recognized annotation restrictions are checked at first touch, including unprojected and
+  nested leaves. DECIMAL carrier ceilings and the pinned TIMESTAMP FLBA(12) alternative are enforced;
+  unknown annotation/time-unit alternatives retain physical fallback. Unknown units have no logical type
+  in `columns(part)`. Valueless ordinary metadata and listed-stamp checks have regression coverage.
+- Removed public `OpenOptions.verifyConcurrency` and `withVerifyConcurrency(int)`. `OpenOptions` takes
+  only `Limits`; verification uses an internal bound matching Go, with checks applied in manifest order.
+
 ### Changed: the read API is aligned with the Go reader's
 
 Pre-release, without deprecated aliases. Java exposes corresponding reader operations and request/result

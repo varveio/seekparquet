@@ -369,7 +369,7 @@ class ReviewFixesTest {
         }
         Path root = TestDatasets.write(tmp.resolve("verify"), spec, parts);
         RangePlanTest.RecordingStorage storage = new RangePlanTest.RecordingStorage(root);
-        try (Dataset d = Dataset.open(storage, OpenOptions.DEFAULT.withVerifyConcurrency(4), Cancellation.none())) {
+        try (Dataset d = Dataset.open(storage, OpenOptions.DEFAULT, Cancellation.none())) {
             storage.take();
             AtomicReference<ReadStats> stats = new AtomicReference<>();
             d.verify(ReadOptions.of(stats::set));
