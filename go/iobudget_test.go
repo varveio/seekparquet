@@ -139,6 +139,8 @@ var ioBudgets = []ioBudget{
 	{"split/shards-concurrent", ioMetrics{196, 50, 666598, 0, 4}, ioTarget{20, 5}, current},
 	{"verify/cold", ioMetrics{28, 3, 8477103, 0, 20}, ioTarget{24, 3}, current},
 	{"verify/warm", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
+	{"browse/count-prefix", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
+	{"browse/sum-prefix", ioMetrics{2, 2, 6153, 0, 1}, none, current},
 }
 
 // ioCapableBudgets is measured on ioSmall through capableStore.
@@ -188,6 +190,8 @@ var ioCapableBudgets = []ioBudget{
 	{"split/shards-concurrent", ioMetrics{196, 50, 666598, 0, 4}, ioTarget{20, 5}, current},
 	{"verify/cold", ioMetrics{24, 2, 8477103, 0, 20}, ioTarget{24, 3}, atTarget},
 	{"verify/warm", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
+	{"browse/count-prefix", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
+	{"browse/sum-prefix", ioMetrics{2, 2, 6153, 0, 1}, none, current},
 }
 
 // ioRepeatedBudgets is measured on the repeated-key variant of ioSmall,
@@ -420,6 +424,40 @@ func ioScenarios(fx *ioFixture) []ioScenario {
 			return fmt.Sprintf("%v %s", counts, errResult(err))
 		})
 		e.step("split/shards-concurrent", func() string { return withErr(shardsText(ctx, shards)) })
+	}})
+	out = append(out, ioScenario{"browse", func(e *ioEnv) {
+		d := e.open()
+		// The listing is the browser's page, unrecorded: its counts and sums
+		// are the steps.
+		ents, err := d.List(ctx, seekparquet.ListQuery{Prefix: fx.listPrefix, Delimiter: '/', Limit: 101}, nil)
+		must(e.t, err)
+		var prefix seekparquet.ListEntry
+		for _, ent := range ents {
+			if ent.IsPrefix() {
+				prefix = ent
+			}
+		}
+		e.step("browse/count-prefix", func() string {
+			p, err := d.PlanRows(ctx, []seekparquet.RowSpan{prefix.Rows}, nil, nil)
+			return withErr(planText(p, err))
+		})
+		e.step("browse/sum-prefix", func() string {
+			p, err := d.PlanRows(ctx, []seekparquet.RowSpan{prefix.Rows}, []string{"size"}, nil)
+			if err != nil {
+				return errResult(err)
+			}
+			var sum, rows int64
+			err = p.ScanValues(ctx, nil, func(b *seekparquet.ValueBatch) error {
+				col := b.Column(0)
+				for i := range b.Len() {
+					sum += col.Int64(i)
+				}
+				rows += int64(b.Len())
+				return nil
+			})
+			text, _ := planText(p, nil)
+			return withErr(fmt.Sprintf("%q %s: %d rows, size %d", prefix.CommonPrefix, text, rows, sum), err)
+		})
 	}})
 	out = append(out, ioScenario{"verify", func(e *ioEnv) {
 		d := e.open()

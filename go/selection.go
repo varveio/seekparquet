@@ -18,12 +18,21 @@ import (
 // Dataset that made it, and its scans fail with ErrClosed once the Dataset
 // is closed. It is immutable and safe for concurrent use.
 //
-// A plan certifies what it decoded: the key pages at the two ends of each
-// selection, checked as Dataset.Rows checks them (CHECK-2). Its count is derived
-// from structure, not from decoding the rows between the ends (CHECK-4):
-// the positions the ends decode, the row counts of the row groups, from
-// footers a part check verified (CHECK-1), and the OffsetIndex row
-// positions. Scan decodes every row and checks every key page it reads.
+// A plan certifies what it decoded: the key pages at the ends of each
+// selection that metadata did not place, checked as Dataset.Rows checks
+// them (CHECK-2). Its count is derived from structure, not from decoding
+// the rows between the ends (CHECK-4): the positions the ends decode or
+// metadata proves (or the row positions PlanRows is given), the row
+// counts of the row groups, from footers a part check verified (CHECK-1),
+// and the OffsetIndex row positions. Scan decodes every row and checks
+// every key page it reads; ScanValues reads no key page.
+//
+// A plan with columns keeps the checked page locations of the projected
+// chunks holding its rows, to price SelectRows: the Dataset's own, kept
+// within Limits.OffsetIndexMemory, or, when the Dataset did not keep them,
+// locations reserved in that same budget for as long as the plan, or a
+// plan made from it by SelectRows or Split, is reachable; locations that
+// do not fit are not kept.
 type Plan struct {
 	r       *reader
 	columns []string
