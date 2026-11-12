@@ -77,7 +77,7 @@ class FooterWindowTest {
 
     private static FileMetaData exactFooter(byte[] raw) throws DataException {
         int n = footerLength(raw);
-        return Thrift.fileMetaData(Arrays.copyOfRange(raw, raw.length - 8 - n, raw.length - 8));
+        return Thrift.fileMetaData(Arrays.copyOfRange(raw, raw.length - 8 - n, raw.length - 8), Limits.DEFAULT.metadataMemory());
     }
 
     /** {@return {@code raw} with {@code n} zero bytes inserted before its footer: a larger part with the same footer} */
@@ -147,9 +147,7 @@ class FooterWindowTest {
     }
 
     private static Limits limits(int maxFooterBytes) {
-        Limits d = Limits.DEFAULT;
-        return new Limits(d.maxManifestBytes(), d.maxParts(), maxFooterBytes, d.maxIndexBytes(), d.maxPageBytes(), d.maxPageValues(),
-                d.maxResultEntries());
+        return Limits.DEFAULT.toBuilder().footerBytes(maxFooterBytes).build();
     }
 
     private record Case(String name, byte[] raw, Limits limits, long reads, long bytes) {}
@@ -216,7 +214,7 @@ class FooterWindowTest {
                 byte[] raw = e.getValue();
                 String now = outcome(() -> PartFile.readFooter(source(raw), "p", raw.length, new ReadContext(Cancellation.none(), limits)));
                 String before = outcome(() -> previousReadFooter(source(raw), raw.length, new ReadContext(Cancellation.none(), limits)));
-                assertEquals(before, now, e.getKey() + ", maxFooterBytes " + limits.maxFooterBytes());
+                assertEquals(before, now, e.getKey() + ", maxFooterBytes " + limits.footerBytes());
             }
         }
     }
@@ -235,7 +233,7 @@ class FooterWindowTest {
             byte[] encrypted = edit(raw, 0, "PARE".getBytes(StandardCharsets.US_ASCII));
             UnsupportedFeatureException u = assertThrows(UnsupportedFeatureException.class,
                     () -> PartFile.readFooter(source(encrypted), "p", encrypted.length, new ReadContext(Cancellation.none(), Limits.DEFAULT)));
-            assertEquals(UnsupportedCode.UNSUPPORTED_ENCRYPTION, u.code());
+            assertEquals(UnsupportedCode.ENCRYPTION, u.code());
         }
     }
 
@@ -245,7 +243,7 @@ class FooterWindowTest {
         for (byte[] raw : List.of(large, huge)) {
             ReadContext ctx = new ReadContext(Cancellation.none(), limits(64));
             LimitExceededException e = assertThrows(LimitExceededException.class, () -> PartFile.readFooter(source(raw), "p", raw.length, ctx));
-            assertTrue(e.getMessage().contains("maxFooterBytes"), e.getMessage());
+            assertTrue(e.getMessage().contains("FOOTER_BYTES"), e.getMessage());
             assertEquals(2, ctx.stats.sourceReads);
             assertEquals(4 + 64 + 8, ctx.stats.sourceBytes);
         }
@@ -320,7 +318,7 @@ class FooterWindowTest {
         String m = new String(magic, StandardCharsets.ISO_8859_1);
         String l = new String(lead, StandardCharsets.ISO_8859_1);
         if (m.equals("PARE") || l.equals("PARE")) {
-            throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCRYPTION, "part " + name + " uses Parquet modular encryption");
+            throw new UnsupportedFeatureException(UnsupportedCode.ENCRYPTION, "part " + name + " uses Parquet modular encryption");
         }
         if (!m.equals("PAR1") || !l.equals("PAR1")) {
             throw new RefusalException(RefusalCode.INVALID_FOOTER, name, "the file does not begin and end with PAR1");
@@ -329,8 +327,8 @@ class FooterWindowTest {
         if (footerLength > size - 12) {
             throw new RefusalException(RefusalCode.INVALID_FOOTER, name, "the footer length " + footerLength + " does not fit in the part");
         }
-        if (footerLength > ctx.limits.maxFooterBytes()) {
-            throw new LimitExceededException("maxFooterBytes", footerLength, ctx.limits.maxFooterBytes(), "part " + name);
+        if (footerLength > ctx.limits.footerBytes()) {
+            throw new LimitExceededException(LimitName.FOOTER_BYTES, footerLength, ctx.limits.footerBytes(), "part " + name);
         }
         byte[] footer = new byte[(int) footerLength];
         if (footerLength + 8 <= tailLength) {
@@ -339,7 +337,7 @@ class FooterWindowTest {
             source.read(size - 8 - footerLength, (int) footerLength, ctx.cancellation).duplicate().get(footer);
         }
         try {
-            return Thrift.fileMetaData(footer);
+            return Thrift.fileMetaData(footer, Limits.DEFAULT.metadataMemory());
         } catch (DataException e) {
             throw new RefusalException(RefusalCode.INVALID_FOOTER, name, "the footer does not parse: " + e.getMessage());
         }

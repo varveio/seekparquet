@@ -58,7 +58,7 @@ class OffsetIndexCacheTest {
     }
 
     private static Limits budget(long bytes) {
-        return bytes == 0 ? Limits.DEFAULT : Limits.DEFAULT.withMaxOffsetIndexMemoryBytes(bytes);
+        return bytes == 0 ? Limits.DEFAULT : Limits.DEFAULT.toBuilder().offsetIndexMemory(bytes).build();
     }
 
     private static Dataset open(DatasetStorage storage, long bytes) {
@@ -71,7 +71,7 @@ class OffsetIndexCacheTest {
 
     private static FileMetaData footer(byte[] part) throws DataException {
         int length = ByteBuffer.wrap(part, part.length - 8, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
-        return Thrift.fileMetaData(java.util.Arrays.copyOfRange(part, part.length - 8 - length, part.length - 8));
+        return Thrift.fileMetaData(java.util.Arrays.copyOfRange(part, part.length - 8 - length, part.length - 8), Limits.DEFAULT.metadataMemory());
     }
 
     private static Path partPath(Path root) {
@@ -82,7 +82,7 @@ class OffsetIndexCacheTest {
     private static long checkCharge(Dataset d, long bytes) {
         long used = d.parts().offsetIndexMemory().used();
         assertEquals(d.parts().checked(0).keptValueIndexBytes(), used, "charged and kept");
-        assertTrue(used <= budget(bytes).maxOffsetIndexMemoryBytes(), "within the budget");
+        assertTrue(used <= budget(bytes).offsetIndexMemory(), "within the budget");
         return used;
     }
 
@@ -98,28 +98,28 @@ class OffsetIndexCacheTest {
         for (ColumnChunk c : meta.getRow_groups().get(0).getColumns().subList(1, 3)) {
             indexBytes += c.getOffset_index_length();
         }
-        RangeQuery query = RangeQuery.builder().start(Bytes.utf8(key(10))).limit(50).columns(COLUMNS).build();
+        Query query = Reads.builder().start(Bytes.utf8(key(10))).limit(50).columns(COLUMNS).build();
         var cachedSource = new RangePlanTest.RecordingStorage(root);
         var uncachedSource = new RangePlanTest.RecordingStorage(root);
         try (Dataset cached = open(cachedSource, 0); Dataset uncached = open(uncachedSource, 1)) {
             AtomicReference<ReadStats> st = new AtomicReference<>();
             Consumer<ReadStats> into = st::set;
-            List<Row> want = uncached.range(query, Cancellation.none(), into);
+            List<Row> want = Reads.range(uncached, query, Cancellation.none(), into);
             ReadStats u1 = st.get();
             uncachedSource.take();
-            assertEquals(want, uncached.range(query, Cancellation.none(), into));
+            assertEquals(want, Reads.range(uncached, query, Cancellation.none(), into));
             ReadStats u2 = st.get();
             assertEquals(uncachedSource.take().size(), u2.sourceReads());
             assertEquals(u2, stats(uncached, query), "uncached repeats");
             assertEquals(0, u2.indexLoads());
             assertEquals(0, checkCharge(uncached, 1), "nothing kept over budget");
 
-            assertEquals(want, cached.range(query, Cancellation.none(), into));
+            assertEquals(want, Reads.range(cached, query, Cancellation.none(), into));
             assertEquals(u1, st.get(), "a cold request");
             assertTrue(cached.parts().checked(0).keptValueIndex(0, 1) && cached.parts().checked(0).keptValueIndex(0, 2));
             assertTrue(checkCharge(cached, 0) > 0);
             cachedSource.take();
-            assertEquals(want, cached.range(query, Cancellation.none(), into));
+            assertEquals(want, Reads.range(cached, query, Cancellation.none(), into));
             ReadStats c2 = st.get();
             List<RangePlanTest.RecordingStorage.Read> reads = cachedSource.take();
             assertEquals(reads.size(), c2.sourceReads());
@@ -128,13 +128,14 @@ class OffsetIndexCacheTest {
             assertEquals(new ReadStats(u2.partsOpened(), u2.keyPagesDecoded(), u2.valuePagesDecoded(), u2.keysDecoded(),
                     u2.rowGroupsOpened(), u2.indexLoads(), u2.pageIndexSeeks(), u2.prefixSkips(), u2.groupsSkipped(),
                     u2.sourceReads() - COLUMNS.size(), u2.sourceBytes() - indexBytes, u2.listIndexSkips(), u2.listIndexDelimiter(),
-                    u2.listIndexMissingGroup(), u2.listIndexDensePage(), u2.listIndexUnsafeRun()), c2, "cached repeat");
+                    u2.listIndexMissingGroup(), u2.listIndexDensePage(), u2.listIndexUnsafeRun(), u2.readAheadReads(), u2.readAheadUnused(),
+                    u2.readAheadUnusedBytes()), c2, "cached repeat");
         }
     }
 
-    private static ReadStats stats(Dataset d, RangeQuery query) {
+    private static ReadStats stats(Dataset d, Query query) {
         AtomicReference<ReadStats> st = new AtomicReference<>();
-        d.range(query, Cancellation.none(), st::set);
+        Reads.range(d, query, Cancellation.none(), st::set);
         return st.get();
     }
 
@@ -155,7 +156,7 @@ class OffsetIndexCacheTest {
             ColumnChunk chunk = footer(raw).getRow_groups().get(0).getColumns().get(SIZE);
             int at = (int) chunk.getOffset_index_offset();
             int length = chunk.getOffset_index_length();
-            OffsetIndex index = Thrift.offsetIndex(java.util.Arrays.copyOfRange(raw, at, at + length));
+            OffsetIndex index = Thrift.offsetIndex(java.util.Arrays.copyOfRange(raw, at, at + length), Limits.DEFAULT.metadataMemory());
             e.edit().accept(index);
             ByteArrayOutputStream encoded = new ByteArrayOutputStream();
             Util.writeOffsetIndex(index, encoded);
@@ -165,13 +166,13 @@ class OffsetIndexCacheTest {
             try (Dataset d = open(root, 0)) {
                 for (int i = 0; i < 3; i++) {
                     RefusalException refusal = assertThrows(RefusalException.class,
-                            () -> d.range(RangeQuery.builder().limit(200).columns("size").build()), e.name() + " request");
+                            () -> d.rows(Reads.builder().limit(200).columns("size").build()), e.name() + " request");
                     assertEquals(RefusalCode.INVALID_PARQUET, refusal.code(), e.name());
                 }
                 assertEquals(e.kept(), d.parts().checked(0).keptValueIndex(0, SIZE), e.name() + ": size locations kept");
                 // The intact column is kept and served as before.
                 for (int i = 0; i < 2; i++) {
-                    assertEquals(200, d.range(RangeQuery.builder().limit(200).columns("note").build()).size());
+                    assertEquals(200, d.rows(Reads.builder().limit(200).columns("note").build()).size());
                 }
                 assertTrue(d.parts().checked(0).keptValueIndex(0, 2), e.name() + ": the note column's locations kept");
                 checkCharge(d, 0);
@@ -191,7 +192,7 @@ class OffsetIndexCacheTest {
         try (Dataset ref = open(root, 1)) {
             for (int s = 0; s < 200; s += 7) {
                 starts.add(s);
-                want.add(ref.range(RangeQuery.builder().start(Bytes.utf8(key(s))).limit(30).columns(COLUMNS).build()));
+                want.add(ref.rows(Reads.builder().start(Bytes.utf8(key(s))).limit(30).columns(COLUMNS).build()));
             }
         }
         // Each chunk of ten pages is charged 384 bytes.
@@ -203,7 +204,7 @@ class OffsetIndexCacheTest {
                     workers.add(() -> {
                         for (int i = 0; i < starts.size(); i++) {
                             int j = (i + offset) % starts.size();
-                            List<Row> got = d.range(RangeQuery.builder().start(Bytes.utf8(key(starts.get(j)))).limit(30).columns(COLUMNS).build());
+                            List<Row> got = d.rows(Reads.builder().start(Bytes.utf8(key(starts.get(j)))).limit(30).columns(COLUMNS).build());
                             assertEquals(want.get(j), got, "budget " + b + " start " + starts.get(j));
                         }
                         return null;
@@ -233,17 +234,17 @@ class OffsetIndexCacheTest {
         List<Row> first = null;
         for (long b : new long[] {1, 0}) {
             // One key index and first key fit in 400 bytes, two do not.
-            Limits limits = budget(b).withMaxIndexMemoryBytes(400);
+            Limits limits = budget(b).toBuilder().indexMemory(400).build();
             try (Dataset d = Dataset.open(LocalStorage.of(root), OpenOptions.DEFAULT.withLimits(limits), Cancellation.none())) {
-                List<Row> rows = d.lookup(Bytes.utf8("k0"), 1, "size");
+                List<Row> rows = d.get(Bytes.utf8("k0"), List.of("size"));
                 assertEquals(1, rows.size());
-                assertEquals(rows, d.lookup(Bytes.utf8("k0"), 1, "size"));
+                assertEquals(rows, d.get(Bytes.utf8("k0"), List.of("size")));
                 if (first == null) {
                     first = rows;
                 }
                 assertEquals(first, rows);
-                assertEquals("maxIndexMemoryBytes", assertThrows(LimitExceededException.class,
-                        () -> d.lookup(Bytes.utf8("k1"), 1, "size")).limit());
+                assertEquals(LimitName.INDEX_MEMORY, assertThrows(LimitExceededException.class,
+                        () -> d.get(Bytes.utf8("k1"), List.of("size"))).limit());
                 assertEquals(b == 1 ? 0 : OffsetIndexMemory.charge(d.parts().checked(0).valueIndex(0, SIZE,
                         new ReadContext(Cancellation.none(), limits)).orElseThrow()), checkCharge(d, b));
             }

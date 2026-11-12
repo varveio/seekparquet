@@ -95,7 +95,7 @@ class ReadAheadTest {
             storage.delayNanos = delayNanos;
             AtomicReference<ReadStats> stats = new AtomicReference<>();
             long start = System.nanoTime();
-            List<ListEntry> entries = d.list(query, Cancellation.none(), stats::set);
+            List<ListEntry> entries = Reads.list(d, query, Cancellation.none(), stats::set);
             long wall = System.nanoTime() - start;
             storage.delayNanos = 0;
             assertEquals(0, storage.inFlight.get(), "reads in flight after the listing returned");
@@ -155,7 +155,7 @@ class ReadAheadTest {
                 AtomicReference<Object> result = new AtomicReference<>();
                 Thread lister = Thread.ofPlatform().start(() -> {
                     try {
-                        result.set(d.list(off.toBuilder().readAhead(n).build(), Cancellation.none(), stats::set));
+                        result.set(Reads.list(d, off.toBuilder().readAhead(n).build(), Cancellation.none(), stats::set));
                     } catch (Throwable e) {
                         result.set(e);
                     }
@@ -282,20 +282,20 @@ class ReadAheadTest {
         for (String prefix : prefixes.subList(0, Math.min(prefixes.size(), 6))) {
             for (int i = 0; i < probes.size(); i++) {
                 String b = probes.get(i);
-                Optional<Continuation> cursor = switch (i % 3) {
-                    case 1 -> Optional.of(new Continuation.RowPosition(Bytes.utf8(b), i % 2));
-                    case 2 -> Optional.of(new Continuation.CommonPrefix(Bytes.utf8(b)));
+                Optional<Cursor> cursor = switch (i % 3) {
+                    case 1 -> Optional.of(new Cursor.RowPosition(Bytes.utf8(b), i % 2));
+                    case 2 -> Optional.of(new Cursor.CommonPrefix(Bytes.utf8(b)));
                     default -> Optional.empty();
                 };
                 if (i % 5 != 0 && cursor.isPresent()) {
                     continue;
                 }
                 for (int limit : new int[] {1, 4, 1000}) {
-                    out.add(new ListQuery(Bytes.utf8(prefix), (byte) '/', Optional.empty(), limit, List.of(), cursor));
+                    out.add(Reads.listQuery(Bytes.utf8(prefix), (byte) '/', Optional.empty(), limit, List.of(), cursor, 0));
                 }
                 if (i % 11 == 0) {
-                    out.add(new ListQuery(Bytes.utf8(prefix), (byte) '/', Optional.of(Bytes.utf8(b)), 1000, List.of(), cursor));
-                    out.add(new ListQuery(Bytes.utf8(prefix), (byte) 's', Optional.empty(), 50, List.of("size"), cursor));
+                    out.add(Reads.listQuery(Bytes.utf8(prefix), (byte) '/', Optional.of(Bytes.utf8(b)), 1000, List.of(), cursor, 0));
+                    out.add(Reads.listQuery(Bytes.utf8(prefix), (byte) 's', Optional.empty(), 50, List.of("size"), cursor, 0));
                 }
             }
         }
@@ -308,7 +308,7 @@ class ReadAheadTest {
     private static Outcome list(Dataset d, ListQuery q) {
         AtomicReference<ReadStats> stats = new AtomicReference<>();
         try {
-            return new Outcome(d.list(q, Cancellation.none(), stats::set), null, stats.get());
+            return new Outcome(Reads.list(d, q, Cancellation.none(), stats::set), null, stats.get());
         } catch (RuntimeException e) {
             String code = e instanceof RefusalException r ? r.code() + " " : "";
             // Object identities in Thrift's messages differ from run to run.
@@ -321,7 +321,7 @@ class ReadAheadTest {
         return new ReadStats(st.partsOpened(), st.keyPagesDecoded(), st.valuePagesDecoded(), st.keysDecoded(), st.rowGroupsOpened(),
                 st.indexLoads(), st.pageIndexSeeks(), st.prefixSkips(), st.groupsSkipped(), st.sourceReads() - st.readAheadUnused(),
                 st.sourceBytes() - st.readAheadUnusedBytes(), st.listIndexSkips(), st.listIndexDelimiter(), st.listIndexMissingGroup(),
-                st.listIndexDensePage(), st.listIndexUnsafeRun());
+                st.listIndexDensePage(), st.listIndexUnsafeRun(), 0, 0, 0);
     }
 
     /** Checks a listing with read-ahead against the one without: same entries or failure, same counts beyond the unused pages. */
@@ -402,10 +402,10 @@ class ReadAheadTest {
                 continue;
             }
             if (q.cursor().isPresent()) {
-                String c = q.cursor().get().bytes().toStringUtf8();
+                String c = (switch (q.cursor().get()) { case Cursor.RowPosition r -> r.key(); case Cursor.CommonPrefix p -> p.prefix(); }).toStringUtf8();
                 boolean after = switch (q.cursor().get()) {
-                    case Continuation.RowPosition r -> k.compareTo(c) > 0;
-                    case Continuation.CommonPrefix p -> !k.startsWith(c) && k.compareTo(c) > 0;
+                    case Cursor.RowPosition r -> k.compareTo(c) > 0;
+                    case Cursor.CommonPrefix p -> !k.startsWith(c) && k.compareTo(c) > 0;
                 };
                 if (!after) {
                     continue;
@@ -445,7 +445,7 @@ class ReadAheadTest {
                         ListQuery q = base.toBuilder().readAhead(n).build();
                         for (int i = 0; i < 1000; i++) {
                             AtomicReference<ReadStats> st = new AtomicReference<>();
-                            List<ListEntry> page = d.list(q, Cancellation.none(), st::set);
+                            List<ListEntry> page = Reads.list(d, q, Cancellation.none(), st::set);
                             readAhead += st.get().readAheadReads();
                             all.addAll(page);
                             if (page.size() < q.limit()) {
@@ -588,7 +588,7 @@ class ReadAheadTest {
             };
             AtomicReference<ReadStats> st = new AtomicReference<>();
             try (Dataset d = Dataset.open(throwing)) {
-                List<ListEntry> got = d.list(ListQuery.builder((byte) '/').limit(1000).readAhead(4).build(), Cancellation.none(), st::set);
+                List<ListEntry> got = Reads.list(d, ListQuery.builder((byte) '/').limit(1000).readAhead(4).build(), Cancellation.none(), st::set);
                 assertEquals(want, got);
             }
             assertEquals(Set.of("IllegalStateException", "IOException", "AssertionError", "StackOverflowError"), thrown,
@@ -655,7 +655,7 @@ class ReadAheadTest {
     void cancelAndCloseEndTheReadsAhead() throws Exception {
         MemoryStorage storage = MemoryStorage.of(folders("cancel", 40, 500, 64, 1));
         ListQuery query = ListQuery.builder((byte) '/').prefix(Bytes.utf8(SEGMENTS)).limit(1000).readAhead(8)
-                .after(new Continuation.CommonPrefix(Bytes.utf8(SEGMENTS + "1712296817001.01/"))).build();
+                .cursor(new Cursor.CommonPrefix(Bytes.utf8(SEGMENTS + "1712296817001.01/"))).build();
         for (String how : List.of("cancel", "close")) {
             MemoryStorage s = storage.copy();
             Dataset d = Dataset.open(s);
@@ -666,7 +666,7 @@ class ReadAheadTest {
             AtomicReference<Throwable> failure = new AtomicReference<>();
             Thread lister = Thread.ofPlatform().start(() -> {
                 try {
-                    d.list(query, cancel);
+                    Reads.list(d, query, cancel);
                 } catch (Throwable e) {
                     failure.set(e);
                 }
@@ -712,11 +712,10 @@ class ReadAheadTest {
             try (Dataset d = Dataset.open(storage.copy())) {
                 d.buildListIndex(ListIndexOptions.DEFAULT, Cancellation.none());
                 AtomicReference<ReadStats> st = new AtomicReference<>();
-                entries.add(d.list(ListQuery.builder((byte) '/').limit(1000).readAhead(n).build(), Cancellation.none(), st::set));
+                entries.add(Reads.list(d, ListQuery.builder((byte) '/').limit(1000).readAhead(n).build(), Cancellation.none(), st::set));
                 slash.add(st.get());
                 AtomicReference<ReadStats> other = new AtomicReference<>();
-                d.list(ListQuery.builder((byte) 'k').limit(1000).readAhead(n).build(), Cancellation.none(),
-                        other::set);
+                Reads.list(d, ListQuery.builder((byte) 'k').limit(1000).readAhead(n).build(), Cancellation.none(), other::set);
                 if (n > 0) {
                     assertTrue(other.get().readAheadReads() > 0, "a 'k' listing with the index built read nothing ahead: " + other.get());
                 }
@@ -735,7 +734,7 @@ class ReadAheadTest {
         ListQuery q = ListQuery.builder((byte) '/').limit(1).readAhead(1000).build();
         assertEquals(1000, q.readAhead());
         assertEquals(1000, q.toBuilder().build().readAhead());
-        assertEquals(0, new ListQuery(Bytes.empty(), (byte) '/', Optional.empty(), 1, List.of(), Optional.empty()).readAhead());
+        assertEquals(0, Reads.listQuery(Bytes.empty(), (byte) '/', Optional.empty(), 1, List.of(), Optional.empty(), 0).readAhead());
         MemoryStorage storage = MemoryStorage.of(folders("wide", 30, 100, 10, 1));
         List<ReadAhead> closed = Collections.synchronizedList(new ArrayList<>());
         ReadAhead.testClosed = closed::add;
@@ -851,7 +850,7 @@ class ReadAheadTest {
                 AtomicReference<Boolean> interruptedAfter = new AtomicReference<>();
                 Thread lister = Thread.ofPlatform().start(() -> {
                     try {
-                        result.set(d.list(query, cancel));
+                        result.set(Reads.list(d, query, cancel));
                     } catch (Throwable e) {
                         result.set(e);
                     }

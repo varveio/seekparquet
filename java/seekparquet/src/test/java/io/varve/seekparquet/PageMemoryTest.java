@@ -87,24 +87,27 @@ class PageMemoryTest {
     }
 
     @Test
-    void defaultIsTheMostTheOtherLimitsAdmit() {
-        assertEquals(832L * MIB, Limits.DEFAULT.maxPageMemory());
-        // The worst page: a byte-array dictionary of maxPageValues entries in maxPageBytes.
-        assertEquals(4L * MIB * PageDecoder.DICTIONARY_BINARY_ENTRY_BYTES + 2L * 256 * MIB, Limits.DEFAULT.maxPageMemory());
-        Limits small = new Limits(MIB, 10, MIB, MIB, 1000, 100);
-        assertEquals(Math.max(100L * 25 + 1000, 100L * 80 + 2000), small.maxPageMemory());
-        assertEquals(small.maxPageMemory(), small.withMaxIndexMemoryBytes(5).maxPageMemory());
-        assertEquals(12345, Limits.DEFAULT.withMaxPageMemory(12345).maxPageMemory());
-        assertEquals(Limits.DEFAULT, Limits.DEFAULT.withMaxPageMemory(12345).withMaxPageMemory(0));
-        assertThrows(IllegalArgumentException.class, () -> Limits.DEFAULT.withMaxPageMemory(-1));
-        // Every page within maxPageValues and maxPageBytes estimates at most the default.
+    void defaultDerivesAsTheGoReaders() {
+        // The Go reader's derivation: 2 x 24 bytes per value plus the page's bytes, 832 MiB at the defaults.
+        assertEquals(832L * MIB, Limits.DEFAULT.pageMemory());
+        assertEquals(48L * Limits.DEFAULT.pageValues() + Limits.DEFAULT.pageBytes(), Limits.DEFAULT.pageMemory());
+        Limits small = Limits.builder().manifestBytes(MIB).parts(10).footerBytes(MIB).pageIndexBytes(MIB).pageBytes(1000).pageValues(100).build();
+        assertEquals(100L * 48 + 1000, small.pageMemory());
+        assertEquals(small.pageMemory(), small.toBuilder().indexMemory(5).build().pageMemory());
+        assertEquals(12345, Limits.DEFAULT.toBuilder().pageMemory(12345).build().pageMemory());
+        assertEquals(Limits.DEFAULT, Limits.DEFAULT.toBuilder().pageMemory(12345).build().toBuilder().pageMemory(0).build());
+        assertThrows(IllegalArgumentException.class, () -> Limits.DEFAULT.toBuilder().pageMemory(-1).build());
+        // A data page at both limits estimates within the default; a byte-array dictionary at both limits
+        // exceeds it under this reader's estimate (a documented difference from the Go reader's).
+        int values = Limits.DEFAULT.pageValues();
+        int bytesLimit = Limits.DEFAULT.pageBytes();
         ColumnSpec bytes = ColumnSpec.of("v", 0, Column.Type.BYTE_ARRAY, 0, true);
-        PageHeader page = new PageHeader(PageType.DATA_PAGE, 256 * MIB, 256 * MIB)
-                .setData_page_header(new DataPageHeader(4 * MIB, Encoding.DELTA_BYTE_ARRAY, Encoding.RLE, Encoding.RLE));
-        PageHeader dictionary = new PageHeader(PageType.DICTIONARY_PAGE, 256 * MIB, 256 * MIB)
-                .setDictionary_page_header(new DictionaryPageHeader(4 * MIB, Encoding.PLAIN));
-        assertTrue(PageDecoder.pageMemory(page, bytes, Limits.DEFAULT) <= Limits.DEFAULT.maxPageMemory());
-        assertEquals(Limits.DEFAULT.maxPageMemory(), PageDecoder.pageMemory(dictionary, bytes, Limits.DEFAULT));
+        PageHeader page = new PageHeader(PageType.DATA_PAGE, bytesLimit, bytesLimit)
+                .setData_page_header(new DataPageHeader(values, Encoding.DELTA_BYTE_ARRAY, Encoding.RLE, Encoding.RLE));
+        PageHeader dictionary = new PageHeader(PageType.DICTIONARY_PAGE, bytesLimit, bytesLimit)
+                .setDictionary_page_header(new DictionaryPageHeader(values, Encoding.PLAIN));
+        assertTrue(PageDecoder.pageMemory(page, bytes, Limits.DEFAULT) <= Limits.DEFAULT.pageMemory());
+        assertTrue(PageDecoder.pageMemory(dictionary, bytes, Limits.DEFAULT) > Limits.DEFAULT.pageMemory());
     }
 
     /**
@@ -121,10 +124,10 @@ class PageMemoryTest {
             PageHeader header = booleanRunPage(n, optional, out);
             byte[] body = out.toByteArray();
             assertTrue(body.length < 64);
-            Limits low = Limits.DEFAULT.withMaxPageMemory(512 * 1024);
+            Limits low = Limits.DEFAULT.toBuilder().pageMemory(512 * 1024).build();
             LimitExceededException[] thrown = new LimitExceededException[1];
             long used = allocated(() -> thrown[0] = assertThrows(LimitExceededException.class, () -> decode(header, body, optional, low)));
-            assertEquals("maxPageMemory", thrown[0].limit());
+            assertEquals(LimitName.PAGE_MEMORY, thrown[0].limit());
             assertEquals(optional ? 2L * n : n, thrown[0].declared());
             assertTrue(used < 256 * 1024, "the refused page allocated " + used + " bytes");
             ColumnPage[] page = new ColumnPage[1];
@@ -132,7 +135,7 @@ class PageMemoryTest {
             assertEquals(n, page[0].rows);
             assertTrue(page[0].bools[0] && page[0].bools[n - 1]);
             assertTrue(used >= n, "the page decoded in " + used + " bytes: the test does not reach the bound");
-            Limits between = Limits.DEFAULT.withMaxPageMemory(1_500_000);
+            Limits between = Limits.DEFAULT.toBuilder().pageMemory(1_500_000).build();
             if (optional) {
                 assertThrows(LimitExceededException.class, () -> decode(header, body, true, between));
             } else {
@@ -158,10 +161,10 @@ class PageMemoryTest {
         long estimate = (long) count * PageDecoder.DICTIONARY_BINARY_ENTRY_BYTES + 2L * body.length;
         assertEquals(estimate, PageDecoder.pageMemory(header, col, Limits.DEFAULT));
         LimitExceededException e = assertThrows(LimitExceededException.class, () -> PageDecoder.decodeDictionary(header, ByteBuffer.wrap(body),
-                col, CompressionCodec.UNCOMPRESSED, Limits.DEFAULT.withMaxPageMemory(estimate - 1), "test dictionary", null, new Codecs.State()));
-        assertEquals("maxPageMemory", e.limit());
+                col, CompressionCodec.UNCOMPRESSED, Limits.DEFAULT.toBuilder().pageMemory(estimate - 1).build(), "test dictionary", null, new Codecs.State()));
+        assertEquals(LimitName.PAGE_MEMORY, e.limit());
         Dictionary dictionary = PageDecoder.decodeDictionary(header, ByteBuffer.wrap(body), col, CompressionCodec.UNCOMPRESSED,
-                Limits.DEFAULT.withMaxPageMemory(estimate), "test dictionary", null, new Codecs.State());
+                Limits.DEFAULT.toBuilder().pageMemory(estimate).build(), "test dictionary", null, new Codecs.State());
         assertEquals(count - 1, dictionary.getMaxId());
     }
 
@@ -181,14 +184,14 @@ class PageMemoryTest {
         }
         Path root = TestDatasets.write(tmp.resolve("keys"), spec, List.of(rows));
         // A key page of 400 keys holds 400 slots of 24 bytes and its keys' bytes: over 9,600 bytes.
-        try (Dataset ds = Dataset.open(LocalStorage.of(root), OpenOptions.DEFAULT.withLimits(Limits.DEFAULT.withMaxPageMemory(9_000)),
+        try (Dataset ds = Dataset.open(LocalStorage.of(root), OpenOptions.DEFAULT.withLimits(Limits.DEFAULT.toBuilder().pageMemory(9_000).build()),
                 Cancellation.none())) {
-            LimitExceededException e = assertThrows(LimitExceededException.class, () -> ds.range(RangeQuery.all(2000)));
-            assertEquals("maxPageMemory", e.limit());
+            LimitExceededException e = assertThrows(LimitExceededException.class, () -> ds.rows(Reads.all(2000)));
+            assertEquals(LimitName.PAGE_MEMORY, e.limit());
         }
-        try (Dataset ds = Dataset.open(LocalStorage.of(root), OpenOptions.DEFAULT.withLimits(Limits.DEFAULT.withMaxPageMemory(64 * 1024)),
+        try (Dataset ds = Dataset.open(LocalStorage.of(root), OpenOptions.DEFAULT.withLimits(Limits.DEFAULT.toBuilder().pageMemory(64 * 1024).build()),
                 Cancellation.none())) {
-            List<Row> got = ds.range(RangeQuery.builder().limit(2000).columns("size").build());
+            List<Row> got = ds.rows(Reads.builder().limit(2000).columns("size").build());
             assertEquals(1600, got.size());
             assertEquals(Value.Null.INSTANCE, got.get(0).values().get(0));
             assertEquals(new Value.Int64(1599), got.get(1599).values().get(0));

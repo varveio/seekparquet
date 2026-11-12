@@ -32,8 +32,8 @@ final class PageDecoder {
 
     private PageDecoder() {}
 
-    // The page memory estimate (Limits.maxPageMemory), in bytes, from a page header alone: what
-    // decoding the page holds for its values, besides the page's own bytes (bounded by maxPageBytes).
+    // The page memory estimate (Limits.pageMemory()), in bytes, from a page header alone: what
+    // decoding the page holds for its values, besides the page's own bytes (bounded by pageBytes).
 
     /** A row's null flag: an optional column's page holds a {@code boolean[]} of one per row. */
     static final int NULL_FLAG_BYTES = 1;
@@ -49,36 +49,38 @@ final class PageDecoder {
      */
     static final int DICTIONARY_BINARY_ENTRY_BYTES = 80;
 
+    /** An INT96 value: a reference to an array of its own, of 12 bytes padded, with its header. */
+    static final int INT96_SLOT_BYTES = 40;
+
     /** {@return the bytes a value of {@code type} takes in its page's primitive array: a slot} */
     private static int slotBytes(Column.Type type) {
         return switch (type) {
             case BOOLEAN -> 1;
             case INT32, FLOAT -> 4;
             case INT64, DOUBLE -> 8;
-            case INT96 -> 12;
+            // A reference and a 12-byte array of its own (its header and padded bytes).
+            case INT96 -> INT96_SLOT_BYTES;
             case BYTE_ARRAY, FIXED_LEN_BYTE_ARRAY, GROUP -> BINARY_SLOT_BYTES;
         };
     }
 
     /**
-     * {@return the most memory {@link #pageMemory} estimates for a page within {@code maxPageValues} and
-     * {@code maxPageBytes}: the default {@code maxPageMemory}, so that the default refuses no page those
-     * limits admit} It is the larger of an optional byte-array data page (a slot and a null flag per
-     * value, and an arena of {@code maxPageBytes}) and a byte-array dictionary page (an entry per value,
-     * and its bytes twice: the page and the entries materialized from it): 832 MiB at the defaults.
+     * {@return the default {@code Limits.pageMemory()} for {@code pageValues} and {@code pageBytes}}: the
+     * Go reader's derivation, 48 bytes per value plus the page's bytes, 832 MiB at the defaults. This
+     * reader's own estimate ({@link #pageMemory}) of a byte-array dictionary near both limits can exceed it.
      */
-    static long worstPageMemory(int maxPageValues, int maxPageBytes) {
-        long data = (long) maxPageValues * (BINARY_SLOT_BYTES + NULL_FLAG_BYTES) + maxPageBytes;
-        long dictionary = (long) maxPageValues * DICTIONARY_BINARY_ENTRY_BYTES + 2L * maxPageBytes;
-        return Math.max(data, dictionary);
+    static long worstPageMemory(int pageValues, int pageBytes) {
+        // The Go reader's derivation (limits.go worstPageMemory): two 24-byte value slots per value, plus
+        // the page's bytes. It cannot overflow from int inputs.
+        return 48L * pageValues + pageBytes;
     }
 
     /**
-     * Estimates, from a page header alone, the memory decoding the page holds (Limits.maxPageMemory),
+     * Estimates, from a page header alone, the memory decoding the page holds (Limits.pageMemory()),
      * without allocating. A data page: a slot per value for its column's representation (boolean 1, int
      * 4, long 8, byte array {@link #BINARY_SLOT_BYTES}), a null flag per row for an optional column, and
      * for byte arrays the arena's bytes: the page's uncompressed size (PLAIN and DELTA_LENGTH_BYTE_ARRAY
-     * values, and dictionary indexes, take no more), or {@code maxPageBytes} for DELTA_BYTE_ARRAY, whose
+     * values, and dictionary indexes, take no more), or {@code pageBytes} for DELTA_BYTE_ARRAY, whose
      * shared prefixes can expand it (decoding refuses more). A dictionary page: an entry per value (a
      * slot, or {@link #DICTIONARY_BINARY_ENTRY_BYTES} for byte arrays) and its bytes, twice for byte
      * arrays.
@@ -100,7 +102,7 @@ final class PageDecoder {
         }
         long memory = values * slotBytes(type) + (col.optional() ? values * NULL_FLAG_BYTES : 0);
         if (binary) {
-            memory += encoding == Encoding.DELTA_BYTE_ARRAY ? limits.maxPageBytes() : Math.min(size, limits.maxPageBytes());
+            memory += encoding == Encoding.DELTA_BYTE_ARRAY ? limits.pageBytes() : Math.min(size, limits.pageBytes());
         }
         return memory;
     }
@@ -119,17 +121,17 @@ final class PageDecoder {
     }
 
     /**
-     * Fails with {@link LimitExceededException} when the page would hold more than maxPageMemory
-     * decoding. A page beyond maxPageValues or maxPageBytes is left to those limits, which the decoder
+     * Fails with {@link LimitExceededException} when the page would hold more than pageMemory
+     * decoding. A page beyond pageValues or pageBytes is left to those limits, which the decoder
      * checks next, before allocating, so that they keep reporting it.
      */
     private static void checkPageMemory(PageHeader header, ColumnSpec col, Limits limits, String where) {
-        if (declaredValues(header) > limits.maxPageValues() || header.getUncompressed_page_size() > limits.maxPageBytes()) {
+        if (declaredValues(header) > limits.pageValues() || header.getUncompressed_page_size() > limits.pageBytes()) {
             return;
         }
         long need = pageMemory(header, col, limits);
-        if (need > limits.maxPageMemory()) {
-            throw new LimitExceededException("maxPageMemory", need, limits.maxPageMemory(), where + " (estimated page decoding memory)");
+        if (need > limits.pageMemory()) {
+            throw new LimitExceededException(LimitName.PAGE_MEMORY, need, limits.pageMemory(), where + " (estimated page decoding memory)");
         }
     }
 
@@ -174,8 +176,8 @@ final class PageDecoder {
         if (size < 0) {
             throw new DataException("a negative uncompressed page size");
         }
-        if (size > limits.maxPageBytes()) {
-            throw new LimitExceededException("maxPageBytes", size, limits.maxPageBytes(), where);
+        if (size > limits.pageBytes()) {
+            throw new LimitExceededException(LimitName.PAGE_BYTES, size, limits.pageBytes(), where);
         }
         return size;
     }
@@ -206,15 +208,15 @@ final class PageDecoder {
         if (count < 0 || (long) count * minWidth > size) {
             throw new DataException("a dictionary of " + count + " values in " + size + " bytes");
         }
-        if (count > limits.maxPageValues()) {
-            throw new LimitExceededException("maxPageValues", count, limits.maxPageValues(), where);
+        if (count > limits.pageValues()) {
+            throw new LimitExceededException(LimitName.PAGE_VALUES, count, limits.pageValues(), where);
         }
         if (h.getEncoding() == null) {
-            throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCODING, where + ": an unknown dictionary encoding");
+            throw new UnsupportedFeatureException(UnsupportedCode.ENCODING, where + ": an unknown dictionary encoding");
         }
         switch (h.getEncoding()) {
             case PLAIN, PLAIN_DICTIONARY -> {}
-            default -> throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCODING,
+            default -> throw new UnsupportedFeatureException(UnsupportedCode.ENCODING,
                     where + ": dictionary encoding " + h.getEncoding());
         }
         byte[] data = scratch == null ? new byte[size]
@@ -285,7 +287,7 @@ final class PageDecoder {
                     }
                     valuesFrom = len;
                 } else {
-                    throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCODING, where + ": definition level encoding " + levels);
+                    throw new UnsupportedFeatureException(UnsupportedCode.ENCODING, where + ": definition level encoding " + levels);
                 }
             }
         } else if (header.getType() == PageType.DATA_PAGE_V2) {
@@ -353,15 +355,15 @@ final class PageDecoder {
         if (n < 0) {
             throw new DataException("a negative value count");
         }
-        if (n > limits.maxPageValues()) {
-            throw new LimitExceededException("maxPageValues", n, limits.maxPageValues(), where);
+        if (n > limits.pageValues()) {
+            throw new LimitExceededException(LimitName.PAGE_VALUES, n, limits.pageValues(), where);
         }
         return n;
     }
 
     private static Encoding encoding(Encoding e, String where) {
         if (e == null) {
-            throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCODING, where + ": an unknown encoding");
+            throw new UnsupportedFeatureException(UnsupportedCode.ENCODING, where + ": an unknown encoding");
         }
         return e;
     }
@@ -399,11 +401,13 @@ final class PageDecoder {
         int[] ints = type == Column.Type.INT32 || type == Column.Type.FLOAT ? (scratch == null ? new int[n] : scratch.ints(n)) : null;
         long[] longs = type == Column.Type.INT64 || type == Column.Type.DOUBLE ? (scratch == null ? new long[n] : scratch.longs(n)) : null;
         boolean binary = type == Column.Type.BYTE_ARRAY || type == Column.Type.FIXED_LEN_BYTE_ARRAY;
+        boolean int96 = type == Column.Type.INT96;
         boolean arena = binary && scratch != null && encoding != Encoding.PLAIN_DICTIONARY && encoding != Encoding.RLE_DICTIONARY;
-        byte[][] binaries = binary && !arena ? (scratch == null ? new byte[n][] : scratch.binaries(n)) : null;
+        // An INT96 value is held as its 12 raw bytes, an array of its own (never in an arena).
+        byte[][] binaries = (binary && !arena) || int96 ? (scratch == null ? new byte[n][] : scratch.binaries(n)) : null;
         if (scratch != null) scratch.representation(binaries != null);
-        if (type == Column.Type.INT96 || type == Column.Type.GROUP) {
-            throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_PROJECTION, where + ": " + type + " values");
+        if (type == Column.Type.GROUP) {
+            throw new UnsupportedFeatureException(UnsupportedCode.PROJECTION, where + ": " + type + " values");
         }
         try {
             if (encoding == Encoding.BYTE_STREAM_SPLIT) {
@@ -435,7 +439,7 @@ final class PageDecoder {
                 return binaryValues(col, encoding, data, from, to, n, nonNull, nulls, dictionary, limits, where, scratch);
             }
             if (encoding == Encoding.DELTA_BYTE_ARRAY) {
-                if (binaries == null) {
+                if (binaries == null || int96) {
                     throw new DataException("DELTA_BYTE_ARRAY for a " + type + " column");
                 }
                 deltaByteArray(data, from, to, n, nonNull, nulls, binaries, col, limits, where);
@@ -476,6 +480,9 @@ final class PageDecoder {
                         if (type == Column.Type.FIXED_LEN_BYTE_ARRAY && entries[id].length != col.typeLength()) {
                             throw new DataException("a FIXED_LEN_BYTE_ARRAY value of " + entries[id].length + " bytes, not " + col.typeLength());
                         }
+                        if (int96 && entries[id].length != 12) {
+                            throw new DataException("an INT96 value of " + entries[id].length + " bytes");
+                        }
                     }
                     binaries[i] = entries[id];
                 }
@@ -496,6 +503,13 @@ final class PageDecoder {
                         byte[] v = b.getBytes();
                         if (type == Column.Type.FIXED_LEN_BYTE_ARRAY && v.length != col.typeLength()) {
                             throw new DataException("a FIXED_LEN_BYTE_ARRAY value of " + v.length + " bytes, not " + col.typeLength());
+                        }
+                        binaries[i] = v;
+                    }
+                    case INT96 -> {
+                        byte[] v = reader.readBytes().getBytes();
+                        if (v.length != 12) {
+                            throw new DataException("an INT96 value of " + v.length + " bytes");
                         }
                         binaries[i] = v;
                     }
@@ -616,15 +630,15 @@ final class PageDecoder {
             Binary suffix = suffixes.readBytes();
             long length = (long) prefix + suffix.length();
             long required = used + length;
-            if (required > limits.maxPageBytes()) {
-                throw new LimitExceededException("maxPageBytes", required, limits.maxPageBytes(), where + " (decoded binary values)");
+            if (required > limits.pageBytes()) {
+                throw new LimitExceededException(LimitName.PAGE_BYTES, required, limits.pageBytes(), where + " (decoded binary values)");
             }
             if (col.type() == Column.Type.FIXED_LEN_BYTE_ARRAY && length != col.typeLength()) {
                 throw new DataException("a FIXED_LEN_BYTE_ARRAY value of " + length + " bytes, not " + col.typeLength());
             }
             // Preserve earlier values while growing; capped geometric growth avoids quadratic copying.
             if (scratch.arena.length < required) {
-                int capacity = (int) Math.min(limits.maxPageBytes(), Math.max(required, 2L * scratch.arena.length));
+                int capacity = (int) Math.min(limits.pageBytes(), Math.max(required, 2L * scratch.arena.length));
                 scratch.arena = java.util.Arrays.copyOf(scratch.arena, capacity);
             }
             System.arraycopy(scratch.arena, previousOffset, scratch.arena, used, prefix);
@@ -648,6 +662,8 @@ final class PageDecoder {
                     EncodingChecks.plainByteArrays(data, from, to, nonNull);
                 } else if (type == Column.Type.FIXED_LEN_BYTE_ARRAY && (long) nonNull * col.typeLength() != to - from) {
                     throw new DataException(nonNull + " FIXED_LEN_BYTE_ARRAY values are not " + (to - from) + " bytes");
+                } else if (type == Column.Type.INT96 && nonNull * 12L != to - from) {
+                    throw new DataException(nonNull + " INT96 values are not " + (to - from) + " bytes");
                 } else if (type == Column.Type.BOOLEAN && (nonNull + 7L) / 8 != to - from) {
                     // Bit-packed: only the final byte may hold padding bits.
                     throw new DataException(nonNull + " PLAIN BOOLEAN values are not " + (to - from) + " bytes");
@@ -698,7 +714,7 @@ final class PageDecoder {
                 checkLengths(data, from, valuesFrom, nonNull, to - valuesFrom);
                 return new DeltaLengthByteArrayValuesReader();
             }
-            default -> throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCODING, "encoding " + encoding + " for values");
+            default -> throw new UnsupportedFeatureException(UnsupportedCode.ENCODING, "encoding " + encoding + " for values");
         }
     }
 
@@ -755,10 +771,10 @@ final class PageDecoder {
             Binary suffix = suffixes.readBytes();
             long decodedLength = (long) prefix + suffix.length();
             total += decodedLength;
-            if (total > limits.maxPageBytes()) {
-                throw new LimitExceededException("maxPageBytes", total, limits.maxPageBytes(), where + " (decoded DELTA_BYTE_ARRAY values)");
+            if (total > limits.pageBytes()) {
+                throw new LimitExceededException(LimitName.PAGE_BYTES, total, limits.pageBytes(), where + " (decoded DELTA_BYTE_ARRAY values)");
             }
-            int length = (int) decodedLength; // bounded by maxPageBytes before narrowing
+            int length = (int) decodedLength; // bounded by pageBytes before narrowing
             byte[] v = new byte[length];
             System.arraycopy(previous, 0, v, 0, prefix);
             suffix.toByteBuffer().get(v, prefix, suffix.length());

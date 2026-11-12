@@ -349,7 +349,7 @@ Opening remains lazy. The build reads key pages and keeps directory-run starts a
 to a shared group anchor. Unchanged pages add nothing; fully decoded flat groups retain no index data.
 Dense pages retain exact first-key markers and decline skipped intervals containing a marker.
 Build-only page indexes and first keys are transient: they never consume the shared, non-evicting
-`Limits.IndexMemory` cache (Java: `maxIndexMemoryBytes`). Checked part footers remain shared. Ordinary routing probes and synthetic landings
+`Limits.IndexMemory` cache (Java: `Limits.indexMemory()`). Checked part footers remain shared. Ordinary routing probes and synthetic landings
 use the normal retaining cache and its memory limit; successful transient index loads also count
 in read statistics.
 

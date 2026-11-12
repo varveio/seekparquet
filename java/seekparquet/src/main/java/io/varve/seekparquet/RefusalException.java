@@ -74,6 +74,24 @@ public final class RefusalException extends SeekParquetException {
         this.key = key == null ? null : key.clone();
     }
 
+    /**
+     * A detached copy of {@code other}: the same code, message and location, with no suppressed exceptions
+     * and a stack trace of its own, for a dataset to throw per request from a refusal it keeps.
+     */
+    private RefusalException(RefusalException other) {
+        super(other.getMessage(), null);
+        this.code = other.code;
+        this.part = other.part;
+        this.rowGroup = other.rowGroup;
+        this.row = other.row;
+        this.key = other.key;
+    }
+
+    /** {@return a detached copy of this refusal} */
+    RefusalException detached() {
+        return new RefusalException(this);
+    }
+
     /** {@return the refusal code} */
     public RefusalCode code() {
         return code;

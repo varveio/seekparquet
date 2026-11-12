@@ -188,7 +188,7 @@ class LocalStorageSwapTest {
         Dataset ds = Dataset.open(storage(LocalStorage.of(root), LocalStorage.of(hookedRoot(root, swapOnce(part)))));
         Cancellation cancel = Cancellation.create();
         Thread[] t = new Thread[1];
-        AtomicReference<Object> outcome = run(() -> ds.range(RangeQuery.all(100), cancel), t);
+        AtomicReference<Object> outcome = run(() -> Reads.range(ds, Reads.all(100), cancel), t);
         blockedUntil(t[0], cancel::cancel);
         assertInstanceOf(CancellationException.class, outcome.get());
         closes(ds);
@@ -199,7 +199,7 @@ class LocalStorageSwapTest {
         Path part = root.resolve("data/part-00000.parquet");
         Dataset ds = Dataset.open(storage(LocalStorage.of(root), LocalStorage.of(hookedRoot(root, swapOnce(part)))));
         Thread[] t = new Thread[1];
-        AtomicReference<Object> outcome = run(() -> ds.range(RangeQuery.all(100)), t);
+        AtomicReference<Object> outcome = run(() -> ds.rows(Reads.all(100)), t);
         t[0].join(BLOCKED_MILLIS);
         assertTrue(t[0].isAlive(), "the request should be waiting on the FIFO");
         closes(ds);
@@ -212,7 +212,7 @@ class LocalStorageSwapTest {
         Path part = root.resolve("data/part-00000.parquet");
         Dataset ds = Dataset.open(storage(LocalStorage.of(root), LocalStorage.of(hookedRoot(root, swapOnce(part)))));
         Thread[] t = new Thread[1];
-        AtomicReference<Object> outcome = run(() -> ds.range(RangeQuery.all(100)), t);
+        AtomicReference<Object> outcome = run(() -> ds.rows(Reads.all(100)), t);
         blockedUntil(t[0], t[0]::interrupt);
         assertInstanceOf(CancellationException.class, outcome.get());
         closes(ds);
@@ -260,12 +260,12 @@ class LocalStorageSwapTest {
         };
         DatasetStorage storage = storage(LocalStorage.of(root), LocalStorage.of(hookedRoot(root, everyTime)));
         long before = blockedOpens(); // opens other tests left that are still finishing
-        for (int i = 0; i < LocalStorage.MAX_STRANDED_OPENS; i++) {
+        for (int i = 0; i < 64 /* LocalStorage.MAX_STRANDED_OPENS */; i++) {
             restoreRegular(part);
             try (Dataset ds = Dataset.open(storage)) {
                 Cancellation cancel = Cancellation.create();
                 Thread[] t = new Thread[1];
-                AtomicReference<Object> outcome = run(() -> ds.range(RangeQuery.all(100), cancel), t);
+                AtomicReference<Object> outcome = run(() -> Reads.range(ds, Reads.all(100), cancel), t);
                 // Once its open is blocked on the FIFO, cancelling strands it.
                 long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(BOUND_MILLIS);
                 while (blockedOpens() < before + i + 1) {
@@ -279,7 +279,7 @@ class LocalStorageSwapTest {
         }
         restoreRegular(part);
         try (Dataset ds = Dataset.open(storage)) {
-            StorageException e = assertThrows(StorageException.class, () -> ds.range(RangeQuery.all(100)));
+            StorageException e = assertThrows(StorageException.class, () -> ds.rows(Reads.all(100)));
             assertTrue(e.getCause().getMessage().contains("blocked"), e.getCause().getMessage());
         }
         // Releasing the stranded opens frees their slots: the part reads again through the same storage.
@@ -289,7 +289,7 @@ class LocalStorageSwapTest {
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(BOUND_MILLIS);
         while (true) {
             try (Dataset ds = Dataset.open(storage)) {
-                assertEquals(5, ds.range(RangeQuery.all(100)).size());
+                assertEquals(5, ds.rows(Reads.all(100)).size());
                 break;
             } catch (StorageException e) {
                 assertTrue(System.nanoTime() < deadline, "stranded opens were not released");

@@ -70,7 +70,7 @@ class LocalStoragePlainDirectoryTest {
     }
 
     private static List<String> keys(Dataset ds) {
-        return ds.range(RangeQuery.all(1000)).stream().map(r -> new String(r.key().toByteArray())).toList();
+        return ds.rows(Reads.all(1000)).stream().map(r -> new String(r.key().toByteArray())).toList();
     }
 
     @ParameterizedTest(name = "fileKeys={0}")
@@ -80,8 +80,8 @@ class LocalStoragePlainDirectoryTest {
         try (Dataset secure = Dataset.open(root); Dataset ds = Dataset.open(plain(new PlainDirectoryFileSystem(fileKeys), root))) {
             ds.verify();
             assertEquals(List.of("a", "b", "c", "d", "e"), keys(ds));
-            assertEquals(secure.range(RangeQuery.builder().limit(100).columns("size").build()),
-                    ds.range(RangeQuery.builder().limit(100).columns("size").build()));
+            assertEquals(secure.rows(Reads.builder().limit(100).columns("size").build()),
+                    ds.rows(Reads.builder().limit(100).columns("size").build()));
         }
     }
 
@@ -91,10 +91,10 @@ class LocalStoragePlainDirectoryTest {
         Path root = ConformanceFixturesTest.fixture("datasets/" + name);
         try (Dataset secure = Dataset.open(root); Dataset ds = Dataset.open(plain(new PlainDirectoryFileSystem(false), root))) {
             ds.verify();
-            List<String> columns = ds.columns().stream().filter(Column::projectable).map(Column::name).toList();
-            RangeQuery all = RangeQuery.builder().limit(1_000_000).columns(columns).build();
-            assertEquals(secure.range(all), ds.range(all));
-            assertEquals(ds.rows(), ds.range(all).size());
+            List<String> columns = Reads.columns(ds).stream().filter(Column::projectable).map(Column::name).toList();
+            Query all = Reads.builder().limit(1_000_000).columns(columns).build();
+            assertEquals(secure.rows(all), ds.rows(all));
+            assertEquals(ds.rowCount(), ds.rows(all).size());
         }
     }
 
@@ -122,7 +122,7 @@ class LocalStoragePlainDirectoryTest {
         IOException e = assertThrows(IOException.class, () -> storage.openPart("data/part-00000.parquet", 0, Cancellation.none()));
         assertTrue(e.getMessage().contains("is not a regular file"), e.getMessage());
         try (Dataset ds = Dataset.open(storage)) {
-            assertInstanceOf(StorageException.class, assertThrows(SeekParquetException.class, () -> ds.range(RangeQuery.all(10))));
+            assertInstanceOf(StorageException.class, assertThrows(SeekParquetException.class, () -> ds.rows(Reads.all(10))));
         }
     }
 
@@ -136,7 +136,7 @@ class LocalStoragePlainDirectoryTest {
         IOException e = assertThrows(FileSystemException.class, () -> storage.openPart("data/part-00000.parquet", 0, Cancellation.none()));
         assertTrue(e.getMessage().contains("symbolic link"), e.getMessage());
         try (Dataset ds = Dataset.open(storage)) {
-            assertInstanceOf(StorageException.class, assertThrows(SeekParquetException.class, () -> ds.range(RangeQuery.all(10))));
+            assertInstanceOf(StorageException.class, assertThrows(SeekParquetException.class, () -> ds.rows(Reads.all(10))));
         }
     }
 
@@ -260,7 +260,7 @@ class LocalStoragePlainDirectoryTest {
         IOException e = assertThrows(IOException.class, () -> LocalStorage.of(root).openPart("data/part-00000.parquet", 0, Cancellation.none()));
         assertTrue(e.getMessage().contains("symbolic link, junction or other reparse point"), e.getMessage());
         try (Dataset ds = Dataset.open(root)) {
-            assertInstanceOf(StorageException.class, assertThrows(SeekParquetException.class, () -> ds.range(RangeQuery.all(10))));
+            assertInstanceOf(StorageException.class, assertThrows(SeekParquetException.class, () -> ds.rows(Reads.all(10))));
         }
     }
 

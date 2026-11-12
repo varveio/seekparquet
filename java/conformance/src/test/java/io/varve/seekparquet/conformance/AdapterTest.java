@@ -8,9 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.varve.seekparquet.Dataset;
-import io.varve.seekparquet.Limits;
-import io.varve.seekparquet.LimitExceededException;
-import io.varve.seekparquet.RangeQuery;
+import io.varve.seekparquet.Query;
+import io.varve.seekparquet.ReadOptions;
+import io.varve.seekparquet.ReadStats;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -43,11 +43,16 @@ class AdapterTest {
                 }
             }
         }
-        assertEquals(1_000_000, Limits.DEFAULT.maxResultEntries());
+        // The library has no collected-result cap: the adapter pages only to bound its own requests.
+        assertEquals(1_000_000, Adapter.PAGE_LIMIT);
         Path empty = Path.of(System.getProperty("seekparquet.conformance"), "datasets", "empty");
         try (Dataset dataset = Dataset.open(empty)) {
-            assertThrows(LimitExceededException.class,
-                    () -> dataset.range(RangeQuery.builder().limit(1_000_001).build()));
+            // A collected result's limit must fit a List: beyond it rows is an invalid request, before any read.
+            java.util.List<ReadStats> stats = new java.util.ArrayList<>();
+            assertThrows(IllegalArgumentException.class,
+                    () -> dataset.rows(Query.builder().limit(Long.MAX_VALUE).build(), ReadOptions.of(stats::add)));
+            assertEquals(java.util.List.of(ReadStats.NONE), stats);
+            assertEquals(0, dataset.rows(Query.builder().limit(Integer.MAX_VALUE).build()).size());
         }
     }
 

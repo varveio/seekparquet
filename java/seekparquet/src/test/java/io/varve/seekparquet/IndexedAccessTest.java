@@ -103,7 +103,7 @@ class IndexedAccessTest {
         CountingStorage storage = new CountingStorage(TestDatasets.write(tmp, spec, parts));
         try (Dataset ds = Dataset.open(storage)) {
             assertEquals(0, storage.footers.get() + storage.reads.get(), "open reads no part");
-            List<Row> rows = ds.range(RangeQuery.builder().start(Bytes.utf8("p2/dir050/file02000")).limit(1).columns("size").build());
+            List<Row> rows = ds.rows(Reads.builder().start(Bytes.utf8("p2/dir050/file02000")).limit(1).columns("size").build());
             assertEquals(Bytes.utf8("p2/dir050/file02000"), rows.getFirst().key());
             assertEquals(new Value.Int64(2000), rows.getFirst().values().getFirst());
             // The part's 4-byte leading magic (CHECK-1: the part is larger than the footer window);

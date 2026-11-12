@@ -216,7 +216,7 @@ final class KeyCursor {
     }
 
     boolean seekPrefixCursor(byte[] prefix, byte[] target) {
-        if (listIndex == null || listIndex.groups.length == 0 || !Arrays.equals(Bytes.wrap(prefix).successor().orElseThrow().unsafeArray(), target)) {
+        if (listIndex == null || listIndex.groups.length == 0 || !Arrays.equals(Bytes.wrap(prefix).prefixEnd().orElseThrow().unsafeArray(), target)) {
             return seek(target, false);
         }
         if (prefix.length == 0 || prefix[prefix.length - 1] != '/') {
@@ -287,7 +287,7 @@ final class KeyCursor {
         int start = current.runAt(row());
         if (start < 0 || current.sizes[start] < 0) { ctx.stats.listIndexDensePage++; return -1; }
         if (!current.hasPrefix(start, prefix)) { ctx.stats.listIndexUnsafeRun++; return -1; }
-        byte[] target = Bytes.wrap(prefix).successor().map(Bytes::unsafeArray).orElse(null);
+        byte[] target = Bytes.wrap(prefix).prefixEnd().map(Bytes::unsafeArray).orElse(null);
         int lo = part, hi = parts.size();
         while (lo < hi) {
             ctx.checkCancelled();
@@ -386,8 +386,8 @@ final class KeyCursor {
      * becomes a physical row displacement. A stale/oversized offset may land after the group;
      * in that case re-seek strictly after the key rather than skipping unrelated rows.
      */
-    boolean resume(Continuation.RowPosition after) {
-        byte[] target = after.bytes().unsafeArray();
+    boolean resume(Cursor.RowPosition after) {
+        byte[] target = after.key().unsafeArray();
         if (!Arrays.equals(key(), target) || offset() > after.offset()) {
             return true;
         }
@@ -473,7 +473,7 @@ final class KeyCursor {
         for (int n = 0; n < remaining;) {
             int j = at + 1;
             if (cur != null) {
-                var next = Bytes.wrap(cur).successor();
+                var next = Bytes.wrap(cur).prefixEnd();
                 if (next.isEmpty()) {
                     return;
                 }

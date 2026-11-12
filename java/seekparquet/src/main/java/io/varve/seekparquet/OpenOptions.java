@@ -7,7 +7,8 @@ import java.util.Objects;
 
 /**
  * Options for {@link Dataset#open(io.varve.seekparquet.storage.DatasetStorage, OpenOptions,
- * Cancellation)}.
+ * Cancellation)}. The Go reader's {@code OpenOptions}, which has the limits only: it verifies one part at
+ * a time.
  *
  * @param limits size limits on what the data declares
  * @param verifyConcurrency how many parts {@link Dataset#verify()} checks at once (their footers
@@ -15,8 +16,11 @@ import java.util.Objects;
  */
 public record OpenOptions(Limits limits, int verifyConcurrency) {
 
-    /** The defaults: {@link Limits#DEFAULT}, 8 parts checked at once by {@link Dataset#verify()}. */
-    public static final OpenOptions DEFAULT = new OpenOptions(Limits.DEFAULT, 8);
+    /**
+     * The defaults: {@link Limits#DEFAULT}, and one part checked at a time by {@link Dataset#verify()}, as
+     * the Go reader verifies.
+     */
+    public static final OpenOptions DEFAULT = new OpenOptions(Limits.DEFAULT, 1);
 
     /**
      * Creates options.

@@ -64,6 +64,8 @@ final class TestDatasets {
         int keyBoundBytes;
         int rowsPerGroup = 4;
         boolean noteColumn;
+        /** Write the {@code size} column as INT96: the size's 8 bytes little-endian, then {@link #int96High}. */
+        boolean int96Size;
         /** Encode a constant, non-null size per group through a dictionary. */
         boolean dictionarySize;
         CompressionCodec valueCodec = CompressionCodec.UNCOMPRESSED;
@@ -177,7 +179,7 @@ final class TestDatasets {
                     long pageOffset = chunkStart + chunk.bytes.size();
                     boolean dictionaryPage = dictionary && (!spec.mixedValuePages || (r0 / perPage) % 2 == 0);
                     boolean split = c == 1 && spec.byteStreamSplitSize && !dictionaryPage;
-                    byte[] body = dictionaryPage ? (c == 1 ? dictionaryBody(page.size()) : dictionaryNotes(page, entries)) : pageBody(c, page, split);
+                    byte[] body = dictionaryPage ? (c == 1 ? dictionaryBody(page.size()) : dictionaryNotes(page, entries)) : pageBody(c, page, split, spec.int96Size);
                     byte[] compressed = compress(body, codec);
                     PageHeader header = new PageHeader(PageType.DATA_PAGE, body.length, compressed.length);
                     header.setData_page_header(new DataPageHeader(page.size(), dictionaryPage ? Encoding.RLE_DICTIONARY
@@ -217,7 +219,7 @@ final class TestDatasets {
                 byte[] data = chunk.bytes.toByteArray();
                 out.write(data);
                 groupBytes += chunk.uncompressedBytes;
-                Type type = c == 1 ? Type.INT64 : Type.BYTE_ARRAY;
+                Type type = c == 1 ? (spec.int96Size ? Type.INT96 : Type.INT64) : Type.BYTE_ARRAY;
                 String name = c == 0 ? spec.keyColumn : c == 1 ? "size" : "note";
                 ColumnMetaData md = new ColumnMetaData(type, dictionary ? List.of(Encoding.PLAIN, Encoding.RLE, Encoding.RLE_DICTIONARY) : List.of(Encoding.PLAIN, Encoding.RLE), List.of(name), codec,
                         group.size(), chunk.uncompressedBytes, data.length, dataStart);
@@ -271,7 +273,7 @@ final class TestDatasets {
         }
         schema.add(key);
         SchemaElement size = new SchemaElement("size");
-        size.setType(Type.INT64);
+        size.setType(spec.int96Size ? Type.INT96 : Type.INT64);
         size.setRepetition_type(FieldRepetitionType.OPTIONAL);
         schema.add(size);
         if (spec.noteColumn) {
@@ -365,7 +367,12 @@ final class TestDatasets {
         return out.toByteArray();
     }
 
-    private static byte[] pageBody(int column, List<TestRow> page, boolean split) throws IOException {
+    /** The third word of the INT96 {@code size} of {@code size}: its high bit set, to exercise unsigned words. */
+    static int int96High(long size) {
+        return 0x80000000 | (int) size;
+    }
+
+    private static byte[] pageBody(int column, List<TestRow> page, boolean split, boolean int96) throws IOException {
         ByteArrayOutputStream b = new ByteArrayOutputStream();
         if (column == 0) {
             for (TestRow r : page) {
@@ -394,7 +401,10 @@ final class TestDatasets {
             if (!present[i]) {
                 continue;
             }
-            if (column == 1) {
+            if (column == 1 && int96) {
+                long v = page.get(i).size();
+                b.write(ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN).putLong(v).putInt(int96High(v)).array());
+            } else if (column == 1) {
                 b.write(ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(page.get(i).size()).array());
             } else {
                 byte[] v = note(page.get(i));

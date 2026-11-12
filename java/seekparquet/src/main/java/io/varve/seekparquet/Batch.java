@@ -9,24 +9,27 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * A positive run of consecutive selected rows, in dataset order, handed to the action of {@link
- * RangePlan#scanBatches} or {@link Dataset#rangeBatches}: their keys, group offsets and the values of the
- * projected columns, read without a {@link Row} or {@link Value} object per row.
+ * A positive run of consecutive selected rows, in dataset order, handed to the {@link BatchVisitor} of
+ * {@link Dataset#scan} or {@link Plan#scan}: their keys, group offsets and the values of the projected
+ * columns, read without a {@link Row} or {@link Value} object per row. The Go reader's {@code Batch}.
  *
  * <p>A batch never crosses a row group, a key page, a page of any projected column, or a gap between the
- * selected rows of a plan. Batches may be smaller than that; their size is not promised.
+ * selected rows of a plan. Batches may be smaller than that; their size is not promised. (The Go reader
+ * also caps a batch at 4,096 rows when a projected column is absent from its part; this reader stores
+ * nothing for an absent column and has no such cap. Rows, values, cursors and statistics are the same.)
  *
- * <p><b>A batch is borrowed.</b> It, its {@link BatchColumn}s, and the buffers {@link #keyBuffer} and
- * {@link BatchColumn#byteBuffer} return view storage the scan reuses for later pages: they are read-only
- * and valid only until the action returns. Using the batch or its columns after that throws {@link
- * IllegalStateException}; a buffer view kept past it may show other bytes. Do not hand them to work that
- * outlives the action. {@link #row}, {@link #key}, {@link #continuation}, {@link BatchColumn#value} and
- * {@link BatchColumn#bytes} make owning copies, which may be kept. An index outside {@code [0, size())}
- * throws {@link IndexOutOfBoundsException}.
+ * <p><b>A batch is borrowed.</b> It, its {@link BatchColumn}s, and the buffers {@link #key} and {@link
+ * BatchColumn#bytes} return view storage the scan reuses for later pages: they are read-only and valid
+ * only until {@link BatchVisitor#visit} returns. Using the batch or its columns after that throws {@link
+ * IllegalStateException}; a buffer view kept past it cannot be invalidated and may show other bytes. Do
+ * not hand them to work that outlives the visit. {@link #row}, {@link #copyKey(int)}, {@link #cursor},
+ * {@link BatchColumn#value} and {@link BatchColumn#copyBytes(int)} make owning copies, which may be kept.
+ * An index outside {@code [0, size())} throws {@link IndexOutOfBoundsException}. A batch is not {@link
+ * AutoCloseable}: its lifetime is the visit.
  *
- * <p>The action may have other threads read the batch while it runs, but it must wait for them before it
+ * <p>The visitor may have other threads read the batch while it runs, but it must wait for them before it
  * returns. The batch's end of life is published with a volatile write, so a thread that reads it after
- * the action returns sees it retired.
+ * the visit returns sees it retired.
  */
 public final class Batch {
 
@@ -146,12 +149,14 @@ public final class Batch {
     }
 
     /**
-     * Returns a read-only view of row {@code i}'s key, borrowed as the batch is. It allocates the view.
+     * Returns a read-only view of row {@code i}'s key, borrowed as the batch is: valid only until the visit
+     * returns. It allocates the view, whose position and limit are its own. The Go reader's {@code
+     * Batch.Key}.
      *
      * @param i the row
      * @return the view, positioned at the key's first byte
      */
-    public ByteBuffer keyBuffer(int i) {
+    public ByteBuffer key(int i) {
         return ByteBuffer.wrap(keys[at(i)]).asReadOnlyBuffer();
     }
 
@@ -161,19 +166,19 @@ public final class Batch {
      * @param i the row
      * @return the key
      */
-    public Bytes key(int i) {
+    public Bytes copyKey(int i) {
         // Key pages are decoded into arrays of their own, never reused or modified.
         return Bytes.wrap(keys[at(i)]);
     }
 
     /**
-     * Returns an owning copy of row {@code i}, the row a range read or {@link RangePlan#scan} returns for it.
+     * Returns an owning copy of row {@code i}, the row {@link Dataset#rows} returns for it.
      *
      * @param i the row
      * @return the row
      */
     public Row row(int i) {
-        Bytes key = key(i);
+        Bytes key = copyKey(i);
         Value[] row = new Value[values.length];
         for (int c = 0; c < row.length; c++) {
             row[c] = values[c].value(i);
@@ -182,13 +187,13 @@ public final class Batch {
     }
 
     /**
-     * Returns an owning continuation after row {@code i}, as {@link Row#continuation()} of {@link #row(int)}.
+     * Returns an owning cursor after row {@code i}, as {@link Row#cursor()} of {@link #row(int)}.
      *
      * @param i the row
-     * @return the continuation
+     * @return the cursor, which may be kept
      */
-    public Continuation.RowPosition continuation(int i) {
-        return new Continuation.RowPosition(key(i), offset(i));
+    public Cursor.RowPosition cursor(int i) {
+        return new Cursor.RowPosition(copyKey(i), offset(i));
     }
 
     /** {@return the key bytes of row {@code i}, borrowed} */

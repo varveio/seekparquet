@@ -60,7 +60,7 @@ final class ReadAhead implements AutoCloseable {
     final int slots;
     private final long budget;
     private final int maxPending;
-    /** The largest extent a key page read reads ({@link Limits#maxPageBytes()}): a larger one is not read ahead. */
+    /** The largest extent a key page read reads ({@link Limits#pageBytes()}): a larger one is not read ahead. */
     private final long maxPage;
     /** Reads not yet ended: raised by the request's thread, lowered by the read's thread before it publishes. */
     private final AtomicInteger inFlight = new AtomicInteger();
@@ -120,7 +120,7 @@ final class ReadAhead implements AutoCloseable {
         this.slots = slots;
         this.budget = (long) slots * SLOT_BYTES;
         this.maxPending = 4 * slots;
-        this.maxPage = ctx.limits.maxPageBytes();
+        this.maxPage = ctx.limits.pageBytes();
         this.scope = Cancellation.linkedTo(ctx.cancellation);
         this.wake = scope.onCancel(() -> cancelled.complete(null));
         this.threads = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("seekparquet-read-ahead-", 0).factory());

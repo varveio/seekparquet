@@ -46,10 +46,10 @@ These modules have no Hadoop dependency. Between them they cover everything the 
 | Page headers | `org.apache.parquet.format.PageHeader`, `DataPageHeader`, `DataPageHeaderV2`, `DictionaryPageHeader` |
 | Value decoding | `org.apache.parquet.column.Encoding#getValuesReader`, `getDictionaryBasedValuesReader` and `initDictionary`, `DeltaBinaryPackingValuesReader`, `DeltaLengthByteArrayValuesReader`, `RunLengthBitPackingHybridDecoder` |
 
-The public storage boundary reuses `parquet-common`'s `InputFile` and `SeekableInputStream`:
-`PartSource` extends `InputFile` with positioned, cancellable reads and optional pinned identity.
-Independent streams do not share seek positions. `PartSource.of` accepts an existing `InputFile`;
-its reads each own a fresh stream. `LocalStorage` uses positioned `FileChannel` reads. No cloud
+The public storage boundary is SeekParquet's own: `PartSource` has positioned, cancellable reads and
+optional pinned identity, with no parquet-java type. `storage.ParquetJavaInterop` converts to and from
+`parquet-common`'s `InputFile`: `partSource` accepts an existing `InputFile`, its reads each owning a fresh
+stream, and `inputFile` views a source as one, its streams independently positioned. `LocalStorage` uses positioned `FileChannel` reads. No cloud
 implementation or SDK is included.
 
 Footer Thrift structures are decoded with bounded reads, preserving duplicate stamps. The reader
@@ -141,7 +141,7 @@ installation. Unit tests include independent fixture reads, deterministic corrup
 concurrent requests, cancellation and resource cleanup, early footer refusals, and grouped pagination.
 The focused indexed-read unit test passes; this is not a separate indexed-access qualification.
 
-`parquet-common` is an API dependency because the public storage interface extends `InputFile`.
+`parquet-common` is an API dependency because `ParquetJavaInterop`'s public methods name `InputFile`.
 The other direct library dependencies are implementation dependencies. The adapter alone binds SLF4J
 with `slf4j-nop` 1.7.36; this also resolves its SLF4J API to 1.7.36. The library binds no logger.
 
