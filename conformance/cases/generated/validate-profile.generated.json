@@ -3,7 +3,7 @@
   "target": "validator-profile",
   "generated": true,
   "generator": "generators/make_cases.py",
-  "description": "Validation at the profile level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code, and a dataset that cannot be opened shows structural failed.",
+  "description": "Validation at the profile level (section 8). validate always answers status ok with levels; an invalid dataset shows the level failed with the refusal code. An open-stage refusal makes structural failed with its refusal code; an unsupported feature makes structural incomplete with its unsupported code and a non-empty reason. Dependent levels are incomplete.",
   "families": {
     "validate-profile/valid-dataset": "every valid dataset completes this level and its prerequisites",
     "validate-profile/fault-at-lowest-level": "each fault at the lowest validation level that detects it (validation_level in generators/faults.json)",
@@ -376,7 +376,7 @@
     },
     {
       "id": "validate-profile/brotli-key",
-      "description": "brotli-key uses BROTLI (outside ENC-1), which the profile level first needs: from there on a level is complete, or incomplete with a reason for a validator without it; the levels below must complete",
+      "description": "Structural validation completes. If the key's BROTLI codec is unavailable, profile is incomplete with code unsupported_encoding and a non-empty reason; full is then incomplete because its prerequisite did not complete. A level cannot complete unless its prerequisite completed.",
       "family": "validate-profile/valid-dataset",
       "requirements": [
         "VAL-1",
@@ -400,7 +400,8 @@
             "result": "complete",
             "accept": [
               "incomplete"
-            ]
+            ],
+            "code": "unsupported_encoding"
           }
         }
       }
@@ -1186,6 +1187,37 @@
         "validate:profile"
       ],
       "dataset": "datasets/invalid/encrypted-both-magic",
+      "request": {
+        "op": "validate",
+        "level": "profile"
+      },
+      "expect": {
+        "status": "ok",
+        "levels": {
+          "structural": {
+            "result": "incomplete",
+            "code": "unsupported_encryption"
+          },
+          "profile": {
+            "result": "incomplete"
+          }
+        }
+      }
+    },
+    {
+      "id": "validate-profile/prerequisite/encrypted-footer-signed",
+      "description": "an unsupported part (encrypted-footer-signed) with validation requested at profile: structural incomplete with its unsupported code, and every dependent level incomplete",
+      "family": "validate-profile/prerequisite",
+      "fault_id": "encrypted-footer-signed",
+      "requirements": [
+        "CHECK-1",
+        "FILE-2",
+        "VAL-1"
+      ],
+      "requires": [
+        "validate:profile"
+      ],
+      "dataset": "datasets/invalid/encrypted-footer-signed",
       "request": {
         "op": "validate",
         "level": "profile"

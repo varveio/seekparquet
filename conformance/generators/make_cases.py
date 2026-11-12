@@ -44,6 +44,13 @@ OPTIONAL = {"optional-codecs": ["unsupported_encoding"], "brotli-key": ["unsuppo
 # The lowest validation level that needs each optional dataset's codec: BROTLI values need full, a BROTLI key
 # profile (structural reads no page data, so it completes).
 OPTIONAL_LEVEL = {"optional-codecs": "full", "brotli-key": "profile"}
+OPTIONAL_DESC = {
+    "brotli-key": "Structural validation completes. If the key's BROTLI codec is unavailable, profile is incomplete "
+                  "with code unsupported_encoding and a non-empty reason; full is then incomplete because its "
+                  "prerequisite did not complete. A level cannot complete unless its prerequisite completed.",
+    "optional-codecs": "Structural and profile validation complete. If the value column's BROTLI codec is "
+                       "unavailable, full is incomplete with code unsupported_encoding and a non-empty reason.",
+}
 BIG = 100000  # a limit at least the number of rows of every fixture (QUERY-3)
 # Retired cases that tested only removed request members; their ids are never reused.
 REMOVED = {"list/delimiter/continuation-without-after": "tested the removed continuation member"}
@@ -852,7 +859,7 @@ LEVELS = ["structural", "profile", "full"]
 STRUCTURAL_SENTINELS = ["manifest-unknown-member", "missing-part", "invalid-footer-magic", "stamp-wrong-schema-id",
                         "inconsistent-column-type", "missing-column-index"]
 # Unsupported parts (outcome unsupported) requested at profile and full: structural incomplete propagates.
-UNSUPPORTED_SENTINELS = ["encrypted-header-magic", "encrypted-both-magic"]
+UNSUPPORTED_SENTINELS = ["encrypted-header-magic", "encrypted-both-magic", "encrypted-footer-signed"]
 PROFILE_SENTINELS = ["key-order-across-pages", "bounds-last-key-differs", "page-index-min-above-first-key"]
 # Six distinct digest behaviours (VAL-2): (dataset, expected digest level, description).
 DIGEST_CASES = [
@@ -903,8 +910,9 @@ def refusal_groups(lock):
     g_read.fam("fault", "one case per fault that a reader must refuse no later than the read that decodes it")
     gv = {lvl: Group(f"validate-{lvl}", f"validator-{lvl}",
                      f"Validation at the {lvl} level (section 8). validate always answers status ok with levels; "
-                     "an invalid dataset shows the level failed with the refusal code, and a dataset that cannot "
-                     "be opened shows structural failed.")
+                     "an invalid dataset shows the level failed with the refusal code. An open-stage refusal "
+                     "makes structural failed with its refusal code; an unsupported feature makes structural "
+                     "incomplete with its unsupported code and a non-empty reason. Dependent levels are incomplete.")
           for lvl in ("structural", "profile", "full", "digest")}
     for lvl in LEVELS:
         gv[lvl].fam("valid-dataset", "every valid dataset completes this level and its prerequisites")
@@ -917,11 +925,9 @@ def refusal_groups(lock):
             reqs, desc = ["VAL-1"], None
             if d["name"] in OPTIONAL and LEVELS.index(lvl) >= LEVELS.index(OPTIONAL_LEVEL[d["name"]]):
                 for x in LEVELS[LEVELS.index(OPTIONAL_LEVEL[d["name"]]): LEVELS.index(lvl) + 1]:
-                    levels[x] = {"result": "complete", "accept": ["incomplete"]}
+                    levels[x] = {"result": "complete", "accept": ["incomplete"], "code": OPTIONAL[d["name"]][0]}
                 reqs.append("ENC-1")
-                desc = (f"{d['name']} uses BROTLI (outside ENC-1), which the {OPTIONAL_LEVEL[d['name']]} level first "
-                        "needs: from there on a level is complete, or incomplete with a reason for a validator without "
-                        "it; the levels below must complete")
+                desc = OPTIONAL_DESC[d["name"]]
             if lvl == "full" and d["name"] in NESTED_COLUMNS:
                 levels["full"] = {"result": "complete", "accept": ["incomplete"]}
                 desc = (f"the dataset has nested/repeated columns ({NESTED_COLUMNS[d['name']]}); a validator that "

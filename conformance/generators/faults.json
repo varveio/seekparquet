@@ -1305,6 +1305,48 @@
       "location": "data/part-00000.parquet: FileMetaData.encryption_algorithm"
     },
     {
+      "id": "encrypted-footer-signed",
+      "dataset": "datasets/invalid/encrypted-footer-signed",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "unsupported_encryption"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "outcome": "unsupported",
+      "location": "data/part-00000.parquet: footer declaring encryption, then a 28-byte signature"
+    },
+    {
+      "id": "encrypted-footer-signature-short",
+      "dataset": "datasets/invalid/encrypted-footer-signature-short",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1",
+        "FILE-2"
+      ],
+      "location": "data/part-00000.parquet: footer declaring encryption, then 27 bytes"
+    },
+    {
+      "id": "invalid-footer-trailing-28",
+      "dataset": "datasets/invalid/invalid-footer-trailing-28",
+      "reader_detect": "touch",
+      "validation_level": "structural",
+      "codes": [
+        "invalid_footer"
+      ],
+      "requirements": [
+        "CHECK-1"
+      ],
+      "location": "data/part-00000.parquet: footer without an encryption declaration, then 28 bytes"
+    },
+    {
       "id": "short-12-bytes-encrypted",
       "dataset": "datasets/invalid/short-12-bytes-encrypted",
       "reader_detect": "touch",

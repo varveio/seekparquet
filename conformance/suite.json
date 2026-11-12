@@ -72,16 +72,16 @@
     "cases/generated/projection.generated.json": 41,
     "cases/generated/planning.generated.json": 35,
     "cases/generated/requests.generated.json": 8,
-    "cases/generated/refusals-open.generated.json": 58,
+    "cases/generated/refusals-open.generated.json": 61,
     "cases/generated/refusals-read.generated.json": 21,
-    "cases/generated/validate-structural.generated.json": 139,
-    "cases/generated/validate-profile.generated.json": 47,
-    "cases/generated/validate-full.generated.json": 37,
+    "cases/generated/validate-structural.generated.json": 142,
+    "cases/generated/validate-profile.generated.json": 48,
+    "cases/generated/validate-full.generated.json": 38,
     "cases/generated/validate-digest.generated.json": 2
   },
   "totals": {
     "core": 185,
-    "generated": 1614
+    "generated": 1622
   },
   "renamed_datasets": {
     "datasets/truncated-bounds": "datasets/binary-bounds-truncated-16-byte",
@@ -185,5 +185,5 @@
       "reason": "tested the removed continuation member"
     }
   ],
-  "content_sha256": "c660d2f922e1c349df0502a2a9513b18469fa9cb681bebc1b66ba001e222b8da"
+  "content_sha256": "6d011309ff61e18b77d5a4810b087b1ed7d54659bee6337deef6ba9420d37a37"
 }

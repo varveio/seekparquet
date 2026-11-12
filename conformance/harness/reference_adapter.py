@@ -252,6 +252,8 @@ class Part:
         try:
             self.pf = pm.read_parquet(self.data)
             self.fields = top_level(self.pf)
+        except pm.SignedPlaintextFooter as e:
+            raise NotSupported("unsupported_encryption", f"{rel}: {e}") from None
         except (pm.ParquetMetaError, pm.ThriftError, AttributeError, IndexError, TypeError) as e:
             raise Refusal("invalid_footer", f"{rel}: {e}") from None
         if self.pf.meta.has(8) or self.pf.meta.has(9):  # FILE-2: encryption declared in the footer

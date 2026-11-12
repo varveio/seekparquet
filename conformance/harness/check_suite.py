@@ -132,7 +132,8 @@ def main(argv=None):
                     bad(f"{where}: unknown code {code!r} for status {exp.get('status')}")
             # A failed level names a refusal code; an incomplete one, an unsupported code.
             for name, lv in exp.get("levels", {}).items():
-                allowed = unsupported_codes if lv.get("result") == "incomplete" else refusal_codes
+                optional = lv.get("result") == "complete" and "incomplete" in lv.get("accept", [])
+                allowed = unsupported_codes if lv.get("result") == "incomplete" or optional else refusal_codes
                 for code in lv.get("codes") or ([lv["code"]] if "code" in lv else []):
                     if code not in allowed:
                         bad(f"{where}: unknown code {code!r} for a {lv.get('result')} {name} level")

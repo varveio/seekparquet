@@ -426,6 +426,21 @@ def declare_encryption(part):
     part.changes.append("footer: FileMetaData.encryption_algorithm = AES_GCM_V1 {} (nothing else encrypted)")
 
 
+def signed_footer(declare, signature_bytes):
+    """A raw edit: re-encode the footer, optionally declaring encryption in plaintext footer mode
+    (encryption_algorithm AES_GCM_V1 and footer_signing_key_metadata), and follow it with signature_bytes
+    deterministic bytes that the footer length covers, as a signed plaintext footer's 28-byte signature is."""
+    def fn(d):
+        pf = pm.read_parquet(d)
+        meta = copy.deepcopy(pf.meta)
+        if declare:
+            meta.set(pm.FMD_ENCRYPTION, pm.CT_STRUCT, pm.Struct(fields=[(1, pm.CT_STRUCT, pm.Struct())]))
+            meta.set(pm.FMD_SIGNING_KEY, pm.CT_BINARY, b"conformance-key")
+        footer = pm.encode_struct(meta) + bytes(range(signature_bytes))
+        return d[:pf.footer_start] + footer + len(footer).to_bytes(4, "little") + pm.MAGIC
+    return fn
+
+
 def set_part_extensions(values):
     """Give parts their own extensions objects: {part index: object}."""
     def fn(m, changes):
@@ -773,6 +788,20 @@ def build():
                                                                        "length, PARE: long enough, so encryption.")):
         R.append(derive_raw_part(name, desc, lambda d, b=data: b, f"replaced by the {len(data)} bytes {data.hex()}",
                                  resize=True))
+    for name, declare, n, desc in (
+            ("encrypted-footer-signed", True, pm.SIGNATURE_BYTES,
+             "A plaintext-footer encrypted layout: PAR1 at both ends; the footer declares encryption "
+             "(encryption_algorithm AES_GCM_V1, footer_signing_key_metadata) and is followed by a 28-byte signature "
+             "that the footer length covers. Readable footer metadata declares encryption (FILE-2)."),
+            ("encrypted-footer-signature-short", True, pm.SIGNATURE_BYTES - 1,
+             "The footer declares encryption, but 27 bytes, not a 28-byte signature, follow its metadata: a "
+             "malformed footer."),
+            ("invalid-footer-trailing-28", False, pm.SIGNATURE_BYTES,
+             "28 bytes follow the footer metadata, which declares no encryption: a malformed footer, not a "
+             "signature.")):
+        R.append(derive_raw_part(name, desc, signed_footer(declare, n),
+                                 f"footer re-encoded{' declaring encryption' if declare else ''}, followed by {n} "
+                                 "bytes the footer length covers", resize=True))
     R.append(derive("encrypted-footer-metadata", "basic",
                     "The part's footer declares encryption (FileMetaData.encryption_algorithm AES_GCM_V1); its magics "
                     "are PAR1 and its pages plaintext.", None, parts={B: declare_encryption}))
