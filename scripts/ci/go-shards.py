@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Four race shards. New tests and packages automatically enter rest."""
+"""Race shards: one per heavy root test, then rest. New tests and packages automatically enter rest."""
 import argparse
 import json
 import re
@@ -10,7 +10,9 @@ from pathlib import Path
 GO = Path(__file__).resolve().parents[2] / 'go'
 HEAVY = {'differential': 'TestListIndexDifferential',
          'randomized': 'TestListIndexRandomizedDifferential',
-         'faults': 'TestFaultMatrix'}
+         'faults': 'TestFaultMatrix',
+         'browse-oracle': 'TestBrowseRowsOracle',
+         'range-batches': 'TestRangeBatchesMatchesRange'}
 SHARDS = [*HEAVY, 'rest']
 EXCLUDED = '^(' + '|'.join(HEAVY.values()) + ')$'
 
