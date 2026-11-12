@@ -260,63 +260,27 @@ func (v *valueScan) wave(row int64) {
 		if done {
 			break
 		}
-		for c, name := range rp.columns {
-			if slices.Contains(rp.columns[:c], name) || len(ranges) == 0 {
-				continue
-			}
-			col, ok := p.leaves[name]
-			if !ok {
-				continue
-			}
-			meta := &p.footer.Metadata().RowGroups[grp.physical].Columns[col.index].MetaData
-			start, end, ok := chunkRange(meta)
-			if !ok || end > p.size {
-				continue
-			}
-			var locs []pageLoc
-			if g == v.g {
-				cp := v.pages[c]
-				locs = cp.locs
-				if locs == nil {
-					start = cp.off
-				}
-			} else {
-				locs = p.planLocs(grp.physical, col, start, end)
-			}
-			add := func(off, size, rowEnd int64) bool {
-				if size <= 0 || rp.w.holds(p, off, size) {
-					return true
-				}
-				if total+size > rp.waveBytes || len(exts) >= MaxReadRanges {
-					return false
-				}
-				exts = append(exts, extent{p, off, size, rowEnd})
-				total += size
-				return true
-			}
-			if locs == nil {
-				// Unknown page coverage: prefetch only a page-sized prefix,
-				// never an unchecked whole chunk larger than the page limit.
-				limit := min(readWindowBytes, v.r.limits.PageBytes+v.r.limits.headerBytes())
-				if !add(start, min(end-start, limit), grp.start+grp.rows) {
-					goto fetch
-				}
-				continue
-			}
-			if !add(start, locs[0].offset-start, grp.start+grp.rows) {
+		var pages []*columnPages
+		if g == v.g {
+			pages = v.pages
+		}
+		for _, u := range rp.valueUnits(p, g, ranges, pages) {
+			if u.stop {
 				goto fetch
 			}
-			last := -1
-			for _, rg := range ranges {
-				first, end := pageAt(locs, rg[0]-grp.start), pageAt(locs, rg[1]-grp.start-1)
-				for i := max(first, last+1); i <= end; i++ {
-					loc := locs[i]
-					if !add(loc.offset, loc.size, grp.start+loc.first+loc.rows) {
-						goto fetch
-					}
+			var fresh []extent
+			var size int64
+			for _, e := range u.exts {
+				if e.size > 0 && !rp.w.holds(e.p, e.off, e.size) {
+					fresh = append(fresh, e)
+					size += e.size
 				}
-				last = end
 			}
+			if total > 0 && total+size > rp.waveBytes || len(exts)+len(fresh) > MaxReadRanges {
+				goto fetch
+			}
+			exts = append(exts, fresh...)
+			total += size
 		}
 		g = g.next()
 	}

@@ -6,6 +6,7 @@ package seekparquet
 import (
 	"bytes"
 	"context"
+	"slices"
 	"sort"
 )
 
@@ -172,20 +173,14 @@ type unit struct {
 func (rp *readPlan) units(p *part, g groupRef, ranges [][2]int64, end []byte) []unit {
 	grp := p.groups[g.index]
 	phys := grp.physical
-	type column struct {
-		locs       []pageLoc
-		start, end int64
-		next       int // the first page not yet in a unit
-		whole      bool
-	}
-	var cols []column
+	var cols []unitColumn
 	add := func(col leaf) bool {
 		meta := &p.footer.Metadata().RowGroups[phys].Columns[col.index].MetaData
 		start, stop, ok := chunkRange(meta)
 		if !ok || stop > p.size {
 			return false
 		}
-		cols = append(cols, column{locs: p.planLocs(phys, col, start, stop), start: start, end: stop})
+		cols = append(cols, unitColumn{locs: p.planLocs(phys, col, start, stop), start: start, end: stop})
 		return true
 	}
 	if !add(p.key) {
@@ -200,6 +195,59 @@ func (rp *readPlan) units(p *part, g groupRef, ranges [][2]int64, end []byte) []
 	if end != nil {
 		index = p.index[phys].Load()
 	}
+	return rp.pageUnits(p, g, ranges, cols, index, end)
+}
+
+type unitColumn struct {
+	locs       []pageLoc
+	start, end int64
+	next       int // the first page not yet in a unit
+	whole      bool
+	prefix     bool // allow bounded prefixes for unindexed value walkers
+}
+
+// valueUnits is units without the implicit key column. The current group's
+// walkers supply checked locations even when the Dataset could not keep
+// them. Unindexed walkers continue from the next unread header.
+func (rp *readPlan) valueUnits(p *part, g groupRef, ranges [][2]int64, pages []*columnPages) []unit {
+	grp := p.groups[g.index]
+	var cols []unitColumn
+	for c, name := range rp.columns {
+		if slices.Contains(rp.columns[:c], name) {
+			continue
+		}
+		col, ok := p.leaves[name]
+		if !ok {
+			continue
+		}
+		meta := &p.footer.Metadata().RowGroups[grp.physical].Columns[col.index].MetaData
+		start, end, ok := chunkRange(meta)
+		if !ok || end > p.size {
+			continue
+		}
+		var locs []pageLoc
+		if pages != nil {
+			cp := pages[c]
+			locs = cp.locs
+			if locs == nil {
+				start = cp.off
+			}
+		} else {
+			locs = p.planLocs(grp.physical, col, start, end)
+		}
+		cols = append(cols, unitColumn{locs: locs, start: start, end: end, prefix: true})
+	}
+	return rp.pageUnits(p, g, ranges, cols, nil, nil)
+}
+
+// pageUnits applies the same extent, descriptor and wave bounds with or
+// without keys. The first column's page rows divide the units; only a key
+// index can also stop them at a key upper bound.
+func (rp *readPlan) pageUnits(p *part, g groupRef, ranges [][2]int64, cols []unitColumn, index *groupIndex, end []byte) []unit {
+	if len(cols) == 0 {
+		return nil
+	}
+	grp := p.groups[g.index]
 	keys := cols[0].locs
 	var units []unit
 	totalBytes, descriptors := int64(0), 0
@@ -228,8 +276,14 @@ func (rp *readPlan) units(p *part, g groupRef, ranges [][2]int64, end []byte) []
 				}
 				if col.locs == nil {
 					col.whole = true
-					if col.end-col.start <= maxExtent {
-						u.exts = append(u.exts, extent{p, col.start, col.end - col.start, groupEnd})
+					size := col.end - col.start
+					if size > maxExtent && col.prefix {
+						// Unknown page coverage: a bounded prefix helps the header
+						// walker without fetching an unchecked oversized chunk.
+						size = min(readWindowBytes, maxExtent)
+					}
+					if size <= maxExtent {
+						u.exts = append(u.exts, extent{p, col.start, size, groupEnd})
 					}
 					continue
 				}

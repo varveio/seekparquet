@@ -579,7 +579,7 @@ func TestScanValuesUnindexedWindows(t *testing.T) {
 			if len(src.batches) == 0 {
 				t.Fatal("unindexed chunk bypassed windows")
 			}
-			limit := min(readWindowBytes, d.r.limits.PageBytes+d.r.limits.headerBytes())
+			limit := min(readWindowBytes, d.r.limits.PageBytes)
 			for _, batch := range src.batches {
 				for _, rg := range batch {
 					if rg[1] > limit {

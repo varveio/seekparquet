@@ -212,9 +212,9 @@ type ListEntry struct {
 	// The positions are owned values, independent of result byte slices.
 	//
 	// A common prefix's End is unknown when the listing stops at Limit on
-	// it, and when End falls inside the prefix's keys; its Start is unknown
-	// when a prefix cursor resumes inside the keys of the row group that
-	// begins it.
+	// it, and when End falls inside the prefix's keys. Its Start identifies
+	// the first candidate row, including when a cursor resumes inside a
+	// row group.
 	Rows RowSpan
 }
 
@@ -549,18 +549,18 @@ func (s *scan) seekList(from []byte, req ListQuery, l *listing) error {
 		// boundary knownness even when their routing evidence differs.
 		first := *s.r.group(g).first.Load()
 		if bytes.Compare(first, from) < 0 {
-			s.stats.GroupsSkipped-- // this shortcut will be read after all
 			if err := s.seek(from, true); err != nil {
 				return err
 			}
 			l.reached(s, from)
 			return nil
 		}
+		s.stats.GroupsSkipped++
 		start := s.r.startOf(g)
 		if s.end == nil || bytes.Compare(from, s.end) <= 0 {
 			l.close(start)
 		}
-		l.prefix(whole, bytes.Equal(first, whole) && start >= 0, 0, position{g, 0}, start)
+		l.prefix(whole, bytes.Equal(first, whole), 0, position{g, 0}, start)
 		next, ok := successor(whole)
 		if !ok {
 			l.last(s.end)
@@ -677,7 +677,7 @@ func (r *reader) projectWindows(w *windows, p *part, at []position, columns []st
 		}
 		if dictionaryOnly && locs[0].offset > start {
 			if locs[0].offset-start > r.limits.PageBytes {
-				return // leave a possible page-limit failure to demand
+				goto fetch // leave a possible page-limit failure to demand
 			}
 			exts = append(exts, extent{p, start, locs[0].offset - start, endRow})
 		}
@@ -689,7 +689,7 @@ func (r *reader) projectWindows(w *windows, p *part, at []position, columns []st
 			}
 			loc := locs[pg]
 			if loc.size > r.limits.PageBytes {
-				return // do not fetch later columns past a possible limit error
+				goto fetch // do not fetch later columns past a possible limit error
 			}
 			exts = append(exts, extent{p, loc.offset, loc.size, endRow})
 			previous = pg
@@ -698,6 +698,7 @@ func (r *reader) projectWindows(w *windows, p *part, at []position, columns []st
 			}
 		}
 	}
+fetch:
 	sortExtents(exts)
 	w.fetch(exts, false)
 }

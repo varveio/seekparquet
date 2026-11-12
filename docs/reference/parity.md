@@ -47,12 +47,12 @@ A dash means the language has no counterpart. Names are checked against the code
 | List | `Dataset.List` | `Dataset.list` |  |
 | A listing entry | `ListEntry` | `ListEntry` | Java's ListEntry is sealed: RowEntry or CommonPrefix. |
 | Listing read-ahead | `ListQuery.ReadAhead` | `ListQuery.readAhead` |  |
-| Candidate rows of a listing entry | `ListEntry.Rows` | `ListEntry.rows` | Java pending on claude/browse-api. |
-| Dataset-bound row boundary | `RowPosition` | `RowPosition` | Java pending on claude/browse-api. |
-| Row boundary ordinal | `RowPosition.Ordinal` | `RowPosition.ordinal` | Java pending on claude/browse-api. |
-| Interval of dataset rows | `RowSpan` | `RowSpan` | Java pending on claude/browse-api. |
-| Inclusive row boundary | `RowSpan.Start` | `RowSpan.start` | Java pending on claude/browse-api. |
-| Exclusive row boundary | `RowSpan.End` | `RowSpan.end` | Java pending on claude/browse-api. |
+| Candidate rows of a listing entry | `ListEntry.Rows` | `ListEntry.rows` | Java pending on planned: Java browse API. |
+| Dataset-bound row boundary | `RowPosition` | `RowPosition` | Java pending on planned: Java browse API. |
+| Row boundary ordinal | `RowPosition.Ordinal` | `RowPosition.ordinal` | Java pending on planned: Java browse API. |
+| Interval of dataset rows | `RowSpan` | `RowSpan` | Java pending on planned: Java browse API. |
+| Inclusive row boundary | `RowSpan.Start` | `RowSpan.start` | Java pending on planned: Java browse API. |
+| Exclusive row boundary | `RowSpan.End` | `RowSpan.end` | Java pending on planned: Java browse API. |
 
 ## Cursors
 
@@ -76,14 +76,14 @@ A dash means the language has no counterpart. Names are checked against the code
 | Accounted compressed bytes of projected columns | `Plan.ProjectedBytes` | `Plan.projectedBytes` | Excludes footers, page indexes and key pages. Chunks without OffsetIndexes are omitted and make the estimate inexact; it is not total scan I/O or an upper bound. |
 | Split a plan into shards | `Plan.Split` | `Plan.split` |  |
 | Scan a plan | `Plan.Scan` | `Plan.scan` |  |
-| Plan a union of row intervals | `Dataset.PlanRows` | `Dataset.planRows` | Java pending on claude/browse-api. |
-| Input row intervals before union normalization | `Plan.RowSpans` | `Plan.rowSpans` | Java pending on claude/browse-api. |
-| Select contained rows without I/O | `Plan.SelectRows` | `Plan.selectRows` | Java pending on claude/browse-api. |
-| Scan projected values by row position | `Plan.ScanValues` | `Plan.scanValues` | Java pending on claude/browse-api. |
-| Borrowed projected values | `ValueBatch` | `ValueBatch` | Java pending on claude/browse-api. |
-| Rows in a value batch | `ValueBatch.Len` | `ValueBatch.len` | Java pending on claude/browse-api. |
-| First row of a value batch | `ValueBatch.Start` | `ValueBatch.start` | Java pending on claude/browse-api. |
-| Projected column of a value batch | `ValueBatch.Column` | `ValueBatch.column` | Java pending on claude/browse-api. |
+| Plan a union of row intervals | `Dataset.PlanRows` | `Dataset.planRows` | Java pending on planned: Java browse API. |
+| Input row intervals before union normalization | `Plan.RowSpans` | `Plan.rowSpans` | Java pending on planned: Java browse API. |
+| Select contained rows without I/O | `Plan.SelectRows` | `Plan.selectRows` | Java pending on planned: Java browse API. |
+| Scan projected values by row position | `Plan.ScanValues` | `Plan.scanValues` | Java pending on planned: Java browse API. |
+| Borrowed projected values | `ValueBatch` | `ValueBatch` | Java pending on planned: Java browse API. |
+| Rows in a value batch | `ValueBatch.Len` | `ValueBatch.len` | Java pending on planned: Java browse API. |
+| First row of a value batch | `ValueBatch.Start` | `ValueBatch.start` | Java pending on planned: Java browse API. |
+| Projected column of a value batch | `ValueBatch.Column` | `ValueBatch.column` | Java pending on planned: Java browse API. |
 
 ## List index
 

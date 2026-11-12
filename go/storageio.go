@@ -32,7 +32,9 @@ func (e *storageError) Unwrap() error { return e.err }
 // part (or manifest) name, at every part-read boundary: an object found
 // to differ in size from its manifest entry when first read is refused
 // with part_mismatch, one found missing with missing_part; a broken pin
-// (ErrObjectChanged) and every other error are the environment's.
+// (ErrObjectChanged) and every other error are the environment's. When
+// the walk is truncated, a classification already found takes precedence
+// over any cause the walk did not reach.
 func sourceError(name string, err error) error {
 	// Do not use errors.Is/As here: sources may return cyclic error trees.
 	// Visit at most maxEOFCauses nodes. If classification is incomplete,
@@ -152,8 +154,8 @@ func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
 	// Recover only the source invocation, so reader bugs still panic.
 	n, err := func() (n int, err error) {
 		defer func() {
-			if recover() != nil {
-				err = errSourcePanic
+			if v := recover(); v != nil {
+				err = fmt.Errorf("%w: %v", errSourcePanic, v)
 			}
 		}()
 		return s.r.ReadAt(p, off)
@@ -635,8 +637,8 @@ func readBatches(ctx context.Context, rf rangeFile, rr RangeReader, ranges []Rea
 				defer limit.release(slots)
 				return func() (err error) {
 					defer func() {
-						if recover() != nil {
-							err = errSourcePanic
+						if v := recover(); v != nil {
+							err = fmt.Errorf("%w: %v", errSourcePanic, v)
 						}
 					}()
 					return rr.ReadRanges(ctx, batch)

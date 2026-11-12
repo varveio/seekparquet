@@ -1,5 +1,5 @@
 {
-  "description": "Go symbol to Java symbol for the same concept, rendered into docs/reference/parity.md. Go names are checked against the Go packages (go/, go/write, go/local) by go/internal/tools/docgen. Java names are checked against java/seekparquet/src/main/java; set java_pending on a row to a PR or branch to skip checking that Java name while it lags; a top-level java_pending skips all Java checks. A name starting with std: is a standard-library type and is not checked. null means the language has no counterpart.",
+  "description": "Go symbol to Java symbol for the same concept, rendered into docs/reference/parity.md. Go names are checked against the Go packages (go/, go/write, go/local) by go/internal/tools/docgen. Java names are checked against java/seekparquet/src/main/java; set java_pending on a row to a tracking reference or planned-work marker to skip checking that Java name while it lags; a top-level java_pending skips all Java checks. A name starting with std: is a standard-library type and is not checked. null means the language has no counterpart.",
   "sections": [
     {
       "title": "Opening and closing",
@@ -42,12 +42,12 @@
         {"concept": "List", "go": "Dataset.List", "java": "Dataset.list"},
         {"concept": "A listing entry", "go": "ListEntry", "java": "ListEntry", "note": "Java's ListEntry is sealed: RowEntry or CommonPrefix."},
         {"concept": "Listing read-ahead", "go": "ListQuery.ReadAhead", "java": "ListQuery.readAhead"},
-        {"concept": "Candidate rows of a listing entry", "go": "ListEntry.Rows", "java": "ListEntry.rows", "java_pending": "claude/browse-api"},
-        {"concept": "Dataset-bound row boundary", "go": "RowPosition", "java": "RowPosition", "java_pending": "claude/browse-api"},
-        {"concept": "Row boundary ordinal", "go": "RowPosition.Ordinal", "java": "RowPosition.ordinal", "java_pending": "claude/browse-api"},
-        {"concept": "Interval of dataset rows", "go": "RowSpan", "java": "RowSpan", "java_pending": "claude/browse-api"},
-        {"concept": "Inclusive row boundary", "go": "RowSpan.Start", "java": "RowSpan.start", "java_pending": "claude/browse-api"},
-        {"concept": "Exclusive row boundary", "go": "RowSpan.End", "java": "RowSpan.end", "java_pending": "claude/browse-api"}
+        {"concept": "Candidate rows of a listing entry", "go": "ListEntry.Rows", "java": "ListEntry.rows", "java_pending": "planned: Java browse API"},
+        {"concept": "Dataset-bound row boundary", "go": "RowPosition", "java": "RowPosition", "java_pending": "planned: Java browse API"},
+        {"concept": "Row boundary ordinal", "go": "RowPosition.Ordinal", "java": "RowPosition.ordinal", "java_pending": "planned: Java browse API"},
+        {"concept": "Interval of dataset rows", "go": "RowSpan", "java": "RowSpan", "java_pending": "planned: Java browse API"},
+        {"concept": "Inclusive row boundary", "go": "RowSpan.Start", "java": "RowSpan.start", "java_pending": "planned: Java browse API"},
+        {"concept": "Exclusive row boundary", "go": "RowSpan.End", "java": "RowSpan.end", "java_pending": "planned: Java browse API"}
       ]
     },
     {
@@ -71,14 +71,14 @@
         {"concept": "Accounted compressed bytes of projected columns", "go": "Plan.ProjectedBytes", "java": "Plan.projectedBytes", "note": "Excludes footers, page indexes and key pages. Chunks without OffsetIndexes are omitted and make the estimate inexact; it is not total scan I/O or an upper bound."},
         {"concept": "Split a plan into shards", "go": "Plan.Split", "java": "Plan.split"},
         {"concept": "Scan a plan", "go": "Plan.Scan", "java": "Plan.scan"},
-        {"concept": "Plan a union of row intervals", "go": "Dataset.PlanRows", "java": "Dataset.planRows", "java_pending": "claude/browse-api"},
-        {"concept": "Input row intervals before union normalization", "go": "Plan.RowSpans", "java": "Plan.rowSpans", "java_pending": "claude/browse-api"},
-        {"concept": "Select contained rows without I/O", "go": "Plan.SelectRows", "java": "Plan.selectRows", "java_pending": "claude/browse-api"},
-        {"concept": "Scan projected values by row position", "go": "Plan.ScanValues", "java": "Plan.scanValues", "java_pending": "claude/browse-api"},
-        {"concept": "Borrowed projected values", "go": "ValueBatch", "java": "ValueBatch", "java_pending": "claude/browse-api"},
-        {"concept": "Rows in a value batch", "go": "ValueBatch.Len", "java": "ValueBatch.len", "java_pending": "claude/browse-api"},
-        {"concept": "First row of a value batch", "go": "ValueBatch.Start", "java": "ValueBatch.start", "java_pending": "claude/browse-api"},
-        {"concept": "Projected column of a value batch", "go": "ValueBatch.Column", "java": "ValueBatch.column", "java_pending": "claude/browse-api"}
+        {"concept": "Plan a union of row intervals", "go": "Dataset.PlanRows", "java": "Dataset.planRows", "java_pending": "planned: Java browse API"},
+        {"concept": "Input row intervals before union normalization", "go": "Plan.RowSpans", "java": "Plan.rowSpans", "java_pending": "planned: Java browse API"},
+        {"concept": "Select contained rows without I/O", "go": "Plan.SelectRows", "java": "Plan.selectRows", "java_pending": "planned: Java browse API"},
+        {"concept": "Scan projected values by row position", "go": "Plan.ScanValues", "java": "Plan.scanValues", "java_pending": "planned: Java browse API"},
+        {"concept": "Borrowed projected values", "go": "ValueBatch", "java": "ValueBatch", "java_pending": "planned: Java browse API"},
+        {"concept": "Rows in a value batch", "go": "ValueBatch.Len", "java": "ValueBatch.len", "java_pending": "planned: Java browse API"},
+        {"concept": "First row of a value batch", "go": "ValueBatch.Start", "java": "ValueBatch.start", "java_pending": "planned: Java browse API"},
+        {"concept": "Projected column of a value batch", "go": "ValueBatch.Column", "java": "ValueBatch.column", "java_pending": "planned: Java browse API"}
       ]
     },
     {

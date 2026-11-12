@@ -582,3 +582,44 @@ func TestScanValuesWindows(t *testing.T) {
 		})
 	}
 }
+
+// An indexed page beyond PageBytes must stop a wave before later pages
+// are transferred, just as it does for the key-bearing planned scan.
+func TestScanValuesIndexedPageLimitBytes(t *testing.T) {
+	fx := ioFixtureOf(t, ioTiny)
+	for _, store := range []ioStore{plainStore, capableStore} {
+		for _, cols := range [][]string{{"size"}, {"size", "etag"}, {"size", "size"}} {
+			t.Run(fmt.Sprintf("%s/%v", store.name, cols), func(t *testing.T) {
+				var metrics [2]ioMetrics
+				for mode := range metrics {
+					synctest.Test(t, func(t *testing.T) {
+						ctx := context.Background()
+						src := fakestore.New(fx.objects, ioOptions)
+						opt := store.opt
+						opt.Limits.PageBytes = 2000
+						d, err := seekparquet.OpenDataset(ctx, store.wrap(src), opt)
+						must(t, err)
+						defer d.Close()
+						p, err := d.Plan(ctx, []seekparquet.Selection{{}}, cols, nil)
+						must(t, err)
+						op := src.Begin("page-limit")
+						if mode == 0 {
+							err = p.ScanValues(ctx, nil, func(*seekparquet.ValueBatch) error { t.Fatal("decoded oversized page"); return nil })
+						} else {
+							err = p.Scan(ctx, nil, func(*seekparquet.Batch) error { t.Fatal("decoded oversized page"); return nil })
+						}
+						var limit *seekparquet.LimitError
+						if !errors.As(err, &limit) || limit.Limit != seekparquet.LimitPageBytes {
+							t.Fatalf("want PageBytes limit, got %v", err)
+						}
+						metrics[mode] = metricsOf(op.End())
+					})
+				}
+				t.Logf("values %+v, scan %+v", metrics[0], metrics[1])
+				if metrics[0].Bytes > metrics[1].Bytes {
+					t.Fatalf("values transferred %d bytes before limit error, scan %d", metrics[0].Bytes, metrics[1].Bytes)
+				}
+			})
+		}
+	}
+}

@@ -360,6 +360,5 @@ func (s *scan) shortcut(from, prefix []byte, delim byte) ([]byte, groupRef, erro
 	if !bytes.Equal(whole, commonPrefix(next, prefix, delim)) || s.end != nil && bytes.Compare(next, s.end) >= 0 {
 		return nil, g, nil
 	}
-	s.stats.GroupsSkipped++
 	return bytes.Clone(whole), g, nil
 }
