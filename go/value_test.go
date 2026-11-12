@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/parquet-go/parquet-go"
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
@@ -357,5 +358,59 @@ func TestColumnsConvertedTypeExact(t *testing.T) {
 	group := format.SchemaElement{Name: "g", NumChildren: thrift.New[int32](1), RepetitionType: thrift.New(format.Optional)}
 	if col := columnOf(&group, "key"); !col.Group || col.Type != KindNone || col.Repetition != Optional || col.String() != "g group OPTIONAL" {
 		t.Errorf("group: %+v %q", col, col.String())
+	}
+}
+
+// TestValueRepresentation pins what bitsOf relies on in parquet-go: a
+// value's first word is the pointer to its bytes (nil for a numeric kind),
+// and Uint64 returns its bits, for every kind: a Value made from a
+// parquet-go value reads back what parquet-go's own accessor for its kind
+// returns, signalling NaNs, negative zeros, INT96 and empty bytes included.
+func TestValueRepresentation(t *testing.T) {
+	if f, ok := reflect.TypeOf(parquet.Value{}).FieldByName("ptr"); !ok || f.Offset != 0 || f.Type.Kind() != reflect.Pointer {
+		t.Fatalf("parquet.Value's first word is not its byte pointer: %+v", f)
+	}
+	snan32, snan64 := uint32(0x7f800001), uint64(0x7ff0000000000001)
+	values := []parquet.Value{
+		{}, parquet.BooleanValue(false), parquet.BooleanValue(true),
+		parquet.Int32Value(0), parquet.Int32Value(-1), parquet.Int32Value(math.MinInt32), parquet.Int32Value(math.MaxInt32),
+		parquet.Int64Value(math.MinInt64), parquet.Int64Value(-1), parquet.Int64Value(math.MaxInt64),
+		parquet.Int96Value(deprecated.Int96{1, 0xffffffff, 0x80000000}), parquet.Int96Value(deprecated.Int96{}),
+		parquet.FloatValue(math.Float32frombits(snan32)), parquet.FloatValue(float32(math.Copysign(0, -1))), parquet.FloatValue(float32(math.Inf(-1))),
+		parquet.DoubleValue(math.Float64frombits(snan64)), parquet.DoubleValue(math.Copysign(0, -1)), parquet.DoubleValue(math.NaN()),
+		parquet.ByteArrayValue(nil), parquet.ByteArrayValue([]byte{}), parquet.ByteArrayValue([]byte{0, 0xff}),
+		parquet.FixedLenByteArrayValue([]byte{1, 2, 3}),
+	}
+	for i, pv := range values {
+		v := valueOf(&pv, false)
+		ok := v.Kind() == kindOf(pv.Kind()) && v.IsNull() == pv.IsNull()
+		switch pv.Kind() {
+		case parquet.Boolean:
+			ok = ok && v.Boolean() == pv.Boolean()
+		case parquet.Int32:
+			ok = ok && v.Int32() == pv.Int32() && v.Uint32() == pv.Uint32()
+		case parquet.Int64:
+			ok = ok && v.Int64() == pv.Int64() && v.Uint64() == pv.Uint64()
+		case parquet.Int96:
+			ok = ok && v.Int96() == Int96(pv.Int96())
+		case parquet.Float:
+			ok = ok && math.Float32bits(v.Float()) == math.Float32bits(pv.Float())
+		case parquet.Double:
+			ok = ok && math.Float64bits(v.Double()) == math.Float64bits(pv.Double())
+		case parquet.ByteArray, parquet.FixedLenByteArray:
+			ok = ok && bytes.Equal(v.Bytes(), pv.ByteArray()) && (len(v.Bytes()) == 0 || &v.Bytes()[0] == &pv.ByteArray()[0])
+		}
+		if k := pv.Kind(); k != parquet.ByteArray && k != parquet.FixedLenByteArray && k != parquet.Int96 && v.ptr != nil {
+			ok = false
+		}
+		if !ok {
+			t.Errorf("value %d (%v): read back %v", i, pv, v)
+		}
+		if c := v.Clone(); !equalValue(c, v) {
+			t.Errorf("value %d: clone %v", i, c)
+		}
+	}
+	if math.Float32bits(valueOf(&values[12], false).Float()) != snan32 || math.Float64bits(valueOf(&values[15], false).Double()) != snan64 {
+		t.Error("a signalling NaN changed")
 	}
 }

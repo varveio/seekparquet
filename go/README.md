@@ -389,13 +389,14 @@ project the key.
 projection slot `c`, in request order, including duplicates: a small value over the decoded page, made
 without allocating, with `Present()`, `Kind()`, `Len()`, `IsNull(i)`, `Value(i)` (a borrowed `Value`) and
 typed accessors (`Int64(i)`, `Bytes(i)`, ...) for loops over a column of a known `Kind`: they test no kind
-per value, so on a column of another kind their bits are unspecified (never a panic; `Bytes` is nil), where
+per value, so on a column of another kind their bits are unspecified (never a panic; `Bytes` returns no bytes), where
 `Value(i)`'s accessors return the zero value. A view that is not `Present` is a column the part lacks: its
 `Len()` values are absent. `Batch.Columns()` names the slots. A projected key remains an ordinary projected
 column.
 
 Each batch is a positive run within one row group, one key page, one page of every projected column,
-and one selected span. It never crosses a gap in the selection. Pages need not align across columns;
+and one selected span, and holds at most 4,096 rows when a projected column is absent from the part (such a
+column takes no storage). It never crosses a gap in the selection. Pages need not align across columns;
 batches may be small, and maximal size is not promised. **The batch object, views, keys and value
 bytes are borrowed, read-only, and valid only until the callback returns.** Do not retain them or
 pass them to work that outlives the callback. `batch.Row(i)` and `batch.Cursor(i)` make owning copies,

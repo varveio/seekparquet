@@ -12,20 +12,22 @@ only when, they appear in capitals.
 
 ## Grammar
 
-A token is ASCII text with no whitespace:
+A token is ASCII text with no whitespace, in the ABNF of RFC 5234 with the case-sensitive string literals
+of RFC 7405 (`%s"..."`):
 
 ```
-token        = row-token / prefix-token
-row-token    = "spc1" "." "r" "." payload "." offset
-prefix-token = "spc1" "." "p" "." payload
-payload      = *base64url-char           ; canonical unpadded base64url of the bytes
-offset       = "0" / nonzero *9DIGIT     ; up to 19 digits, at most 9223372036854775807
-nonzero      = %x31-39
+token          = row-token / prefix-token
+row-token      = %s"spc1" "." %s"r" "." payload "." offset
+prefix-token   = %s"spc1" "." %s"p" "." payload
+payload        = *base64url-char        ; canonical unpadded base64url of the bytes
+offset         = "0" / nonzero *18DIGIT ; at most 19 digits, and at most 9223372036854775807
+nonzero        = %x31-39
 base64url-char = ALPHA / DIGIT / "-" / "_"
 ```
 
-- `spc1` is the version of the token, independent of the format version and draft revision. A reader MUST
-  reject any other version, including other spellings of this one (`SPC1`).
+- `spc1` is the version of the token, independent of the format version and draft revision. The version
+  and the tags are case-sensitive: a reader MUST reject any other version, including other spellings of
+  this one (`SPC1`), and the tags `R` and `P`.
 - The tag `r` is a row cursor `(k, n)` and `p` a prefix cursor `c` (PAGE-1). A reader MUST reject any other
   tag. A row token has exactly four segments and a prefix token exactly three, separated by single `.`
   characters; nothing precedes the version or follows the last segment.

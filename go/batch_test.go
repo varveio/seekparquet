@@ -305,12 +305,13 @@ func TestScanBatchesAbsentAfterPresentGroups(t *testing.T) {
 		for c := range 2 {
 			values, ok := rawColumn(b, c)
 			if absent {
-				if ok || len(values) != b.Len() || b.Column(c).Kind() != KindNone {
+				view := b.Column(c)
+				if ok || values != nil || view.Kind() != KindNone || view.Len() != b.Len() {
 					t.Fatalf("column %d retained values from previous part", c)
 				}
-				for i := range values {
-					if values[i] != (parquet.Value{}) || !b.Column(c).Value(i).Absent() {
-						t.Fatalf("column %d retained values from previous part", c)
+				for i := range b.Len() {
+					if v := view.Value(i); !v.Absent() || v.IsNull() || view.IsNull(i) || view.Int64(i) != 0 || view.Bytes(i) != nil {
+						t.Fatalf("column %d value %d is not absent", c, i)
 					}
 				}
 			} else if !ok || len(values) != b.Len() {

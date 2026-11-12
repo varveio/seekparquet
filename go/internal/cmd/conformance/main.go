@@ -437,7 +437,9 @@ func cursorField(req map[string]json.RawMessage) (*seekparquet.Cursor, error) {
 }
 
 // errInt96 reports a value the protocol has no encoding for.
-var errInt96 = &seekparquet.UnsupportedError{Code: seekparquet.UnsupportedProjection, Detail: "INT96 values have no protocol encoding"}
+func errInt96() error {
+	return &seekparquet.UnsupportedError{Code: seekparquet.UnsupportedProjection, Detail: "INT96 values have no protocol encoding"}
+}
 
 // encodeValue encodes a projected value as its physical Parquet value.
 func encodeValue(v seekparquet.Value) (map[string]any, error) {
@@ -461,7 +463,7 @@ func encodeValue(v seekparquet.Value) (map[string]any, error) {
 	case seekparquet.KindByteArray, seekparquet.KindFixedLenByteArray:
 		return map[string]any{"bytes_base64": base64.StdEncoding.EncodeToString(v.Bytes())}, nil
 	}
-	return nil, errInt96
+	return nil, errInt96()
 }
 
 // failure classifies an error from the library.

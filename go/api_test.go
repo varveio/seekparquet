@@ -7,9 +7,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"math"
+	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/parquet-go/parquet-go/format"
@@ -79,8 +82,18 @@ func TestRequestLimits(t *testing.T) {
 	if _, err := d.List(ctx, ListQuery{Delimiter: '/'}, nil); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("List limit 0: %v", err)
 	}
-	if rows, err := d.Rows(ctx, Query{Limit: math.MaxInt64}, nil); err != nil || len(rows) != 20 {
-		t.Fatalf("Rows MaxInt64: %d rows, %v", len(rows), err)
+	// A limit fits a slice's length or is invalid: on 64-bit platforms every
+	// positive int64 fits; on 32-bit ones math.MaxInt64 does not.
+	for _, limit := range []int64{math.MaxInt, math.MaxInt64} {
+		st := ReadStats{KeysDecoded: 9}
+		rows, err := d.Rows(ctx, Query{Limit: limit}, &st)
+		if limit <= math.MaxInt {
+			if err != nil || len(rows) != 20 {
+				t.Fatalf("Rows limit %d: %d rows, %v", limit, len(rows), err)
+			}
+		} else if !errors.Is(err, ErrInvalidRequest) || rows != nil || st != (ReadStats{}) {
+			t.Fatalf("Rows limit %d on a %d-bit platform: %d rows, %v, %+v", limit, strconv.IntSize, len(rows), err, st)
+		}
 	}
 }
 
@@ -284,5 +297,165 @@ func TestCachedRefusalDetached(t *testing.T) {
 	r := &RefusalError{Code: CodeKeyOrder, Key: []byte("k")}
 	if c := detach(r).(*RefusalError); c == r || &c.Key[0] == &r.Key[0] || string(c.Key) != "k" {
 		t.Fatal("refusal detach shares its key")
+	}
+}
+
+// TestEncryptedErrorsDetached: each encrypted part, and each InspectFooter,
+// reports an UnsupportedError of its own: changing the one a read returned
+// changes neither another part's, another dataset's, nor InspectFooter's.
+func TestEncryptedErrorsDetached(t *testing.T) {
+	encrypt := func(dir string, i int) {
+		raw, err := os.ReadFile(partFile(dir, i))
+		must(t, err)
+		copy(raw[len(raw)-4:], "PARE")
+		must(t, os.WriteFile(partFile(dir, i), raw, 0o644))
+	}
+	dir := write(t, parts(testutil.Part{}, []string{"a", "b"}, []string{"c", "d"}))
+	encrypt(dir, 0)
+	encrypt(dir, 1)
+	d := open(t, dir, OpenOptions{})
+	read := func(d *Dataset, prefix string) *UnsupportedError {
+		_, err := d.Rows(ctx, Query{Selection: Selection{Span: PrefixSpan([]byte(prefix))}, Limit: 1}, nil)
+		var u *UnsupportedError
+		if !errors.As(err, &u) || u.Code != UnsupportedEncryption {
+			t.Fatalf("%s: %v", prefix, err)
+		}
+		return u
+	}
+	inspect := func() *UnsupportedError {
+		f, err := os.Open(partFile(dir, 1))
+		must(t, err)
+		defer f.Close()
+		info, err := f.Stat()
+		must(t, err)
+		_, err = InspectFooter(f, info.Size())
+		var u *UnsupportedError
+		if !errors.As(err, &u) || u.Code != UnsupportedEncryption {
+			t.Fatalf("InspectFooter: %v", err)
+		}
+		return u
+	}
+	first := read(d, "a")
+	want := *first
+	first.Code, first.Detail = "changed", "changed"
+	second := inspect()
+	second.Code, second.Detail = "changed", "changed"
+	for _, u := range []*UnsupportedError{read(d, "c"), read(d, "a"), read(open(t, dir, OpenOptions{}), "c"), inspect()} {
+		if u == first || u == second || *u != want {
+			t.Fatalf("a changed error leaked: %+v", u)
+		}
+	}
+}
+
+// TestAbsentProjectionAllocatesNothing: a column the part lacks has no
+// storage: a scan projecting it allocates no more than one that does not,
+// however long its batches, and its view and values allocate nothing.
+func TestAbsentProjectionAllocatesNothing(t *testing.T) {
+	const n = 100_000
+	keys := make([]keyOnlyRecord, n)
+	for i := range keys {
+		keys[i].Key = fmt.Appendf(nil, "k%07d", i)
+	}
+	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: keys, PageBytes: 4 << 20}}}), OpenOptions{})
+	scan := func(columns ...string) (batches int) {
+		must(t, d.Scan(ctx, Query{Columns: columns}, nil, func(b *Batch) error {
+			batches++
+			return nil
+		}))
+		return batches
+	}
+	if batches := scan(); batches > 2 {
+		t.Fatalf("the fixture needs long batches: %d", batches)
+	}
+	scan("missing") // warm both
+	keysOnly := allocated(func() { scan() })
+	absent := allocated(func() { scan("missing", "missing") })
+	if absent > keysOnly+4<<10 {
+		t.Fatalf("projecting an absent column allocated %d bytes, keys only %d", absent, keysOnly)
+	}
+	must(t, d.Scan(ctx, Query{Columns: []string{"missing"}}, nil, func(b *Batch) error {
+		allocs := testing.AllocsPerRun(10, func() {
+			view := b.Column(0)
+			for i := range view.Len() {
+				if v := view.Value(i); !v.Absent() || view.IsNull(i) || view.Int64(i) != 0 {
+					t.Fatal("not absent")
+				}
+			}
+		})
+		if allocs != 0 {
+			t.Fatalf("an absent view allocated %v times", allocs)
+		}
+		return Stop
+	}))
+}
+
+// TestScanUnlimitedRepeatedKeys: an unlimited Scan over groups of equal keys
+// that span key pages and row groups, from the start, from a cursor inside
+// a group and to an upper bound inside a key page, returns the rows that
+// paging Rows over the same selection returns, concatenated.
+func TestScanUnlimitedRepeatedKeys(t *testing.T) {
+	var keys []string
+	for g := range 30 {
+		for range 1 + g*7%37 {
+			keys = append(keys, fmt.Sprintf("g%03d", g))
+		}
+	}
+	doc := testutil.Dataset{RepeatedKeys: true, Parts: []testutil.Part{
+		{Rows: testutil.Rows(keys[:len(keys)/2]...), GroupRows: 23, PageBytes: 96},
+		{Rows: testutil.Rows(keys[len(keys)/2:]...), GroupRows: 23, PageBytes: 96},
+	}}
+	if keys[len(keys)/2-1] == keys[len(keys)/2] {
+		// A group never crosses parts: move the cut to a group boundary.
+		cut := len(keys) / 2
+		for keys[cut-1] == keys[cut] {
+			cut++
+		}
+		doc.Parts[0].Rows, doc.Parts[1].Rows = testutil.Rows(keys[:cut]...), testutil.Rows(keys[cut:]...)
+	}
+	d := open(t, write(t, doc), OpenOptions{})
+	columns := []string{"size", "name"}
+	paged := func(sel Selection) []Row {
+		var out []Row
+		q := Query{Selection: sel, Limit: 7, Columns: columns}
+		for {
+			page, err := d.Rows(ctx, q, nil)
+			must(t, err)
+			out = append(out, page...)
+			if len(page) < 7 {
+				return out
+			}
+			q.Cursor = page[len(page)-1].Cursor()
+		}
+	}
+	scanned := func(sel Selection) []Row {
+		var out []Row
+		must(t, d.Scan(ctx, Query{Selection: sel, Columns: columns}, nil, func(b *Batch) error {
+			for i := range b.Len() {
+				out = append(out, b.Row(i))
+			}
+			return nil
+		}))
+		return out
+	}
+	// g012 holds 1+84%37 = 11 rows; g020 1+140%37 = 30, across pages and groups.
+	for _, sel := range []Selection{
+		{},
+		{Span: Span{Start: []byte("g005")}},
+		{Cursor: RowCursor([]byte("g020"), 13)},
+		{Span: Span{Start: []byte("g010")}, Cursor: RowCursor([]byte("g012"), 4)},
+		{Span: Span{End: []byte("g020\x00")}},
+		{Span: Span{Start: []byte("g003"), End: []byte("g011")}},
+		{Span: KeySpan([]byte("g020"))},
+		{Span: KeySpan([]byte("g020")), Cursor: RowCursor([]byte("g020"), 28)},
+	} {
+		want, got := paged(sel), scanned(sel)
+		if len(want) == 0 || !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s: scanned %d rows, paged %d", describe(sel), len(got), len(want))
+		}
+		for i := 1; i < len(got); i++ {
+			if bytes.Equal(got[i].Key, got[i-1].Key) && got[i].Offset != got[i-1].Offset+1 {
+				t.Fatalf("%s: offsets %d then %d", describe(sel), got[i-1].Offset, got[i].Offset)
+			}
+		}
 	}
 }

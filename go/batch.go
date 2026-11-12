@@ -15,7 +15,9 @@ import (
 
 // Batch is a positive run of consecutive selected rows in dataset order.
 // It never crosses a row group, a key page, a page of any projected column,
-// or a selected-span gap. Batches may be smaller; maximal size is not promised.
+// or a selected-span gap, and holds at most 4,096 rows when a projected
+// column is absent from the part. Batches may be smaller; maximal size is
+// not promised.
 //
 // The batch object, keys, column views and their value bytes are borrowed,
 // read-only, and valid only until the Dataset.Scan or Plan.Scan callback
@@ -28,7 +30,7 @@ type Batch struct {
 	columns []string
 	values  [][]parquet.Value
 	// kinds are the columns' physical types, KindNone for a column the
-	// part lacks, whose values are a run of nulls (batcher.nulls).
+	// part lacks, whose values are nil: such a column has no storage.
 	kinds []Kind
 }
 
@@ -46,7 +48,12 @@ func (b *Batch) Offset(i int) int64 { return b.offsets[i] }
 // including duplicate projections, as a view of Len() values. If the part
 // lacks the column (COL-2), the view is not Present and its values are
 // absent. It panics if c is outside the requested projection.
-func (b *Batch) Column(c int) ColumnView { return ColumnView{values: b.values[c], kind: b.kinds[c]} }
+func (b *Batch) Column(c int) ColumnView {
+	if k := b.kinds[c]; k != KindNone {
+		return presentView(b.values[c], k)
+	}
+	return absentView(len(b.offsets))
+}
 
 // Row returns an owning copy of row i, as Rows returns it. Its Columns names
 // are owned by the scan and shared by its owning rows; do not modify them.
@@ -54,7 +61,11 @@ func (b *Batch) Column(c int) ColumnView { return ColumnView{values: b.values[c]
 func (b *Batch) Row(i int) Row {
 	r := Row{Key: bytes.Clone(b.Key(i)), Offset: b.Offset(i), Columns: b.columns, Values: make([]Value, len(b.values))}
 	for c, values := range b.values {
-		r.Values[c] = valueOf(&values[i], b.kinds[c] == KindNone).Clone()
+		if values == nil {
+			r.Values[c] = Value{absent: true}
+		} else {
+			r.Values[c] = valueOf(&values[i], false).Clone()
+		}
 	}
 	return r
 }
@@ -197,9 +208,6 @@ type batcher struct {
 	keys    pageScratch
 	pages   []*columnPages
 	g       groupRef // the row group pages belong to
-	// nulls are the values of a column the part lacks: zero Values (null),
-	// never written, shared by the absent slots of a batch.
-	nulls []parquet.Value
 }
 
 func newBatcher(ctx context.Context, columns []string, st *ReadStats, planned bool) *batcher {
@@ -261,6 +269,8 @@ func (w *batcher) walk(s *scan, n int64, fn func(*Batch) error) error {
 					return err
 				}
 				k = min(k, cp.first+int64(len(cp.values))-s.row)
+			} else {
+				k = min(k, int64(len(absentValues))) // an absent column's view (absentView)
 			}
 		}
 		first, from := s.row, s.kp.next
@@ -283,8 +293,7 @@ func (w *batcher) walk(s *scan, n int64, fn func(*Batch) error) error {
 				at := first - cp.first
 				b.values[c] = cp.values[at : at+k : at+k]
 			} else {
-				w.nulls = resize(w.nulls, int(k))
-				b.values[c] = w.nulls[:k:k]
+				b.values[c] = nil
 			}
 		}
 		b.keys = s.kp.page.slice(from, from+int(k))

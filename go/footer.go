@@ -71,8 +71,11 @@ func readFull(at io.ReaderAt, p []byte, off int64) error {
 	return err
 }
 
-// errEncrypted reports an encrypted part (FILE-2).
-var errEncrypted = &UnsupportedError{Code: UnsupportedEncryption, Detail: "the part uses Parquet modular encryption"}
+// errEncrypted reports an encrypted part (FILE-2): a new error each time,
+// so that no caller can change what another read reports.
+func errEncrypted() *UnsupportedError {
+	return &UnsupportedError{Code: UnsupportedEncryption, Detail: "the part uses Parquet modular encryption"}
+}
 
 // prefetched serves reads that fall inside data, the bytes at off, or
 // inside head, the file's first bytes, from memory, and every other read
@@ -179,7 +182,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	}
 	tail := win[window-8:]
 	if string(head) == "PARE" || string(tail[4:]) == "PARE" {
-		return nil, errEncrypted
+		return nil, errEncrypted()
 	}
 	if string(head) != "PAR1" || string(tail[4:]) != "PAR1" {
 		return nil, bad("the file does not begin and end with PAR1")
@@ -210,7 +213,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	case err != nil:
 		return nil, bad("decode the footer: %v", err)
 	case int64(used) == n-28:
-		return nil, errEncrypted // a signed plaintext footer
+		return nil, errEncrypted() // a signed plaintext footer
 	case int64(used) != n:
 		return nil, bad("the footer has %d bytes after its metadata", n-int64(used))
 	}
@@ -277,7 +280,7 @@ func checkMetadata(name string, meta *format.FileMetaData) error {
 		return refusePart(CodeInvalidFooter, name, group, format, args...)
 	}
 	if meta.EncryptionAlgorithm.Value != nil || len(meta.FooterSigningKeyMetadata) > 0 {
-		return errEncrypted
+		return errEncrypted()
 	}
 	leaves, err := checkSchema(meta.Schema)
 	if err != nil {
@@ -299,7 +302,7 @@ func checkMetadata(name string, meta *format.FileMetaData) error {
 				return bad(g, "a column chunk refers to another file (file_path %q)", chunk.FilePath)
 			}
 			if chunk.CryptoMetadata.Value != nil || len(chunk.EncryptedColumnMetadata) > 0 {
-				return errEncrypted
+				return errEncrypted()
 			}
 			// The chunk's metadata describes the leaf it holds: the reader
 			// decodes by the schema's type, so a chunk claiming another is
