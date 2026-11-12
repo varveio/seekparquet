@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Self-tests of check_docs.py; standard library only."""
 import tempfile
+import subprocess
+import builtins
+import symtable
 import unittest
 from pathlib import Path
 
@@ -17,6 +20,25 @@ class Slug(unittest.TestCase):
     def test_anchors_in_code_and_comments_do_not_count(self):
         text = ('````md\n<a id="ghost"></a>\n```\n## Still code\n````\n'
                 '<!-- <a id="hidden"></a> -->\n`<a id="inline"></a>`\n<a id="real"></a>\n')
+        self.assertEqual(check_docs.anchors(text), {'real'})
+
+    def test_fences_close_only_with_matching_delimiters(self):
+        for opening, false_close, closing in [
+            ('~~~~md', '~~~', '~~~~'),
+            ('````md', '~~~', '````'),
+            ('~~~md', '~~~ still code', '~~~~'),
+        ]:
+            with self.subTest(opening=opening, false_close=false_close):
+                text = (f'{opening}\n{false_close}\n<a id="ghost"></a>\n'
+                        f'{closing}\n<a id="real"></a>\n')
+                self.assertEqual(check_docs.anchors(text), {'real'})
+
+    def test_comment_markers_inside_fences_are_literal(self):
+        text = '```html\n<!--\n```\n<a id="real"></a>\n-->\n'
+        self.assertEqual(check_docs.anchors(text), {'real'})
+
+    def test_fences_inside_comments_are_not_opened(self):
+        text = '<!--\n```\n<a id="hidden"></a>\n-->\n<a id="real"></a>\n'
         self.assertEqual(check_docs.anchors(text), {'real'})
 
     def test_duplicate_headings_and_anchors(self):
@@ -49,6 +71,32 @@ class Checks(unittest.TestCase):
         self.assertEqual(len(problems), 2, problems)
         self.assertIn('#key-9', problems[0])
         self.assertIn('missing.md', problems[1])
+
+    def test_links_to_code_and_comment_anchors_fail(self):
+        self.write('docs/target.md', '```html\n<a id="ghost"></a>\n```\n'
+                                   '<!--\n<a id="hidden"></a>\n-->\n<a id="real"></a>\n')
+        a = self.write('docs/a.md', '[code](target.md#ghost) [comment](target.md#hidden) '
+                                    '[real](target.md#real)\n')
+        problems = check_docs.check_links([a], self.root)
+        self.assertEqual(len(problems), 2, problems)
+        self.assertIn('#ghost', problems[0])
+        self.assertIn('#hidden', problems[1])
+
+    def test_markdown_scan_excludes_untracked_files(self):
+        subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
+        tracked = self.write('docs/tracked.md', '# Tracked\n')
+        self.write('docs/untracked.md', '[broken](missing.md)\n')
+        subprocess.run(['git', '-C', str(self.root), 'add', 'docs/tracked.md'], check=True)
+        self.assertEqual(check_docs.markdown_files(self.root), [tracked])
+
+    def test_python_recipe_snippet_defines_its_globals(self):
+        source = (check_docs.ROOT / 'docs/examples/pyarrow_writer.py').read_text()
+        snippet = source.split('# tag::recipe[]\n', 1)[1].split('# end::recipe[]', 1)[0]
+        symbols = symtable.symtable(snippet, 'recipe', 'exec')
+        unresolved = [s.get_name() for s in symbols.get_symbols()
+                      if s.is_referenced() and not (s.is_imported() or s.is_assigned()
+                                                   or hasattr(builtins, s.get_name()))]
+        self.assertEqual(unresolved, [], 'the displayed recipe must define or import its globals')
 
     def test_requirements(self):
         a = self.write('docs/a.md', 'KEY-1, LIST-1 and KEY-7, UTF-8.\n')

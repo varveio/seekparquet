@@ -24,7 +24,6 @@ SKIP_DIRS = {'.git', 'build', '.gradle', 'node_modules', '.venv', 'datasets'}
 
 FENCE = re.compile(r'^\s*(```|~~~)')
 INLINE_CODE = re.compile(r'(`+)(?:(?!\1).)+\1')
-HTML_COMMENT = re.compile(r'<!--.*?-->', re.S)
 LINK = re.compile(r'!?\[(?:[^\]\[]|\[[^\]]*\])*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)')
 REF_LINK = re.compile(r'^\s*\[[^\]]+\]:\s*(\S+)', re.M)
 ANCHOR = re.compile(r'<a\s+(?:id|name)="([^"]+)"', re.I)
@@ -34,10 +33,10 @@ REQ_ID = re.compile(r'\b([A-Z]{2,7})-([0-9]+)\b')
 
 
 def markdown_files(root=ROOT):
-    """The Markdown files git tracks or would track (not ignored); outside git, every one."""
+    """Tracked Markdown files; outside git, every one."""
     try:
-        listed = subprocess.run(['git', '-C', str(root), 'ls-files', '-z', '--cached', '--others',
-                                 '--exclude-standard', '--', '*.md'], capture_output=True, check=True).stdout
+        listed = subprocess.run(['git', '-C', str(root), 'ls-files', '-z', '--cached',
+                                 '--', '*.md'], capture_output=True, check=True).stdout
         names = sorted({n for n in listed.decode().split('\0') if n and '/datasets/' not in '/' + n})
         return [root / n for n in names if (root / n).exists()]
     except (OSError, subprocess.CalledProcessError):
@@ -56,16 +55,32 @@ def rendered_lines(text):
 
     A fence closes only on a fence of the same character, at least as long, with nothing after it.
     """
-    text = HTML_COMMENT.sub(lambda m: '\n' * m.group(0).count('\n'), text)
     fence = None
+    comment = False
     for number, line in enumerate(text.split('\n'), 1):
-        m = FENCE.match(line)
-        if fence is None and m:
-            fence = re.match(r'\s*(`{3,}|~{3,})', line).group(1)
-            continue
         if fence is not None:
             if re.fullmatch(r'\s*' + re.escape(fence[0]) + '{' + str(len(fence)) + r',}\s*', line):
                 fence = None
+            continue
+        # Comments in a code fence are literal text. Outside fences, remove
+        # comments with state across lines before looking for a new fence.
+        visible = ''
+        while line:
+            if comment:
+                _hidden, end, line = line.partition('-->')
+                if not end:
+                    break
+                comment = False
+            else:
+                before, start, line = line.partition('<!--')
+                visible += before
+                if not start:
+                    break
+                comment = True
+        line = visible
+        m = FENCE.match(line)
+        if m:
+            fence = re.match(r'\s*(`{3,}|~{3,})', line).group(1)
             continue
         yield number, INLINE_CODE.sub('', line), line
 

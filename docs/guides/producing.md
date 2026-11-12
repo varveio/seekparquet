@@ -275,7 +275,7 @@ does not check it. You write the manifest after the part.
 
 <!-- snippet: docs/examples/pyarrow_writer.py#recipe -->
 ```python
-import base64, json, os
+import base64, json, os, sys
 import pyarrow as pa
 import pyarrow.parquet as pq
 

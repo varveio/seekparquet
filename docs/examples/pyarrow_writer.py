@@ -6,10 +6,8 @@ Usage: python3 docs/examples/pyarrow_writer.py DIR   (DIR must not exist)
 
 CI runs it with the pinned pyarrow and validates the result at the full level.
 """
-import sys
-
 # tag::recipe[]
-import base64, json, os
+import base64, json, os, sys
 import pyarrow as pa
 import pyarrow.parquet as pq
 
