@@ -149,3 +149,44 @@ func BenchmarkOwnedRows(b *testing.B) {
 		}
 	})
 }
+
+type absentBenchRecord struct {
+	Key []byte `parquet:"key"`
+}
+
+// BenchmarkAbsentProjection scans 100,000 rows in long batches projecting
+// a column the part lacks, and keys only: the cost of an absent slot.
+func BenchmarkAbsentProjection(b *testing.B) {
+	records := make([]absentBenchRecord, 100_000)
+	for i := range records {
+		records[i].Key = fmt.Appendf(nil, "bucket/object-%08d", i)
+	}
+	dir := b.TempDir()
+	if err := testutil.Write(dir, testutil.Dataset{Parts: []testutil.Part{{Rows: records, PageBytes: 8 << 20}}}); err != nil {
+		b.Fatal(err)
+	}
+	d, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.OpenOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = d.Close() })
+	for _, columns := range [][]string{nil, {"missing"}} {
+		b.Run(fmt.Sprintf("columns=%d", len(columns)), func(b *testing.B) {
+			b.ReportAllocs()
+			q := seekparquet.Query{Columns: columns}
+			for b.Loop() {
+				n := 0
+				err := d.Scan(context.Background(), q, nil, func(batch *seekparquet.Batch) error {
+					n += batch.Len()
+					if len(columns) > 0 && batch.Column(0).Present() {
+						b.Fatal("present")
+					}
+					return nil
+				})
+				if err != nil || n != len(records) {
+					b.Fatal(err, n)
+				}
+			}
+		})
+	}
+}

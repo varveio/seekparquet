@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"reflect"
@@ -342,6 +343,119 @@ func TestEncryptedErrorsDetached(t *testing.T) {
 	for _, u := range []*UnsupportedError{read(d, "c"), read(d, "a"), read(open(t, dir, OpenOptions{}), "c"), inspect()} {
 		if u == first || u == second || *u != want {
 			t.Fatalf("a changed error leaked: %+v", u)
+		}
+	}
+}
+
+// TestAbsentProjectionAllocatesNothing: a column the part lacks has no
+// storage: a scan projecting it allocates no more than one that does not,
+// however long its batches, and its view and values allocate nothing.
+func TestAbsentProjectionAllocatesNothing(t *testing.T) {
+	const n = 100_000
+	keys := make([]keyOnlyRecord, n)
+	for i := range keys {
+		keys[i].Key = fmt.Appendf(nil, "k%07d", i)
+	}
+	d := open(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: keys, PageBytes: 4 << 20}}}), OpenOptions{})
+	scan := func(columns ...string) (batches int) {
+		must(t, d.Scan(ctx, Query{Columns: columns}, nil, func(b *Batch) error {
+			batches++
+			return nil
+		}))
+		return batches
+	}
+	if batches := scan(); batches > 2 {
+		t.Fatalf("the fixture needs long batches: %d", batches)
+	}
+	scan("missing") // warm both
+	keysOnly := allocated(func() { scan() })
+	absent := allocated(func() { scan("missing", "missing") })
+	if absent > keysOnly+4<<10 {
+		t.Fatalf("projecting an absent column allocated %d bytes, keys only %d", absent, keysOnly)
+	}
+	must(t, d.Scan(ctx, Query{Columns: []string{"missing"}}, nil, func(b *Batch) error {
+		allocs := testing.AllocsPerRun(10, func() {
+			view := b.Column(0)
+			for i := range view.Len() {
+				if v := view.Value(i); !v.Absent() || view.IsNull(i) || view.Int64(i) != 0 {
+					t.Fatal("not absent")
+				}
+			}
+		})
+		if allocs != 0 {
+			t.Fatalf("an absent view allocated %v times", allocs)
+		}
+		return Stop
+	}))
+}
+
+// TestScanUnlimitedRepeatedKeys: an unlimited Scan over groups of equal keys
+// that span key pages and row groups, from the start, from a cursor inside
+// a group and to an upper bound inside a key page, returns the rows that
+// paging Rows over the same selection returns, concatenated.
+func TestScanUnlimitedRepeatedKeys(t *testing.T) {
+	var keys []string
+	for g := range 30 {
+		for range 1 + g*7%37 {
+			keys = append(keys, fmt.Sprintf("g%03d", g))
+		}
+	}
+	doc := testutil.Dataset{RepeatedKeys: true, Parts: []testutil.Part{
+		{Rows: testutil.Rows(keys[:len(keys)/2]...), GroupRows: 23, PageBytes: 96},
+		{Rows: testutil.Rows(keys[len(keys)/2:]...), GroupRows: 23, PageBytes: 96},
+	}}
+	if keys[len(keys)/2-1] == keys[len(keys)/2] {
+		// A group never crosses parts: move the cut to a group boundary.
+		cut := len(keys) / 2
+		for keys[cut-1] == keys[cut] {
+			cut++
+		}
+		doc.Parts[0].Rows, doc.Parts[1].Rows = testutil.Rows(keys[:cut]...), testutil.Rows(keys[cut:]...)
+	}
+	d := open(t, write(t, doc), OpenOptions{})
+	columns := []string{"size", "name"}
+	paged := func(sel Selection) []Row {
+		var out []Row
+		q := Query{Selection: sel, Limit: 7, Columns: columns}
+		for {
+			page, err := d.Rows(ctx, q, nil)
+			must(t, err)
+			out = append(out, page...)
+			if len(page) < 7 {
+				return out
+			}
+			q.Cursor = page[len(page)-1].Cursor()
+		}
+	}
+	scanned := func(sel Selection) []Row {
+		var out []Row
+		must(t, d.Scan(ctx, Query{Selection: sel, Columns: columns}, nil, func(b *Batch) error {
+			for i := range b.Len() {
+				out = append(out, b.Row(i))
+			}
+			return nil
+		}))
+		return out
+	}
+	// g012 holds 1+84%37 = 11 rows; g020 1+140%37 = 30, across pages and groups.
+	for _, sel := range []Selection{
+		{},
+		{Span: Span{Start: []byte("g005")}},
+		{Cursor: RowCursor([]byte("g020"), 13)},
+		{Span: Span{Start: []byte("g010")}, Cursor: RowCursor([]byte("g012"), 4)},
+		{Span: Span{End: []byte("g020\x00")}},
+		{Span: Span{Start: []byte("g003"), End: []byte("g011")}},
+		{Span: KeySpan([]byte("g020"))},
+		{Span: KeySpan([]byte("g020")), Cursor: RowCursor([]byte("g020"), 28)},
+	} {
+		want, got := paged(sel), scanned(sel)
+		if len(want) == 0 || !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s: scanned %d rows, paged %d", describe(sel), len(got), len(want))
+		}
+		for i := 1; i < len(got); i++ {
+			if bytes.Equal(got[i].Key, got[i-1].Key) && got[i].Offset != got[i-1].Offset+1 {
+				t.Fatalf("%s: offsets %d then %d", describe(sel), got[i-1].Offset, got[i].Offset)
+			}
 		}
 	}
 }

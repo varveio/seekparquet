@@ -333,10 +333,9 @@ func describe(req any) string {
 // rawColumn returns projection slot c's borrowed parquet-go values, as the
 // batch holds them, and whether the part has the column: for tests that
 // inspect or poison the decoded storage itself. An absent column's values
-// are the batch's shared nulls.
+// are nil: it has no storage.
 func rawColumn(b *Batch, c int) ([]parquet.Value, bool) {
-	v := b.Column(c)
-	return v.values, v.Present()
+	return b.values[c], b.Column(c).Present()
 }
 
 // equalValue reports whether two values are equal: kind, absence and

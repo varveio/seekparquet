@@ -96,12 +96,20 @@ type Value struct {
 // valueOf returns the Value of a decoded parquet-go value, borrowing its
 // bytes, or an absent value.
 func valueOf(pv *parquet.Value, absent bool) Value {
-	k := kindOf(pv.Kind())
-	v := Value{u64: pv.Uint64(), kind: k, absent: absent}
-	if k == KindByteArray || k == KindFixedLenByteArray || k == KindInt96 {
-		v.ptr = unsafe.SliceData(pv.ByteArray())
-	}
-	return v
+	ptr, u64 := bitsOf(pv)
+	return Value{ptr: ptr, u64: u64, kind: kindOf(pv.Kind()), absent: absent}
+}
+
+// bitsOf returns the representation of a parquet-go value that Value keeps:
+// the pointer to the bytes of a BYTE_ARRAY, FIXED_LEN_BYTE_ARRAY or INT96,
+// nil for any other kind, and their length, or the bits of a BOOLEAN (0 or
+// 1), INT32 (sign-extended), INT64, FLOAT or DOUBLE; zero for a null. It is
+// the one place that relies on how parquet-go v0.32.0 represents a value:
+// its first word is that pointer, and Uint64 returns those bits for every
+// kind. TestValueRepresentation pins both for every kind, so that a
+// dependency that changes them fails a test instead of corrupting values.
+func bitsOf(pv *parquet.Value) (ptr *byte, u64 uint64) {
+	return *(**byte)(unsafe.Pointer(pv)), pv.Uint64()
 }
 
 // Value constructors, for callers and tests that build rows. A constructor
@@ -278,18 +286,51 @@ func (v Value) String() string {
 // only until the callback that received the batch returns.
 //
 // A column the row's part lacks (COL-2) is not Present: every value of it is
-// absent, and none is null. Len is the batch's Len either way. Every indexed
-// method panics when i is outside [0, Len()). The typed accessors are for
-// loops over a column of a known Kind: on a column of their kind they return
-// the value, and the zero value for a null or an absent value; they never
-// panic, but on a present column of another kind the numeric accessors
-// return unspecified bits (Bytes returns nil, Int96 zero), as they test no
-// kind per value. Check Kind once per batch, or use Value, whose accessors
-// return the zero value for any other kind. The zero ColumnView has no
-// values and is not Present.
+// absent, and none is null; it takes no storage. Len is the batch's Len either
+// way. Every indexed method panics when i is outside [0, Len()). The typed
+// accessors are for loops over a column of a known Kind: on a column of
+// their kind they return the value, and the zero value for a null or an
+// absent value; they never panic, but on a present column of another kind
+// the numeric accessors return unspecified bits (Bytes returns no bytes, Int96
+// zero), as they test no kind per value. Check Kind once per batch, or use
+// Value, whose accessors return the zero value for any other kind. The zero
+// ColumnView has no values and is not Present.
 type ColumnView struct {
 	values []parquet.Value
 	kind   Kind
+	// null is the parquet-go kind of a null value of the column, or
+	// notNull, which no value has, for a column that is not present.
+	null parquet.Kind
+	// bytes is 1 for a BYTE_ARRAY or FIXED_LEN_BYTE_ARRAY column, 0 for any
+	// other: Bytes masks the length it reads by it, needing no kind test per
+	// value (a numeric value's bits are not a length). A ColumnView stays
+	// within four words, so that the compiler keeps it in registers.
+	bytes uint8
+}
+
+// absentValues back every column that is not present: zero parquet-go
+// values, null, never written, holding zero bits. A batch projecting such a
+// column holds at most this many rows (batcher.walk), so a column a part
+// lacks takes no storage however long the batches of other columns are.
+var absentValues [4096]parquet.Value
+
+// notNull is a parquet-go kind no value has: a null's is -1, a value's 0
+// to 7.
+const notNull parquet.Kind = -2
+
+// presentView returns the view of a present column's values, of kind k.
+func presentView(values []parquet.Value, k Kind) ColumnView {
+	c := ColumnView{values: values, kind: k, null: parquet.Kind(-1)}
+	if k == KindByteArray || k == KindFixedLenByteArray {
+		c.bytes = 1
+	}
+	return c
+}
+
+// absentView returns the view of n values of a column the part lacks; n
+// is at most len(absentValues).
+func absentView(n int) ColumnView {
+	return ColumnView{values: absentValues[:n:n], null: notNull}
 }
 
 // Present reports whether the row's part has the column; when it does not,
@@ -305,57 +346,48 @@ func (c ColumnView) Len() int { return len(c.values) }
 
 // IsNull reports whether value i is a null stored in the column; the values
 // of a column that is not Present are absent, not null.
-func (c ColumnView) IsNull(i int) bool { return c.values[i].IsNull() && c.kind != KindNone }
+func (c ColumnView) IsNull(i int) bool { return c.values[i].Kind() == c.null }
 
 // Value returns value i, borrowed, without allocating.
-func (c ColumnView) Value(i int) Value { return valueOf(&c.values[i], c.kind == KindNone) }
+func (c ColumnView) Value(i int) Value {
+	pv := &c.values[i]
+	ptr, u64 := bitsOf(pv)
+	return Value{ptr: ptr, u64: u64, kind: kindOf(pv.Kind()), absent: c.null == notNull}
+}
 
 // The typed accessors read the decoded value in place, testing no kind per
 // value: every value of a present column is of the column's kind or null,
 // and a decoded null, like every value of an absent column, holds zero bits.
-// Bytes alone tests the column's kind, since parquet-go's byte accessor is
-// not safe on other kinds.
+// Bytes masks the length by the column's kind instead: a numeric value has
+// no byte pointer, and its bits are not a length.
 
 // Boolean returns value i of a BOOLEAN column, false when null.
-func (c ColumnView) Boolean(i int) bool {
-	return c.values[i].Boolean()
-}
+func (c ColumnView) Boolean(i int) bool { return c.values[i].Boolean() }
 
 // Int32 returns value i of an INT32 column, 0 when null.
-func (c ColumnView) Int32(i int) int32 {
-	return c.values[i].Int32()
-}
+func (c ColumnView) Int32(i int) int32 { return c.values[i].Int32() }
 
 // Uint32 returns value i of an INT32 column as unsigned, 0 when null.
-func (c ColumnView) Uint32(i int) uint32 { return uint32(c.Int32(i)) }
+func (c ColumnView) Uint32(i int) uint32 { return uint32(c.values[i].Int32()) }
 
 // Int64 returns value i of an INT64 column, 0 when null.
-func (c ColumnView) Int64(i int) int64 {
-	return c.values[i].Int64()
-}
+func (c ColumnView) Int64(i int) int64 { return c.values[i].Int64() }
 
 // Uint64 returns value i of an INT64 column as unsigned, 0 when null.
-func (c ColumnView) Uint64(i int) uint64 { return uint64(c.Int64(i)) }
+func (c ColumnView) Uint64(i int) uint64 { return uint64(c.values[i].Int64()) }
 
 // Int96 returns value i of an INT96 column, zero when null.
 func (c ColumnView) Int96(i int) Int96 { return c.Value(i).Int96() }
 
 // Float returns value i of a FLOAT column, 0 when null.
-func (c ColumnView) Float(i int) float32 {
-	return c.values[i].Float()
-}
+func (c ColumnView) Float(i int) float32 { return c.values[i].Float() }
 
 // Double returns value i of a DOUBLE column, 0 when null.
-func (c ColumnView) Double(i int) float64 {
-	return c.values[i].Double()
-}
+func (c ColumnView) Double(i int) float64 { return c.values[i].Double() }
 
 // Bytes returns the borrowed, read-only bytes of value i of a BYTE_ARRAY or
-// FIXED_LEN_BYTE_ARRAY column, nil when null.
+// FIXED_LEN_BYTE_ARRAY column, nil when null, and none on a column of another kind.
 func (c ColumnView) Bytes(i int) []byte {
-	v := &c.values[i]
-	if c.kind < KindByteArray {
-		return nil
-	}
-	return v.ByteArray()
+	ptr, n := bitsOf(&c.values[i])
+	return unsafe.Slice(ptr, n&-uint64(c.bytes))
 }
