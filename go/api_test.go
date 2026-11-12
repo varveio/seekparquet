@@ -459,3 +459,120 @@ func TestScanUnlimitedRepeatedKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestAbsentCapBoundaries: a batch projecting a column the part lacks holds
+// at most len(absentValues) rows. Across that cap, on key pages of more
+// than twice as many rows with groups of equal keys straddling it, both
+// scans return the rows, offsets, cursors and read statistics of the same
+// scan without the absent column, and Rows' rows, for limits, upper bounds
+// and cursors at the cap.
+func TestAbsentCapBoundaries(t *testing.T) {
+	cap := len(absentValues)
+	var keys []string
+	for i := 0; len(keys) < 3*cap; i++ {
+		for range 1 + i%7 { // groups of 1 to 7 equal keys
+			keys = append(keys, fmt.Sprintf("k%06d", i))
+		}
+	}
+	doc := testutil.Dataset{RepeatedKeys: true, Parts: []testutil.Part{{Rows: testutil.Rows(keys...), PageBytes: 4 << 20}}}
+	d := open(t, write(t, doc), OpenOptions{})
+	if index, err := func() (*groupIndex, error) {
+		p, err := d.r.part(ctx, 0, new(ReadStats))
+		if err != nil {
+			return nil, err
+		}
+		return p.keyIndex(ctx, p.groups[0].physical, new(ReadStats))
+	}(); err != nil || index.pages[0].rows <= int64(2*cap) {
+		t.Fatalf("the fixture needs key pages over %d rows: %v", 2*cap, err)
+	}
+	type scanned struct {
+		rows    []Row
+		cursors []*Cursor
+		lens    []int
+		st      ReadStats
+	}
+	collect := func(scan func(st *ReadStats, fn func(*Batch) error) error) scanned {
+		var out scanned
+		must(t, scan(&out.st, func(b *Batch) error {
+			out.lens = append(out.lens, b.Len())
+			for i := range b.Len() {
+				out.rows = append(out.rows, b.Row(i))
+				out.cursors = append(out.cursors, b.Cursor(i))
+			}
+			return nil
+		}))
+		return out
+	}
+	// strip drops the absent column from rows that project it last.
+	strip := func(rows []Row) []Row {
+		out := make([]Row, len(rows))
+		for i, r := range rows {
+			if !r.Values[len(r.Values)-1].Absent() {
+				t.Fatalf("row %d: the missing column is not absent", i)
+			}
+			r.Values, r.Columns = r.Values[:len(r.Values)-1], r.Columns[:len(r.Columns)-1]
+			out[i] = r
+		}
+		return out
+	}
+	compare := func(label string, with, without scanned, rows []Row) {
+		t.Helper()
+		if len(with.rows) == 0 || !reflect.DeepEqual(strip(with.rows), without.rows) || !reflect.DeepEqual(with.cursors, without.cursors) {
+			t.Fatalf("%s: %d rows with the absent column, %d without", label, len(with.rows), len(without.rows))
+		}
+		if with.st != without.st {
+			t.Fatalf("%s: stats\nwith    %+v\nwithout %+v", label, with.st, without.st)
+		}
+		for _, n := range with.lens {
+			if n > cap {
+				t.Fatalf("%s: a batch of %d rows", label, n)
+			}
+		}
+		if rows != nil && !reflect.DeepEqual(with.rows, rows) {
+			t.Fatalf("%s: scan and Rows differ", label)
+		}
+	}
+	at := func(i int) []byte { return []byte(keys[i]) }
+	cursor := func(i int) *Cursor {
+		off := int64(0)
+		for j := i - 1; j >= 0 && keys[j] == keys[i]; j-- {
+			off++
+		}
+		return RowCursor(at(i), off)
+	}
+	with, without := []string{"size", "missing"}, []string{"size"}
+	// Warm the caches (footer, key page index, OffsetIndex) both read, so
+	// that the scans compared find the same state.
+	for _, columns := range [][]string{with, without} {
+		must(t, d.Scan(ctx, Query{Columns: columns}, nil, func(*Batch) error { return nil }))
+	}
+	var selections []Selection
+	for _, i := range []int{cap - 1, cap, cap + 1, 2 * cap} {
+		selections = append(selections, Selection{Span: Span{End: at(i)}}, Selection{Cursor: cursor(i)},
+			Selection{Span: Span{Start: at(i - 3)}, Cursor: cursor(i - 1)})
+	}
+	selections = append(selections, Selection{})
+	for _, sel := range selections {
+		for _, limit := range []int64{0, int64(cap - 1), int64(cap), int64(cap + 1), int64(2*cap + 3)} {
+			label := fmt.Sprintf("%s limit %d", describe(sel), limit)
+			scan := func(columns []string) scanned {
+				return collect(func(st *ReadStats, fn func(*Batch) error) error {
+					return d.Scan(ctx, Query{Selection: sel, Limit: limit, Columns: columns}, st, fn)
+				})
+			}
+			var rows []Row
+			if limit > 0 {
+				var err error
+				rows, err = d.Rows(ctx, Query{Selection: sel, Limit: limit, Columns: with}, nil)
+				must(t, err)
+			}
+			compare("Scan "+label, scan(with), scan(without), rows)
+		}
+		plan := func(columns []string) scanned {
+			p, err := d.Plan(ctx, []Selection{sel}, columns, nil)
+			must(t, err)
+			return collect(func(st *ReadStats, fn func(*Batch) error) error { return p.Scan(ctx, st, fn) })
+		}
+		compare("Plan.Scan "+describe(sel), plan(with), plan(without), nil)
+	}
+}

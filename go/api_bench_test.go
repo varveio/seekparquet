@@ -190,3 +190,28 @@ func BenchmarkAbsentProjection(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkWideAbsentProjection scans 200,000 rows on long pages projecting
+// three present columns, with and without a fourth column no part has: a
+// batch projecting an absent column holds at most 4,096 rows, so the scan
+// repeats its per-batch work (page checks of each column) every 4,096 rows.
+func BenchmarkWideAbsentProjection(b *testing.B) {
+	const rows = 200_000
+	d := accessBenchDataset(b, rows, 8<<20)
+	for _, columns := range [][]string{{"size", "etag", "owner"}, {"size", "etag", "owner", "missing"}} {
+		b.Run(fmt.Sprintf("columns=%d", len(columns)), func(b *testing.B) {
+			b.ReportAllocs()
+			q := seekparquet.Query{Columns: columns}
+			for b.Loop() {
+				n := 0
+				err := d.Scan(context.Background(), q, nil, func(batch *seekparquet.Batch) error {
+					n += batch.Len()
+					return nil
+				})
+				if err != nil || n != rows {
+					b.Fatal(err, n)
+				}
+			}
+		})
+	}
+}
