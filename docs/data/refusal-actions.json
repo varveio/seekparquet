@@ -62,7 +62,7 @@
       "action": "Rewrite or restore the part. Validate at the full level to find every damaged page; reads report only the pages they decode."
     },
     "bounds_mismatch": {
-      "cause": "The manifest's min_key or max_key was taken from intended bounds or from shortened page-index bounds, not from the part's actual first and last keys.",
+      "cause": "The manifest's min_key or max_key was taken from intended bounds or from shortened page index bounds, not from the part's actual first and last keys.",
       "action": "Write the manifest's bounds from the first and last keys actually written to each part (PART-3)."
     },
     "digest_mismatch": {

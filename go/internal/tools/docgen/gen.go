@@ -344,6 +344,9 @@ func (g *generator) snippet(ref string) (string, error) {
 	file, name, _ := strings.Cut(ref, "#")
 	full := filepath.Join(g.root, filepath.FromSlash(file))
 	lang := strings.TrimPrefix(path.Ext(file), ".")
+	if lang == "py" {
+		lang = "python"
+	}
 	var code string
 	switch {
 	case name == "":
