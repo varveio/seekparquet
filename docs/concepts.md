@@ -212,7 +212,7 @@ limit (it returns "at most" that many); the current Go and Java readers fill eac
 unless the results are exhausted.
 
 A **cursor token** is a cursor written as one line of text, for an API that hands cursors to clients:
-`spc1.r.<key>.<offset>` or `spc1.p.<prefix>` ([cursor token, version 1](../spec/cursor-token-1.md), a draft
+`spc1.r.<key>.<offset>` or `spc1.p.<prefix>` ([cursor token, version 1](../spec/cursor-token-1.md), a stable
 protocol encoding, not part of the format). The current Go and Java readers implement it, and each reads the
 other's tokens.
 
@@ -322,29 +322,30 @@ to the operation's context with `ContextBinder`. Optional capabilities are defin
   naming `ManifestBytes`. Without this capability the reader opens `manifest.json` and uses `ReadAt`.
 - `RangeReader.ReadRanges` fills several logical ranges in one call. Storage may merge or split physical
   requests while preserving each range's outcome and the opened object's identity.
-- `CacheMode` controls a Source's byte cache through `WithCacheMode(ctx, mode)`. `CacheDefault` permits
-  lookup and admission under storage policy; `CacheBypass` permits neither. Bypass preserves identity
-  checks and reader-owned metadata reuse, including for context-bound scalar reads.
+
+Storage owns physical request execution, byte caching, and request observation.
+The reader retains format metadata independently.
+The Source is responsible for providing a stable version of each part across reads and retries.
+The reader relies on its Source's guarantee of immutable bytes and never combines bytes of two
+versions of a part: retained metadata must not be used with bytes of a replacement, even one of the
+same size. The reader does not independently pin or probe versions. If a Source detects a replaced
+object, it reports `ErrObjectChanged`, which the reader surfaces as a storage error, never a refusal
+([CHECK-6](../spec/format-1.md#check-6)).
 
 Set `OpenOptions.Read` to a `ReadPolicy`. Zero numeric fields take these defaults; negative values are
 invalid requests when opening.
 
 | Field | Default | Effect |
 |---|---|---|
-| `Concurrency` | 64 | Bounds outstanding logical part ranges per operation, including Verify and list-index builds; it does not bound physical requests. |
 | `MetadataPrefetchBytes` | 2 MiB; 64 KiB with `OpenDir` | Tail read on first touch, clipped to the part's size; a larger footer requires another read of the missing bytes. |
 | `DisableSpeculation` | `false` | When true, disables optional fetching, including listing read-ahead; the tail read is at most 64 KiB and retains only the footer. Demanded batching and available-byte reuse remain enabled. |
 
-Java `OpenOptions.verifyConcurrency` defaults to 1 and controls concurrent part checks during verify;
-it corresponds to the verify part of Go `ReadPolicy.Concurrency`.
+Go bounds independent reads internally; the Source bounds physical concurrency.
+Java `OpenOptions.verifyConcurrency` controls concurrent part checks during verify.
 
 With a zero `OpenOptions.Read`, `OpenDir` reads each part's ranges one at a time, keeps only the footer,
-and uses no request memo. Verify and explicit listing read-ahead still use the default concurrency.
+and uses no request memo. Verify and explicit listing read-ahead still use the internal limit.
 Setting any policy field selects `OpenDataset`'s scheduling behavior.
-
-Set `OpenOptions.OpenStats` to a `*ReadStats` for manifest I/O statistics, reset on entry and filled on every
-exit. The dataset does not retain it. A Source can report physical requests through `IOObserver` and declare
-complete reporting with `IOReporter`; see [read statistics](reference/read-stats.md).
 
 ## Glossary
 

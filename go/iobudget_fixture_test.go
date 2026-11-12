@@ -327,27 +327,25 @@ func must(t testing.TB, err error) {
 
 // fakeSource adapts a fakestore.Source to seekparquet.Source as objfile's
 // adapter serves a remote store today: Open (with the store's metadata
-// request), and files with ReadAt and WithContext only. It reports its
-// physical requests (IOReporter), and maps the store's errors to the
-// module's. capableSource adds the optional capabilities.
+// request), and files with ReadAt and WithContext only. It maps storage
+// errors to the module's. capableSource adds the optional capabilities.
+// Physical requests are recorded directly by fakestore.Source.
 type fakeSource struct{ *fakestore.Source }
 
 func (s fakeSource) Open(ctx context.Context, path string) (seekparquet.SourceFile, error) {
-	f, err := s.Source.Open(observed(ctx), path)
+	f, err := s.Source.Open(ctx, path)
 	if err != nil {
 		return nil, fakeError(err)
 	}
 	return fakeFile{f}, nil
 }
 
-func (fakeSource) ReportsIO() bool { return true }
-
 // capableSource is fakeSource with every optional capability: OpenSized,
 // ReadManifest and, on its files, ReadRanges.
 type capableSource struct{ fakeSource }
 
 func (s capableSource) OpenSized(ctx context.Context, path string, size int64) (seekparquet.SourceFile, error) {
-	f, err := s.Source.OpenSized(observed(ctx), path, size)
+	f, err := s.Source.OpenSized(ctx, path, size)
 	if err != nil {
 		return nil, fakeError(err)
 	}
@@ -355,15 +353,14 @@ func (s capableSource) OpenSized(ctx context.Context, path string, size int64) (
 }
 
 func (s capableSource) ReadManifest(ctx context.Context, maxBytes int64) ([]byte, string, error) {
-	data, identity, err := s.Source.ReadObject(observed(ctx), seekparquet.ManifestName, maxBytes)
+	data, identity, err := s.Source.ReadObject(ctx, seekparquet.ManifestName, maxBytes)
 	return data, identity, fakeError(err)
 }
 
 type fakeFile struct{ f *fakestore.File }
 
-func (f fakeFile) Size() int64     { return f.f.Size() }
-func (f fakeFile) Close() error    { return f.f.Close() }
-func (f fakeFile) ReportsIO() bool { return true }
+func (f fakeFile) Size() int64  { return f.f.Size() }
+func (f fakeFile) Close() error { return f.f.Close() }
 
 func (f fakeFile) ReadAt(p []byte, off int64) (int, error) {
 	n, err := f.f.ReadAt(p, off)
@@ -371,7 +368,7 @@ func (f fakeFile) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func (f fakeFile) WithContext(ctx context.Context) io.ReaderAt {
-	return fakeView{f.f.WithContext(observed(ctx))}
+	return fakeView{f.f.WithContext(ctx)}
 }
 
 type fakeView struct{ r io.ReaderAt }
@@ -388,7 +385,7 @@ func (f fakeRangeFile) ReadRanges(ctx context.Context, ranges []seekparquet.Read
 	for i, rg := range ranges {
 		extents[i] = fakestore.Extent{Off: rg.Off, Buf: rg.Buf}
 	}
-	err := f.f.ReadRanges(observed(ctx), extents)
+	err := f.f.ReadRanges(ctx, extents)
 	var be *fakestore.BatchError
 	if errors.As(err, &be) {
 		errs := make([]error, len(be.Errs))
@@ -418,42 +415,9 @@ func fakeError(err error) error {
 	return err
 }
 
-// observed returns ctx with the store reporting its requests to the
-// operation's IOObserver, when it has one, and bypassing its cache when
-// the operation asks to (CacheBypass).
-func observed(ctx context.Context) context.Context {
-	if o := seekparquet.IOObserverFromContext(ctx); o != nil {
-		ctx = fakestore.WithObserver(ctx, observer{o})
-	}
-	if seekparquet.CacheModeFromContext(ctx) == seekparquet.CacheBypass {
-		ctx = fakestore.WithBypass(ctx)
-	}
-	return ctx
-}
-
-type observer struct{ o seekparquet.IOObserver }
-
-func (o observer) CacheHit(n int64)                     { o.o.CacheHit(n) }
-func (o observer) BatchPlanned(ranges, reqs, gap int64) { o.o.BatchPlanned(ranges, reqs, gap) }
-
-func (o observer) Begin(kind fakestore.Kind, name string, off, length int64, retry bool) func(int64, error) {
-	req := seekparquet.IORequest{Path: name, Offset: off, Length: length, Retry: retry}
-	switch kind {
-	case fakestore.Metadata:
-		req.Kind = seekparquet.IOMetadata
-	case fakestore.Whole:
-		req.Kind, req.Length = seekparquet.IOWholeObject, -1
-	default:
-		req.Kind = seekparquet.IORange
-	}
-	done := o.o.Begin(req)
-	return func(got int64, err error) { done(seekparquet.IOResult{Bytes: got, Err: err}) }
-}
-
 var (
 	_ seekparquet.ContextBinder  = fakeFile{}
 	_ seekparquet.RangeReader    = fakeRangeFile{}
 	_ seekparquet.SizedSource    = capableSource{}
 	_ seekparquet.ManifestReader = capableSource{}
-	_ seekparquet.IOReporter     = fakeSource{}
 )

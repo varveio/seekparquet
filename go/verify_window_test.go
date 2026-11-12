@@ -76,8 +76,8 @@ func newVersionSource(t testing.TB, dir string) *versionSource {
 // as a local directory when local is set (OpenDir's zero policy).
 func openWith(t testing.TB, c context.Context, src Source, opt OpenOptions, local bool) *Dataset {
 	t.Helper()
-	must(t, prepareOpen(c, &opt))
-	d, err := openDataset(c, src, opt, new(ReadStats), local)
+	must(t, prepareOpen(&opt))
+	d, err := openDataset(c, src, opt, local)
 	must(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	return d
@@ -105,7 +105,8 @@ func TestVerifyLocalLimit(t *testing.T) {
 	}
 	c, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	d := openWith(t, c, src, OpenOptions{Read: ReadPolicy{Concurrency: slots, MetadataPrefetchBytes: 1 << 10}}, true)
+	d := openWith(t, c, src, OpenOptions{Read: ReadPolicy{MetadataPrefetchBytes: 1 << 10}}, true)
+	d.r.concurrency = slots
 	if !d.r.local || d.r.width() != 1 {
 		t.Fatal("not a local reader")
 	}
@@ -213,7 +214,8 @@ func TestVerifyWindow(t *testing.T) {
 					<-gate
 				}
 			}
-			d := openWith(t, ctx, src, OpenOptions{Read: ReadPolicy{Concurrency: slots}}, false)
+			d := openWith(t, ctx, src, OpenOptions{Read: ReadPolicy{}}, false)
+			d.r.concurrency = slots
 			done := make(chan error, 1)
 			go func() { done <- d.Verify(ctx, nil) }()
 			synctest.Wait()
@@ -235,7 +237,7 @@ func slowSource(t testing.TB, dir string) *limitSource {
 	return &limitSource{Source: dirOf(t, dir), delay: time.Millisecond}
 }
 
-// TestOperationLimit: ReadPolicy.Concurrency bounds the ranges an
+// TestOperationLimit: the internal concurrency limit bounds the ranges an
 // operation has in flight wherever they come from: a list-index build's
 // workers, and a listing's read-ahead beside its own reads: a listing
 // that skips common prefixes leaves pages read ahead in flight as it
@@ -246,7 +248,8 @@ func TestOperationLimit(t *testing.T) {
 	verified(t, dir, OpenOptions{})
 	synctest.Test(t, func(t *testing.T) {
 		src := slowSource(t, dir)
-		d := openWith(t, ctx, src, OpenOptions{Read: ReadPolicy{Concurrency: 1}}, false)
+		d := openWith(t, ctx, src, OpenOptions{Read: ReadPolicy{}}, false)
+		d.r.concurrency = 1
 		_, err := d.BuildListIndex(ctx, ListIndexOptions{Workers: 8})
 		must(t, err)
 		if got := src.most.Load(); got != 1 {
@@ -257,7 +260,8 @@ func TestOperationLimit(t *testing.T) {
 		src := slowSource(t, dir)
 		// A window holding no page index: each row group's key index is
 		// read as a pair of ranges.
-		d := openWith(t, ctx, src, OpenOptions{Read: ReadPolicy{Concurrency: 2, MetadataPrefetchBytes: 64}}, false)
+		d := openWith(t, ctx, src, OpenOptions{Read: ReadPolicy{MetadataPrefetchBytes: 64}}, false)
+		d.r.concurrency = 2
 		var st ReadStats
 		entries, err := d.List(ctx, ListQuery{Delimiter: '/', Limit: 100, ReadAhead: 8}, &st)
 		must(t, err)
@@ -278,7 +282,7 @@ func TestVerifyStats(t *testing.T) {
 	st := ReadStats{SourceReads: -1}
 	d := open(t, dir, OpenOptions{})
 	must(t, d.Verify(ctx, &st))
-	if st.PartsOpened != 4 || st.SourceReads <= 0 || st.KeyPagesDecoded <= 0 || st.UnreportedIOCalls != st.SourceReads+st.PartsOpened {
+	if st.PartsOpened != 4 || st.SourceReads <= 0 || st.KeyPagesDecoded <= 0 {
 		t.Fatalf("success: %+v", st)
 	}
 	must(t, d.Verify(ctx, &st))
@@ -314,7 +318,8 @@ func TestVerifyConcurrentReads(t *testing.T) {
 	for step := range 40 {
 		synctest.Test(t, func(t *testing.T) {
 			src := slowSource(t, dir)
-			d := openWith(t, ctx, src, OpenOptions{Read: ReadPolicy{Concurrency: 3}}, false)
+			d := openWith(t, ctx, src, OpenOptions{Read: ReadPolicy{}}, false)
+			d.r.concurrency = 3
 			vctx, cancel := context.WithCancel(ctx)
 			verified := make(chan error, 1)
 			go func() { verified <- d.Verify(vctx, nil) }()

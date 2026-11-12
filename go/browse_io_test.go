@@ -109,12 +109,14 @@ func runBrowse(t *testing.T, fx *ioFixture, store ioStore, c browseCase, counts 
 		}
 		opt := store.opt
 		if c.ordered {
-			opt.Read.Concurrency = 1
 			opt.Read.DisableSpeculation = true
 		}
 		d, err := seekparquet.OpenDataset(ctx, wrapped, opt)
 		must(t, err)
 		defer d.Close()
+		if c.ordered {
+			seekparquet.SetTestReadConcurrency(d, 1)
+		}
 		q := c.q
 		if c.setup != nil {
 			cur, err := c.setup(ctx, d)
@@ -473,44 +475,55 @@ func TestScanValuesReadsNoKeyPage(t *testing.T) {
 	}
 }
 
-func TestScanValuesCacheMode(t *testing.T) {
+func TestScanValuesSourceCache(t *testing.T) {
 	fx := ioFixtureOf(t, ioTiny)
 	for _, store := range []ioStore{plainStore, capableStore} {
-		t.Run(store.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				ctx := context.Background()
-				opt := ioOptions
-				opt.Cache = true
-				src := fakestore.New(fx.objects, opt)
-				d, err := seekparquet.OpenDataset(ctx, store.wrap(src), store.opt)
-				must(t, err)
-				defer d.Close()
-				p, err := d.Plan(ctx, []seekparquet.Selection{{}}, []string{"size"}, nil)
-				must(t, err)
-				scan := func(ctx context.Context) (fakestore.Report, seekparquet.ReadStats) {
-					op := src.Begin("values")
-					var st seekparquet.ReadStats
-					var rows int64
-					must(t, p.ScanValues(ctx, &st, func(b *seekparquet.ValueBatch) error {
-						rows += int64(b.Len())
-						return nil
-					}))
-					if rows != int64(len(fx.keys)) || st.KeyPagesDecoded != 0 {
-						t.Fatalf("rows %d, stats %+v", rows, st)
+		for _, valuesOnly := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/values=%v", store.name, valuesOnly), func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					var obs countingObserver
+					ctx := fakestore.WithObserver(context.Background(), &obs)
+					opt := ioOptions
+					opt.Cache = true
+					src := fakestore.New(fx.objects, opt)
+					d, err := seekparquet.OpenDataset(ctx, store.wrap(src), store.opt)
+					must(t, err)
+					defer d.Close()
+					p, err := d.Plan(ctx, []seekparquet.Selection{{}}, []string{"size"}, nil)
+					must(t, err)
+					scan := func(ctx context.Context) (fakestore.Report, seekparquet.ReadStats) {
+						op := src.Begin("values")
+						var st seekparquet.ReadStats
+						var rows int64
+						if valuesOnly {
+							must(t, p.ScanValues(ctx, &st, func(b *seekparquet.ValueBatch) error {
+								rows += int64(b.Len())
+								return nil
+							}))
+						} else {
+							must(t, p.Scan(ctx, &st, func(b *seekparquet.Batch) error {
+								rows += int64(b.Len())
+								return nil
+							}))
+						}
+						if rows != int64(len(fx.keys)) || valuesOnly && st.KeyPagesDecoded != 0 {
+							t.Fatalf("rows %d, stats %+v", rows, st)
+						}
+						return op.End(), st
 					}
-					return op.End(), st
-				}
-				cold, _ := scan(ctx)
-				warm, st := scan(ctx)
-				if len(cold.Requests) == 0 || len(warm.Requests) != 0 || st.ByteCacheHitBytes == 0 {
-					t.Fatalf("cold requests %d, warm %d, warm stats %+v", len(cold.Requests), len(warm.Requests), st)
-				}
-				bypass, _ := scan(seekparquet.WithCacheMode(ctx, seekparquet.CacheBypass))
-				if len(bypass.Requests) == 0 {
-					t.Fatal("explicit bypass used the source cache")
-				}
+					cold, _ := scan(ctx)
+					before := obs.hits.Load()
+					warm, st := scan(ctx)
+					if len(cold.Requests) == 0 || len(warm.Requests) != 0 || obs.hits.Load() <= before {
+						t.Fatalf("cold requests %d, warm %d, warm stats %+v", len(cold.Requests), len(warm.Requests), st)
+					}
+					bypass, _ := scan(fakestore.WithBypass(ctx))
+					if len(bypass.Requests) == 0 {
+						t.Fatal("explicit bypass used the source cache")
+					}
+				})
 			})
-		})
+		}
 	}
 }
 

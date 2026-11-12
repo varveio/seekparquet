@@ -76,12 +76,6 @@ func checkStats(t *testing.T, name string, st, want ReadStats, src *accessSource
 		t.Errorf("%s: %d bytes reused from the request's pages, want some: %v", name, st.RequestMemoHitBytes, want.RequestMemoHitBytes != 0)
 	}
 	want.RequestMemoHitBytes = st.RequestMemoHitBytes
-	// The counting Source does not report its physical requests: every
-	// read is a storage call it leaves unreported.
-	if st.UnreportedIOCalls != st.SourceReads {
-		t.Errorf("%s: %d unreported storage calls for %d reads", name, st.UnreportedIOCalls, st.SourceReads)
-	}
-	want.UnreportedIOCalls = st.UnreportedIOCalls
 	// A key page index's ColumnIndex and OffsetIndex are read together,
 	// through concurrent ReadAt calls on this Source.
 	if st.ScalarFallbackReads != 2*st.IndexLoads {

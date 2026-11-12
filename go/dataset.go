@@ -49,8 +49,8 @@ func SupportedVersions() []Version {
 // context, and must not change shared state such as a "current" context
 // of the file.
 //
-// The view's reads must carry ctx's values, the operation's cache mode
-// (WithCacheMode) and observer (WithIOObserver) among them, to the source.
+// The view's reads must carry ctx's values to the source, including any
+// storage-specific request observer or cache policy the caller supplied.
 //
 // A file that does not implement ContextBinder is read as a plain
 // io.ReaderAt: the reader checks its context between pages, but cannot
@@ -103,12 +103,8 @@ type Source interface {
 type OpenOptions struct {
 	// Limits bounds the resources the dataset can make the reader use.
 	Limits Limits
-	// Read controls how the reader schedules its reads.
+	// Read controls tail reads and optional speculation.
 	Read ReadPolicy
-	// OpenStats, when non-nil, is reset on entry to OpenDataset or
-	// OpenDir and filled on every exit. It includes manifest I/O.
-	// The Dataset does not retain it.
-	OpenStats *ReadStats
 }
 
 // Key declares the exact key column and whether keys must be unique.
@@ -204,24 +200,19 @@ type Dataset struct {
 //
 // Dataset.Close closes every part file the dataset opened.
 func OpenDataset(ctx context.Context, src Source, opt OpenOptions) (*Dataset, error) {
-	st, spare := takeStats(opt.OpenStats)
-	defer dropStats(spare)
-	if err := prepareOpen(ctx, &opt); err != nil {
+	if err := prepareOpen(&opt); err != nil {
 		return nil, err
 	}
-	return openDataset(ctx, src, opt, st, false)
+	return openDataset(ctx, src, opt, false)
 }
 
-// prepareOpen checks opt and the context's cache mode, before any I/O,
+// prepareOpen checks opt before any I/O,
 // and sets opt's defaults.
-func prepareOpen(ctx context.Context, opt *OpenOptions) error {
+func prepareOpen(opt *OpenOptions) error {
 	if err := opt.Limits.check(); err != nil {
 		return err
 	}
 	if err := opt.Read.check(); err != nil {
-		return err
-	}
-	if err := checkCacheMode(ctx); err != nil {
 		return err
 	}
 	opt.Limits, opt.Read = opt.Limits.withDefaults(), opt.Read.withDefaults()
@@ -230,21 +221,8 @@ func prepareOpen(ctx context.Context, opt *OpenOptions) error {
 
 // openDataset opens the dataset at src with checked options; local reads
 // as OpenDir's zero policy says (reader.local).
-func openDataset(ctx context.Context, src Source, opt OpenOptions, st *ReadStats, local bool) (*Dataset, error) {
-	// The manifest is read under an operation that observes the physical
-	// requests of whichever of the Source and the manifest's file report
-	// them; a local directory's files report none.
-	mctx := ctx
-	if _, ok := src.(dirSource); !ok {
-		op := newOperation(ctx, opt.Read.Concurrency)
-		mctx = op
-		defer func() {
-			if c := op.c.Load(); c != nil {
-				c.addTo(st)
-			}
-		}()
-	}
-	raw, identity, err := readManifest(mctx, src, opt.Limits.ManifestBytes, reportsIO(src), st)
+func openDataset(ctx context.Context, src Source, opt OpenOptions, local bool) (*Dataset, error) {
+	raw, identity, err := readManifest(ctx, src, opt.Limits.ManifestBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -276,10 +254,7 @@ func openDataset(ctx context.Context, src Source, opt OpenOptions, st *ReadStats
 // readManifest reads the manifest whole within limit: through
 // ManifestReader when the Source has it, otherwise by opening it and
 // reading it through ReadAt.
-func readManifest(ctx context.Context, src Source, limit int64, reports bool, st *ReadStats) ([]byte, string, error) {
-	if !reports {
-		st.UnreportedIOCalls++
-	}
+func readManifest(ctx context.Context, src Source, limit int64) ([]byte, string, error) {
 	if mr, ok := src.(ManifestReader); ok {
 		raw, identity, err := mr.ReadManifest(ctx, limit)
 		switch {
@@ -316,9 +291,6 @@ func readManifest(ctx context.Context, src Source, limit int64, reports bool, st
 	}
 	raw := make([]byte, size)
 	// Manifest reads are not part reads: they count in no Source counter.
-	if unreported(ctx, reportsIO(f)) {
-		st.UnreportedIOCalls++
-	}
 	at := storageReader{r: bind(ctx, f), op: operationOf(ctx), name: ManifestName}
 	if err := at.readFull(raw, 0); err != nil {
 		return nil, "", fmt.Errorf("read %s: %w", ManifestName, err)
@@ -330,10 +302,7 @@ func readManifest(ctx context.Context, src Source, limit int64, reports bool, st
 // SizedSource when the Source has it, the size then proven by the first
 // read (sourceError), and otherwise through Open, its size compared with
 // the manifest's.
-func openPartFile(ctx context.Context, src Source, entry manifest.Part, reports bool, st *ReadStats) (SourceFile, error) {
-	if !reports {
-		st.UnreportedIOCalls++
-	}
+func openPartFile(ctx context.Context, src Source, entry manifest.Part) (SourceFile, error) {
 	var f SourceFile
 	var err error
 	// A part of fewer than 12 bytes is refused before any read could prove
@@ -363,7 +332,7 @@ func openPartFile(ctx context.Context, src Source, entry manifest.Part, reports 
 // caller establishes it (fetchedInput.tail.headDeferred), and a verdict
 // reached before is judged again with the real head (magicFirst).
 func openDatasetPart(ctx context.Context, src Source, m *manifest.Manifest, entry manifest.Part, r *reader, st *ReadStats, deferHead bool) (_ fetchedInput, err error) {
-	f, err := openPartFile(ctx, src, entry, reportsIO(src), st)
+	f, err := openPartFile(ctx, src, entry)
 	if err != nil {
 		return fetchedInput{}, err
 	}
@@ -455,8 +424,8 @@ func (d *Dataset) Metadata() Metadata { return d.meta.clone() }
 // fault before its first query. A part it refuses stays refused for later
 // reads. It does not read every row (CHECK-4) or check digests (PART-5).
 //
-// Parts are checked, and the pages Verify decodes fetched, by up to
-// ReadPolicy.Concurrency parts at once: a part's end first, then its row
+// Parts are checked, and the pages Verify decodes fetched, within an
+// internal part limit: a part's end first, then its row
 // groups' first key pages and its last key page together, the part's head
 // read with its first page when that page begins near it. The checks and
 // decodes themselves run in manifest and row-group order, so the fault
@@ -558,8 +527,7 @@ func (d *Dataset) Get(ctx context.Context, key []byte, st *ReadStats, columns ..
 // callback; a scan that reaches its limit or its end returns nil. Close
 // cancels the scan and waits for fn to return: fn must not call Close, nor
 // wait for a goroutine that does. Concurrent and reentrant calls have
-// independent scratch. It asks a Source's byte cache to be bypassed
-// (CacheBypass), unless ctx sets a cache mode.
+// independent scratch. Source caching follows the storage layer's policy.
 func (d *Dataset) Scan(ctx context.Context, q Query, st *ReadStats, fn func(*Batch) error) error {
 	return d.r.rangeBatches(ctx, q, st, keyReuse{}, fn)
 }

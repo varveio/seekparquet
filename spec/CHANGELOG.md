@@ -6,7 +6,8 @@ Unreleased draft revision 1 is edited in place; no format has been released.
 
 - [cursor-token-1.md](cursor-token-1.md) adds version 1 of the cursor token (`spc1.r.<key>.<offset>`,
   `spc1.p.<prefix>`), a canonical text encoding of PAGE-1 cursors for protocols, with golden vectors in
-  `conformance/vectors/`. It affects no valid file and no query result, and needs no draft revision.
+  `conformance/vectors/`. The `spc1` encoding is stable: version 1 is fixed; a different encoding gets a
+  new prefix. It affects no valid file and no query result, and needs no draft revision.
 
 ## Draft revision 1 (unreleased)
 

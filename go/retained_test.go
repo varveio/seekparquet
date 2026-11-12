@@ -154,7 +154,7 @@ func TestRetainedMetadataHostile(t *testing.T) {
 // TestReadPolicyInvalid: a negative policy field is an invalid request.
 func TestReadPolicyInvalid(t *testing.T) {
 	dir, _ := retainedFixture(t)
-	for _, p := range []ReadPolicy{{Concurrency: -1}, {MetadataPrefetchBytes: -1}} {
+	for _, p := range []ReadPolicy{{MetadataPrefetchBytes: -1}} {
 		if _, err := OpenDir(ctx, dir, OpenOptions{Read: p}); !isInvalid(err) {
 			t.Fatalf("%+v: %v", p, err)
 		}

@@ -197,7 +197,7 @@ func TestCheckCatchesDrift(t *testing.T) {
 		{"cache with an incorrect LimitName", "go/limits.go", "LimitOffsetIndexMemory LimitName = \"OffsetIndexMemory\"", "LimitOffsetIndexMemory LimitName = \"Other\"", "no LimitName LimitOffsetIndexMemory"},
 		{"Go-only cache marked as a limit", "docs/data/limits.json", "\"PageIndexCacheMemory\", \"java\": null, \"kind\": \"cache\"", "\"PageIndexCacheMemory\", \"java\": null, \"kind\": \"limit\"", "no LimitName LimitPageIndexCacheMemory"},
 		{"Go-only cache given a Java counterpart", "docs/data/limits.json", "\"PageIndexCacheMemory\", \"java\": null", "\"PageIndexCacheMemory\", \"java\": \"pageIndexCacheMemory\"", "no public constant DEFAULT_PAGE_INDEX_CACHE_MEMORY"},
-		{"Go-only counter given a Java counterpart", "docs/data/read-stats.json", "\"PhysicalRequests\", \"java\": null", "\"PhysicalRequests\", \"java\": \"physicalRequests\"", "no component physicalRequests"},
+		{"Go-only counter given a Java counterpart", "docs/data/read-stats.json", "\"SourceBatches\", \"java\": null", "\"SourceBatches\", \"java\": \"sourceBatches\"", "no component sourceBatches"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			root := mutableTree(t)
@@ -247,8 +247,6 @@ func TestReaderIOOperationReferences(t *testing.T) {
 	for _, want := range []string{
 		"Dataset.Verify(ctx, stats)",
 		"pass nil to discard statistics",
-		"OpenOptions.OpenStats",
-		"includes manifest I/O",
 	} {
 		if !strings.Contains(stats, want) {
 			t.Errorf("statistics reference is missing %q", want)
@@ -259,8 +257,7 @@ func TestReaderIOOperationReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"| Read scheduling policy | `ReadPolicy` | — |",
-		"| Open statistics | `OpenOptions.OpenStats` | — |",
+		"| Logical read policy | `ReadPolicy` | — |",
 	} {
 		if !strings.Contains(parity, want) {
 			t.Errorf("parity reference is missing %q", want)
@@ -302,8 +299,8 @@ func TestVerifyConcurrencyParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(page, "| Verify concurrency | `ReadPolicy.Concurrency` | `OpenOptions.verifyConcurrency` | Java defaults to 1") {
-		t.Error("parity reference is missing Java's verify concurrency counterpart and default")
+	if !strings.Contains(page, "| Verify concurrency | — | `OpenOptions.verifyConcurrency` | Java bounds concurrent part checks") {
+		t.Error("parity reference is missing Java's independent verify concurrency setting")
 	}
 }
 

@@ -5,9 +5,9 @@
 Go exposes ReadStats for Rows, Get, Scan, List, Dataset.Verify, Dataset.Plan, Plan.Split and Plan.Scan. Java supplies statistics through ReadOptions, including for verify and columns. In Go, pass a `*ReadStats` as the statistics argument: it is reset when the operation starts and filled as it runs, whether the operation succeeds or fails. `Dataset.Verify(ctx, stats)` takes the same statistics argument; pass nil to discard statistics.
 In Java, pass a statistics consumer in `ReadOptions`; it receives a `ReadStats` record.
 
-For Go's open operation, set `OpenOptions.OpenStats`: it includes manifest I/O, is reset on entry to OpenDataset or OpenDir and filled on every exit. The Dataset does not retain it. Manifest reads are excluded from SourceReads and SourceBytes.
-
 The counts describe this reader's access path. They are diagnostics, not part of the format: another reader, or another version of this one, may do the same read with different counts.
+
+Physical request counts, wire bytes, retries and byte-cache hits belong to the caller's storage instrumentation.
 
 The table's meanings describe Go; Java differences follow it.
 
@@ -34,18 +34,8 @@ The table's meanings describe Go; Java differences follow it.
 | `ReadAheadUnusedBytes` | `readAheadUnusedBytes` | ReadAheadReads is the number of key pages a listing read ahead (ListQuery.ReadAhead). Their windows may merge adjacent pages or split a page across reads, counted in SourceReads and SourceBytes. ReadAheadUnused and ReadAheadUnusedBytes are the pages of them, and their bytes, that it did not use: wrong predictions, pages past where the listing stopped, and reads that failed (the page is then read again). |
 | `SourceBatches` | Go only | SourceBatches counts calls actually made to RangeReader.ReadRanges. ScalarFallbackReads counts non-empty ReadAt calls actually made to execute a logical batch without RangeReader. |
 | `ScalarFallbackReads` | Go only | SourceBatches counts calls actually made to RangeReader.ReadRanges. ScalarFallbackReads counts non-empty ReadAt calls actually made to execute a logical batch without RangeReader. |
-| `PhysicalRequests` | Go only | The physical counters come from a Source that reports its requests (IOReporter): the requests it made for the operation, opens and metadata requests included, their payload bytes, the retries among them and the attempts that failed. They are exact only when UnreportedIOCalls is zero. |
-| `PhysicalBytes` | Go only | The physical counters come from a Source that reports its requests (IOReporter): the requests it made for the operation, opens and metadata requests included, their payload bytes, the retries among them and the attempts that failed. They are exact only when UnreportedIOCalls is zero. |
-| `PhysicalRetries` | Go only | The physical counters come from a Source that reports its requests (IOReporter): the requests it made for the operation, opens and metadata requests included, their payload bytes, the retries among them and the attempts that failed. They are exact only when UnreportedIOCalls is zero. |
-| `PhysicalFailures` | Go only | The physical counters come from a Source that reports its requests (IOReporter): the requests it made for the operation, opens and metadata requests included, their payload bytes, the retries among them and the attempts that failed. They are exact only when UnreportedIOCalls is zero. |
-| `PlannedRanges` | Go only | PlannedRanges, PlannedRequests and PlannedOverReadBytes are what a reporting source said it planned for the batches it was given (IOObserver.BatchPlanned); do not subtract them to infer requests. |
-| `PlannedRequests` | Go only | PlannedRanges, PlannedRequests and PlannedOverReadBytes are what a reporting source said it planned for the batches it was given (IOObserver.BatchPlanned); do not subtract them to infer requests. |
-| `PlannedOverReadBytes` | Go only | PlannedRanges, PlannedRequests and PlannedOverReadBytes are what a reporting source said it planned for the batches it was given (IOObserver.BatchPlanned); do not subtract them to infer requests. |
-| `ByteCacheHitBytes` | Go only | ByteCacheHitBytes are the bytes a reporting source served from its own byte cache. |
 | `MetadataHitBytes` | Go only | MetadataHitBytes counts raw page-index bytes supplied from retained metadata instead of storage, counted on each use. |
 | `RequestMemoHitBytes` | Go only | RequestMemoHitBytes counts the bytes of complete key-page extents reused from the request's bounded memo instead of read again: a routing probe's page that the walk reached, a cursor's page, a page Verify fetched together with others. Extents not admitted to the memo may be read again; its capacity and admission policy are implementation details. |
-| `UnreportedIOCalls` | Go only | UnreportedIOCalls is the number of storage calls (ReadAt, ReadRanges, Open, OpenSized, ReadManifest) whose physical requests the physical counters leave out: those made on a source or file that does not report them (IOReporter). Every operation observes the requests of the receivers that do, from its first call. |
-| `PeakPhysicalRequests` | Go only | PeakPhysicalRequests is the most physical requests a reporting source had in flight at once for the operation. |
 
 Java's `ReadStats` Javadoc gives these differences:
 

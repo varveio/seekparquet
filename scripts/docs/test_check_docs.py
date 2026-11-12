@@ -132,13 +132,16 @@ class DocumentationContracts(unittest.TestCase):
     def test_go_storage_capabilities_and_defaults(self):
         page = self.read('docs/concepts.md')
         for text in ('SizedSource.OpenSized', 'ManifestReader.ReadManifest', 'ErrObjectTooLarge',
-                     '*LimitError', 'ManifestBytes', 'CacheMode', 'CacheDefault', 'CacheBypass',
-                     'WithCacheMode', 'OpenOptions.OpenStats',
-                     '| `Concurrency` | 64 |',
+                     '*LimitError', 'ManifestBytes',
+                     'Storage owns physical request execution, byte caching, and request observation.',
+                     'Go bounds independent reads internally; the Source bounds physical concurrency.',
                      '| `MetadataPrefetchBytes` | 2 MiB; 64 KiB with `OpenDir` |',
                      '| `DisableSpeculation` | `false` |'):
             with self.subTest(contract=text):
                 self.assertIn(text, page)
+        for removed in ('CacheMode', 'CacheDefault', 'CacheBypass', 'WithCacheMode',
+                        '| `Concurrency` |'):
+            self.assertNotIn(removed, page)
         self.assertNotIn('> Pending:', page)
 
     def test_cache_budget_allows_eviction(self):

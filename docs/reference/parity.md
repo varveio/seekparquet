@@ -12,9 +12,8 @@ A dash means the language has no counterpart. Names are checked against the code
 | Open a local directory | `OpenDir` | `Dataset.open` |  |
 | Open through custom storage | `OpenDataset` | `Dataset.open` | Java takes a storage.DatasetStorage. |
 | Open options | `OpenOptions` | `OpenOptions` |  |
-| Read scheduling policy | `ReadPolicy` | — | Go sets OpenOptions.Read; Concurrency bounds logical ranges, not physical requests. Java has no counterpart for the policy struct yet. |
-| Verify concurrency | `ReadPolicy.Concurrency` | `OpenOptions.verifyConcurrency` | Java defaults to 1 and bounds concurrent part checks during verify. Go also bounds logical ranges for other operations. |
-| Open statistics | `OpenOptions.OpenStats` | — | Go only; a *ReadStats reset on entry and filled on every exit, including manifest I/O. The Dataset does not retain it. |
+| Logical read policy | `ReadPolicy` | — | Go sets OpenOptions.Read for tail reads and speculation. Storage owns physical request execution, caching and observation. |
+| Verify concurrency | — | `OpenOptions.verifyConcurrency` | Java bounds concurrent part checks during verify. Go uses an internal limit; the Source bounds physical concurrency. |
 | Resource limits | `Limits` | `Limits` | Java builds them with Limits.builder(). See the limits reference. |
 | Retained raw page-index cache budget | `Limits.PageIndexCacheMemory` | — | Go only; excludes footers and decoded indexes and does not bound overall metadata. |
 | Check every part now | `Dataset.Verify` | `Dataset.verify` | Go: Verify(ctx, stats), with a *ReadStats or nil. Java: verify(ReadOptions). |
@@ -98,7 +97,7 @@ A dash means the language has no counterpart. Names are checked against the code
 | Concept | Go | Java | Note |
 |---|---|---|---|
 | Per-operation counters | `ReadStats` | `ReadStats` | Go fills a *ReadStats argument; Java passes a ReadStats to the consumer in ReadOptions. See the read statistics reference. |
-| Batch, physical I/O and byte-reuse counters | `ReadStats.SourceBatches` | — | The new source-batch, scalar-fallback, physical, planned, cache-hit, memo-hit, unreported-call and peak counters are Go only. See the read statistics reference for each field and its reporting requirements. |
+| Batch and byte-reuse counters | `ReadStats.SourceBatches` | — | Source-batch, scalar-fallback, metadata-hit and memo-hit counters are Go only. Physical request metrics belong to storage. |
 | Per-operation options | — | `ReadOptions` | Go takes a context.Context and a *ReadStats argument. |
 | Cancellation | `context.Context` | `Cancellation` |  |
 | Storage of a dataset root | `Source` | `storage.DatasetStorage` |  |

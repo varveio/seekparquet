@@ -136,8 +136,7 @@ func decodeBounded(raw []byte, v any, budget int64) (int, error) {
 // and footer, nothing else (InspectFooter). Nothing is allocated from the
 // declared footer length before it is checked.
 func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits, st *ReadStats, maxWindow int64, concurrency int, deferHead bool) (_ *parquet.File, tail footerTail, err error) {
-	reports := reportsIO(file)
-	at := storageReader{r: bind(ctx, file), op: operationOf(ctx), st: st, name: name, unreported: unreported(ctx, reports)}
+	at := storageReader{r: bind(ctx, file), op: operationOf(ctx), st: st, name: name}
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidFooter, name, -1, format, args...)
 	}
@@ -165,7 +164,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 		// the head is reported first, as when it was read first.
 		head = make([]byte, 4)
 		ranges := []ReadRange{{Off: 0, Buf: head}, {Off: size - window, Buf: win}}
-		for _, err := range readRanges(ctx, rangeFile{file: file, name: name, reports: reports, concurrency: concurrency}, ranges, st) {
+		for _, err := range readRanges(ctx, rangeFile{file: file, name: name, concurrency: concurrency}, ranges, st) {
 			if err != nil {
 				return nil, tail, footerError(ctx, name, err)
 			}
@@ -243,7 +242,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	}()
 	// parquet-go reads the head magic and the footer again: both are served
 	// from the bytes checked above, not read from the source a second time.
-	retained := prefetched{r: storageReader{r: at.r, name: name, unreported: at.unreported}, off: size - 8 - n, data: footer, head: head}
+	retained := prefetched{r: storageReader{r: at.r, name: name}, off: size - 8 - n, data: footer, head: head}
 	if testFooterRetained != nil {
 		testFooterRetained(retained, win)
 	}
@@ -755,7 +754,7 @@ func magicFirst(ctx context.Context, name string, file io.ReaderAt, size int64, 
 	if ctx.Err() != nil || errors.As(err, &se) || errors.Is(err, ErrClosed) {
 		return err
 	}
-	at := storageReader{r: bind(ctx, file), op: operationOf(ctx), st: st, name: name, unreported: unreported(ctx, reportsIO(file))}
+	at := storageReader{r: bind(ctx, file), op: operationOf(ctx), st: st, name: name}
 	head := make([]byte, 4)
 	if e := at.readFull(head, 0); e != nil {
 		return footerError(ctx, name, e)

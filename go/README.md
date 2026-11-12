@@ -167,8 +167,8 @@ For per-input aggregation, distribute rows by ordinal as the example does.
 Ordinals and counts are `int64`; batch indexes and lengths are `int`. Compute `start + int64(i)` on 32-bit and 64-bit systems.
 Success does not certify unread key pages; an explicitly projected key column is read as a value column.
 
-`ScanValues` honors `CacheDefault`, permitting Source-cache lookup and admission under storage policy.
-`Plan.Scan` uses `CacheBypass` for that mode. Use `WithCacheMode` to choose a mode explicitly.
+`ScanValues` and `Plan.Scan` both leave byte caching to the caller's storage layer.
+Reader-owned metadata reuse is independent of storage caching.
 `Count`, `ProjectedBytes`, `Columns`, `InputRowSpans`, and `SelectRows` remain usable after `Dataset.Close`.
 Scanning or calling `Dataset.PlanRows` then fails with `ErrClosed` for valid arguments.
 Positions remain inspectable after close and cannot be transferred to another dataset handle.
@@ -191,9 +191,15 @@ producer with its own part rotation drives the pieces itself: `write.NewPart` st
 returns its `PartInfo` from `Seal`; `local.PublishPart` installs it; `local.Commit` publishes the
 manifest. `PartWriter.WriteRows` copies the rows it is given, so they may be reused at once;
 `PartWriter.WritePage` takes a page column by column from a fill function and copies nothing, for a
-producer that keeps its own rows until the page is written. The part writer enforces the profile (key column, key order, page indexes with exact bounds,
-`sorting_columns`, stamps, column orders) and cannot be configured out of it.
-`seekparquet.MarshalManifest` and `ParseManifest` write and read a manifest, keeping the top-level
+producer that keeps its own rows until the page is written.
+
+The `write` package produces one part at a time from sorted rows and enforces the profile (key column,
+key order, page indexes with exact bounds, `sorting_columns`, stamps, column orders) and cannot be
+configured out of it.
+In `go/local`, `local.WriteDir` writes a complete new dataset including its manifest, and `local.Commit`
+publishes a manifest for installed parts. For custom storage, `seekparquet.MarshalManifest` returns
+manifest bytes for the caller to store.
+`seekparquet.MarshalManifest` and `ParseManifest` encode and parse a manifest, keeping the top-level
 `Extensions` and each `PartInfo.Extensions` as written (a producer sets a part's before `Commit`); `InspectFooter` and
 `InspectKeyPages` read a part's footer and key page index without reading its pages.
 
@@ -377,12 +383,10 @@ part with its manifest size, so that no metadata request precedes its first read
 a `*SizeMismatchError` from it, or from `OpenSized`, is refused `part_mismatch`, a missing object
 `missing_part`, and `ErrObjectChanged` (a broken pin) stays an environment error, never a refusal. A part file
 that is a `RangeReader` reads several ranges in one `ReadRanges` call, with a `*BatchError` giving each range's
-outcome; without it, ranges the reader issues together go to concurrent `ReadAt` calls, at most
-`ReadPolicy.Concurrency` (default 64) per operation. A source that implements `IOReporter` reports its
-physical requests to the `IOObserver` on each operation's context (`IOObserverFromContext`): the reader counts
-them in `ReadStats` (`PhysicalRequests`, `PhysicalBytes`, `PeakPhysicalRequests`, ...; `OpenOptions.OpenStats`
-for the open) and passes them on to an observer the caller set with `WithIOObserver`. `WithCacheMode` asks a
-source's byte cache to be bypassed (`CacheBypass`).
+outcome; without it, ranges the reader issues together go to concurrent `ReadAt` calls within an internal limit.
+The Source owns physical request execution, byte caching, and request observation.
+`ReadStats` counts logical and format work, including on failure.
+`SourceReads` and `SourceBytes` exclude manifest reads and do not measure physical requests or wire bytes.
 
 With a non-local Source, scans, listings, and projected reads can fetch bounded windows through `RangeReader`; scalar sources use concurrent `ReadAt` calls.
 Zero-policy `OpenDir` reads on demand; explicitly requesting listing read-ahead or setting `OpenOptions.Read` opts into window fetching.
@@ -433,7 +437,7 @@ index loads without a read (`ReadStats.MetadataHitBytes`); an index is still dec
 request needs it. `ReadPolicy.DisableSpeculation` reads a 64 KiB window, keeps only the footer and reads no page
 ahead. A key column chunk's ColumnIndex and OffsetIndex not kept that way are read together. Within a request,
 complete key-page extents admitted to the bounded request memo are reused (`ReadStats.RequestMemoHitBytes`);
-extents not admitted may be read again. `Verify` checks up to `ReadPolicy.Concurrency` parts at once, each in
+extents not admitted may be read again. `Verify` checks parts concurrently within an internal limit, each in
 two rounds of reads (its end; then its row groups' first key pages and its last key page, its head merged into
 the first when that page begins within 64 KiB), and reports the first failure in the part and check order of a
 serial check; a second `Verify` of the same `Dataset` reads nothing. `OpenDir` with a zero `ReadPolicy` reads as

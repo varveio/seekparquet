@@ -321,7 +321,7 @@ func (p *part) readIndexPair(ctx context.Context, physical int, meta *format.Col
 		return columns, offsets, offsetsErr, nil
 	}
 	ranges := []ReadRange{{Off: ci[0], Buf: make([]byte, ci[1])}, {Off: oi[0], Buf: make([]byte, oi[1])}}
-	errs := readRanges(ctx, rangeFile{file: p.file, name: p.name, reports: p.reports, concurrency: p.r.policy.Concurrency}, ranges, st)
+	errs := readRanges(ctx, rangeFile{file: p.file, name: p.name, concurrency: p.r.concurrency}, ranges, st)
 	if errs != nil && errs[0] != nil {
 		return nil, nil, nil, errs[0]
 	}

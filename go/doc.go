@@ -91,8 +91,8 @@
 // spans with the same projection without I/O, including after Close.
 // Plan.ScanValues reads projected columns by row position as borrowed
 // ValueBatch batches, without implicit key decoding or equal-key offsets.
-// It permits Source-cache lookup and admission under CacheDefault;
-// Plan.Scan uses CacheBypass for that mode. Scans fail with ErrClosed
+// Source caching follows the storage layer's policy for both scan methods.
+// Scans fail with ErrClosed
 // after the Dataset closes; positions remain inspectable and in-memory plan
 // inspection and SelectRows remain usable. Split requires the open Dataset:
 // it can read key pages to keep groups of equal keys whole.
@@ -145,8 +145,8 @@
 // A Source may offer optional capabilities for remote storage: a whole
 // manifest read (ManifestReader), part opens with the manifest's size and
 // no metadata request (SizedSource), batched range reads on its files
-// (RangeReader), and reports of its physical requests to the context's
-// IOObserver (IOReporter), which ReadStats counts. A Source with none is
+// (RangeReader). Physical requests and byte caching belong to the Source.
+// ReadStats counts logical reads and format work. A Source with none is
 // read through Open and ReadAt. A part's first check reads its end in one
 // window (ReadPolicy.MetadataPrefetchBytes) and keeps the page-index bytes
 // it holds (Limits.PageIndexCacheMemory), so that later index loads of the

@@ -166,7 +166,7 @@ func (changedManifestSource) ReadManifest(context.Context, int64) ([]byte, strin
 
 // TestOpenClassification: a manifest whose pin broke is the environment's
 // error, not no_manifest, through Open and through ReadManifest alike;
-// OpenDir resets OpenStats and checks its options before any I/O.
+// OpenDir checks its options before any I/O.
 func TestOpenClassification(t *testing.T) {
 	for _, src := range []Source{changedOpenSource{}, changedManifestSource{}} {
 		_, err := OpenDataset(ctx, src, OpenOptions{})
@@ -174,11 +174,10 @@ func TestOpenClassification(t *testing.T) {
 			t.Errorf("%T: %v", src, err)
 		}
 	}
-	st := ReadStats{SourceReads: 7}
-	if _, err := OpenDir(ctx, "/nonexistent-dataset", OpenOptions{OpenStats: &st}); err == nil || st != (ReadStats{}) {
-		t.Fatalf("OpenDir of a missing directory: %v, stats %+v", err, st)
+	if _, err := OpenDir(ctx, "/nonexistent-dataset", OpenOptions{}); err == nil {
+		t.Fatalf("OpenDir of a missing directory: %v", err)
 	}
-	if _, err := OpenDir(ctx, "/nonexistent-dataset", OpenOptions{Read: ReadPolicy{Concurrency: -1}}); !errors.Is(err, ErrInvalidRequest) {
+	if _, err := OpenDir(ctx, "/nonexistent-dataset", OpenOptions{Read: ReadPolicy{MetadataPrefetchBytes: -1}}); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("OpenDir with an invalid policy: %v", err)
 	}
 }
@@ -208,7 +207,8 @@ func TestVerifyHostileIndexLength(t *testing.T) {
 	keys := fixtureKeys(600)
 	dir := write(t, parts(testutil.Part{GroupRows: 150, PageBytes: 400}, split(keys, 2)...))
 	rewrite(t, dir, 1, func(m *format.FileMetaData) { m.RowGroups[1].Columns[0].OffsetIndexLength = -1 })
-	d := open(t, dir, OpenOptions{Read: ReadPolicy{Concurrency: 4}})
+	d := open(t, dir, OpenOptions{Read: ReadPolicy{MetadataPrefetchBytes: footerWindow}})
+	d.r.concurrency = 4
 	first := d.Verify(ctx, nil)
 	if first == nil {
 		t.Fatal("a negative index length was accepted")
@@ -316,7 +316,7 @@ func TestVerifyColumnOrder(t *testing.T) {
 	}
 }
 
-// TestVerifySlowTails: Verify keeps at most ReadPolicy.Concurrency logical
+// TestVerifySlowTails: Verify keeps at most the internal concurrency limit logical
 // ranges outstanding, scalar end reads and batches together, however long
 // the ends take.
 func TestVerifySlowTails(t *testing.T) {
@@ -332,8 +332,9 @@ func TestVerifySlowTails(t *testing.T) {
 			}
 			return nil
 		}}
-		d, err := OpenDataset(ctx, src, OpenOptions{Read: ReadPolicy{Concurrency: 3, MetadataPrefetchBytes: 1 << 12}})
+		d, err := OpenDataset(ctx, src, OpenOptions{Read: ReadPolicy{MetadataPrefetchBytes: 1 << 12}})
 		must(t, err)
+		d.r.concurrency = 3
 		defer d.Close()
 		must(t, d.Verify(ctx, nil))
 		if m := src.most.Load(); m > 3 {
@@ -366,8 +367,9 @@ func TestPartialTail(t *testing.T) {
 		}
 		return nil
 	}
-	d, err := OpenDataset(ctx, src, OpenOptions{Read: ReadPolicy{MetadataPrefetchBytes: window, Concurrency: 1}})
+	d, err := OpenDataset(ctx, src, OpenOptions{Read: ReadPolicy{MetadataPrefetchBytes: window}})
 	must(t, err)
+	d.r.concurrency = 1
 	t.Cleanup(func() { _ = d.Close() })
 	var st ReadStats
 	rows, err := d.Rows(ctx, Query{Selection: Selection{Span: KeySpan([]byte(keys[10]))}, Limit: 1}, &st)

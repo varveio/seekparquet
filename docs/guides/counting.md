@@ -212,10 +212,8 @@ After `SelectRows`, discarded page locations can also make the estimate inexact,
 Only page locations retained within `Limits.OffsetIndexMemory` remain available to price the selection.
 Check the boolean before using the byte estimate as a complete projected extent total.
 
-`ScanValues` honors the context's cache mode: `CacheDefault` allows Source-cache lookup and admission under storage policy.
-`Plan.Scan` uses `CacheBypass` when the context mode is `CacheDefault`.
-Bypass still allows reader-owned metadata reuse.
-Choose a mode with `WithCacheMode`; permitted caching does not promise a cache hit.
+`ScanValues` and `Plan.Scan` both leave byte caching to the caller's storage layer.
+Reader-owned metadata reuse is independent of storage caching.
 
 ## Respect the dataset lifetime
 

@@ -53,8 +53,6 @@ type browseSource struct {
 	tr *browseTrace
 }
 
-func (browseSource) ReportsIO() bool { return true }
-
 func (s browseSource) Open(ctx context.Context, name string) (seekparquet.SourceFile, error) {
 	s.tr.add("open " + name)
 	f, err := s.Source.Open(ctx, name)
@@ -85,8 +83,6 @@ type browseFile struct {
 	name string
 	tr   *browseTrace
 }
-
-func (browseFile) ReportsIO() bool { return true }
 
 func (f browseFile) ReadAt(p []byte, off int64) (int, error) {
 	return browseReadAt{f.SourceFile, f.name, f.tr}.ReadAt(p, off)

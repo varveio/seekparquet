@@ -186,9 +186,8 @@ func (g *generator) renderReadStats() (string, error) {
 	b.WriteString(g.pending(page))
 	b.WriteString("Go exposes ReadStats for Rows, Get, Scan, List, Dataset.Verify, Dataset.Plan, Plan.Split and Plan.Scan. Java supplies statistics through ReadOptions, including for verify and columns. In Go, pass a `*ReadStats` as the statistics argument: it is reset when the operation starts and filled as it runs, whether the operation succeeds or fails. `Dataset.Verify(ctx, stats)` takes the same statistics argument; pass nil to discard statistics.\n")
 	b.WriteString("In Java, pass a statistics consumer in `ReadOptions`; it receives a `ReadStats` record.\n\n")
-	b.WriteString("For Go's open operation, set `OpenOptions.OpenStats`: it includes manifest I/O, is reset on entry to OpenDataset or OpenDir and filled on every exit. The Dataset does not retain it. Manifest reads are excluded from SourceReads and SourceBytes.\n\n")
 	b.WriteString("The counts describe this reader's access path. They are diagnostics, not part of the format: another reader, or another version of this one, may do the same read with different counts.\n\n")
-	b.WriteString("The table's meanings describe Go; Java differences follow it.\n\n")
+	b.WriteString("Physical request counts, wire bytes, retries and byte-cache hits belong to the caller's storage instrumentation.\n\nThe table's meanings describe Go; Java differences follow it.\n\n")
 	b.WriteString("| Go field | Java component | Meaning |\n|---|---|---|\n")
 	java := map[string]string{}
 	for _, f := range g.stats.Fields {

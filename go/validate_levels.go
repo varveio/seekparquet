@@ -661,7 +661,7 @@ func valueIndexError(ctx context.Context, p *part, physical, column int, which s
 // the parts as Parquet. A manifest that cannot be read or parsed fails the
 // level with its refusal, as opening would.
 func (v *validator) digest(lr *LevelReport) error {
-	raw, _, err := readManifest(v.ctx, v.src, v.limits.ManifestBytes, true, new(ReadStats))
+	raw, _, err := readManifest(v.ctx, v.src, v.limits.ManifestBytes)
 	if err != nil {
 		return err
 	}

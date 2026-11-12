@@ -108,7 +108,7 @@ func TestReadRangesFallback(t *testing.T) {
 		if !bytes.Equal(ranges[9].Buf, data[90:100]) {
 			t.Fatal("range 9 not filled")
 		}
-		if st.SourceReads != 9 || st.SourceBytes != 90 || st.ScalarFallbackReads != 9 || st.UnreportedIOCalls != 9 || st.SourceBatches != 0 {
+		if st.SourceReads != 9 || st.SourceBytes != 90 || st.ScalarFallbackReads != 9 || st.SourceBatches != 0 {
 			t.Fatalf("%+v", st)
 		}
 	})
@@ -124,9 +124,9 @@ func TestReadRangesBatched(t *testing.T) {
 		f := &batchTestFile{rangeTestFile: &rangeTestFile{data: data, fail: map[int64]error{70: errors.New("boom")}}}
 		var st ReadStats
 		ranges := testRanges(10, 10)
-		observed := newOperation(context.Background(), 2) // a reporting file observed by an operation
-		errs := readRanges(observed, rangeFile{file: f, name: "p", reports: true, concurrency: 4}, ranges, &st)
-		if fmt.Sprint(f.sizes) != "[10]" || st.SourceBatches != 1 || st.SourceReads != 10 || st.UnreportedIOCalls != 0 || st.ScalarFallbackReads != 0 {
+		op := newOperation(context.Background(), 2)
+		errs := readRanges(op, rangeFile{file: f, name: "p", concurrency: 4}, ranges, &st)
+		if fmt.Sprint(f.sizes) != "[10]" || st.SourceBatches != 1 || st.SourceReads != 10 || st.ScalarFallbackReads != 0 {
 			t.Fatalf("calls %v, %+v", f.sizes, st)
 		}
 		for i, err := range errs {
@@ -214,12 +214,6 @@ func TestSourceErrorClassification(t *testing.T) {
 			t.Errorf("%v: %v (%q)", tc.err, got, RefusalCodeOf(got))
 		}
 	}
-	if err := checkCacheMode(WithCacheMode(ctx, CacheMode(7))); !errors.Is(err, ErrInvalidRequest) {
-		t.Fatal(err)
-	}
-	if err := checkCacheMode(WithCacheMode(ctx, CacheBypass)); err != nil {
-		t.Fatal(err)
-	}
 }
 
 // TestThrowawayStats: an operation whose caller passes no statistics
@@ -295,7 +289,7 @@ func TestReadRangesCountsCalls(t *testing.T) {
 			}
 		}
 		if failed != 1 || f.calls.Load() != 1 ||
-			st.SourceReads != 1 || st.SourceBytes != 10 || st.ScalarFallbackReads != 1 || st.UnreportedIOCalls != 1 {
+			st.SourceReads != 1 || st.SourceBytes != 10 || st.ScalarFallbackReads != 1 {
 			t.Fatalf("%d calls, errors %v, %+v", f.calls.Load(), errs, st)
 		}
 		op.limit.release(1)
