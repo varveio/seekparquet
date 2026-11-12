@@ -127,14 +127,14 @@ func (v *validator) keyIndex(p *part, physical int, utf8Bounds bool) (*groupInde
 
 // checkIndexedHeader requires the page header that key OffsetIndex entry i
 // locates to begin one data page that fills the entry and holds its rows
-// (RG-3), refusing with invalid_page_index otherwise.
+// (RG-3). Intrinsic header corruption remains invalid_parquet (CHECK-5).
 func checkIndexedHeader(ctx context.Context, p *part, physical, i int, loc pageLoc, end int64) error {
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidPageIndex, p.name, physical, "key page %d: "+format, append([]any{i}, args...)...)
 	}
-	h, n, _, err := p.pageHeader(ctx, physical, p.key.index, loc.offset, end, nil)
+	h, n, _, err := p.pageHeaderInto(ctx, physical, p.key.index, loc.offset, end, nil, nil, loc.rows, loc.size)
 	if err != nil {
-		if RefusalCodeOf(err) == CodeInvalidParquet {
+		if h == nil && RefusalCodeOf(err) == CodeInvalidParquet {
 			return bad("its OffsetIndex entry does not locate a page header")
 		}
 		return err
@@ -579,16 +579,18 @@ func (c *chunk) levelled(h *format.PageHeader, payload []byte, maxRep, maxDef in
 }
 
 // levelEncoding accepts RLE for levels and reports the legacy BIT_PACKED
-// as unsupported; Parquet allows no other encoding for levels, so anything
-// else is corrupt data.
+// as unsupported. Known encodings that Parquet forbids for levels are corrupt
+// data; unrecognized numeric values are unsupported under ENC-1.
 func (c *chunk) levelEncoding(e format.Encoding) error {
 	switch e {
 	case format.RLE:
 		return nil
 	case format.BitPacked:
 		return &UnsupportedError{Code: UnsupportedEncoding, Detail: "levels encoded BIT_PACKED in part " + c.p.name}
+	case format.Plain, format.PlainDictionary, format.DeltaBinaryPacked, format.DeltaLengthByteArray, format.DeltaByteArray, format.RLEDictionary, format.ByteStreamSplit:
+		return c.corrupt(fmt.Errorf("levels encoded %s, which Parquet does not allow for levels", e))
 	}
-	return c.corrupt(fmt.Errorf("levels encoded %s, which Parquet does not allow for levels", e))
+	return &UnsupportedError{Code: UnsupportedEncoding, Detail: "levels encoded " + e.String() + " in part " + c.p.name}
 }
 
 // countNulls returns the number of null values.

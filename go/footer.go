@@ -203,7 +203,7 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 		}
 	}
 	var wire footerMetadata
-	used, err := decodeBounded(raw[:n], &wire, lim.MetadataMemory, reflect.TypeFor[format.TimeUnit](), reflect.TypeFor[format.LogicalType]())
+	used, err := decodeBounded(raw[:n], &wire, lim.MetadataMemory, reflect.TypeFor[format.TimeUnit](), reflect.TypeFor[footerLogicalType]())
 	meta, normalized := wire.metadata()
 	switch {
 	case errors.Is(err, ErrLimitExceeded):
@@ -422,16 +422,19 @@ func forParquetGo(meta *format.FileMetaData) bool {
 	for i := range meta.Schema {
 		se := &meta.Schema[i]
 		physical := false
+		clearConverted := false
 		switch lt := se.LogicalType.Value.(type) {
-		case *unrecognizedLogicalType:
+		case *unrecognizedLogicalType, *fileLogicalType, *finiteVectorLogicalType:
 			physical = true
 		case *format.TimeType:
 			physical = lt.Unit.Value == nil
+			clearConverted = true
 		case *format.TimestampType:
 			physical = lt.Unit.Value == nil || se.Type.V == format.FixedLenByteArray
+			clearConverted = true
 		}
 		if physical {
-			if _, unknown := se.LogicalType.Value.(*unrecognizedLogicalType); !unknown {
+			if clearConverted {
 				se.ConvertedType.Valid = false
 			}
 			se.LogicalType.Value = nil
@@ -546,7 +549,7 @@ func checkLeaf(se *format.SchemaElement) error {
 			return bad()
 		}
 	case *format.NullType:
-	case *format.ListType, *format.MapType, *format.VariantType:
+	case *format.ListType, *format.MapType, *format.VariantType, *fileLogicalType, *finiteVectorLogicalType:
 		return bad()
 	}
 	ct, ok := se.ConvertedType.Get()
@@ -691,6 +694,16 @@ func columnOf(se *format.SchemaElement, keyColumn string) Column {
 		c.Length = se.TypeLength.V
 	}
 	if v := se.LogicalType.Value; v != nil {
+		switch lt := v.(type) {
+		case *format.TimeType:
+			if lt.Unit.Value == nil {
+				return c
+			}
+		case *format.TimestampType:
+			if lt.Unit.Value == nil {
+				return c
+			}
+		}
 		if _, unknown := v.(*unrecognizedLogicalType); !unknown {
 			c.Logical = logicalOf(v)
 			return c

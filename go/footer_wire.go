@@ -51,7 +51,7 @@ func (w *footerMetadata) metadata() (format.FileMetaData, bool) {
 		FooterSigningKeyMetadata: w.FooterSigningKeyMetadata,
 	}
 	for _, se := range w.Schema {
-		logical := se.LogicalType.V
+		logical := format.LogicalType{Value: se.LogicalType.V.Value}
 		if se.LogicalType.Valid && logical.Value == nil {
 			logical.Value = &unrecognizedLogicalType{}
 		}
@@ -87,8 +87,29 @@ type footerSchemaElement struct {
 	Scale          thrift.Null[int32]                      `thrift:"7,optional"`
 	Precision      thrift.Null[int32]                      `thrift:"8,optional"`
 	FieldID        int32                                   `thrift:"9,optional"`
-	LogicalType    thrift.Null[format.LogicalType]         `thrift:"10,optional"`
+	LogicalType    thrift.Null[footerLogicalType]          `thrift:"10,optional"`
 }
+
+// parquet-go lacks members 19 and 20 from the pinned parquet-format revision.
+// Recognize their wire IDs so CHECK-1 rejects these group annotations on leaves.
+// Group semantics and parameters are not interpreted by this reader.
+type footerLogicalType struct {
+	Value format.LogicalTypeValue
+}
+
+func (*footerLogicalType) UnionMembers() []thrift.UnionMember {
+	return slices.Concat((&format.LogicalType{}).UnionMembers(), []thrift.UnionMember{(*fileLogicalType)(nil), (*finiteVectorLogicalType)(nil)})
+}
+
+type fileLogicalType struct{}
+
+func (*fileLogicalType) FieldID() int16 { return 19 }
+func (*fileLogicalType) String() string { return "FILE" }
+
+type finiteVectorLogicalType struct{}
+
+func (*finiteVectorLogicalType) FieldID() int16 { return 20 }
+func (*finiteVectorLogicalType) String() string { return "FINITE_VECTOR" }
 
 type unrecognizedLogicalType struct{}
 

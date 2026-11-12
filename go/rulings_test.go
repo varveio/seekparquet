@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/parquet-go/parquet-go"
@@ -306,6 +307,14 @@ func TestRulingsPhysicalFallback(t *testing.T) {
 		d, err := OpenDir(ctx, dir, OpenOptions{})
 		must(t, err)
 		rows, err = d.Rows(ctx, Query{Limit: 10, Columns: []string{"size"}}, nil)
+		if !empty {
+			must(t, err)
+			columns, err := d.Columns(ctx, 0)
+			must(t, err)
+			if columns[1].Logical != (Logical{}) {
+				t.Fatalf("unknown unit Columns: %+v", columns[1].Logical)
+			}
+		}
 		must(t, d.Close())
 		if empty {
 			if RefusalCodeOf(err) != CodeInvalidFooter {
@@ -362,5 +371,205 @@ func TestRulingsUnknownLogicalAnnotation(t *testing.T) {
 				t.Fatalf("legacy fallback: %+v", columns[1].Logical)
 			}
 		}
+	}
+}
+
+func TestRulingsStructuralIndexedHeaders(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		version int
+		edit    func(*format.PageHeader)
+		code    RefusalCode
+	}{
+		{"negative V1 count", 1, func(h *format.PageHeader) { h.DataPageHeader.V.NumValues = -5 }, CodeInvalidParquet},
+		{"negative size", 1, func(h *format.PageHeader) { h.CompressedPageSize = -1 }, CodeInvalidParquet},
+		{"invalid V2 levels", 2, func(h *format.PageHeader) { h.DataPageHeaderV2.V.DefinitionLevelsByteLength = -1 }, CodeInvalidParquet},
+		{"undecodable", 1, nil, CodeInvalidPageIndex},
+		{"extent past chunk", 1, func(h *format.PageHeader) { h.CompressedPageSize = 1 << 20 }, CodeInvalidPageIndex},
+		{"positive header count mismatch", 1, func(h *format.PageHeader) { h.DataPageHeader.V.NumValues = 3 }, CodeInvalidPageIndex},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := write(t, parts(testutil.Part{DataPageVersion: tc.version}, []string{"a", "b"}))
+			off := chunkOf(t, dir, 0, 0).DataPageOffset
+			path := partFile(dir, 0)
+			raw, err := os.ReadFile(path)
+			must(t, err)
+			if tc.edit == nil {
+				raw[off] = 0xff
+			} else {
+				var h format.PageHeader
+				_, err := decodeBounded(raw[off:], &h, 1<<20)
+				must(t, err)
+				tc.edit(&h)
+				encoded, err := thrift.Marshal(new(thrift.CompactProtocol), &h)
+				must(t, err)
+				// Structural validation reads only headers. Keep the index and
+				// file size unchanged while overwriting the header in place.
+				copy(raw[off:], encoded)
+			}
+			must(t, os.WriteFile(path, raw, 0o644))
+			expectLevels(t, validate(t, dir, ValidateOptions{Level: LevelStructural, Limits: Limits{PageValues: 2}}), map[Level]string{LevelStructural: string(tc.code)})
+		})
+	}
+}
+
+func TestRulingsLargeLocatedHeader(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		edit  func(*format.PageHeader)
+		code  RefusalCode
+		limit bool
+	}{
+		{"negative count", func(h *format.PageHeader) { h.DataPageHeader.V.NumValues = -5 }, CodeInvalidParquet, false},
+		{"extent past chunk", func(h *format.PageHeader) { h.CompressedPageSize = 1 << 20 }, CodeInvalidPageIndex, false},
+		{"indexed extent mismatch", func(h *format.PageHeader) { h.CompressedPageSize = 16 }, CodeInvalidPageIndex, false},
+		{"indexed row mismatch", func(h *format.PageHeader) {
+			h.DataPageHeader.V.NumValues = 3
+			h.CompressedPageSize = 8192
+			h.UncompressedPageSize = 8192
+		}, CodeInvalidPageIndex, false},
+		{"valid oversized page", func(h *format.PageHeader) { h.CompressedPageSize = 8192; h.UncompressedPageSize = 8192 }, "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := v1Page(2, make([]byte, 16))
+			tc.edit(h)
+			raw, err := thrift.Marshal(new(thrift.CompactProtocol), h)
+			must(t, err)
+			// The indexed size exceeds PageBytes + headerBytes, forcing
+			// located to read the header separately rather than pageExtent.
+			raw = append(raw, make([]byte, 8192)...)
+			c := testChunk(parquet.Int64Type)
+			c.p.r.limits.PageValues = 2
+			c.p.r.limits.PageBytes = 32
+			c.p.r.limits.MetadataMemory = 4096
+			c.code = CodeInvalidPageIndex
+			c.p.file = bytes.NewReader(raw)
+			c.end = int64(len(raw))
+			_, _, err = c.indexedPage(0, pageLoc{size: c.end, rows: 2})
+			if tc.limit {
+				if !errors.Is(err, ErrLimitExceeded) {
+					t.Fatalf("got %v, want limit", err)
+				}
+			} else if RefusalCodeOf(err) != tc.code {
+				t.Fatalf("got %v, want %s", err, tc.code)
+			}
+		})
+	}
+}
+
+func TestRulingsGroupOnlyLogicalAnnotations(t *testing.T) {
+	for _, member := range []byte{19, 20} {
+		for _, nested := range []bool{false, true} {
+			t.Run(strconv.Itoa(int(member))+map[bool]string{false: "/leaf", true: "/nested"}[nested], func(t *testing.T) {
+				var dir string
+				if nested {
+					dir = nestedDataset(t, testutil.Part{})
+				} else {
+					dir = write(t, parts(testutil.Part{}, []string{"a", "b"}))
+				}
+				rewrite(t, dir, 0, func(m *format.FileMetaData) {
+					m.Schema[len(m.Schema)-1].LogicalType.Value = &format.NullType{}
+				})
+				raw, err := os.ReadFile(partFile(dir, 0))
+				must(t, err)
+				n := int(binary.LittleEndian.Uint32(raw[len(raw)-8:]))
+				footer := raw[len(raw)-8-n : len(raw)-8]
+				known := []byte{0xbc, 0, 0}
+				if bytes.Count(footer, known) != 1 {
+					t.Fatal("annotation not found exactly once")
+				}
+				// Explicit compact field ID, independent of parquet-go's members.
+				next := []byte{0x0c, member << 1, 0, 0}
+				if member == 20 {
+					next = []byte{0x0c, member << 1, 0x15, 6, 0, 0}
+				} // num_elements=3
+				replaceFooter(t, dir, bytes.Replace(footer, known, next, 1))
+				d := open(t, dir, OpenOptions{})
+				_, err = d.Rows(ctx, Query{Limit: 10}, nil) // leaf is unprojected
+				if RefusalCodeOf(err) != CodeInvalidFooter {
+					t.Fatalf("got %v", err)
+				}
+				expectLevels(t, validate(t, dir, ValidateOptions{Level: LevelStructural}), map[Level]string{LevelStructural: "invalid_footer"})
+			})
+		}
+	}
+}
+
+func TestColumnsUnknownTimeUnit(t *testing.T) {
+	for _, timestamp := range []bool{false, true} {
+		for _, legacy := range []bool{false, true} {
+			name := map[bool]string{false: "TIME", true: "TIMESTAMP"}[timestamp]
+			if legacy {
+				name += "/converted"
+			}
+			t.Run(name, func(t *testing.T) {
+				dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
+				rewrite(t, dir, 0, func(m *format.FileMetaData) {
+					se := &m.Schema[2]
+					unit := format.TimeUnit{Value: &format.MicroSeconds{}}
+					if timestamp {
+						se.LogicalType.Value = &format.TimestampType{Unit: unit}
+						if legacy {
+							se.ConvertedType = thrift.New(deprecated.TimestampMicros)
+						}
+					} else {
+						se.LogicalType.Value = &format.TimeType{Unit: unit}
+						if legacy {
+							se.ConvertedType = thrift.New(deprecated.TimeMicros)
+						}
+					}
+				})
+				raw, err := os.ReadFile(partFile(dir, 0))
+				must(t, err)
+				n := int(binary.LittleEndian.Uint32(raw[len(raw)-8:]))
+				footer := raw[len(raw)-8-n : len(raw)-8]
+				member := byte(0x7c)
+				if timestamp {
+					member = 0x8c
+				}
+				known := []byte{member, 0x12, 0x1c, 0x2c, 0, 0, 0}
+				unknown := []byte{member, 0x12, 0x1c, 0x4c, 0, 0, 0}
+				if bytes.Count(footer, known) != 1 {
+					t.Fatal("time annotation not found exactly once")
+				}
+				replaceFooter(t, dir, bytes.Replace(footer, known, unknown, 1))
+				d := open(t, dir, OpenOptions{})
+				columns, err := d.Columns(ctx, 0)
+				must(t, err)
+				if columns[1].Logical != (Logical{}) || columns[1].Type != KindInt64 {
+					t.Fatalf("unknown unit: %+v", columns[1])
+				}
+				rows, err := d.Rows(ctx, Query{Limit: 10, Columns: []string{"size"}}, nil)
+				must(t, err)
+				if len(rows) != 2 {
+					t.Fatalf("physical rows: %d", len(rows))
+				}
+			})
+		}
+	}
+}
+
+func TestRulingsValidateUnknownLevelEncodings(t *testing.T) {
+	for _, repetition := range []bool{false, true} {
+		t.Run(map[bool]string{false: "definition", true: "repetition"}[repetition], func(t *testing.T) {
+			dir := nestedDataset(t, testutil.Part{DataPageVersion: 1})
+			// tags.list.element has both definition and repetition levels.
+			off := chunkOf(t, dir, 0, 1).DataPageOffset
+			editPageHeader(t, partFile(dir, 0), off, func(h *format.PageHeader) {
+				// 31 is unrecognized and keeps the compact encoded length.
+				if repetition {
+					h.DataPageHeader.V.RepetitionLevelEncoding = 31
+				} else {
+					h.DataPageHeader.V.DefinitionLevelEncoding = 31
+				}
+			})
+			report := validate(t, dir, ValidateOptions{})
+			expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "incomplete"})
+			lr, _ := report.Level(LevelFull)
+			var u *UnsupportedError
+			if !errors.As(lr.Err, &u) || u.Code != UnsupportedEncoding {
+				t.Fatalf("got %v", lr.Err)
+			}
+		})
 	}
 }
