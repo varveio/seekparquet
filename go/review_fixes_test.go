@@ -102,19 +102,28 @@ func TestStorageReadClassification(t *testing.T) {
 	}
 	var se *storageError
 	changed := fmt.Errorf("pin: %w %w", ErrObjectChanged, io.EOF)
+	resized := errors.Join(io.EOF, &SizeMismatchError{Expected: 10, Actual: 7})
 	for _, tc := range []struct {
 		name   string
 		r      io.ReaderAt
 		env    bool // the environment's error
 		ok     bool
 		target error
+		code   RefusalCode // a refusal instead
 	}{
-		{"whole", reader(5, nil), false, true, nil},
-		{"whole with EOF", reader(5, io.EOF), false, true, nil},
-		{"whole with an error", reader(5, errBoom), true, false, errBoom},
-		{"whole with a broken pin", reader(5, changed), true, false, ErrObjectChanged},
-		{"short", reader(3, nil), true, false, io.ErrUnexpectedEOF},
-		{"short with EOF", reader(3, io.EOF), true, false, io.ErrUnexpectedEOF},
+		{"whole", reader(5, nil), false, true, nil, ""},
+		{"whole with EOF", reader(5, io.EOF), false, true, nil, ""},
+		{"whole with a wrapped EOF", reader(5, fmt.Errorf("read: %w", io.EOF)), false, true, nil, ""},
+		{"whole with EOF joined to EOF", reader(5, errors.Join(io.EOF, io.EOF)), false, true, nil, ""},
+		{"whole with an error", reader(5, errBoom), true, false, errBoom, ""},
+		{"whole with a broken pin", reader(5, changed), true, false, ErrObjectChanged, ""},
+		{"whole with EOF and an error", reader(5, errors.Join(io.EOF, errBoom)), true, false, errBoom, ""},
+		{"whole with EOF and cancellation", reader(5, errors.Join(io.EOF, context.Canceled)), true, false, context.Canceled, ""},
+		{"whole with EOF and a size mismatch", reader(5, resized), false, false, nil, CodePartMismatch},
+		{"short", reader(3, nil), true, false, io.ErrUnexpectedEOF, ""},
+		{"short with EOF", reader(3, io.EOF), true, false, io.ErrUnexpectedEOF, ""},
+		{"short with EOF and an error", reader(3, errors.Join(io.EOF, errBoom)), true, false, errBoom, ""},
+		{"short with EOF and a size mismatch", reader(3, resized), false, false, nil, CodePartMismatch},
 	} {
 		err := read(tc.r, 5)
 		switch {
@@ -122,6 +131,12 @@ func TestStorageReadClassification(t *testing.T) {
 			t.Errorf("%s: %v", tc.name, err)
 		case tc.env && (!errors.As(err, &se) || RefusalCodeOf(err) != "" || !errors.Is(err, tc.target)):
 			t.Errorf("%s: %v, want the environment's %v", tc.name, err, tc.target)
+		case tc.code != "" && RefusalCodeOf(err) != tc.code:
+			t.Errorf("%s: %v, want %s", tc.name, err, tc.code)
+		}
+		// Through a plain reader the same outcomes stand, unclassified.
+		if err := readFull(tc.r, make([]byte, 5), 0); (err == nil) != tc.ok || tc.target != nil && !errors.Is(err, tc.target) {
+			t.Errorf("%s: readFull: %v", tc.name, err)
 		}
 	}
 	for _, e := range []error{io.ErrUnexpectedEOF, io.EOF, fmt.Errorf("%w: %w", ErrObjectChanged, io.ErrUnexpectedEOF)} {

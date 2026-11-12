@@ -33,7 +33,8 @@ func isEnvironment(ctx context.Context, err error) bool {
 // readFull reads len(p) bytes at off, reporting a short read of the data
 // as io.ErrUnexpectedEOF.
 //
-// A complete read succeeds only with a nil error or io.EOF: any other error
+// A complete read succeeds only with a nil error or one that says no more
+// than io.EOF (onlyEOF): any other error
 // invalidates the bytes, even when all of them arrived. Through a
 // storageReader a short read is already the environment's error.
 func readFull(at io.ReaderAt, p []byte, off int64) error {
@@ -42,7 +43,7 @@ func readFull(at io.ReaderAt, p []byte, off int64) error {
 	}
 	n, err := at.ReadAt(p, off)
 	switch {
-	case err != nil && (!errors.Is(err, io.EOF) || errors.Is(err, ErrObjectChanged)):
+	case err != nil && !onlyEOF(err):
 		return err
 	case n == len(p):
 		return nil

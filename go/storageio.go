@@ -71,7 +71,7 @@ func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
 	}
 	n, err := s.r.ReadAt(p, off)
 	switch {
-	case err != nil && (!errors.Is(err, io.EOF) || errors.Is(err, ErrObjectChanged)):
+	case err != nil && !onlyEOF(err):
 		err = sourceError(s.name, err)
 	case n < len(p):
 		// Every extent the reader reads lies inside the file's Size: a
@@ -81,6 +81,34 @@ func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
 		err = nil
 	}
 	return n, err
+}
+
+// onlyEOF reports whether err says no more than io.EOF: io.EOF, or an
+// error whose every cause is io.EOF. An error that also carries anything
+// else (a pin broken or a size found different, the context's end, any
+// failure of the source) is the source's error even when the read was
+// complete: ReadAt may return io.EOF with a full read, but nothing else.
+func onlyEOF(err error) bool {
+	if err == io.EOF {
+		return true
+	}
+	var mismatch *SizeMismatchError
+	if errors.Is(err, ErrObjectChanged) || errors.As(err, &mismatch) {
+		return false
+	}
+	switch e := err.(type) {
+	case interface{ Unwrap() []error }:
+		causes := e.Unwrap()
+		for _, c := range causes {
+			if !onlyEOF(c) {
+				return false
+			}
+		}
+		return len(causes) > 0
+	case interface{ Unwrap() error }:
+		return onlyEOF(e.Unwrap())
+	}
+	return false
 }
 
 // readFull is readFull of s without boxing s into an io.ReaderAt, which
