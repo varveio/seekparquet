@@ -357,13 +357,13 @@ final class PartFile implements AutoCloseable {
             throw refuse(RefusalCode.INVALID_FOOTER, name, "the footer does not parse: " + e.getMessage());
         }
         FileMetaData meta = decoded.value();
-        int trailing = footer.length - decoded.length();
+        int after = footer.length - decoded.length();
         // FILE-2, plaintext footer mode: metadata declaring encryption, then exactly its 28-byte signature, as Go
         // decides. Any other trailing bytes are a malformed footer.
-        if (trailing == SIGNATURE_BYTES && (meta.isSetEncryption_algorithm() || meta.isSetFooter_signing_key_metadata())) {
+        if (after == SIGNATURE_BYTES && (meta.isSetEncryption_algorithm() || meta.isSetFooter_signing_key_metadata())) {
             throw new UnsupportedFeatureException(UnsupportedCode.UNSUPPORTED_ENCRYPTION, "part " + name + " uses Parquet modular encryption");
         }
-        if (trailing != 0) {
+        if (after != 0) {
             throw refuse(RefusalCode.INVALID_FOOTER, name, "the footer does not parse: trailing bytes after the Thrift structure");
         }
         return meta;
