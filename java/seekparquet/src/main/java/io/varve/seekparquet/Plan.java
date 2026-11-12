@@ -141,8 +141,7 @@ public final class Plan {
      * @throws IllegalStateException if the dataset is closed
      */
     public <E extends Exception> void scan(ReadOptions options, BatchVisitor<E> visitor) throws E {
-        java.util.Objects.requireNonNull(visitor, "visitor");
-        dataset.run(options, () -> {}, ctx -> {
+        dataset.run(options, () -> java.util.Objects.requireNonNull(visitor, "visitor"), ctx -> {
             BatchScan batches = new BatchScan(columns, ctx, ctx.forPlannedValues());
             KeyCursor cursor = new KeyCursor(dataset.parts(), null, ctx);
             for (Interval span : spans) {

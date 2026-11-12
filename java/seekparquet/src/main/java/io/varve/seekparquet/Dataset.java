@@ -272,7 +272,8 @@ public final class Dataset implements AutoCloseable {
      * and {@link ListIndexStats#optionsMismatch()} flag.
      * Empty outcomes are cached for the most recent options and rebuilt when those change.
      * {@link ListIndexStats#hasIndex()} reports whether any groups are indexed. Opening never builds it.
-     * Its own statistics are its result, so it takes a cancellation rather than {@link ReadOptions}.
+     * Its own statistics are its result, so it takes a cancellation rather than {@link ReadOptions}: unlike
+     * the read operations, it delivers no {@link ReadStats}, and a failed or cancelled build reports nothing.
      *
      * @param options retained byte budget, worker count and per-page change cap
      * @param cancellation ends the build without publishing it
@@ -380,14 +381,15 @@ public final class Dataset implements AutoCloseable {
 
     /**
      * Returns the rows of {@code query} (spec §6.2), owning their keys and values: at most {@code
-     * query.limit()}, which must be positive (QUERY-1). It decodes key pages only from the page that can
+     * query.limit()}, which must be positive (QUERY-1) and at most {@link Integer#MAX_VALUE}, a {@link List}'s
+     * capacity (a representation limit, as Go checks its slice length; a {@link #scan} takes any limit). It decodes key pages only from the page that can
      * hold its start, or the cursor's row, and value pages only for the rows it returns. On an error it
      * returns no rows. The Go reader's {@code Rows}.
      *
      * @param query the query, with a positive limit
      * @param options the request's cancellation and statistics
      * @return the rows, in ascending key order and equal keys in file order, immutable
-     * @throws IllegalArgumentException if the limit is not positive
+     * @throws IllegalArgumentException if the limit is not between 1 and {@link Integer#MAX_VALUE}
      * @throws RefusalException if data the request decodes, or a part it touches, breaks the specification
      * @throws UnsupportedFeatureException if a projected column cannot be projected, or a page uses a
      *     codec or encoding this reader does not implement
@@ -397,9 +399,10 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<Row> rows(Query query, ReadOptions options) {
+        Objects.requireNonNull(query, "query");
         return run(options, () -> {
-            if (query.limit() <= 0) {
-                throw new IllegalArgumentException("limit " + query.limit() + " is not positive");
+            if (query.limit() <= 0 || query.limit() > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("rows limit must be between 1 and Integer.MAX_VALUE, not " + query.limit());
             }
             checkProjection(query.columns());
         }, ctx -> Queries.range(parts, query, ctx));
@@ -441,9 +444,12 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<Row> get(Bytes key, List<String> columns, ReadOptions options) {
-        Objects.requireNonNull(key, "key");
-        List<String> projected = List.copyOf(columns);
-        return run(options, () -> checkProjection(projected), ctx -> Queries.get(parts, key, projected, limits.getRows(), ctx));
+        return run(options, () -> {
+            Objects.requireNonNull(key, "key");
+            List<String> projected = List.copyOf(columns);
+            checkProjection(projected);
+            return projected;
+        }, (ctx, projected) -> Queries.get(parts, key, projected, limits.getRows(), ctx));
     }
 
     /**
@@ -497,8 +503,11 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public <E extends Exception> void scan(Query query, ReadOptions options, BatchVisitor<E> visitor) throws E {
-        Objects.requireNonNull(visitor, "visitor");
-        run(options, () -> checkProjection(query.columns()), ctx -> {
+        run(options, () -> {
+            Objects.requireNonNull(query, "query");
+            Objects.requireNonNull(visitor, "visitor");
+            checkProjection(query.columns());
+        }, ctx -> {
             Queries.scan(parts, query, ctx, visitor);
             return null;
         });
@@ -548,9 +557,12 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public Plan plan(List<Selection> selections, List<String> columns, ReadOptions options) {
-        List<Selection> planned = List.copyOf(selections);
-        List<String> projected = List.copyOf(columns);
-        return run(options, () -> checkProjection(projected), ctx -> Plan.plan(this, parts, planned, projected, ctx));
+        record Planned(List<Selection> selections, List<String> columns) {}
+        return run(options, () -> {
+            Planned p = new Planned(List.copyOf(selections), List.copyOf(columns));
+            checkProjection(p.columns());
+            return p;
+        }, (ctx, p) -> Plan.plan(this, parts, p.selections(), p.columns(), ctx));
     }
 
     /**
@@ -588,11 +600,11 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<ListEntry> list(ListQuery query, ReadOptions options) {
-        return run(options, () -> checkProjection(query.columns()), ctx -> Queries.list(parts, query, ctx));
+        return run(options, () -> checkProjection(Objects.requireNonNull(query, "query").columns()), ctx -> Queries.list(parts, query, ctx));
     }
 
     /**
-     * COL-3: a nested or repeated column, or an INT96 one, of a checked part is rejected, never answered
+     * COL-3: a nested or repeated column of a checked part is rejected, never answered
      * as absent. A part checked later is held to the same rule when a row of it is projected.
      */
     private void checkProjection(List<String> names) {
@@ -610,21 +622,36 @@ public final class Dataset implements AutoCloseable {
         T apply(ReadContext ctx) throws E;
     }
 
-    /**
-     * Runs one operation: {@code checks} (the request's own validity), then {@code body} inside a request,
-     * and delivers the operation's statistics to {@code options} exactly once on every exit, after the
-     * request is released. A statistics consumer that throws while the operation fails is added to the
-     * operation's exception as suppressed; while it succeeds, its exception propagates.
-     */
+    /** The work of an operation inside its request, with the arguments its preparation checked and copied. */
+    @FunctionalInterface
+    interface Prepared<A, T, E extends Exception> {
+        T apply(ReadContext ctx, A args) throws E;
+    }
+
+    /** {@link #run(ReadOptions, java.util.function.Supplier, Prepared)} with nothing prepared but checks. */
     <T, E extends Exception> T run(ReadOptions options, Runnable checks, Body<T, E> body) throws E {
+        return run(options, () -> {
+            checks.run();
+            return null;
+        }, (ctx, none) -> body.apply(ctx));
+    }
+
+    /**
+     * Runs one operation: {@code prepare} (the request's own validity, and defensive copies of its
+     * arguments), then {@code body} inside a request, and delivers the operation's statistics to {@code
+     * options} exactly once on every exit, an invalid argument included, after the request is released. A
+     * statistics consumer that throws while the operation fails is added to the operation's exception as
+     * suppressed; while it succeeds, its exception propagates.
+     */
+    <A, T, E extends Exception> T run(ReadOptions options, java.util.function.Supplier<? extends A> prepare, Prepared<A, T, E> body) throws E {
         Objects.requireNonNull(options, "options");
         ReadStats.Counter counter = null;
         Throwable failure = null;
         try {
-            checks.run();
+            A args = prepare.get();
             try (Request request = begin(options.cancellation())) {
                 counter = request.ctx.stats;
-                return body.apply(request.ctx);
+                return body.apply(request.ctx, args);
             }
         } catch (Throwable t) {
             failure = t;
@@ -698,9 +725,10 @@ public final class Dataset implements AutoCloseable {
      * part source it opened. Calling it again does nothing.
      *
      * <p>A request cannot wait for itself: closing the dataset from inside one of its own requests on the
-     * same thread (from a {@link Plan#scan scan}'s visitor or a statistics consumer) would wait forever,
-     * and fails instead, changing nothing. End the scan by returning {@code false} from the visitor, and close the dataset
-     * once the scan has returned.
+     * same thread (from a {@link Plan#scan scan}'s visitor, or from the statistics consumer of an operation
+     * started inside one) would wait forever, and fails instead, changing nothing. End the scan by returning
+     * {@code false} from the visitor, and close the dataset once the scan has returned. A statistics consumer
+     * of a top-level operation runs after the operation released the dataset, and may close it.
      *
      * @throws StorageException if closing a part source fails (every source is still closed)
      * @throws IllegalStateException if called from inside a request of this dataset on the same thread

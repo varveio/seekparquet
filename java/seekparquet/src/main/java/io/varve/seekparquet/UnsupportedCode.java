@@ -10,7 +10,7 @@ package io.varve.seekparquet;
 public enum UnsupportedCode {
     /** A codec or encoding outside what this reader implements (ENC-1). */
     ENCODING("unsupported_encoding"),
-    /** A request to project a nested, repeated or {@code INT96} column (COL-3). */
+    /** A request to project a nested or repeated column (COL-3). */
     PROJECTION("unsupported_projection"),
     /** A part that uses Parquet modular encryption (FILE-2). */
     ENCRYPTION("unsupported_encryption");

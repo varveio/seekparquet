@@ -90,6 +90,15 @@ public final class Adapter {
         }
     }
 
+    /** A value the protocol cannot express (INT96): reported as unsupported_projection, as the Go adapter does. */
+    private static final class NoEncoding extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        NoEncoding() {
+            super("INT96 values have no protocol encoding", null, false, false);
+        }
+    }
+
     /** A malformed request (QUERY-1, or a malformed member). */
     private static final class BadRequest extends Exception {
         private static final long serialVersionUID = 1L;
@@ -240,6 +249,8 @@ public final class Adapter {
         } catch (RefusalException e) {
             StringBuilder r = response(id, "refused").append(",\"code\":\"").append(e.code().id()).append('"');
             return withMessage(r, e.getMessage());
+        } catch (NoEncoding e) {
+            return withMessage(response(id, "unsupported").append(",\"code\":\"unsupported_projection\""), e.getMessage());
         } catch (UnsupportedFeatureException e) {
             StringBuilder r = response(id, "unsupported").append(",\"code\":\"").append(e.code().id()).append('"');
             return withMessage(r, e.getMessage());
@@ -444,6 +455,8 @@ public final class Adapter {
                 case Value.Float64 f -> out.append("{\"float64\":\"").append(String.format("%016x", f.bits())).append("\"}");
                 case Value.ByteArray x -> out.append("{\"bytes_base64\":\"").append(x.value().toBase64()).append("\"}");
                 case Value.FixedLenByteArray x -> out.append("{\"bytes_base64\":\"").append(x.value().toBase64()).append("\"}");
+                // The protocol has no encoding for INT96, as in the Go adapter.
+                case Value.Int96 x -> throw new NoEncoding();
             }
         }
         out.append(']');

@@ -26,50 +26,63 @@ import java.util.Optional;
  *     page = dataset.list(q);
  * }
  * }</pre>
- *
- * @param prefix keys must begin with it; empty for no constraint
- * @param delimiter the delimiter byte
- * @param end keys must be strictly less, when given
- * @param limit the most entries returned; positive (QUERY-1)
- * @param cursor the cursor, when present
- * @param columns the columns to project for row entries, by exact top-level name, in order
- * @param readAhead the number of key pages the listing may read ahead concurrently; 0, the default,
- *     for none (see {@link Builder#readAhead(int)})
  */
-public record ListQuery(
-        Bytes prefix,
-        byte delimiter,
-        Optional<Bytes> end,
-        int limit,
-        List<String> columns, Optional<Cursor> cursor, int readAhead) {
+public final class ListQuery {
 
     /** The largest read-ahead a listing uses: a larger {@link #readAhead()} is read as it. */
     public static final int MAX_READ_AHEAD = 64;
 
-    /**
-     * Creates a listing query.
-     *
-     * @param prefix the prefix
-     * @param delimiter the delimiter byte
-     * @param end the exclusive upper bound
-     * @param limit the limit
-     * @param cursor the cursor
-     * @param columns the projected columns
-     * @param readAhead the key pages read ahead, at least 0
-     * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1), or {@code readAhead}
-     *     is negative
-     */
-    public ListQuery {
-        Objects.requireNonNull(prefix, "prefix");
-        Objects.requireNonNull(end, "end");
-        Objects.requireNonNull(cursor, "cursor");
-        columns = List.copyOf(columns);
-        if (limit <= 0) {
-            throw new IllegalArgumentException("limit " + limit + " is not a positive integer");
-        }
-        if (readAhead < 0) {
-            throw new IllegalArgumentException("read-ahead " + readAhead + " is negative");
-        }
+    private final Bytes prefix;
+    private final byte delimiter;
+    private final Optional<Bytes> end;
+    private final int limit;
+    private final List<String> columns;
+    private final Optional<Cursor> cursor;
+    private final int readAhead;
+
+    private ListQuery(Builder b) {
+        this.prefix = b.prefix;
+        this.delimiter = b.delimiter;
+        this.end = b.end;
+        this.limit = b.limit;
+        this.columns = b.columns;
+        this.cursor = b.cursor;
+        this.readAhead = b.readAhead;
+    }
+
+    /** {@return the prefix every key must begin with; empty for no constraint} */
+    public Bytes prefix() {
+        return prefix;
+    }
+
+    /** {@return the delimiter byte (LIST-1)} */
+    public byte delimiter() {
+        return delimiter;
+    }
+
+    /** {@return the exclusive upper bound on candidate keys, when there is one} */
+    public Optional<Bytes> end() {
+        return end;
+    }
+
+    /** {@return the most entries returned, positive (QUERY-1)} */
+    public int limit() {
+        return limit;
+    }
+
+    /** {@return the columns projected for row entries and exact rows, by exact top-level name, in order} */
+    public List<String> columns() {
+        return columns;
+    }
+
+    /** {@return the cursor the listing continues after, a row or a prefix cursor, when present} */
+    public Optional<Cursor> cursor() {
+        return cursor;
+    }
+
+    /** {@return the number of key pages the listing may read ahead concurrently; 0, the default, for none} */
+    public int readAhead() {
+        return readAhead;
     }
 
     /**
@@ -233,7 +246,30 @@ public record ListQuery(
          *     negative
          */
         public ListQuery build() {
-            return new ListQuery(prefix, delimiter, end, limit, columns, cursor, readAhead);
+            if (limit <= 0) {
+                throw new IllegalArgumentException("limit " + limit + " is not a positive integer");
+            }
+            if (readAhead < 0) {
+                throw new IllegalArgumentException("read-ahead " + readAhead + " is negative");
+            }
+            return new ListQuery(this);
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof ListQuery q && prefix.equals(q.prefix) && delimiter == q.delimiter && end.equals(q.end) && limit == q.limit
+                && columns.equals(q.columns) && cursor.equals(q.cursor) && readAhead == q.readAhead;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(prefix, delimiter, end, limit, columns, cursor, readAhead);
+    }
+
+    @Override
+    public String toString() {
+        return "ListQuery[prefix=" + prefix + ", delimiter=" + delimiter + ", end=" + end + ", limit=" + limit + ", columns=" + columns
+                + ", cursor=" + cursor + ", readAhead=" + readAhead + "]";
     }
 }

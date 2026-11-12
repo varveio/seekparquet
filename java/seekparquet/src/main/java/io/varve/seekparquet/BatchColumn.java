@@ -20,6 +20,9 @@ import java.nio.ByteBuffer;
  *
  * <p>Reading a value of another type than the slot's, of a null row, or of an absent slot throws {@link
  * IllegalStateException}; an index outside the batch's rows throws {@link IndexOutOfBoundsException}.
+ * This differs from the Go reader's {@code ColumnView}, whose typed accessors return zero (or, on a column
+ * of another kind, unspecified bits) instead of failing: test {@link #isPresent()}, {@link #isNull} and
+ * {@link #type()} before reading, in either language.
  */
 public final class BatchColumn {
 
@@ -44,6 +47,11 @@ public final class BatchColumn {
         this.base = source.base();
     }
 
+    /** {@return the number of rows, the batch's {@link Batch#size()}} The Go reader's {@code ColumnView.Len}. */
+    public int size() {
+        return batch.size();
+    }
+
     /** {@return whether the batch's part has the column; false when it is absent (COL-2), whose rows are all absent, not null} */
     public boolean isPresent() {
         batch.checkLive();
@@ -53,8 +61,8 @@ public final class BatchColumn {
     /**
      * Returns the slot's physical type in the batch's part.
      *
-     * @return the type: {@code BOOLEAN}, {@code INT32}, {@code INT64}, {@code FLOAT}, {@code DOUBLE},
-     *     {@code BYTE_ARRAY} or {@code FIXED_LEN_BYTE_ARRAY}
+     * @return the type: {@code BOOLEAN}, {@code INT32}, {@code INT64}, {@code INT96}, {@code FLOAT}, {@code
+     *     DOUBLE}, {@code BYTE_ARRAY} or {@code FIXED_LEN_BYTE_ARRAY}
      * @throws IllegalStateException if the slot is absent
      */
     public Column.Type type() {
@@ -108,6 +116,18 @@ public final class BatchColumn {
     public long getLong(int i) {
         int at = row(i, Column.Type.INT64);
         return page.longs[at];
+    }
+
+    /**
+     * Returns row {@code i}'s {@code INT96} value as its raw bits, least-significant word first, not
+     * interpreted. It allocates the record. The Go reader's {@code ColumnView.Int96}.
+     *
+     * @param i the row
+     * @return the value
+     */
+    public Value.Int96 getInt96(int i) {
+        int at = row(i, Column.Type.INT96);
+        return Value.Int96.of(page.binaries[at]);
     }
 
     /**

@@ -59,7 +59,7 @@ class ListIndexRegressionTest {
         Path root = fixture("arbitrary", spec, new String[] {"a/x", "a/y", "b/z"});
         try (Dataset plain = Dataset.open(root); Dataset indexed = Dataset.open(root)) {
             indexed.buildListIndex();
-            var query = new ListQuery(raw("a/"), (byte) '/', Optional.empty(), 100, List.of(), Optional.of(new Cursor.CommonPrefix(raw("a/x"))), 0);
+            var query = Reads.listQuery(raw("a/"), (byte) '/', Optional.empty(), 100, List.of(), Optional.of(new Cursor.CommonPrefix(raw("a/x"))), 0);
             assertEquals(1, plain.list(query).size());
             compare(plain, indexed, query);
         }
@@ -79,7 +79,7 @@ class ListIndexRegressionTest {
             for (long offset : new long[] {0, 2, 4, 50}) cursors.add(Optional.of(new Cursor.RowPosition(exact.key(), offset)));
             for (String prefix : List.of("", "a", "a/", "//", "\u00ff")) for (var cursor : cursors) {
                 for (String end : Arrays.asList(null, "a/", "a/x", "a/x\0", "\u00ff/y")) for (int limit : new int[] {1, 2, 4, 1000}) {
-                    compare(plain, indexed, new ListQuery(raw(prefix), (byte) '/', Optional.ofNullable(end).map(ListIndexRegressionTest::raw), limit, List.of("size", "note"), cursor, 0));
+                    compare(plain, indexed, Reads.listQuery(raw(prefix), (byte) '/', Optional.ofNullable(end).map(ListIndexRegressionTest::raw), limit, List.of("size", "note"), cursor, 0));
                 }
             }
         }
@@ -271,7 +271,7 @@ class ListIndexRegressionTest {
             for (Cursor cursor : Arrays.asList(null, new Cursor.CommonPrefix(raw("b/")),
                     new Cursor.CommonPrefix(raw("f/0000")), new Cursor.RowPosition(raw("f/0001"), 0))) {
                 for (String end : Arrays.asList(null, "c/0002", "f/0003")) {
-                    var stats = compare(plain, indexed, new ListQuery(Bytes.empty(), (byte) '/', Optional.ofNullable(end).map(ListIndexRegressionTest::raw), 100, List.of("size", "note"), Optional.ofNullable(cursor), 0));
+                    var stats = compare(plain, indexed, Reads.listQuery(Bytes.empty(), (byte) '/', Optional.ofNullable(end).map(ListIndexRegressionTest::raw), 100, List.of("size", "note"), Optional.ofNullable(cursor), 0));
                     if (cursor == null && end == null) {
                         assertTrue(stats.listIndexSkips() >= 3); assertTrue(stats.listIndexDensePage() > 0);
                     }
@@ -315,7 +315,7 @@ class ListIndexRegressionTest {
             assertTrue(stats.budgetExhausted()); assertEquals(1, stats.groupsIndexed());
             for (Dataset d : List.of(full, partial)) for (String prefix : List.of("", "/", "//", "a", "a/", "\u00ff")) {
                 for (String cursor : Arrays.asList(null, "//", "a/x", "\u00ff")) {
-                    compare(plain, d, new ListQuery(raw(prefix), (byte) '/', Optional.empty(), 100, List.of("size", "note"), Optional.ofNullable(cursor).map(c -> new Cursor.CommonPrefix(raw(c))), 0));
+                    compare(plain, d, Reads.listQuery(raw(prefix), (byte) '/', Optional.empty(), 100, List.of("size", "note"), Optional.ofNullable(cursor).map(c -> new Cursor.CommonPrefix(raw(c))), 0));
                 }
             }
         }

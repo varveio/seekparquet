@@ -35,12 +35,14 @@ import shaded.parquet.org.apache.thrift.transport.TTransport;
  * this bound a footer of a few kilobytes of nested unknown fields overflows the stack.
  *
  * <p>The decoded size is bounded by a budget ({@code Limits.metadataMemory()}), as the Go reader's {@code
- * thriftcheck} bounds it: each structure is charged {@value #STRUCT_BYTES} bytes when it begins, each
- * list, set or map element {@value #ELEMENT_BYTES} bytes (twice for a map entry) before the container's
- * elements are allocated, and each string or binary value its length plus {@value #STRUCT_BYTES}. Past the
- * budget the decoding fails with {@link LimitExceededException} naming {@link LimitName#METADATA_MEMORY}.
- * The charges are estimates of the JVM representation, not measured heap: the two readers need not
- * refuse the same metadata.
+ * thriftcheck} bounds it: before the decoder runs, a walk of the encoded bytes that allocates nothing
+ * ({@link #preflight}) checks every declared length against the bytes that remain and charges each
+ * structure {@value #STRUCT_BYTES} bytes, each list, set or map element {@value #ELEMENT_BYTES} bytes (twice
+ * for a map entry), and each string or binary value twice its encoded length plus {@value #STRUCT_BYTES}
+ * (a Java string can take two bytes per encoded UTF-8 byte). Past the budget
+ * it fails with {@link LimitExceededException} naming {@link LimitName#METADATA_MEMORY}, before any string,
+ * binary or container of the structure is allocated. The charges are estimates of the JVM representation,
+ * not measured heap: the two readers need not refuse the same metadata.
  */
 final class Thrift {
 
@@ -59,18 +61,14 @@ final class Thrift {
     record Decoded<T>(T value, int length) {}
 
     static <T extends TBase<?, ?>> Decoded<T> read(byte[] b, int off, int len, T struct, long budget) throws DataException {
+        preflight(b, off, len, budget);
         ByteArrayInputStream in = new ByteArrayInputStream(b, off, len);
         try {
             int max = Math.max(len, 1);
             TIOStreamTransport transport =
                     new TIOStreamTransport(new TConfiguration(max, TConfiguration.DEFAULT_MAX_FRAME_SIZE, MAX_DEPTH + 1), in);
-            struct.read(new Bounded(transport, max, budget));
+            struct.read(new Bounded(transport, max));
         } catch (TException | RuntimeException e) {
-            for (Throwable t = e; t != null; t = t.getCause()) {
-                if (t instanceof OverBudget) {
-                    throw new LimitExceededException(LimitName.METADATA_MEMORY, -1, budget, "decoding metadata");
-                }
-            }
             throw new DataException("the Thrift structure does not decode", e);
         }
         return new Decoded<>(struct, len - in.available());
@@ -100,12 +98,159 @@ final class Thrift {
         return read(b, off, len, new PageHeader(), budget);
     }
 
-    /** The decoded estimate passed the budget; {@link #read} reports it as a {@link LimitExceededException}. */
-    private static final class OverBudget extends RuntimeException {
-        private static final long serialVersionUID = 1L;
 
-        OverBudget() {
-            super("the decoded Thrift structure exceeds its memory budget", null, false, false);
+    /**
+     * Walks one compact-protocol structure at {@code b[off, off + len)} without allocating, checking that
+     * every declared length fits in the bytes that remain and charging the decoded estimate (see the class
+     * comment) against {@code budget}.
+     *
+     * @throws LimitExceededException if the estimate exceeds the budget
+     * @throws DataException if the bytes are not one well-formed structure; nesting far beyond {@value
+     *     #MAX_DEPTH} is refused here, nesting near it by the decoder
+     */
+    static void preflight(byte[] b, int off, int len, long budget) throws DataException {
+        Walk w = new Walk(b, off, off + len, budget);
+        try {
+            w.charge(STRUCT_BYTES);
+            w.structure(0);
+        } catch (Walk.Malformed e) {
+            throw new DataException("the Thrift structure does not decode", e.getCause() != null ? e.getCause() : e);
+        }
+    }
+
+    /** The preflight walk: a cursor over the bytes and the budget left. */
+    private static final class Walk {
+        /** Nesting the walk itself allows: beyond what the decoder admits, which checks the exact bound. */
+        private static final int WALK_DEPTH = MAX_DEPTH + 2;
+
+        private final byte[] b;
+        private final long budget;
+        private final int end;
+        private int pos;
+        private long left;
+
+        /** Bytes that are not one well-formed structure. */
+        static final class Malformed extends Exception {
+            private static final long serialVersionUID = 1L;
+
+            Malformed(String message, Throwable cause) {
+                super(message, cause, false, false);
+            }
+        }
+
+        Walk(byte[] b, int pos, int end, long budget) {
+            this.b = b;
+            this.pos = pos;
+            this.end = end;
+            this.budget = budget;
+            this.left = budget;
+        }
+
+        void charge(long bytes) {
+            left -= bytes;
+            if (bytes < 0 || left < 0) {
+                throw new LimitExceededException(LimitName.METADATA_MEMORY, -1, budget, "decoding metadata");
+            }
+        }
+
+        private Malformed malformed(String what) {
+            return new Malformed(what + " at byte " + pos, null);
+        }
+
+        private int nextByte() throws Malformed {
+            if (pos >= end) {
+                throw malformed("truncated");
+            }
+            return b[pos++] & 0xFF;
+        }
+
+        private long varint() throws Malformed {
+            long x = 0;
+            for (int shift = 0; shift < 64; shift += 7) {
+                int v = nextByte();
+                x |= (long) (v & 0x7F) << shift;
+                if (v < 0x80) {
+                    return x;
+                }
+            }
+            throw malformed("varint too long");
+        }
+
+        /** {@return a declared count of elements of at least {@code min} bytes each, if the bytes left hold them} */
+        private int count(long n, int min) throws Malformed {
+            if (n < 0 || n > (end - pos) / min) {
+                throw malformed("a length beyond the input");
+            }
+            return (int) n;
+        }
+
+        void structure(int depth) throws Malformed {
+            while (true) {
+                int h = nextByte();
+                if (h == 0) {
+                    return;
+                }
+                int type = h & 0x0F;
+                if ((h >> 4) == 0) {
+                    varint(); // the field id
+                }
+                if (type == 1 || type == 2) {
+                    continue; // a Boolean field carries its value in the header
+                }
+                value(type, depth + 1);
+            }
+        }
+
+        private void value(int type, int depth) throws Malformed {
+            if (depth > WALK_DEPTH) {
+                throw new Malformed("too deep", new TProtocolException(TProtocolException.DEPTH_LIMIT,
+                        "the Thrift structure is nested more than " + MAX_DEPTH + " deep"));
+            }
+            switch (type) {
+                case 1, 2, 3 -> nextByte();
+                case 4, 5, 6 -> varint();
+                case 7 -> {
+                    if (end - pos < 8) {
+                        throw malformed("truncated");
+                    }
+                    pos += 8;
+                }
+                case 8 -> {
+                    int n = count(varint(), 1);
+                    // A string decodes to at most two bytes per encoded byte (UTF-16), a binary to one.
+                    charge(STRUCT_BYTES + 2L * n);
+                    pos += n;
+                }
+                case 9, 10 -> {
+                    int h = nextByte();
+                    long size = h >> 4;
+                    if (size == 15) {
+                        size = varint();
+                    }
+                    int n = count(size, 1);
+                    charge((long) ELEMENT_BYTES * n);
+                    for (int i = 0; i < n; i++) {
+                        value(h & 0x0F, depth + 1);
+                    }
+                }
+                case 11 -> {
+                    int n = count(varint(), 2);
+                    if (n == 0) {
+                        return;
+                    }
+                    int kv = nextByte();
+                    charge(2L * ELEMENT_BYTES * n);
+                    for (int i = 0; i < n; i++) {
+                        value(kv >> 4, depth + 1);
+                        value(kv & 0x0F, depth + 1);
+                    }
+                }
+                case 12 -> {
+                    charge(STRUCT_BYTES);
+                    structure(depth);
+                }
+                default -> throw malformed("unknown type " + type);
+            }
         }
     }
 
@@ -124,33 +269,8 @@ final class Thrift {
         /** Containers open, the top-level structure included: a container at depth d is at level d + 1. */
         private int level;
 
-        /** The bytes the decoded structure may still be charged. */
-        private long remaining;
-
-        Bounded(TTransport transport, long max, long budget) {
+        Bounded(TTransport transport, long max) {
             super(transport, max, max);
-            this.remaining = budget;
-        }
-
-        private void charge(long bytes) {
-            remaining -= bytes;
-            if (remaining < 0) {
-                throw new OverBudget();
-            }
-        }
-
-        @Override
-        public String readString() throws TException {
-            String s = super.readString();
-            charge(STRUCT_BYTES + (long) s.length());
-            return s;
-        }
-
-        @Override
-        public java.nio.ByteBuffer readBinary() throws TException {
-            java.nio.ByteBuffer b = super.readBinary();
-            charge(STRUCT_BYTES + (long) b.remaining());
-            return b;
         }
 
         private static TProtocolException tooDeep() {
@@ -173,7 +293,6 @@ final class Thrift {
         @Override
         public TStruct readStructBegin() throws TException {
             enter();
-            charge(STRUCT_BYTES);
             return super.readStructBegin();
         }
 
@@ -197,7 +316,6 @@ final class Thrift {
             enter();
             TList list = super.readListBegin();
             elements(list.size);
-            charge((long) ELEMENT_BYTES * list.size);
             return list;
         }
 
@@ -213,7 +331,6 @@ final class Thrift {
             // TCompactProtocol reads a set header as a list header; super's, so that it counts once.
             TSet set = new TSet(super.readListBegin());
             elements(set.size);
-            charge((long) ELEMENT_BYTES * set.size);
             return set;
         }
 
@@ -228,7 +345,6 @@ final class Thrift {
             enter();
             TMap map = super.readMapBegin();
             elements(map.size);
-            charge(2L * ELEMENT_BYTES * map.size);
             return map;
         }
 

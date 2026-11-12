@@ -114,7 +114,10 @@ public final class Limits {
         return manifestBytes == 0 ? DEFAULT_MANIFEST_BYTES : manifestBytes;
     }
 
-    /** {@return the most parts a manifest may list, enforced while it is parsed} Default 1,000,000. */
+    /**
+     * {@return the most parts a manifest may list} The parts limit is enforced before materializing more than
+     * the permitted number of part entries, including intermediate JSON representations. Default 1,000,000.
+     */
     public int parts() {
         return parts == 0 ? DEFAULT_PARTS : parts;
     }
@@ -133,9 +136,12 @@ public final class Limits {
 
     /**
      * {@return the estimated decoded size of one footer, page index or page header, in bytes} The estimate
-     * is charged while the Thrift structure is decoded, before each list, string or structure is
-     * allocated: a fixed charge per structure and per list element, plus the bytes of each string. It
-     * bounds the decoded metadata, not its encoded size (see {@link #footerBytes()}). Default 256 MiB.
+     * is computed by a walk of the encoded Thrift bytes before the decoder allocates anything: 48 bytes per
+     * structure, 16 per list or set element (32 per map entry), and for each string or binary value 48 plus
+     * twice its encoded length (a decoded Java string can take two bytes per UTF-8 byte), every declared
+     * length checked against the bytes that remain. It bounds the decoded metadata, not its encoded size
+     * (see {@link #footerBytes()}). It also caps the window a page header of unknown length is read in,
+     * at 16 MiB. Default 256 MiB.
      */
     public long metadataMemory() {
         return metadataMemory == 0 ? DEFAULT_METADATA_MEMORY : metadataMemory;
@@ -192,6 +198,14 @@ public final class Limits {
      */
     public long offsetIndexMemory() {
         return offsetIndexMemory == 0 ? DEFAULT_OFFSET_INDEX_MEMORY : offsetIndexMemory;
+    }
+
+    /**
+     * {@return the most bytes a page header of unknown length is read in: 16 MiB, far beyond any real header,
+     * or {@link #metadataMemory()} when that is less} The Go reader's {@code headerBytes}.
+     */
+    int headerBytes() {
+        return (int) Math.min(16L << 20, metadataMemory());
     }
 
     /**

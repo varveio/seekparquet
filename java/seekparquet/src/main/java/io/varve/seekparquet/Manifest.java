@@ -40,7 +40,7 @@ public record Manifest(FormatVersion version, String schemaId, KeyDefinition key
         Objects.requireNonNull(schemaId, "schemaId");
         Objects.requireNonNull(key, "key");
         parts = List.copyOf(parts);
-        extensions = Collections.unmodifiableMap(new LinkedHashMap<>(extensions));
+        extensions = Manifest.extensionsOf(extensions);
     }
 
     /**
@@ -52,8 +52,9 @@ public record Manifest(FormatVersion version, String schemaId, KeyDefinition key
      *
      * <p>It is bounded by {@code limits}, as opening is: a manifest above {@link Limits#manifestBytes()}
      * is refused before it is parsed, one nested deeper than 512 objects and arrays while it is parsed
-     * ({@link LimitName#MANIFEST_NESTING}), and one listing more than {@link Limits#parts()} parts before
-     * any part entry is built ({@link LimitName#PARTS}). The Go reader's {@code ParseManifest}.
+     * ({@link LimitName#MANIFEST_NESTING}), and one listing more than {@link Limits#parts()} parts with
+     * {@link LimitName#PARTS}: the parts limit is enforced before materializing more than the permitted number
+     * of part entries, including intermediate JSON representations, and after the version is decided (MAN-7). The Go reader's {@code ParseManifest}.
      * @param json the manifest's bytes
      * @param limits the limits
      * @return the manifest
@@ -66,6 +67,18 @@ public record Manifest(FormatVersion version, String schemaId, KeyDefinition key
             throw new LimitExceededException(LimitName.MANIFEST_BYTES, json.length, limits.manifestBytes(), "manifest.json");
         }
         return ManifestParser.parse(json, limits.parts());
+    }
+
+    /**
+     * {@return an unmodifiable copy of {@code extensions}, in its iteration order, rejecting a null name or
+     * value}
+     */
+    static Map<String, String> extensionsOf(Map<String, String> extensions) {
+        Map<String, String> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : extensions.entrySet()) {
+            copy.put(Objects.requireNonNull(e.getKey(), "extension namespace"), Objects.requireNonNull(e.getValue(), "extension value"));
+        }
+        return Collections.unmodifiableMap(copy);
     }
 
     /**

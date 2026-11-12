@@ -6,7 +6,8 @@ package io.varve.seekparquet;
 /**
  * Input or a result beyond one of the {@link Limits} (spec §11), or beyond a fixed capacity of this
  * reader: a policy of the caller or a capacity of the reader, not a refusal of the data, which may be
- * valid. Raise the limit in {@link OpenOptions} to read it. The Go reader's {@code *LimitError}.
+ * valid. Configured limits may be raised (in {@link OpenOptions}); fixed reader capacities cannot. The Go
+ * reader's {@code *LimitError}.
  */
 public final class LimitExceededException extends SeekParquetException {
 

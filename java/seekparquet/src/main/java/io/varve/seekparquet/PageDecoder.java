@@ -49,13 +49,17 @@ final class PageDecoder {
      */
     static final int DICTIONARY_BINARY_ENTRY_BYTES = 80;
 
+    /** An INT96 value: a reference to an array of its own, of 12 bytes padded, with its header. */
+    static final int INT96_SLOT_BYTES = 40;
+
     /** {@return the bytes a value of {@code type} takes in its page's primitive array: a slot} */
     private static int slotBytes(Column.Type type) {
         return switch (type) {
             case BOOLEAN -> 1;
             case INT32, FLOAT -> 4;
             case INT64, DOUBLE -> 8;
-            case INT96 -> 12;
+            // A reference and a 12-byte array of its own (its header and padded bytes).
+            case INT96 -> INT96_SLOT_BYTES;
             case BYTE_ARRAY, FIXED_LEN_BYTE_ARRAY, GROUP -> BINARY_SLOT_BYTES;
         };
     }
@@ -397,10 +401,12 @@ final class PageDecoder {
         int[] ints = type == Column.Type.INT32 || type == Column.Type.FLOAT ? (scratch == null ? new int[n] : scratch.ints(n)) : null;
         long[] longs = type == Column.Type.INT64 || type == Column.Type.DOUBLE ? (scratch == null ? new long[n] : scratch.longs(n)) : null;
         boolean binary = type == Column.Type.BYTE_ARRAY || type == Column.Type.FIXED_LEN_BYTE_ARRAY;
+        boolean int96 = type == Column.Type.INT96;
         boolean arena = binary && scratch != null && encoding != Encoding.PLAIN_DICTIONARY && encoding != Encoding.RLE_DICTIONARY;
-        byte[][] binaries = binary && !arena ? (scratch == null ? new byte[n][] : scratch.binaries(n)) : null;
+        // An INT96 value is held as its 12 raw bytes, an array of its own (never in an arena).
+        byte[][] binaries = (binary && !arena) || int96 ? (scratch == null ? new byte[n][] : scratch.binaries(n)) : null;
         if (scratch != null) scratch.representation(binaries != null);
-        if (type == Column.Type.INT96 || type == Column.Type.GROUP) {
+        if (type == Column.Type.GROUP) {
             throw new UnsupportedFeatureException(UnsupportedCode.PROJECTION, where + ": " + type + " values");
         }
         try {
@@ -433,7 +439,7 @@ final class PageDecoder {
                 return binaryValues(col, encoding, data, from, to, n, nonNull, nulls, dictionary, limits, where, scratch);
             }
             if (encoding == Encoding.DELTA_BYTE_ARRAY) {
-                if (binaries == null) {
+                if (binaries == null || int96) {
                     throw new DataException("DELTA_BYTE_ARRAY for a " + type + " column");
                 }
                 deltaByteArray(data, from, to, n, nonNull, nulls, binaries, col, limits, where);
@@ -474,6 +480,9 @@ final class PageDecoder {
                         if (type == Column.Type.FIXED_LEN_BYTE_ARRAY && entries[id].length != col.typeLength()) {
                             throw new DataException("a FIXED_LEN_BYTE_ARRAY value of " + entries[id].length + " bytes, not " + col.typeLength());
                         }
+                        if (int96 && entries[id].length != 12) {
+                            throw new DataException("an INT96 value of " + entries[id].length + " bytes");
+                        }
                     }
                     binaries[i] = entries[id];
                 }
@@ -494,6 +503,13 @@ final class PageDecoder {
                         byte[] v = b.getBytes();
                         if (type == Column.Type.FIXED_LEN_BYTE_ARRAY && v.length != col.typeLength()) {
                             throw new DataException("a FIXED_LEN_BYTE_ARRAY value of " + v.length + " bytes, not " + col.typeLength());
+                        }
+                        binaries[i] = v;
+                    }
+                    case INT96 -> {
+                        byte[] v = reader.readBytes().getBytes();
+                        if (v.length != 12) {
+                            throw new DataException("an INT96 value of " + v.length + " bytes");
                         }
                         binaries[i] = v;
                     }
@@ -646,6 +662,8 @@ final class PageDecoder {
                     EncodingChecks.plainByteArrays(data, from, to, nonNull);
                 } else if (type == Column.Type.FIXED_LEN_BYTE_ARRAY && (long) nonNull * col.typeLength() != to - from) {
                     throw new DataException(nonNull + " FIXED_LEN_BYTE_ARRAY values are not " + (to - from) + " bytes");
+                } else if (type == Column.Type.INT96 && nonNull * 12L != to - from) {
+                    throw new DataException(nonNull + " INT96 values are not " + (to - from) + " bytes");
                 } else if (type == Column.Type.BOOLEAN && (nonNull + 7L) / 8 != to - from) {
                     // Bit-packed: only the final byte may hold padding bits.
                     throw new DataException(nonNull + " PLAIN BOOLEAN values are not " + (to - from) + " bytes");

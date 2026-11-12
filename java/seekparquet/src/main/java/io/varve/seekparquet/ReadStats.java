@@ -79,8 +79,8 @@ public record ReadStats(
         long readAheadUnused,
         long readAheadUnusedBytes) {
 
-    /** Zero counts: a request that failed before it read. */
-    static final ReadStats NONE = new ReadStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    /** Zero counts: what an operation that failed before it read (an invalid argument, say) delivers. */
+    public static final ReadStats NONE = new ReadStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     /**
      * Returns the sum of these counts and {@code o}'s, component by component: the statistics of several

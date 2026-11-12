@@ -287,7 +287,7 @@ final class PartFile implements AutoCloseable {
 
         Map<String, ColumnSpec> projectable = new LinkedHashMap<>();
         for (PartSchema.Field f : schema.fields) {
-            if (f.leaf() < 0 || f.repetition() == Column.Repetition.REPEATED || f.type() == Column.Type.INT96
+            if (f.leaf() < 0 || f.repetition() == Column.Repetition.REPEATED
                     || schema.duplicates.contains(f.name())) {
                 continue;
             }
@@ -495,12 +495,12 @@ final class PartFile implements AutoCloseable {
         return out;
     }
 
-    /** COL-3: a nested, repeated or INT96 column of this part is rejected, never answered as absent. */
+    /** COL-3: a nested or repeated column of this part is rejected, never answered as absent. */
     void checkProjection(List<String> columns) {
         for (String column : columns) {
             if (schema.byName.containsKey(column) && !projectable.containsKey(column)) {
                 throw new UnsupportedFeatureException(UnsupportedCode.PROJECTION,
-                        "column " + column + " is nested, repeated, of type INT96, or not unique in part " + name);
+                        "column " + column + " is nested, repeated, or not unique in part " + name);
             }
         }
     }
@@ -774,17 +774,22 @@ final class PartFile implements AutoCloseable {
 
     private record Header(PageHeader header, int length) {}
 
-    /** Reads the page header at {@code at}, whose length is unknown, within {@code [at, end)}. */
+    /**
+     * Reads the page header at {@code at}, whose length is unknown, within {@code [at, end)}: in windows of
+     * 8 KiB, 256 KiB and {@link Limits#headerBytes()}, each clamped to that ceiling and to the bytes left, as
+     * the Go reader probes.
+     */
     private Header header(long at, long end, ReadContext ctx) throws DataException {
         long available = end - at;
-        for (long window : new long[] {8 * 1024, 256 * 1024, ctx.limits.pageBytes()}) {
-            int n = (int) Math.min(available, window);
+        long ceiling = Math.min(available, ctx.limits.headerBytes());
+        for (long window : new long[] {8 * 1024, 256 * 1024, ceiling}) {
+            int n = (int) Math.min(ceiling, window);
             byte[] raw = readBytes(at, n, ctx);
             try {
                 Thrift.Decoded<PageHeader> h = Thrift.pageHeader(raw, 0, n, ctx.limits.metadataMemory());
                 return new Header(h.value(), h.length());
             } catch (DataException e) {
-                if (n == available || window >= ctx.limits.pageBytes()) {
+                if (n == ceiling) {
                     throw new DataException("no page header at offset " + at, e);
                 }
             }

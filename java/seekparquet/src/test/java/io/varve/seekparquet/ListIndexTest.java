@@ -71,7 +71,7 @@ class ListIndexTest {
                             ends.add(Optional.of(Bytes.of(Arrays.copyOf(anchor, anchor.length - 1))));
                         }
                         for (Optional<Cursor> cursor : cursors) for (Optional<Bytes> end : ends) for (int limit : new int[] {1, 2, 4, 1000}) {
-                            ListQuery q = new ListQuery(prefix, delimiter, end, limit, base.columns(), cursor, 0);
+                            ListQuery q = Reads.listQuery(prefix, delimiter, end, limit, base.columns(), cursor, 0);
                             assertEquals(plain.list(q), indexed.list(q), () -> "cap=" + cap + " budget=" + budget + " query=" + q);
                         }
                     }

@@ -274,9 +274,12 @@ class ApiAlignmentTest {
     /** The Go reader's defaults, read from go/limits.go in this repository, so the two cannot drift silently. */
     @Test
     void defaultsAreTheGoReadersAsWritten() throws IOException {
-        Path go = Path.of(System.getProperty("seekparquet.conformance")).resolveSibling("go").resolve("limits.go");
-        org.junit.jupiter.api.Assumptions.assumeTrue(Files.isRegularFile(go), "the Go source is not available");
-        String src = Files.readString(go, StandardCharsets.UTF_8);
+        // The Go source is part of this repository: its absence is a failure, never a skip.
+        String property = System.getProperty("seekparquet.conformance");
+        assertTrue(property != null, "the build passes the repository's conformance directory");
+        Path go = Path.of(property).resolveSibling("go");
+        assertTrue(Files.isRegularFile(go.resolve("limits.go")), "go/limits.go is missing: " + go);
+        String src = Files.readString(go.resolve("limits.go"), StandardCharsets.UTF_8);
         Map<String, Long> set = new java.util.HashMap<>();
         Matcher m = Pattern.compile("set\\(&l\\.(\\w+), (\\d+)<<(\\d+)\\)").matcher(src);
         while (m.find()) {
@@ -297,6 +300,15 @@ class ApiAlignmentTest {
         long per = Long.parseLong(group(src, "optionalValueSlices = (\\d+)")) * Long.parseLong(group(src, "valueBytes = (\\d+)"));
         assertEquals(per * l.pageValues() + l.pageBytes(), l.pageMemory());
         assertEquals(832L << 20, l.pageMemory());
+        // The page-header probe ceiling: min(16 MiB, MetadataMemory).
+        Matcher header = Pattern.compile("headerBytes\\(\\) int64 \\{ return min\\((\\d+)<<(\\d+), l\\.MetadataMemory\\) \\}").matcher(src);
+        assertTrue(header.find(), "go/limits.go headerBytes");
+        long ceiling = Long.parseLong(header.group(1)) << Integer.parseInt(header.group(2));
+        assertEquals(ceiling, l.headerBytes());
+        assertEquals(4096, Limits.builder().metadataMemory(4096).build().headerBytes());
+        // The schema nesting bound of go/footer.go's checkSchema.
+        String footer = Files.readString(go.resolve("footer.go"), StandardCharsets.UTF_8);
+        assertEquals(Long.parseLong(group(footer, "if depth > (\\d+) \\{\\s*return errors.New\\(\"the schema is nested too deeply\"\\)")), PartSchema.MAX_NESTING);
         assertEquals(1, OpenOptions.DEFAULT.verifyConcurrency(), "Go verifies one part at a time");
         assertEquals(ReadOptions.DEFAULT.cancellation(), Cancellation.none());
     }

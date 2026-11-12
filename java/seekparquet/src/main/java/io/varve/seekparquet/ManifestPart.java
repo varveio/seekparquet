@@ -3,8 +3,6 @@
 
 package io.varve.seekparquet;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -41,6 +39,6 @@ public record ManifestPart(String path, long rows, long bytes, Bytes minKey, Byt
         Objects.requireNonNull(minKey, "minKey");
         Objects.requireNonNull(maxKey, "maxKey");
         Objects.requireNonNull(sha256, "sha256");
-        extensions = Collections.unmodifiableMap(new LinkedHashMap<>(extensions));
+        extensions = Manifest.extensionsOf(extensions);
     }
 }

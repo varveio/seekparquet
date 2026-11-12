@@ -56,7 +56,7 @@ class ListIndexResourcesTest {
                 var first=d.list(ListQuery.builder((byte)'/').limit(1).build());
                 assertEquals(Bytes.utf8("a/"),((ListEntry.CommonPrefix)first.getFirst()).prefix());
                 for(int i=0;i<3;i++) {
-                    var next=d.list(new ListQuery(Bytes.empty(), (byte)'/', Optional.empty(), 1, List.of(), Optional.of(new Cursor.CommonPrefix(Bytes.utf8("a/"))), 0));
+                    var next=d.list(Reads.listQuery(Bytes.empty(), (byte)'/', Optional.empty(), 1, List.of(), Optional.of(new Cursor.CommonPrefix(Bytes.utf8("a/"))), 0));
                     assertEquals(Bytes.utf8("b/"),((ListEntry.CommonPrefix)next.getFirst()).prefix());
                 }
                 var g=d.parts().listIndex.groups[0];

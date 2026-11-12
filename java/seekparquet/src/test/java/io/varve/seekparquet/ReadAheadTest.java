@@ -291,11 +291,11 @@ class ReadAheadTest {
                     continue;
                 }
                 for (int limit : new int[] {1, 4, 1000}) {
-                    out.add(new ListQuery(Bytes.utf8(prefix), (byte) '/', Optional.empty(), limit, List.of(), cursor, 0));
+                    out.add(Reads.listQuery(Bytes.utf8(prefix), (byte) '/', Optional.empty(), limit, List.of(), cursor, 0));
                 }
                 if (i % 11 == 0) {
-                    out.add(new ListQuery(Bytes.utf8(prefix), (byte) '/', Optional.of(Bytes.utf8(b)), 1000, List.of(), cursor, 0));
-                    out.add(new ListQuery(Bytes.utf8(prefix), (byte) 's', Optional.empty(), 50, List.of("size"), cursor, 0));
+                    out.add(Reads.listQuery(Bytes.utf8(prefix), (byte) '/', Optional.of(Bytes.utf8(b)), 1000, List.of(), cursor, 0));
+                    out.add(Reads.listQuery(Bytes.utf8(prefix), (byte) 's', Optional.empty(), 50, List.of("size"), cursor, 0));
                 }
             }
         }
@@ -734,7 +734,7 @@ class ReadAheadTest {
         ListQuery q = ListQuery.builder((byte) '/').limit(1).readAhead(1000).build();
         assertEquals(1000, q.readAhead());
         assertEquals(1000, q.toBuilder().build().readAhead());
-        assertEquals(0, new ListQuery(Bytes.empty(), (byte) '/', Optional.empty(), 1, List.of(), Optional.empty(), 0).readAhead());
+        assertEquals(0, Reads.listQuery(Bytes.empty(), (byte) '/', Optional.empty(), 1, List.of(), Optional.empty(), 0).readAhead());
         MemoryStorage storage = MemoryStorage.of(folders("wide", 30, 100, 10, 1));
         List<ReadAhead> closed = Collections.synchronizedList(new ArrayList<>());
         ReadAhead.testClosed = closed::add;

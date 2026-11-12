@@ -20,8 +20,11 @@ import org.apache.parquet.format.SchemaElement;
  */
 final class PartSchema {
 
-    /** The deepest nesting accepted. */
-    static final int MAX_NESTING = 256;
+    /**
+     * The deepest nesting accepted, the root at depth 0 and a top-level field at 1: as the Go reader, a
+     * deeper schema is refused as an invalid footer.
+     */
+    static final int MAX_NESTING = 64;
 
     /**
      * A top-level field.
@@ -202,7 +205,7 @@ final class PartSchema {
         /** {@return the signature of the subtree under se (already consumed)} */
         private String subtree(SchemaElement se, int depth) throws DataException {
             if (depth > MAX_NESTING) {
-                throw new LimitExceededException(LimitName.SCHEMA_NESTING, depth, MAX_NESTING, "a part's schema");
+                throw new DataException("the schema is nested more than " + MAX_NESTING + " deep");
             }
             if (se.isSetNum_children() && (se.getNum_children() < 0 || se.isSetType() && se.getNum_children() > 0)) {
                 throw new DataException("a schema element has an invalid child count or both a type and children");

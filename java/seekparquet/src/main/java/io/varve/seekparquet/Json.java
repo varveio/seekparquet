@@ -28,7 +28,12 @@ final class Json {
 
     record Obj(Map<String, Node> members, int start, int end) implements Node {}
 
-    record Arr(List<Node> items, int start, int end) implements Node {}
+    /**
+     * An array. {@code total} is its number of elements; {@code items} holds every one, except for the
+     * top-level object's {@code parts} under a bound ({@link #parse(byte[], int)}), which keeps at most the
+     * bound and only checks the syntax of the rest.
+     */
+    record Arr(List<Node> items, long total, int start, int end) implements Node {}
 
     record Str(String value, int start, int end) implements Node {}
 
@@ -50,6 +55,10 @@ final class Json {
 
     private final byte[] in;
     private int pos;
+    /** The most elements of the top-level {@code parts} array kept. */
+    private int maxParts = Integer.MAX_VALUE;
+    /** Set while the value of the top-level {@code parts} member is parsed. */
+    private boolean bounded;
 
     private Json(byte[] in) {
         this.in = in;
@@ -62,7 +71,21 @@ final class Json {
      * @throws LimitExceededException if it nests deeper than {@link #MAX_DEPTH}
      */
     static Node parse(byte[] in) throws SyntaxException {
+        return parse(in, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Parses {@code in}, keeping at most {@code maxParts} elements of the top-level object's {@code parts}
+     * array: the rest is checked as strictly as any JSON, and counted, but not kept, so that a manifest
+     * listing more parts than the reader admits is refused (by the caller, after its version) without
+     * holding the excess.
+     *
+     * @throws SyntaxException if it is not one strict JSON value
+     * @throws LimitExceededException if it nests deeper than {@link #MAX_DEPTH}
+     */
+    static Node parse(byte[] in, int maxParts) throws SyntaxException {
         Json p = new Json(in);
+        p.maxParts = maxParts;
         p.skipWhitespace();
         Node value = p.value(0);
         p.skipWhitespace();
@@ -146,7 +169,9 @@ final class Json {
             }
             pos++;
             skipWhitespace();
+            bounded = depth == 1 && name.equals("parts");
             Node v = value(depth);
+            bounded = false;
             if (members.putIfAbsent(name, v) != null) {
                 throw new SyntaxException("duplicate member name \"" + name + "\"", nameAt);
             }
@@ -168,16 +193,22 @@ final class Json {
 
     private Arr array(int depth) throws SyntaxException {
         checkDepth(depth);
+        int keep = bounded ? maxParts : Integer.MAX_VALUE;
+        bounded = false;
         int start = pos++;
         List<Node> items = new ArrayList<>();
+        long total = 0;
         skipWhitespace();
         if (pos < in.length && in[pos] == ']') {
             pos++;
-            return new Arr(items, start, pos);
+            return new Arr(items, 0, start, pos);
         }
         while (true) {
             skipWhitespace();
-            items.add(value(depth));
+            Node item = value(depth);
+            if (total++ < keep) {
+                items.add(item);
+            }
             skipWhitespace();
             if (pos >= in.length) {
                 throw new SyntaxException("unterminated array", pos);
@@ -188,7 +219,7 @@ final class Json {
             }
             if (in[pos] == ']') {
                 pos++;
-                return new Arr(items, start, pos);
+                return new Arr(items, total, start, pos);
             }
             throw new SyntaxException("expected ',' or ']'", pos);
         }

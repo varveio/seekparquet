@@ -6,8 +6,7 @@ package io.varve.seekparquet;
 /**
  * Names the limit a {@link LimitExceededException} reports: a setting of {@link Limits}, or a fixed
  * capacity of this reader. The constants correspond one to one to the Go reader's {@code LimitName}
- * constants ({@code MANIFEST_BYTES} is {@code LimitManifestBytes}, and so on), except {@link
- * #SCHEMA_NESTING}, which the Go reader refuses as an invalid footer instead.
+ * constants ({@code MANIFEST_BYTES} is {@code LimitManifestBytes}, and so on).
  */
 public enum LimitName {
     /** {@link Limits#manifestBytes()}. */
@@ -37,8 +36,6 @@ public enum LimitName {
      * object itself counting 1, as in the Go reader.
      */
     MANIFEST_NESTING,
-    /** The reader's fixed capacity of nested groups in a part's schema: 256. */
-    SCHEMA_NESTING,
     /** The reader's capacity of signed 64-bit dataset ordinals: a manifest row total above 2^63-1. */
     DATASET_ROWS
 }

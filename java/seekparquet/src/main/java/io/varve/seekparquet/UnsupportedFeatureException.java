@@ -18,6 +18,16 @@ public final class UnsupportedFeatureException extends SeekParquetException {
         this.code = Objects.requireNonNull(code);
     }
 
+    private UnsupportedFeatureException(UnsupportedFeatureException other) {
+        super(other.getMessage(), null);
+        this.code = other.code;
+    }
+
+    /** {@return a detached copy: the same code and message, no suppressed exceptions} */
+    UnsupportedFeatureException detached() {
+        return new UnsupportedFeatureException(this);
+    }
+
     /** {@return which kind of feature is unsupported} */
     public UnsupportedCode code() {
         return code;

@@ -24,6 +24,15 @@ final class Reads {
         return new Builder();
     }
 
+    /** {@return the listing of those arguments, in the order of the former record components} */
+    static ListQuery listQuery(Bytes prefix, byte delimiter, Optional<Bytes> end, int limit, List<String> columns,
+            Optional<? extends Cursor> cursor, int readAhead) {
+        ListQuery.Builder b = ListQuery.builder(delimiter).prefix(prefix).limit(limit).columns(columns).readAhead(readAhead);
+        end.ifPresent(b::end);
+        cursor.ifPresent(b::cursor);
+        return b.build();
+    }
+
     static Query all(long limit) {
         return Query.builder().limit(limit).build();
     }

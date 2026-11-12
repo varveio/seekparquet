@@ -127,6 +127,10 @@ class BatchScanTest {
             }
             case Value.ByteArray v -> checkBytes(col, i, v.value(), Column.Type.BYTE_ARRAY);
             case Value.FixedLenByteArray v -> checkBytes(col, i, v.value(), Column.Type.FIXED_LEN_BYTE_ARRAY);
+            case Value.Int96 v -> {
+                assertEquals(v, col.getInt96(i));
+                assertThrows(IllegalStateException.class, () -> col.byteLength(i));
+            }
             case Value.Absent a -> fail();
         }
     }
@@ -175,18 +179,28 @@ class BatchScanTest {
         return stats.get();
     }
 
-    /** A plan's scan statistics, on a dataset of its own so that no earlier request warms its caches. */
-    private static ReadStats scanStats(Path root, List<Query> ranges, List<String> columns, boolean batches) {
-        AtomicReference<ReadStats> stats = new AtomicReference<>();
-        try (Dataset d = Dataset.open(root)) {
+    /**
+     * Checks a plan's scan statistics against what is recorded independently, on a dataset of its own so that
+     * no earlier request warms its caches: the storage calls and bytes the scan made, and at least one decoded
+     * key per row of the plan.
+     */
+    private static void checkScanStats(Path root, List<Query> ranges, List<String> columns, String name) {
+        RangePlanTest.RecordingStorage storage = new RangePlanTest.RecordingStorage(root);
+        try (Dataset d = Dataset.open(storage)) {
             Plan plan = Reads.plan(d, ranges, columns);
-            if (batches) {
-                Reads.scanBatches(plan, Cancellation.none(), stats::set, batch -> {});
-            } else {
-                Reads.scan(plan, Cancellation.none(), stats::set, row -> {});
-            }
+            storage.take();
+            AtomicReference<ReadStats> stats = new AtomicReference<>();
+            long[] rows = new long[1];
+            plan.scan(ReadOptions.of(stats::set), batch -> {
+                rows[0] += batch.size();
+                return true;
+            });
+            List<RangePlanTest.RecordingStorage.Read> reads = storage.take();
+            assertEquals(reads.size(), stats.get().sourceReads(), name);
+            assertEquals(reads.stream().mapToLong(RangePlanTest.RecordingStorage.Read::length).sum(), stats.get().sourceBytes(), name);
+            assertEquals(plan.count().value(), rows[0], name);
+            assertTrue(stats.get().keysDecoded() >= rows[0], name + ": " + stats.get());
         }
-        return stats.get();
     }
 
     /**
@@ -212,8 +226,7 @@ class BatchScanTest {
             Reads.scan(plan, scanned::add);
             assertEquals(all, scanned, name);
             assertEquals(all, rows(action -> Reads.scanBatches(plan, action)), name);
-            assertEquals(scanStats(root, List.of(Reads.all(1)), columns, false),
-                    scanStats(root, List.of(Reads.all(1)), columns, true), name);
+            checkScanStats(root, List.of(Reads.all(1)), columns, name);
 
             List<Query> ranges = RangePlanTest.ranges(all);
             for (Query q : ranges) {
@@ -246,7 +259,7 @@ class BatchScanTest {
                 assertEquals(p.count().value(), want.size());
                 assertEquals(want, rows(action -> Reads.scanBatches(p, action)), name + " " + set);
                 if (i % 5 == 0) {
-                    assertEquals(scanStats(root, set, columns, false), scanStats(root, set, columns, true), name + " " + set);
+                    checkScanStats(root, set, columns, name + " " + set);
                 }
             }
         }

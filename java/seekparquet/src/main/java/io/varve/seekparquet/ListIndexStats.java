@@ -21,6 +21,16 @@ import java.time.Duration;
  */
 public record ListIndexStats(long groupsIndexed, long groupsSkipped, long groupsFailed,
         long partsFailed, long pages, long entries, long bytes, boolean budgetExhausted, Duration duration, ListIndexOptions options, boolean optionsMismatch) {
+    /**
+     * Creates build statistics.
+     *
+     * @throws NullPointerException if {@code duration} or {@code options} is null
+     */
+    public ListIndexStats {
+        java.util.Objects.requireNonNull(duration, "duration");
+        java.util.Objects.requireNonNull(options, "options");
+    }
+
     /** {@return whether the completed snapshot indexes any groups} */
     public boolean hasIndex() { return groupsIndexed > 0; }
     ListIndexStats forOptions(ListIndexOptions requested) {

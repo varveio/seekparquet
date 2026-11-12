@@ -41,12 +41,11 @@ public record Column(String name, Type type, int typeLength, Optional<LogicalTyp
 
     /**
      * {@return whether this reader can project the column (COL-3)} It can when the column is not
-     * nested, not repeated, and not {@code INT96}. The Go reader also projects {@code INT96} columns, as
-     * raw bits; this reader refuses them ({@link UnsupportedCode#PROJECTION}), a deliberate capability
-     * difference.
+     * nested and not repeated; an {@code INT96} column is projected as its raw bits ({@link Value.Int96}),
+     * as in the Go reader.
      */
     public boolean projectable() {
-        return type != Type.GROUP && type != Type.INT96 && repetition != Repetition.REPEATED;
+        return type != Type.GROUP && repetition != Repetition.REPEATED;
     }
 
     /** A column's physical type. */
@@ -57,7 +56,7 @@ public record Column(String name, Type type, int typeLength, Optional<LogicalTyp
         INT32,
         /** {@code INT64}. */
         INT64,
-        /** {@code INT96}, a legacy timestamp representation, which this reader does not project. */
+        /** {@code INT96}, projected as raw bits ({@link Value.Int96}), not interpreted. */
         INT96,
         /** {@code FLOAT}. */
         FLOAT,

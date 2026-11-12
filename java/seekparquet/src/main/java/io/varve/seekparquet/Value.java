@@ -85,6 +85,37 @@ public sealed interface Value {
     }
 
     /**
+     * A legacy {@code INT96} value, as its raw bits: three little-endian 32-bit words, least significant
+     * first, each {@code int} carrying unsigned 32-bit bits. It is not interpreted (as a timestamp or
+     * otherwise). The Go reader's {@code Int96}.
+     *
+     * @param word0 bits 0 to 31, the value's first 4 bytes read little-endian
+     * @param word1 bits 32 to 63
+     * @param word2 bits 64 to 95
+     */
+    record Int96(int word0, int word1, int word2) implements Value {
+        /**
+         * Returns the value whose 12 little-endian bytes are {@code b}.
+         *
+         * @param b the bytes, exactly 12
+         * @return the value
+         * @throws IllegalArgumentException if {@code b} is not 12 bytes
+         */
+        public static Int96 of(byte[] b) {
+            if (b.length != 12) {
+                throw new IllegalArgumentException("an INT96 value is 12 bytes, not " + b.length);
+            }
+            java.nio.ByteBuffer le = java.nio.ByteBuffer.wrap(b).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            return new Int96(le.getInt(0), le.getInt(4), le.getInt(8));
+        }
+
+        /** {@return the value's 12 little-endian bytes, a copy} */
+        public byte[] toByteArray() {
+            return java.nio.ByteBuffer.allocate(12).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(word0).putInt(word1).putInt(word2).array();
+        }
+    }
+
+    /**
      * A {@code BYTE_ARRAY} value.
      *
      * @param value the bytes
