@@ -715,3 +715,47 @@ fmt.Println("code:", seekparquet.RefusalCodeOf(err))
 <!-- /snippet -->
 
 The example also imports `errors`. Use [troubleshooting](troubleshooting.md) to turn each code into an action.
+
+## Scan with queued workers
+
+Use [`Plan.ScanParallel`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Plan.ScanParallel) to process borrowed batches concurrently.
+
+**Go**
+
+<!-- snippet: go/example_generic_test.go#ExamplePlan_ScanParallel -->
+```go
+ctx := context.Background()
+d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+if err != nil {
+	log.Fatal(err)
+}
+defer d.Close()
+plan, err := d.Plan(ctx, []seekparquet.Selection{{Span: seekparquet.PrefixSpan([]byte("logs/2026/01/"))}}, []string{"size"}, nil)
+if err != nil {
+	log.Fatal(err)
+}
+var rows atomic.Int64
+err = plan.ScanParallel(ctx, 2, nil, func(b *seekparquet.Batch) error {
+	rows.Add(int64(b.Len()))
+	return nil
+})
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Println("rows:", rows.Load())
+// Output:
+// rows: 30
+```
+<!-- /snippet -->
+
+**Java:** not available; the parallel scheduler mirror is planned.
+
+Callbacks follow key order within a shard; callbacks from different shards are unordered.
+The worker count bounds active scans and callbacks.
+One worker scans one shard; multiple workers take queued shards as they finish.
+Equal-key groups stay inside a shard, and complete scans check key order across shard boundaries.
+Borrowed batches follow the lifetime rules of `Plan.Scan`.
+Return `Stop` for successful early termination; workers are canceled and joined before return.
+Early termination does not check the complete selection.
+Other callback errors retain identity, and external cancellation fails the scan.
+Statistics include split and scan failures; add the original plan's statistics separately with `ReadStats.Add`.

@@ -132,6 +132,34 @@
         {"concept": "Inspect a part's footer", "go": "InspectFooter", "java": null},
         {"concept": "Inspect a part's key pages", "go": "InspectKeyPages", "java": null}
       ]
+    },
+    {
+      "title": "Generic execution and aggregation (Go only)",
+      "rows": [
+        {"concept": "Scan a plan with queued workers", "go": "Plan.ScanParallel", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Aggregate key selections", "go": "Dataset.Aggregate", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Aggregate established row spans", "go": "Dataset.AggregateRows", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Named reduction", "go": "Reduction", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Reduction operation", "go": "AggregateOp", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Count rows", "go": "CountRows", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Sum integers", "go": "Sum", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Maximum value", "go": "Max", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Count present nulls", "go": "CountNulls", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Count absent columns", "go": "CountAbsent", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Aggregation options", "go": "AggregateOptions", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Borrowed batch predicate", "go": "BatchFilter", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Aggregation result", "go": "AggregateResult", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Aggregation completeness", "go": "AggregateStatus", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Unknown aggregate", "go": "AggregateUnknown", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Exact aggregate", "go": "AggregateExact", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Value budget exceeded", "go": "AggregateBudgetExceeded", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Unpriced value extents", "go": "AggregateUnpriced", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Sum overflow", "go": "AggregateOverflow", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Listing page with prefix aggregates", "go": "Dataset.Page", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Page request", "go": "PageQuery", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Page entry", "go": "PageEntry", "java": null, "note": "Go only; Java mirror planned."},
+        {"concept": "Page result", "go": "Page", "java": null, "note": "Go only; Java mirror planned."}
+      ]
     }
   ]
 }
