@@ -34,7 +34,7 @@ class CorruptionTest {
             files = walk.filter(Files::isRegularFile).toList();
         }
         Random random = new Random(name.hashCode());
-        Limits small = new Limits(1 << 20, 1000, 1 << 20, 1 << 20, 4 << 20, 1 << 20);
+        Limits small = Limits.builder().manifestBytes(1 << 20).parts(1000).footerBytes(1 << 20).pageIndexBytes(1 << 20).pageBytes(4 << 20).pageValues(1 << 20).build();
         OpenOptions options = OpenOptions.DEFAULT.withLimits(small).withVerifyConcurrency(1);
         for (int round = 0; round < 150; round++) {
             Path root = tmp.resolve(name + "-" + round);
@@ -58,10 +58,10 @@ class CorruptionTest {
                 } catch (SeekParquetException refused) {
                     // A part's refusal is kept and ends the reads below too; a key page's is not.
                 }
-                List<String> columns = ds.columns().stream().filter(Column::projectable).map(Column::name).toList();
-                ds.range(RangeQuery.builder().limit(100_000).columns(columns).build());
+                List<String> columns = Reads.columns(ds).stream().filter(Column::projectable).map(Column::name).toList();
+                ds.rows(Reads.builder().limit(100_000).columns(columns).build());
                 ds.list(ListQuery.builder((byte) '/').limit(100_000).columns(columns).build());
-                ds.range(RangeQuery.builder().start(Bytes.utf8("m")).limit(3).columns(columns).build());
+                ds.rows(Reads.builder().start(Bytes.utf8("m")).limit(3).columns(columns).build());
             } catch (SeekParquetException expected) {
                 // A refusal, an unsupported feature or a limit: all acceptable for corrupt data.
             } catch (RuntimeException | Error e) {

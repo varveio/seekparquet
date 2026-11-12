@@ -34,7 +34,7 @@ class RefusalLocationTest {
         spec.swapFirstKeys = true;
         Path root = TestDatasets.write(tmp, spec, rows());
         try (Dataset ds = Dataset.open(root)) {
-            RefusalException e = assertThrows(RefusalException.class, () -> ds.range(RangeQuery.all(100)));
+            RefusalException e = assertThrows(RefusalException.class, () -> ds.rows(Reads.all(100)));
             assertEquals(RefusalCode.KEY_ORDER, e.code());
             assertEquals(Optional.of("data/part-00000.parquet"), e.part());
             assertEquals(OptionalInt.of(0), e.rowGroup());
@@ -49,7 +49,7 @@ class RefusalLocationTest {
         spec.omitKeyColumnIndex = true;
         Path root = TestDatasets.write(tmp, spec, rows());
         try (Dataset ds = Dataset.open(root)) {
-            RefusalException e = assertThrows(RefusalException.class, () -> ds.range(RangeQuery.all(100)));
+            RefusalException e = assertThrows(RefusalException.class, () -> ds.rows(Reads.all(100)));
             assertEquals(RefusalCode.MISSING_PAGE_INDEX, e.code());
             assertEquals(Optional.of("data/part-00000.parquet"), e.part());
             // The first group, a b c d, reads without its ColumnIndex; the second, e, is the one refused.
@@ -88,7 +88,7 @@ class RefusalLocationTest {
         spec.swapFirstKeys = true;
         Path root = TestDatasets.write(tmp, spec, rows());
         try (Dataset ds = Dataset.open(root)) {
-            RefusalException e = assertThrows(RefusalException.class, () -> ds.range(RangeQuery.all(100)));
+            RefusalException e = assertThrows(RefusalException.class, () -> ds.rows(Reads.all(100)));
             byte[] copy = e.key().orElseThrow().toByteArray();
             copy[0] = 'z';
             assertEquals(Bytes.utf8("a"), e.key().orElseThrow());

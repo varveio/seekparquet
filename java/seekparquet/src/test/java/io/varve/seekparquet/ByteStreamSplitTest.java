@@ -289,17 +289,17 @@ class ByteStreamSplitTest {
             rows.add(TestRow.of(String.format("k%03d", i), i % 4 == 0 ? -1 : (long) i << 40 | 0xabcdL));
         }
         try (Dataset d = Dataset.open(TestDatasets.write(tmp, spec, List.of(rows)))) {
-            List<Row> got = d.range(RangeQuery.builder().limit(100).columns("size").build());
+            List<Row> got = d.rows(Reads.builder().limit(100).columns("size").build());
             assertEquals(30, got.size());
             for (int i = 0; i < 30; i++) {
                 long size = rows.get(i).size();
                 assertEquals(size < 0 ? Value.Null.INSTANCE : new Value.Int64(size), got.get(i).values().getFirst());
             }
-            RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size"));
+            Plan plan = Reads.plan(d, List.of(Reads.all(1)), List.of("size"));
             List<Row> scanned = new ArrayList<>();
-            plan.scan(scanned::add);
+            Reads.scan(plan, scanned::add);
             assertEquals(got, scanned);
-            assertEquals(got, BatchScanTest.rows(plan::scanBatches));
+            assertEquals(got, BatchScanTest.rows(action -> Reads.scanBatches(plan, action)));
         }
     }
 

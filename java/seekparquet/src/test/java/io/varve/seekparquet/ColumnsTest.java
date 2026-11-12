@@ -42,20 +42,18 @@ class ColumnsTest {
         LogicalType ms = new LogicalType.TimestampType(LogicalType.TimeUnit.MILLIS, false);
         LogicalType us = new LogicalType.TimestampType(LogicalType.TimeUnit.MICROS, true);
         List<Column> want = List.of(
-                new Column("key", Column.Type.BYTE_ARRAY, 0, Optional.empty(), Column.Repetition.REQUIRED, true, 1),
-                new Column("d", Column.Type.INT32, 0, Optional.of(new LogicalType.DateType()), Column.Repetition.OPTIONAL, false, 1),
-                new Column("ts_ms", Column.Type.INT64, 0, Optional.of(ms), Column.Repetition.OPTIONAL, false, 1),
-                new Column("ts_utc", Column.Type.INT64, 0, Optional.of(us), Column.Repetition.OPTIONAL, false, 1),
-                new Column("dec9", Column.Type.INT32, 0, Optional.of(new LogicalType.DecimalType(9, 2)), Column.Repetition.OPTIONAL, false, 1),
-                new Column("dec18", Column.Type.INT64, 0, Optional.of(new LogicalType.DecimalType(18, 4)), Column.Repetition.OPTIONAL, false, 1),
-                new Column("dec30", Column.Type.FIXED_LEN_BYTE_ARRAY, 13, Optional.of(new LogicalType.DecimalType(30, 5)),
-                        Column.Repetition.OPTIONAL, false, 1),
-                new Column("s", Column.Type.BYTE_ARRAY, 0, Optional.of(new LogicalType.StringType()), Column.Repetition.OPTIONAL, false, 1));
+                new Column("key", Column.Type.BYTE_ARRAY, 0, Optional.empty(), Column.Repetition.REQUIRED, true),
+                new Column("d", Column.Type.INT32, 0, Optional.of(new LogicalType.DateType()), Column.Repetition.OPTIONAL, false),
+                new Column("ts_ms", Column.Type.INT64, 0, Optional.of(ms), Column.Repetition.OPTIONAL, false),
+                new Column("ts_utc", Column.Type.INT64, 0, Optional.of(us), Column.Repetition.OPTIONAL, false),
+                new Column("dec9", Column.Type.INT32, 0, Optional.of(new LogicalType.DecimalType(9, 2)), Column.Repetition.OPTIONAL, false),
+                new Column("dec18", Column.Type.INT64, 0, Optional.of(new LogicalType.DecimalType(18, 4)), Column.Repetition.OPTIONAL, false),
+                new Column("dec30", Column.Type.FIXED_LEN_BYTE_ARRAY, 13, Optional.of(new LogicalType.DecimalType(30, 5)), Column.Repetition.OPTIONAL, false),
+                new Column("s", Column.Type.BYTE_ARRAY, 0, Optional.of(new LogicalType.StringType()), Column.Repetition.OPTIONAL, false));
         try (Dataset d = Dataset.open(ConformanceFixturesTest.fixture("datasets/annotated"))) {
-            assertEquals(List.of(), d.columns(), "no part is checked yet");
+            assertNull(d.parts().checked(0), "no part is checked yet");
             assertEquals(want, d.columns(0));
             assertNotNull(d.parts().checked(0), "columns(int) answered without checking the part");
-            assertEquals(want, d.columns(), "the checked part, as columns() reports it");
             d.verify();
             assertEquals(want, d.columns(0));
             assertThrows(IndexOutOfBoundsException.class, () -> d.columns(-1));
@@ -122,7 +120,7 @@ class ColumnsTest {
         out.writeFieldStop();
         out.writeStructEnd();
         byte[] raw = Arrays.copyOf(buffer.getArray(), buffer.length());
-        org.apache.parquet.format.LogicalType lt = Thrift.read(raw, 0, raw.length, new org.apache.parquet.format.LogicalType()).value();
+        org.apache.parquet.format.LogicalType lt = Thrift.read(raw, 0, raw.length, new org.apache.parquet.format.LogicalType(), Limits.DEFAULT.metadataMemory()).value();
         assertNull(lt.getSetField(), "the unknown member leaves the union unset");
         SchemaElement se = new SchemaElement("v").setType(Type.BYTE_ARRAY).setRepetition_type(FieldRepetitionType.OPTIONAL)
                 .setLogicalType(lt);
@@ -160,11 +158,10 @@ class ColumnsTest {
         file[at] = (byte) 0x9C; // field id 6 -> 9, same length
         Files.write(root.resolve("data/part-00000.parquet"), file);
         try (Dataset d = Dataset.open(root)) {
-            assertEquals(8, d.range(RangeQuery.builder().limit(100).columns("d").build()).size(), "the part reads");
+            assertEquals(8, d.rows(Reads.builder().limit(100).columns("d").build()).size(), "the part reads");
             Column column = d.columns(0).get(1);
             assertEquals("d", column.name());
             assertEquals(Optional.of(new LogicalType.DateType()), column.logicalType());
-            assertEquals(Optional.of(new LogicalType.DateType()), d.column("d").orElseThrow().logicalType());
         }
     }
 }

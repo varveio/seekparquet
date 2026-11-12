@@ -32,7 +32,7 @@ final class ManifestParser {
         return new RefusalException(RefusalCode.INVALID_MANIFEST, null, detail);
     }
 
-    static Manifest parse(byte[] raw) {
+    static Manifest parse(byte[] raw, int maxParts) {
         if (raw.length >= 3 && (raw[0] & 0xFF) == 0xEF && (raw[1] & 0xFF) == 0xBB && (raw[2] & 0xFF) == 0xBF) {
             throw invalid("the manifest begins with a byte order mark");
         }
@@ -41,7 +41,7 @@ final class ManifestParser {
         }
         Json.Node root;
         try {
-            root = Json.parse(raw);
+            root = Json.parse(raw, maxParts);
         } catch (Json.SyntaxException e) {
             throw invalid(e.getMessage());
         }
@@ -105,6 +105,10 @@ final class ManifestParser {
         }
         if (!(partsNode instanceof Json.Arr partsArr)) {
             throw invalid("parts is not an array");
+        }
+        if (partsArr.total() > maxParts) {
+            // The parser kept only maxParts entries of the array: the excess was checked and counted, not held.
+            throw new LimitExceededException(LimitName.PARTS, partsArr.total(), maxParts, "manifest.json");
         }
         List<ManifestPart> parts = new ArrayList<>(partsArr.items().size());
         Map<String, Integer> paths = new HashMap<>();

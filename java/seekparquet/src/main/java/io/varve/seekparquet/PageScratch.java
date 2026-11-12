@@ -10,7 +10,7 @@ import org.apache.parquet.column.Dictionary;
  * One request's storage for one projected column. Capacities survive row groups and parts; logical
  * pages and dictionaries do not. Never used for keys or shared across requests. Reusable arrays stay
  * private; immutable dictionary entry bytes may be retained by results.
- * Primitive arrays grow to the checked requirement; binary arena growth is capped by maxPageBytes.
+ * Primitive arrays grow to the checked requirement; binary arena growth is capped by pageBytes.
  */
 final class PageScratch {
     ReadContext.ChunkKey owner;

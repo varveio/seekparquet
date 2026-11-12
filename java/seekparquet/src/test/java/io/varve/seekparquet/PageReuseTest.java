@@ -78,23 +78,23 @@ class PageReuseTest {
             parts.add(rows);
         }
         List<Row> want = parts.stream().flatMap(List::stream).map(PageReuseTest::expected).toList();
-        RangeQuery range = RangeQuery.all(1000).toBuilder().columns(COLUMNS).build();
+        Query range = Reads.all(1000).toBuilder().columns(COLUMNS).build();
         ListQuery list = ListQuery.builder((byte) '/').limit(1000).columns(COLUMNS).build();
         for (boolean sequential : List.of(false, true)) {
             spec.omitValueOffsetIndexes = sequential;
             Path root = TestDatasets.write(tmp.resolve("sequential-" + sequential), spec, parts);
             try (Dataset d = Dataset.open(root)) {
-                RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), COLUMNS);
+                Plan plan = Reads.plan(d, List.of(Reads.all(1)), COLUMNS);
                 for (boolean indexed : List.of(false, true)) {
                     if (indexed) d.buildListIndex(new ListIndexOptions(1 << 20, 1, 8), Cancellation.none());
                     try (Dataset.Request request = d.begin(Cancellation.none())) {
                         List<Row> got = Queries.range(d.parts(), range, request.ctx);
-                        List<Continuation.RowPosition> cursors = got.stream().map(Row::continuation).toList();
+                        List<Cursor.RowPosition> cursors = got.stream().map(Row::cursor).toList();
                         PartFile last = d.parts().get(1, request.ctx);
                         poison(last.scratch(last.groups[last.groups.length - 1], last.projectable.get("size"), request.ctx));
                         poison(last.scratch(last.groups[last.groups.length - 1], last.projectable.get("note"), request.ctx));
                         assertEquals(want, got);
-                        assertEquals(want.stream().map(Row::continuation).toList(), cursors);
+                        assertEquals(want.stream().map(Row::cursor).toList(), cursors);
                     }
                     try (Dataset.Request request = d.begin(Cancellation.none())) {
                         List<ListEntry> got = Queries.list(d.parts(), list, request.ctx);
@@ -104,16 +104,16 @@ class PageReuseTest {
                         assertEquals(want.stream().map(ListEntry.RowEntry::new).toList(), got);
                     }
                     List<Row> scanned = new ArrayList<>();
-                    plan.scan(scanned::add);
+                    Reads.scan(plan, scanned::add);
                     assertEquals(want, scanned); // Keep every result past reuse of every slot.
                     try (var executor = Executors.newFixedThreadPool(2)) {
-                        var a = executor.submit(() -> { List<Row> out = new ArrayList<>(); plan.scan(out::add); return out; });
-                        var b = executor.submit(() -> d.range(range));
+                        var a = executor.submit(() -> { List<Row> out = new ArrayList<>(); Reads.scan(plan, out::add); return out; });
+                        var b = executor.submit(() -> d.rows(range));
                         assertEquals(want, a.get());
                         assertEquals(want, b.get());
                     }
                     assertEquals(want, scanned);
-                    assertEquals(want.subList(310, want.size()), d.range(range.next(want.get(309))));
+                    assertEquals(want.subList(310, want.size()), d.rows(range.next(want.get(309))));
                 }
             }
         }
@@ -128,7 +128,7 @@ class PageReuseTest {
             KeyCursor cursor = new KeyCursor(d.parts(), null, request.ctx);
             assertTrue(cursor.seek(null, false));
             Row row = Queries.row(cursor, COLUMNS, request.ctx);
-            Continuation continuation = row.continuation();
+            Cursor.RowPosition continuation = row.cursor();
             PartFile part = cursor.partFile();
             assertNull(part.scratch(0, part.keySpec, request.ctx));
             assertSame(cursor.key(), row.key().unsafeArray());
@@ -138,7 +138,7 @@ class PageReuseTest {
             Row next = Queries.row(cursor, COLUMNS, request.ctx);
             assertNotSame(row.key().unsafeArray(), next.key().unsafeArray());
             assertEquals(expected(TestDatasets.TestRow.of("a/", 1)), row);
-            assertEquals(Bytes.utf8("a/"), continuation.bytes());
+            assertEquals(Bytes.utf8("a/"), continuation.key());
         }
         // LIST-8 exact rows and common-prefix continuations own the same boundary.
         try (Dataset d = Dataset.open(root); Dataset.Request request = d.begin(Cancellation.none())) {
@@ -148,7 +148,7 @@ class PageReuseTest {
             var first = (ListEntry.CommonPrefix) entries.getFirst();
             assertEquals(Bytes.utf8("a/"), first.prefix());
             assertEquals(expected(TestDatasets.TestRow.of("a/", 1)), first.exact().orElseThrow());
-            assertEquals(Bytes.utf8("a/"), ListQuery.builder((byte) '/').limit(10).build().next(first).cursor().orElseThrow().bytes());
+            assertEquals(new Cursor.CommonPrefix(Bytes.utf8("a/")), ListQuery.builder((byte) '/').limit(10).build().next(first).cursor().orElseThrow());
         }
     }
 

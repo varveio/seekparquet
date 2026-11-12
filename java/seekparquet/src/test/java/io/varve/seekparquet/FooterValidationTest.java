@@ -31,7 +31,7 @@ class FooterValidationTest {
         byte[] raw = Files.readAllBytes(file);
         int length = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN).getInt(raw.length - 8);
         int start = raw.length - 8 - length;
-        FileMetaData footer = Thrift.fileMetaData(java.util.Arrays.copyOfRange(raw, start, start + length));
+        FileMetaData footer = Thrift.fileMetaData(java.util.Arrays.copyOfRange(raw, start, start + length), Limits.DEFAULT.metadataMemory());
         change.accept(footer);
         ByteArrayOutputStream encoded = new ByteArrayOutputStream();
         Util.writeFileMetaData(footer, encoded);
@@ -46,7 +46,7 @@ class FooterValidationTest {
         IndexedAccessTest.CountingStorage storage = new IndexedAccessTest.CountingStorage(root);
         try (Dataset ds = Dataset.open(storage)) {
             assertEquals(0, storage.footers.get(), "opening reads no part");
-            assertEquals(code, assertThrows(RefusalException.class, () -> ds.range(RangeQuery.all(1))).code());
+            assertEquals(code, assertThrows(RefusalException.class, () -> ds.rows(Reads.all(1))).code());
         }
         assertEquals(1, storage.footers.get());
         assertEquals(0, storage.reads.get(), "invalid footer must fail before reading column data or indexes");
@@ -79,6 +79,6 @@ class FooterValidationTest {
         byte[] raw = TestDatasets.part(new TestDatasets.Spec(), List.of(TestDatasets.TestRow.of("a", 1)));
         int length = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN).getInt(raw.length - 8);
         byte[] footer = java.util.Arrays.copyOfRange(raw, raw.length - 8 - length, raw.length - 7);
-        assertThrows(DataException.class, () -> Thrift.fileMetaData(footer));
+        assertThrows(DataException.class, () -> Thrift.fileMetaData(footer, Limits.DEFAULT.metadataMemory()));
     }
 }

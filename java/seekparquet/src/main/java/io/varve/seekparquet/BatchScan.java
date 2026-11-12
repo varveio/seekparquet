@@ -5,11 +5,10 @@ package io.varve.seekparquet;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
- * Cuts a key cursor's rows into {@link Batch}es, the one batch path behind {@link RangePlan#scanBatches}
- * and {@link Dataset#rangeBatches}. It loads, for each batch, only the page of each projected column holding
+ * Cuts a key cursor's rows into {@link Batch}es, the one batch path behind {@link Plan#scan}
+ * and {@link Dataset#scan}. It loads, for each batch, only the page of each projected column holding
  * its first row, and ends the batch where the first of those pages, or the key page, ends: every page a
  * batch borrows stays decoded until its action returns, and the cursor moves past the key page only after
  * it. Value pages are decoded into the request's per-column scratch, so the batch's values are valid only
@@ -35,17 +34,18 @@ final class BatchScan {
     }
 
     /**
-     * Hands {@code action} batches of at most {@code n} rows from the cursor's current row on, until a key
+     * Hands {@code visitor} batches of at most {@code n} rows from the cursor's current row on, until a key
      * at or above {@code end} or not beginning with {@code prefix} (each null for none), or the end of the
      * dataset. The cursor is left on the last row handed over, or on the first row excluded by a bound.
+     * {@return false when the visitor stopped the scan}
      */
-    void walk(KeyCursor cursor, long n, byte[] end, byte[] prefix, Consumer<? super Batch> action) {
+    <E extends Exception> boolean walk(KeyCursor cursor, long n, byte[] end, byte[] prefix, BatchVisitor<E> visitor) throws E {
         while (n > 0) {
             ctx.checkCancelled();
             byte[][] keys = cursor.pageKeys();
             int from = cursor.pagePosition();
             if (outside(keys[from], end, prefix)) {
-                return;
+                return true;
             }
             enter(cursor.partFile(), cursor.physical());
             int k = (int) Math.min(n, keys.length - from);
@@ -76,16 +76,21 @@ final class BatchScan {
             }
             Batch batch = new Batch(columns, keys, cursor.pageOffsets(), from, k, sources);
             ctx.checkCancelled();
+            boolean more;
             try {
-                action.accept(batch);
+                more = visitor.visit(batch);
             } finally {
                 batch.retire();
             }
+            if (!more) {
+                return false;
+            }
             n -= k;
             if (n == 0 || bounded || !cursor.next()) {
-                return;
+                return true;
             }
         }
+        return true;
     }
 
     /** Enters the cursor's row group: checks the projection against its part (COL-3) and resolves the slots. */

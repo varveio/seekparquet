@@ -43,7 +43,11 @@ final class Parts {
 
     private record Signature(String signature, String part) {}
 
-    /** One part: once checked, the open part; or the refusal its check reached, kept for the dataset's lifetime. */
+    /**
+     * One part: once checked, the open part; or the refusal its check reached, kept for the dataset's
+     * lifetime as a detached copy that is never thrown itself: each request throws a copy of its own, so
+     * nothing one request attaches (a suppressed statistics failure) reaches another.
+     */
     private static final class Slot {
         final ReentrantLock check = new ReentrantLock();
         volatile PartFile part;
@@ -55,8 +59,8 @@ final class Parts {
         this.storage = storage;
         this.manifest = manifest;
         this.limits = limits;
-        this.indexMemory = new IndexMemory(limits.maxIndexMemoryBytes());
-        this.offsetIndexMemory = new OffsetIndexMemory(limits.maxOffsetIndexMemoryBytes());
+        this.indexMemory = new IndexMemory(limits.indexMemory());
+        this.offsetIndexMemory = new OffsetIndexMemory(limits.offsetIndexMemory());
         this.slots = new Slot[manifest.parts().size()];
         for (int i = 0; i < slots.length; i++) {
             slots[i] = new Slot();
@@ -164,14 +168,14 @@ final class Parts {
                     return slot.part;
                 }
                 if (slot.refusal != null) {
-                    throw slot.refusal;
+                    throw detached(slot.refusal);
                 }
                 used = true;
                 try {
                     part = admit(staged != null ? staged.take() : PartFile.open(storage, manifest, i, ctx, indexMemory, offsetIndexMemory));
                 } catch (RefusalException | UnsupportedFeatureException e) {
                     ctx.checkCancelled(); // a check cut short is not an outcome: the part stays unchecked
-                    slot.refusal = e;
+                    slot.refusal = detached(e);
                     throw e;
                 }
                 slot.part = part;
@@ -184,6 +188,15 @@ final class Parts {
                 staged.discard();
             }
         }
+    }
+
+    /** {@return a fresh copy of a kept part failure, with its code and location} */
+    private static RuntimeException detached(RuntimeException e) {
+        return switch (e) {
+            case RefusalException r -> r.detached();
+            case UnsupportedFeatureException u -> u.detached();
+            default -> e;
+        };
     }
 
     private static void lock(ReentrantLock lock, ReadContext ctx) {
@@ -230,11 +243,11 @@ final class Parts {
      * failure, which is thrown. Once a part's own checks fail, no further part is started; parts after
      * the failure that were opened ahead are closed unchecked. An interrupt cancels the checks in
      * progress through their cancellation rather than by interrupting them, and ends with {@link
-     * CancellationException}.
+     * CancellationException}. The reads are counted in {@code ctx}'s statistics.
      */
-    void checkAll(int concurrency, Cancellation cancellation) {
+    void checkAll(int concurrency, ReadContext ctx) {
         int n = slots.length;
-        ReadContext ctx = new ReadContext(cancellation, limits);
+        Cancellation cancellation = ctx.cancellation;
         if (concurrency == 1 || n <= 1) {
             for (int i = 0; i < n; i++) {
                 get(i, ctx);
@@ -242,6 +255,7 @@ final class Parts {
             return;
         }
         Staged[] staged = new Staged[n];
+        ReadStats.Counter[] counted = new ReadStats.Counter[n];
         Cancellation scope = Cancellation.linkedTo(cancellation);
         AtomicInteger next = new AtomicInteger();
         AtomicBoolean failed = new AtomicBoolean();
@@ -255,8 +269,10 @@ final class Parts {
                         if (slots[i].part != null || slots[i].refusal != null) {
                             continue; // its outcome is known: admitting it in turn reuses it
                         }
+                        ReadContext own = new ReadContext(scope, limits);
+                        counted[i] = own.stats;
                         try {
-                            staged[i] = new Staged(PartFile.open(storage, manifest, i, new ReadContext(scope, limits), indexMemory, offsetIndexMemory), null);
+                            staged[i] = new Staged(PartFile.open(storage, manifest, i, own, indexMemory, offsetIndexMemory), null);
                         } catch (RuntimeException e) {
                             staged[i] = new Staged(null, e);
                             failed.set(true);
@@ -282,6 +298,12 @@ final class Parts {
             }
         } finally {
             scope.detach();
+            // Every worker has ended: their counts are published to this thread.
+            for (ReadStats.Counter c : counted) {
+                if (c != null) {
+                    ctx.stats.add(c);
+                }
+            }
             if (interrupted) {
                 Thread.currentThread().interrupt();
             }

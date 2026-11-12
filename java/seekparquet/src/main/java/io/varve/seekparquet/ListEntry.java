@@ -13,10 +13,15 @@ import java.util.Optional;
 public sealed interface ListEntry {
 
     /**
-     * {@return the entry's bytes: the row's key or the common prefix} This is what the next page of
-     * a listing takes as its {@code after} bound ({@link ListQuery#next(ListEntry)}).
+     * {@return the entry's bytes: the row's key or the common prefix} Entries are ordered by it; to continue a listing, use {@link #cursor()}.
      */
     Bytes bytes();
+
+    /**
+     * {@return the cursor after this entry, owning its bytes} After a row, the row's cursor; after a
+     * common prefix, a prefix cursor, which continues after every key that rolls up to it (LIST-6).
+     */
+    Cursor cursor();
 
     /**
      * A candidate key whose remainder after the prefix holds no delimiter (LIST-3).
@@ -36,6 +41,11 @@ public sealed interface ListEntry {
         @Override
         public Bytes bytes() {
             return row.key();
+        }
+
+        @Override
+        public Cursor.RowPosition cursor() {
+            return row.cursor();
         }
     }
 
@@ -74,6 +84,11 @@ public sealed interface ListEntry {
         @Override
         public Bytes bytes() {
             return prefix;
+        }
+
+        @Override
+        public Cursor.CommonPrefix cursor() {
+            return new Cursor.CommonPrefix(prefix);
         }
     }
 }

@@ -94,9 +94,9 @@ class ThriftDepthTest {
     void nestingIsBoundedAsInGo(String name, boolean decodes) {
         byte[] raw = metadata(probe(name));
         if (decodes) {
-            assertDoesNotThrow(() -> Thrift.fileMetaData(raw));
+            assertDoesNotThrow(() -> Thrift.fileMetaData(raw, Limits.DEFAULT.metadataMemory()));
         } else {
-            DataException e = assertThrows(DataException.class, () -> Thrift.fileMetaData(raw));
+            DataException e = assertThrows(DataException.class, () -> Thrift.fileMetaData(raw, Limits.DEFAULT.metadataMemory()));
             assertTrue(e.getCause().getMessage().contains("nested more than 64"), e.getCause().getMessage());
         }
     }
@@ -106,9 +106,9 @@ class ThriftDepthTest {
         // OffsetIndex: page_locations [] then the unknown field; ColumnIndex: its four required lists, empty.
         byte[] offsetIndex = concat(new byte[] {0x19, 0x0C}, chain(10_000), new byte[] {0x00});
         byte[] columnIndex = concat(new byte[] {0x19, 0x01, 0x19, 0x08, 0x19, 0x08, 0x15, 0x00}, chain(10_000), new byte[] {0x00});
-        assertThrows(DataException.class, () -> Thrift.offsetIndex(offsetIndex));
-        assertThrows(DataException.class, () -> Thrift.columnIndex(columnIndex));
-        assertDoesNotThrow(() -> Thrift.offsetIndex(concat(new byte[] {0x19, 0x0C}, chain(63), new byte[] {0x00})));
+        assertThrows(DataException.class, () -> Thrift.offsetIndex(offsetIndex, Limits.DEFAULT.metadataMemory()));
+        assertThrows(DataException.class, () -> Thrift.columnIndex(columnIndex, Limits.DEFAULT.metadataMemory()));
+        assertDoesNotThrow(() -> Thrift.offsetIndex(concat(new byte[] {0x19, 0x0C}, chain(63), new byte[] {0x00}), Limits.DEFAULT.metadataMemory()));
     }
 
     private static byte[] concat(byte[]... parts) {
@@ -128,7 +128,7 @@ class ThriftDepthTest {
 
     private static RefusalCode refusal(Path root) {
         try (Dataset ds = Dataset.open(root)) {
-            RefusalCode onRead = assertThrows(RefusalException.class, () -> ds.range(RangeQuery.all(100))).code();
+            RefusalCode onRead = assertThrows(RefusalException.class, () -> ds.rows(Reads.all(100))).code();
             assertEquals(onRead, assertThrows(RefusalException.class, ds::verify).code());
             return onRead;
         }
@@ -137,7 +137,7 @@ class ThriftDepthTest {
     private static int rows(Path root) {
         try (Dataset ds = Dataset.open(root)) {
             ds.verify();
-            return ds.range(RangeQuery.all(100)).size();
+            return ds.rows(Reads.all(100)).size();
         }
     }
 

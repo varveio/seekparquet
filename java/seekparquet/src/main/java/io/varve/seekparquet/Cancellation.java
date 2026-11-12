@@ -28,6 +28,9 @@ public final class Cancellation {
 
     private static final Cancellation NONE = new Cancellation(false);
 
+    /** A registration that holds nothing. */
+    private static final Registration NOOP = () -> {};
+
     private final boolean cancellable;
     private final List<Runnable> listeners = new ArrayList<>();
     private volatile String reason;
@@ -58,7 +61,7 @@ public final class Cancellation {
      * @param parents the cancellations to follow
      * @return the linked cancellation
      */
-    public static Cancellation linkedTo(Cancellation... parents) {
+    static Cancellation linkedTo(Cancellation... parents) {
         Cancellation child = create();
         List<Registration> links = new ArrayList<>(parents.length);
         for (Cancellation parent : parents) {
@@ -75,7 +78,7 @@ public final class Cancellation {
      * Releases the listeners this cancellation holds on the parents it was {@linkplain #linkedTo
      * linked} to. Afterwards it no longer follows them. Does nothing for an unlinked cancellation.
      */
-    public void detach() {
+    void detach() {
         List<Registration> l;
         synchronized (listeners) {
             l = links;
@@ -156,7 +159,7 @@ public final class Cancellation {
     public Registration onCancel(Runnable listener) {
         Objects.requireNonNull(listener, "listener");
         if (!cancellable) {
-            return Registration.NOOP;
+            return NOOP;
         }
         synchronized (listeners) {
             if (reason == null) {
@@ -169,7 +172,7 @@ public final class Cancellation {
             }
         }
         listener.run();
-        return Registration.NOOP;
+        return NOOP;
     }
 
     @Override
@@ -180,9 +183,6 @@ public final class Cancellation {
     /** A listener registration; closing it removes the listener. Closing twice is harmless. */
     @FunctionalInterface
     public interface Registration extends AutoCloseable {
-        /** A registration that holds nothing. */
-        Registration NOOP = () -> {};
-
         /** Removes the listener, if it has not run yet. */
         @Override
         void close();

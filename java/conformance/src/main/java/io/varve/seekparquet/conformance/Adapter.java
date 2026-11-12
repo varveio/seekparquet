@@ -4,16 +4,17 @@
 package io.varve.seekparquet.conformance;
 
 import io.varve.seekparquet.Bytes;
-import io.varve.seekparquet.Continuation;
+import io.varve.seekparquet.Cursor;
 import io.varve.seekparquet.Dataset;
 import io.varve.seekparquet.FormatVersion;
-import io.varve.seekparquet.Limits;
 import io.varve.seekparquet.ListEntry;
 import io.varve.seekparquet.ListQuery;
-import io.varve.seekparquet.RangePlan;
-import io.varve.seekparquet.RangeQuery;
+import io.varve.seekparquet.Plan;
+import io.varve.seekparquet.Query;
 import io.varve.seekparquet.RefusalException;
 import io.varve.seekparquet.Row;
+import io.varve.seekparquet.Selection;
+import io.varve.seekparquet.Span;
 import io.varve.seekparquet.UnsupportedFeatureException;
 import io.varve.seekparquet.Value;
 import java.io.BufferedReader;
@@ -42,16 +43,23 @@ public final class Adapter {
 
     private final Map<String, Dataset> open = new HashMap<>();
 
+    /**
+     * The most rows or entries the adapter asks the library for at once: a protocol limit beyond it is
+     * read in pages, continuing after each page's last entry, so that a huge limit does not ask for a huge
+     * collected result.
+     */
+    static final int PAGE_LIMIT = 1_000_000;
+
     private final int pageLimit;
 
     Adapter() {
-        this(Limits.DEFAULT.maxResultEntries());
+        this(PAGE_LIMIT);
     }
 
     // A smaller page size lets tests exercise continuations without huge fixtures.
     Adapter(int pageLimit) {
-        if (pageLimit <= 0 || pageLimit > Limits.DEFAULT.maxResultEntries()) {
-            throw new IllegalArgumentException("page limit exceeds the library default");
+        if (pageLimit <= 0 || pageLimit > PAGE_LIMIT) {
+            throw new IllegalArgumentException("page limit beyond the adapter's");
         }
         this.pageLimit = pageLimit;
     }
@@ -79,6 +87,15 @@ public final class Adapter {
             }
         } finally {
             adapter.open.values().forEach(Dataset::close);
+        }
+    }
+
+    /** A value the protocol cannot express (INT96): reported as unsupported_projection, as the Go adapter does. */
+    private static final class NoEncoding extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        NoEncoding() {
+            super("INT96 values have no protocol encoding", null, false, false);
         }
     }
 
@@ -130,12 +147,12 @@ public final class Adapter {
                 }
                 case "range" -> {
                     BigInteger remaining = limit(req);
-                    RangeQuery q = rangeQuery(req, pageSize(remaining));
+                    Query q = Query.builder().selection(selection(req)).limit(pageSize(remaining)).columns(columns(req)).build();
                     Dataset d = dataset(req);
                     out.append(response(id, "ok")).append(",\"entries\":[");
                     boolean first = true;
                     while (true) {
-                        List<Row> rows = d.range(q);
+                        List<Row> rows = d.rows(q);
                         for (Row r : rows) {
                             if (!first) {
                                 out.append(',');
@@ -190,7 +207,7 @@ public final class Adapter {
                     if (!(req.get("ranges") instanceof List<?> rawRanges)) {
                         throw new BadRequest("ranges is not an array");
                     }
-                    List<RangeQuery> ranges = new ArrayList<>(rawRanges.size());
+                    List<Selection> ranges = new ArrayList<>(rawRanges.size());
                     for (Object r : rawRanges) {
                         if (!(r instanceof Map<?, ?> m)) {
                             throw new BadRequest("a range is not an object");
@@ -201,21 +218,24 @@ public final class Adapter {
                         if (!PLANNED_RANGE.containsAll(range.keySet())) {
                             throw new BadRequest("a planned range has undefined members");
                         }
-                        ranges.add(rangeQuery(range, 1));
+                        ranges.add(selection(range));
                     }
-                    RangePlan plan = dataset(req).planRanges(ranges, columns(req));
+                    Plan plan = dataset(req).plan(ranges, columns(req));
                     StringBuilder entries = new StringBuilder();
-                    plan.scan(row -> {
-                        if (!entries.isEmpty()) {
-                            entries.append(',');
+                    plan.scan(batch -> {
+                        for (int i = 0; i < batch.size(); i++) {
+                            if (!entries.isEmpty()) {
+                                entries.append(',');
+                            }
+                            row(entries, batch.row(i));
                         }
-                        row(entries, row);
+                        return true;
                     });
                     out.append(response(id, "ok")).append(",\"entries\":[").append(entries)
-                            .append("],\"count\":").append(plan.count())
-                            .append(",\"count_exact\":").append(plan.countExact())
-                            .append(",\"projected_bytes\":").append(plan.projectedBytes())
-                            .append(",\"projected_bytes_exact\":").append(plan.projectedBytesExact()).append('}');
+                            .append("],\"count\":").append(plan.count().value())
+                            .append(",\"count_exact\":").append(plan.count().exact())
+                            .append(",\"projected_bytes\":").append(plan.projectedBytes().value())
+                            .append(",\"projected_bytes_exact\":").append(plan.projectedBytes().exact()).append('}');
                 }
                 default -> {
                     out.append(response(id, "unsupported")).append(",\"code\":\"unsupported_operation\",\"message\":");
@@ -229,6 +249,8 @@ public final class Adapter {
         } catch (RefusalException e) {
             StringBuilder r = response(id, "refused").append(",\"code\":\"").append(e.code().id()).append('"');
             return withMessage(r, e.getMessage());
+        } catch (NoEncoding e) {
+            return withMessage(response(id, "unsupported").append(",\"code\":\"unsupported_projection\""), e.getMessage());
         } catch (UnsupportedFeatureException e) {
             StringBuilder r = response(id, "unsupported").append(",\"code\":\"").append(e.code().id()).append('"');
             return withMessage(r, e.getMessage());
@@ -266,8 +288,9 @@ public final class Adapter {
         return d;
     }
 
-    private static RangeQuery rangeQuery(Map<String, Object> req, int limit) throws BadRequest {
-        RangeQuery.Builder b = RangeQuery.builder().limit(limit);
+    /** The bounds and cursor of a range or a planned range: a row cursor only (QUERY-1). */
+    private static Selection selection(Map<String, Object> req) throws BadRequest {
+        Span.Builder b = Span.builder();
         Bytes prefix = bytes(req, "prefix_base64");
         if (prefix != null) {
             b.prefix(prefix);
@@ -286,11 +309,14 @@ public final class Adapter {
         if (end != null) {
             b.end(end);
         }
-        Continuation after = cursor(req);
-        if (after != null) {
-            b.after(after);
+        Cursor after = cursor(req);
+        if (after == null) {
+            return Selection.of(b.build());
         }
-        return b.columns(columns(req)).build();
+        if (!(after instanceof Cursor.RowPosition row)) {
+            throw new BadRequest("a range accepts only a row cursor");
+        }
+        return Selection.after(b.build(), row);
     }
 
     private static ListQuery listQuery(Map<String, Object> req, int limit) throws BadRequest {
@@ -307,14 +333,14 @@ public final class Adapter {
         if (end != null) {
             b.end(end);
         }
-        Continuation tagged = cursor(req);
+        Cursor tagged = cursor(req);
         if (tagged != null) {
-            b.after(tagged);
+            b.cursor(tagged);
         }
         return b.columns(columns(req)).build();
     }
 
-    private static Continuation cursor(Map<String, Object> req) throws BadRequest {
+    private static Cursor cursor(Map<String, Object> req) throws BadRequest {
         Object value = req.get("after");
         if (value == null || value == MiniJson.NULL) {
             return null;
@@ -329,7 +355,7 @@ public final class Adapter {
             if (prefix == null) {
                 throw new BadRequest("cursor prefix must be base64");
             }
-            return new Continuation.CommonPrefix(prefix);
+            return new Cursor.CommonPrefix(prefix);
         }
         if (!m.keySet().equals(java.util.Set.of("key_base64", "offset"))) {
             throw new BadRequest("cursor has undefined or missing members");
@@ -340,7 +366,7 @@ public final class Adapter {
             throw new BadRequest("cursor requires a key and a non-negative integer offset");
         }
         try {
-            return new Continuation.RowPosition(key, Long.parseLong(n.text()));
+            return new Cursor.RowPosition(key, Long.parseLong(n.text()));
         } catch (NumberFormatException e) {
             throw new BadRequest("cursor offset exceeds 2^63-1");
         }
@@ -429,6 +455,8 @@ public final class Adapter {
                 case Value.Float64 f -> out.append("{\"float64\":\"").append(String.format("%016x", f.bits())).append("\"}");
                 case Value.ByteArray x -> out.append("{\"bytes_base64\":\"").append(x.value().toBase64()).append("\"}");
                 case Value.FixedLenByteArray x -> out.append("{\"bytes_base64\":\"").append(x.value().toBase64()).append("\"}");
+                // The protocol has no encoding for INT96, as in the Go adapter.
+                case Value.Int96 x -> throw new NoEncoding();
             }
         }
         out.append(']');

@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * A delimited listing (spec §6.3). The candidate keys begin with {@code prefix}, come after
+ * A delimited listing (spec §6.3); the Go reader's {@code ListQuery}. The candidate keys begin with {@code prefix}, come after
  * {@code cursor} when it is given, and are less than {@code end} when it is given. A candidate whose
  * remainder after the prefix contains the delimiter yields the common prefix up to and including the
  * first such delimiter; any other candidate yields its row. Common prefixes are distinct; repeated rows retain file order. Entries are in ascending byte
@@ -26,65 +26,63 @@ import java.util.Optional;
  *     page = dataset.list(q);
  * }
  * }</pre>
- *
- * @param prefix keys must begin with it; empty for no constraint
- * @param delimiter the delimiter byte
- * @param end keys must be strictly less, when given
- * @param limit the most entries returned; positive (QUERY-1)
- * @param cursor the tagged continuation, when present
- * @param columns the columns to project for row entries, by exact top-level name, in order
- * @param readAhead the number of key pages the listing may read ahead concurrently; 0, the default,
- *     for none (see {@link Builder#readAhead(int)})
  */
-public record ListQuery(
-        Bytes prefix,
-        byte delimiter,
-        Optional<Bytes> end,
-        int limit,
-        List<String> columns, Optional<Continuation> cursor, int readAhead) {
+public final class ListQuery {
 
     /** The largest read-ahead a listing uses: a larger {@link #readAhead()} is read as it. */
     public static final int MAX_READ_AHEAD = 64;
 
-    /**
-     * Creates a listing query.
-     *
-     * @param prefix the prefix
-     * @param delimiter the delimiter byte
-     * @param end the exclusive upper bound
-     * @param limit the limit
-     * @param cursor the tagged continuation
-     * @param columns the projected columns
-     * @param readAhead the key pages read ahead, at least 0
-     * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1), or {@code readAhead}
-     *     is negative
-     */
-    public ListQuery {
-        Objects.requireNonNull(prefix, "prefix");
-        Objects.requireNonNull(end, "end");
-        Objects.requireNonNull(cursor, "cursor");
-        columns = List.copyOf(columns);
-        if (limit <= 0) {
-            throw new IllegalArgumentException("limit " + limit + " is not a positive integer");
-        }
-        if (readAhead < 0) {
-            throw new IllegalArgumentException("read-ahead " + readAhead + " is negative");
-        }
+    private final Bytes prefix;
+    private final byte delimiter;
+    private final Optional<Bytes> end;
+    private final int limit;
+    private final List<String> columns;
+    private final Optional<Cursor> cursor;
+    private final int readAhead;
+
+    private ListQuery(Builder b) {
+        this.prefix = b.prefix;
+        this.delimiter = b.delimiter;
+        this.end = b.end;
+        this.limit = b.limit;
+        this.columns = b.columns;
+        this.cursor = b.cursor;
+        this.readAhead = b.readAhead;
     }
 
-    /**
-     * Creates a listing query that reads no key page ahead.
-     *
-     * @param prefix the prefix
-     * @param delimiter the delimiter byte
-     * @param end the exclusive upper bound
-     * @param limit the limit
-     * @param columns the projected columns
-     * @param cursor the tagged continuation
-     * @throws IllegalArgumentException if {@code limit} is not positive (QUERY-1)
-     */
-    public ListQuery(Bytes prefix, byte delimiter, Optional<Bytes> end, int limit, List<String> columns, Optional<Continuation> cursor) {
-        this(prefix, delimiter, end, limit, columns, cursor, 0);
+    /** {@return the prefix every key must begin with; empty for no constraint} */
+    public Bytes prefix() {
+        return prefix;
+    }
+
+    /** {@return the delimiter byte (LIST-1)} */
+    public byte delimiter() {
+        return delimiter;
+    }
+
+    /** {@return the exclusive upper bound on candidate keys, when there is one} */
+    public Optional<Bytes> end() {
+        return end;
+    }
+
+    /** {@return the most entries returned, positive (QUERY-1)} */
+    public int limit() {
+        return limit;
+    }
+
+    /** {@return the columns projected for row entries and exact rows, by exact top-level name, in order} */
+    public List<String> columns() {
+        return columns;
+    }
+
+    /** {@return the cursor the listing continues after, a row or a prefix cursor, when present} */
+    public Optional<Cursor> cursor() {
+        return cursor;
+    }
+
+    /** {@return the number of key pages the listing may read ahead concurrently; 0, the default, for none} */
+    public int readAhead() {
+        return readAhead;
     }
 
     /**
@@ -116,12 +114,7 @@ public record ListQuery(
      * @return the next query
      */
     public ListQuery next(ListEntry last) {
-        Continuation next = switch (last) {
-            case ListEntry.RowEntry r -> r.row().continuation();
-            case ListEntry.CommonPrefix p -> new Continuation.CommonPrefix(p.prefix());
-        };
-        Builder b = toBuilder();
-        return b.after(next).build();
+        return toBuilder().cursor(last.cursor()).build();
     }
 
     /** Builds a {@link ListQuery}. Not thread-safe. */
@@ -131,7 +124,7 @@ public record ListQuery(
         private Optional<Bytes> end = Optional.empty();
         private int limit;
         private List<String> columns = List.of();
-        private Optional<Continuation> cursor = Optional.empty();
+        private Optional<Cursor> cursor = Optional.empty();
         private int readAhead;
 
         private Builder(byte delimiter) {
@@ -192,12 +185,22 @@ public record ListQuery(
             return this;
         }
 
-        /** Sets the tagged position after the last returned entry.
-         * @param cursor the continuation
+        /**
+         * Sets the cursor to continue after: an entry's {@link ListEntry#cursor()}.
+         * @param cursor the cursor, a row or a prefix cursor
          * @return this builder
          */
-        public Builder after(Continuation cursor) {
+        public Builder cursor(Cursor cursor) {
             this.cursor = Optional.of(cursor);
+            return this;
+        }
+
+        /**
+         * Clears the cursor: the listing starts at its prefix.
+         * @return this builder
+         */
+        public Builder clearCursor() {
+            this.cursor = Optional.empty();
             return this;
         }
 
@@ -220,7 +223,7 @@ public record ListQuery(
          * read again when the listing reaches it. Memory: a request holds at most {@code readAhead} times
          * 1 MiB of pages read ahead and not yet used, and at most 4 times {@code readAhead} pages, until
          * the listing uses or passes them or ends; a key page above that budget, or above {@link
-         * Limits#maxPageBytes()}, is not read ahead. The reads ahead end, and are waited for, before the
+         * Limits#pageBytes()}, is not read ahead. The reads ahead end, and are waited for, before the
          * listing returns, including when it fails, is cancelled, or the dataset closes.
          *
          * <p>It pays where a read waits on a round trip (an object store), not on a local file. A listing
@@ -243,7 +246,30 @@ public record ListQuery(
          *     negative
          */
         public ListQuery build() {
-            return new ListQuery(prefix, delimiter, end, limit, columns, cursor, readAhead);
+            if (limit <= 0) {
+                throw new IllegalArgumentException("limit " + limit + " is not a positive integer");
+            }
+            if (readAhead < 0) {
+                throw new IllegalArgumentException("read-ahead " + readAhead + " is negative");
+            }
+            return new ListQuery(this);
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof ListQuery q && prefix.equals(q.prefix) && delimiter == q.delimiter && end.equals(q.end) && limit == q.limit
+                && columns.equals(q.columns) && cursor.equals(q.cursor) && readAhead == q.readAhead;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(prefix, delimiter, end, limit, columns, cursor, readAhead);
+    }
+
+    @Override
+    public String toString() {
+        return "ListQuery[prefix=" + prefix + ", delimiter=" + delimiter + ", end=" + end + ", limit=" + limit + ", columns=" + columns
+                + ", cursor=" + cursor + ", readAhead=" + readAhead + "]";
     }
 }

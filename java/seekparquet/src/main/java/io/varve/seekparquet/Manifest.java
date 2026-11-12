@@ -40,7 +40,7 @@ public record Manifest(FormatVersion version, String schemaId, KeyDefinition key
         Objects.requireNonNull(schemaId, "schemaId");
         Objects.requireNonNull(key, "key");
         parts = List.copyOf(parts);
-        extensions = Collections.unmodifiableMap(new LinkedHashMap<>(extensions));
+        extensions = Manifest.extensionsOf(extensions);
     }
 
     /**
@@ -50,20 +50,43 @@ public record Manifest(FormatVersion version, String schemaId, KeyDefinition key
      * determined first (MAN-7), so that a manifest of another version is refused as unsupported
      * rather than invalid.
      *
+     * <p>It is bounded by {@code limits}, as opening is: a manifest above {@link Limits#manifestBytes()}
+     * is refused before it is parsed, one nested deeper than 512 objects and arrays while it is parsed
+     * ({@link LimitName#MANIFEST_NESTING}), and one listing more than {@link Limits#parts()} parts with
+     * {@link LimitName#PARTS}: the parts limit is enforced before materializing more than the permitted number
+     * of part entries, including intermediate JSON representations, and after the version is decided (MAN-7). The Go reader's {@code ParseManifest}.
      * @param json the manifest's bytes
+     * @param limits the limits
      * @return the manifest
      * @throws RefusalException with {@link RefusalCode#INVALID_MANIFEST} or {@link
      *     RefusalCode#UNSUPPORTED_VERSION}
+     * @throws LimitExceededException if the manifest is beyond the limits
      */
-    public static Manifest parse(byte[] json) {
-        return ManifestParser.parse(json);
+    public static Manifest parse(byte[] json, Limits limits) {
+        if (json.length > limits.manifestBytes()) {
+            throw new LimitExceededException(LimitName.MANIFEST_BYTES, json.length, limits.manifestBytes(), "manifest.json");
+        }
+        return ManifestParser.parse(json, limits.parts());
+    }
+
+    /**
+     * {@return an unmodifiable copy of {@code extensions}, in its iteration order, rejecting a null name or
+     * value}
+     */
+    static Map<String, String> extensionsOf(Map<String, String> extensions) {
+        Map<String, String> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : extensions.entrySet()) {
+            copy.put(Objects.requireNonNull(e.getKey(), "extension namespace"), Objects.requireNonNull(e.getValue(), "extension value"));
+        }
+        return Collections.unmodifiableMap(copy);
     }
 
     /**
      * Returns the total number of rows as a signed 64-bit integer.
      *
      * <p>The format does not cap the sum at this range. Use {@link #rowsExact()} for larger
-     * totals. Overflow here does not make the manifest invalid or prevent opening or querying it.
+     * totals. Overflow here does not make the manifest invalid, but {@link Dataset#open} refuses such a
+     * dataset as beyond this reader's capacity ({@link LimitName#DATASET_ROWS}).
      *
      * @return the total number of rows in the parts
      * @throws ArithmeticException if the total exceeds {@link Long#MAX_VALUE}
