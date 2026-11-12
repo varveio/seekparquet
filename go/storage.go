@@ -39,7 +39,8 @@ const (
 
 // RangeReader is an optional capability of the original SourceFile: a
 // file that reads several ranges in one call. The reader discovers it
-// before applying ContextBinder.
+// before applying ContextBinder. A panic in ReadRanges is recovered and
+// returned as an environment error, including the recovered value.
 type RangeReader interface {
 	// ReadRanges fills the supplied buffers synchronously.
 	//

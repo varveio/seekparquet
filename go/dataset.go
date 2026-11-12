@@ -64,7 +64,8 @@ type ContextBinder interface {
 // SourceFile.Size is stable for the handle's lifetime. Reads must never
 // successfully return bytes from different versions. Dataset cancels and
 // joins its reads before calling Close. Close need not interrupt
-// concurrent reads.
+// concurrent reads. A panic in ReadAt is recovered and returned as an
+// environment error, including the recovered value.
 type SourceFile interface {
 	io.ReaderAt
 	// Size returns the file's length in bytes.
@@ -92,7 +93,8 @@ type SourceFile interface {
 // parts concurrently). Open establishes the actual size and an immutable
 // file view. Its context governs opening, not the returned handle's
 // lifetime. The caller owns Source; Dataset closes opened files but never
-// Source.
+// Source. Panics in source reads (ReadAt or RangeReader.ReadRanges) are
+// recovered and returned as environment errors, including the recovered value.
 type Source interface {
 	Open(ctx context.Context, path string) (SourceFile, error)
 }

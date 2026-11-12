@@ -199,6 +199,23 @@ type ListEntry struct {
 	// at its exact key (an S3-style "a/" folder object) without another
 	// request. Its values cost the value pages a row entry's would.
 	Exact *Row
+	// Rows identifies the candidate rows represented by this entry.
+	// For a row entry it covers exactly that row. For a common prefix it
+	// covers the candidate rows that roll up to the prefix, including Exact.
+	//
+	// Prefix, End and Cursor restrict these candidates as ListQuery specifies.
+	// Thus Rows need not cover the prefix's complete contents.
+	//
+	// List records boundaries established by its normal traversal and
+	// already available metadata. It performs no additional I/O to complete
+	// Rows. A boundary it cannot establish is the zero RowPosition.
+	// The positions are owned values, independent of result byte slices.
+	//
+	// A common prefix's End is unknown when the listing stops at Limit on
+	// it, and when End falls inside the prefix's keys. Its Start identifies
+	// the first candidate row, including when a cursor resumes inside a
+	// row group.
+	Rows RowSpan
 }
 
 // IsPrefix reports whether the entry is a common prefix.
@@ -383,7 +400,7 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 		ahead = testListReadAhead
 	}
 	s.ahead = r.newReadAhead(ctx, ahead, req.Limit)
-	var l listing
+	l := listing{r: r}
 	if req.Cursor != nil && req.Cursor.Key != nil {
 		err = s.start(from, false, req.Cursor)
 	} else {
@@ -400,9 +417,13 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 	}
 	for s.key != nil && len(l.out) < req.Limit {
 		if prefix := commonPrefix(s.key, req.Prefix, req.Delimiter); prefix != nil {
-			l.prefix(bytes.Clone(prefix), bytes.Equal(s.key, prefix), s.offset(), s.at())
+			l.prefix(bytes.Clone(prefix), bytes.Equal(s.key, prefix), s.offset(), s.at(), s.ordinal())
 			next, ok := successor(prefix)
-			if !ok || len(l.out) == req.Limit {
+			if !ok {
+				l.last(end)
+				break
+			}
+			if len(l.out) == req.Limit {
 				break
 			}
 			s.readAhead(&req, req.Limit-len(l.out))
@@ -410,6 +431,7 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 			if handled, err := s.skipList(prefix, req.Delimiter); err != nil {
 				return nil, err
 			} else if handled {
+				l.reached(s, next)
 				continue
 			}
 			if err := s.seekList(next, req, &l); err != nil {
@@ -417,7 +439,8 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 			}
 			continue
 		}
-		l.out = append(l.out, ListEntry{Row: l.row(s.key, s.offset(), s.at())})
+		o := s.ordinal()
+		l.out = append(l.out, ListEntry{Row: l.row(s.key, s.offset(), s.at()), Rows: r.rowSpan(o, o+1)})
 		if len(l.out) == req.Limit {
 			break
 		}
@@ -437,9 +460,48 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 // listing collects a listing's entries, and the rows to project with the
 // positions a scan found them at, in dataset order.
 type listing struct {
+	r    *reader
 	out  []ListEntry
 	rows []*Row
 	at   []position
+	// open is one more than the index in out of the common prefix whose
+	// Rows.End the listing has yet to reach, zero for none.
+	open int
+}
+
+// close ends the open prefix's rows at the dataset ordinal end.
+func (l *listing) close(end int64) {
+	if l.open > 0 {
+		l.out[l.open-1].Rows.End = l.r.pos(end)
+		l.open = 0
+	}
+}
+
+// reached ends the open prefix's rows where a seek to the first row at or
+// after target, the prefix's successor, landed: the scan's row, or the
+// first row it did not reach when exhausted (scan.bound). When target is
+// beyond the scan's upper bound, the prefix's candidates end at that
+// bound, which the seek did not establish: the end stays unknown.
+func (l *listing) reached(s *scan, target []byte) {
+	switch {
+	case l.open == 0:
+	case s.end != nil && bytes.Compare(target, s.end) > 0:
+		l.open = 0
+	case s.key != nil:
+		l.close(s.ordinal())
+	default:
+		l.close(s.bound)
+	}
+}
+
+// last ends the open prefix, which has no successor, at the end of the
+// dataset when the listing has no upper bound; otherwise its end stays
+// unknown.
+func (l *listing) last(end []byte) {
+	if end == nil {
+		l.close(l.r.rows)
+	}
+	l.open = 0
 }
 
 // row adds a row to project and returns it.
@@ -450,13 +512,20 @@ func (l *listing) row(key []byte, offset int64, at position) *Row {
 }
 
 // prefix adds the common prefix entry of a first candidate row at at, with
-// that row as its exact row when exact (its key is the prefix).
-func (l *listing) prefix(prefix []byte, exact bool, offset int64, at position) {
+// that row as its exact row when exact (its key is the prefix). start is
+// the dataset ordinal of the prefix's first candidate row, -1 when not
+// known. The entry's rows stay open until the listing reaches their end.
+func (l *listing) prefix(prefix []byte, exact bool, offset int64, at position, start int64) {
 	e := ListEntry{CommonPrefix: prefix}
 	if exact {
 		e.Exact = l.row(prefix, offset, at)
 	}
+	if start >= 0 {
+		e.Rows.Start = l.r.pos(start)
+	}
+	l.open = 0
 	l.out = append(l.out, e)
+	l.open = len(l.out)
 }
 
 // seekList seeks to from for a listing, first adding to l the common
@@ -469,17 +538,32 @@ func (s *scan) seekList(from []byte, req ListQuery, l *listing) error {
 			return err
 		}
 		if whole == nil {
-			return s.seek(from, true)
+			if err := s.seek(from, true); err != nil {
+				return err
+			}
+			l.reached(s, from)
+			return nil
 		}
-		// The group's first key is its first candidate when it is at or
-		// after from: no earlier group holds a key at or after from
-		// (groupFor), and the row's offset is zero, since only a part's
-		// first group, or a group of unique keys, can begin at or after
-		// from here. A first key equal to whole is then its exact row.
+		// A shortcut whose first key precedes from does not establish the
+		// first candidate's row. Seek it so equivalent listings agree on
+		// boundary knownness even when their routing evidence differs.
 		first := *s.r.group(g).first.Load()
-		l.prefix(whole, bytes.Equal(first, whole) && bytes.Compare(first, from) >= 0, 0, position{g, 0})
+		if bytes.Compare(first, from) < 0 {
+			if err := s.seek(from, true); err != nil {
+				return err
+			}
+			l.reached(s, from)
+			return nil
+		}
+		s.stats.GroupsSkipped++
+		start := s.r.startOf(g)
+		if s.end == nil || bytes.Compare(from, s.end) <= 0 {
+			l.close(start)
+		}
+		l.prefix(whole, bytes.Equal(first, whole), 0, position{g, 0}, start)
 		next, ok := successor(whole)
 		if !ok {
+			l.last(s.end)
 			break
 		}
 		if len(l.out) == req.Limit {
@@ -593,7 +677,7 @@ func (r *reader) projectWindows(w *windows, p *part, at []position, columns []st
 		}
 		if dictionaryOnly && locs[0].offset > start {
 			if locs[0].offset-start > r.limits.PageBytes {
-				return // leave a possible page-limit failure to demand
+				goto fetch // leave a possible page-limit failure to demand
 			}
 			exts = append(exts, extent{p, start, locs[0].offset - start, endRow})
 		}
@@ -605,7 +689,7 @@ func (r *reader) projectWindows(w *windows, p *part, at []position, columns []st
 			}
 			loc := locs[pg]
 			if loc.size > r.limits.PageBytes {
-				return // do not fetch later columns past a possible limit error
+				goto fetch // do not fetch later columns past a possible limit error
 			}
 			exts = append(exts, extent{p, loc.offset, loc.size, endRow})
 			previous = pg
@@ -614,6 +698,7 @@ func (r *reader) projectWindows(w *windows, p *part, at []position, columns []st
 			}
 		}
 	}
+fetch:
 	sortExtents(exts)
 	w.fetch(exts, false)
 }

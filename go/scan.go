@@ -183,6 +183,34 @@ func (s *scan) seekOrdinal(ordinal int64) error {
 	return nil
 }
 
+// findGroupStart sets the current row's group, the scan having landed on
+// it by ordinal (seekOrdinal) where rows of its key may precede it. A key
+// unlike the row before it in its key page, or a row first in its part
+// (PART-4), begins its group; otherwise the scan seeks the key's first row
+// and returns to the row, decoding the key pages between.
+func (s *scan) findGroupStart() error {
+	at := s.ordinal()
+	s.groupKey, s.groupStart = s.key, at
+	if s.key == nil || s.r.key.Unique || at == s.r.parts[s.g.part].start {
+		return nil
+	}
+	if n := s.kp.next; n > 0 {
+		if !bytes.Equal(s.kp.page.key(n-1), s.key) {
+			return nil
+		}
+	}
+	key := bytes.Clone(s.key)
+	if err := s.seek(key, true); err != nil {
+		return err
+	}
+	start := s.ordinal()
+	if err := s.seekOrdinal(at); err != nil {
+		return err
+	}
+	s.groupKey, s.groupStart = s.key, start
+	return nil
+}
+
 // Synthetic anchors need no page index until ordinary decoding resumes.
 func (s *scan) syntheticPages() error {
 	if s.kp != nil {
@@ -332,6 +360,5 @@ func (s *scan) shortcut(from, prefix []byte, delim byte) ([]byte, groupRef, erro
 	if !bytes.Equal(whole, commonPrefix(next, prefix, delim)) || s.end != nil && bytes.Compare(next, s.end) >= 0 {
 		return nil, g, nil
 	}
-	s.stats.GroupsSkipped++
 	return bytes.Clone(whole), g, nil
 }

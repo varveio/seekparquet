@@ -78,9 +78,10 @@ Both Markdown scanners inspect tracked files in a checkout, excluding untracked 
 Git they scan Markdown files under the supplied root.
 
 When Go or Java gains a field, a limit or a code, the check fails until its entry exists. To skip the Java
-checks while Java lags behind Go, set `java_pending` in `parity.json` to the PR or branch that will catch up;
-every generated page that shows Java names then says so. `-java DIR` checks the Java names against another
-checkout.
+checks for a parity row while Java lags behind Go, set that row's `java_pending` in `parity.json` to the
+PR or branch that will catch up; its rendered note then says so. Other Java names, defaults and statistics
+remain checked. A top-level `java_pending` skips all Java checks and marks every generated page that shows
+Java names. `-java DIR` checks all Java names, including pending rows, against another checkout.
 
 ## Checks
 

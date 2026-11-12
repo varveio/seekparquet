@@ -1418,18 +1418,30 @@ func (p *part) openColumn(ctx context.Context, physical int, name string, st *Re
 // the locations kept makes no index read, so its SourceReads and
 // SourceBytes leave out the index bytes an earlier request read.
 func (r *reader) keepLocations(slot *atomic.Pointer[[]pageLoc], locs []pageLoc) {
-	size := int64(len(locs))*int64(unsafe.Sizeof(pageLoc{})) + 64
-	for {
-		used := r.locsMemory.Load()
-		if size > r.limits.OffsetIndexMemory-used {
-			return
-		}
-		if r.locsMemory.CompareAndSwap(used, used+size) {
-			break
-		}
+	size := locsSize(locs)
+	if !r.reserveLocations(size) {
+		return
 	}
 	if !slot.CompareAndSwap(nil, &locs) {
 		r.locsMemory.Add(-size) // a concurrent first use published first
+	}
+}
+
+// locsSize is the memory Limits.OffsetIndexMemory charges for a chunk's
+// page locations.
+func locsSize(locs []pageLoc) int64 { return int64(len(locs))*int64(unsafe.Sizeof(pageLoc{})) + 64 }
+
+// reserveLocations charges size to Limits.OffsetIndexMemory when it has
+// room, and reports whether it did.
+func (r *reader) reserveLocations(size int64) bool {
+	for {
+		used := r.locsMemory.Load()
+		if size > r.limits.OffsetIndexMemory-used {
+			return false
+		}
+		if r.locsMemory.CompareAndSwap(used, used+size) {
+			return true
+		}
 	}
 }
 

@@ -6,7 +6,6 @@ package seekparquet
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/parquet-go/parquet-go/format"
@@ -67,7 +66,7 @@ func TestListIndexWarmReadCost(t *testing.T) {
 			for round := 0; round < 3; round++ {
 				want, ps := run(plain)
 				got, is := run(indexed)
-				if !reflect.DeepEqual(want, got) {
+				if !sameResults(want, got) {
 					t.Fatalf("budget=%d query=%+v results differ", budget, query)
 				}
 				if round > 0 && (is.SourceReads > ps.SourceReads || is.KeyPagesDecoded > ps.KeyPagesDecoded || is.IndexLoads != 0) {

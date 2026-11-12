@@ -93,6 +93,11 @@ var none = ioTarget{-1, -1}
 // keys carry it too; Get carries the Rows lookup's target plus one round,
 // as that decision allows Get a separate value round; scans keep their
 // cold target warm; Verify carries CheckSchema's admission target.
+// Metadata-first Plan proves whole-part ends from manifest bounds before
+// decoding keys. Thus plan-part/plan-cold and split/plan now read only the
+// part check (plain: 3 requests/2 rounds; capable: 2/2, both 2,097,156 B),
+// and plan-part/plan-warm makes no requests. These accepted improvements
+// are recorded as exact current values in both tables below.
 var ioBudgets = []ioBudget{
 	{"open/cold", ioMetrics{2, 2, 1591, 0, 1}, ioTarget{1, 1}, current},
 	{"open/again", ioMetrics{2, 2, 1591, 0, 1}, ioTarget{1, 1}, current},
@@ -122,25 +127,26 @@ var ioBudgets = []ioBudget{
 	{"list-ra8/page1-warm", ioMetrics{13, 11, 52846, 0, 2}, ioTarget{4, 2}, current},
 	{"build-list-index", ioMetrics{28, 4, 10389655, 0, 16}, ioTarget{40, 10}, atTarget},
 	{"list-indexed-ra0/page1-cold", ioMetrics{7, 2, 364516, 0, 4}, ioTarget{25, 8}, atTarget},
-	// Owner decision: indexed read-ahead trades main's 34 requests / 24,484 B
-	// for 4 requests / 315,430 B. Assert both counts and bytes exactly.
 	{"list-indexed-ra0/page2", ioMetrics{4, 1, 315430, 0, 4}, ioTarget{4, 2}, atTarget},
 	{"list-indexed-ra0/page1-warm", ioMetrics{6, 2, 73570, 0, 3}, ioTarget{4, 2}, current},
 	{"scan-part/cold", ioMetrics{7, 3, 2763754, 0, 4}, ioTarget{20, 5}, atTarget},
 	{"scan-part/warm", ioMetrics{4, 1, 666598, 0, 4}, ioTarget{20, 5}, atTarget},
-	{"plan-part/plan-cold", ioMetrics{4, 3, 2101880, 0, 2}, none, current},
+	{"plan-part/plan-cold", ioMetrics{3, 2, 2097156, 0, 2}, none, current},
 	{"plan-part/scan-cold", ioMetrics{4, 1, 666598, 0, 4}, ioTarget{20, 5}, atTarget},
-	{"plan-part/plan-warm", ioMetrics{1, 1, 4724, 0, 1}, none, current},
+	{"plan-part/plan-warm", ioMetrics{0, 0, 0, 0, 0}, none, current},
 	{"plan-part/scan-warm", ioMetrics{4, 1, 666598, 0, 4}, ioTarget{20, 5}, atTarget},
 	{"plan-20/plan-cold", ioMetrics{44, 40, 8550725, 0, 2}, ioTarget{32, 4}, current},
 	{"plan-20/scan-cold", ioMetrics{60, 1, 289574, 0, 60}, ioTarget{60, 2}, atTarget},
 	{"plan-20/plan-warm", ioMetrics{20, 20, 103002, 0, 1}, none, current},
 	{"plan-20/scan-warm", ioMetrics{60, 1, 289574, 0, 60}, ioTarget{60, 2}, atTarget},
-	{"split/plan", ioMetrics{4, 3, 2101880, 0, 2}, none, current},
+	{"split/plan", ioMetrics{3, 2, 2097156, 0, 2}, none, current},
 	{"split/split4", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
 	{"split/shards-concurrent", ioMetrics{4, 1, 666598, 0, 4}, ioTarget{20, 5}, atTarget},
 	{"verify/cold", ioMetrics{28, 3, 8477103, 0, 20}, ioTarget{24, 3}, current},
 	{"verify/warm", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
+	{"browse/count-prefix", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
+	{"browse/sum-prefix", ioMetrics{1, 1, 6153, 0, 1}, ioTarget{1, 1}, atTarget},
+	{"sum-all/scan", ioMetrics{16, 1, 1210103, 0, 16}, ioTarget{16, 1}, atTarget},
 }
 
 // ioCapableBudgets is measured on ioSmall through capableStore.
@@ -173,25 +179,26 @@ var ioCapableBudgets = []ioBudget{
 	{"list-ra8/page1-warm", ioMetrics{13, 11, 52846, 0, 2}, ioTarget{4, 2}, current},
 	{"build-list-index", ioMetrics{24, 3, 10389655, 0, 16}, ioTarget{40, 10}, atTarget},
 	{"list-indexed-ra0/page1-cold", ioMetrics{7, 2, 364516, 0, 4}, ioTarget{25, 8}, atTarget},
-	// Owner decision: indexed read-ahead trades main's 34 requests / 24,484 B
-	// for 4 requests / 315,430 B. Assert both counts and bytes exactly.
 	{"list-indexed-ra0/page2", ioMetrics{4, 1, 315430, 0, 4}, ioTarget{4, 2}, atTarget},
 	{"list-indexed-ra0/page1-warm", ioMetrics{6, 2, 73570, 0, 3}, ioTarget{4, 2}, current},
 	{"scan-part/cold", ioMetrics{6, 3, 2763754, 0, 4}, ioTarget{20, 5}, atTarget},
 	{"scan-part/warm", ioMetrics{4, 1, 666598, 0, 4}, ioTarget{20, 5}, atTarget},
-	{"plan-part/plan-cold", ioMetrics{3, 3, 2101880, 0, 1}, none, current},
+	{"plan-part/plan-cold", ioMetrics{2, 2, 2097156, 0, 1}, none, current},
 	{"plan-part/scan-cold", ioMetrics{4, 1, 666598, 0, 4}, ioTarget{20, 5}, atTarget},
-	{"plan-part/plan-warm", ioMetrics{1, 1, 4724, 0, 1}, none, current},
+	{"plan-part/plan-warm", ioMetrics{0, 0, 0, 0, 0}, none, current},
 	{"plan-part/scan-warm", ioMetrics{4, 1, 666598, 0, 4}, ioTarget{20, 5}, atTarget},
 	{"plan-20/plan-cold", ioMetrics{40, 32, 8550725, 0, 3}, ioTarget{32, 4}, current},
 	{"plan-20/scan-cold", ioMetrics{60, 1, 289574, 0, 60}, ioTarget{60, 2}, atTarget},
 	{"plan-20/plan-warm", ioMetrics{20, 20, 103002, 0, 1}, none, current},
 	{"plan-20/scan-warm", ioMetrics{60, 1, 289574, 0, 60}, ioTarget{60, 2}, atTarget},
-	{"split/plan", ioMetrics{3, 3, 2101880, 0, 1}, none, current},
+	{"split/plan", ioMetrics{2, 2, 2097156, 0, 1}, none, current},
 	{"split/split4", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
 	{"split/shards-concurrent", ioMetrics{4, 1, 666598, 0, 4}, ioTarget{20, 5}, atTarget},
 	{"verify/cold", ioMetrics{24, 2, 8477103, 0, 20}, ioTarget{24, 3}, atTarget},
 	{"verify/warm", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
+	{"browse/count-prefix", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
+	{"browse/sum-prefix", ioMetrics{1, 1, 6153, 0, 1}, ioTarget{1, 1}, atTarget},
+	{"sum-all/scan", ioMetrics{16, 1, 1210103, 0, 16}, ioTarget{16, 1}, atTarget},
 }
 
 // ioRepeatedBudgets is measured on the repeated-key variant of ioSmall,
@@ -424,6 +431,56 @@ func ioScenarios(fx *ioFixture) []ioScenario {
 			return fmt.Sprintf("%v %s", counts, errResult(err))
 		})
 		e.step("split/shards-concurrent", func() string { return withErr(shardsText(ctx, shards)) })
+	}})
+	out = append(out, ioScenario{"browse", func(e *ioEnv) {
+		d := e.open()
+		// The listing is the browser's page, unrecorded: its counts and sums
+		// are the steps.
+		ents, err := d.List(ctx, seekparquet.ListQuery{Prefix: fx.listPrefix, Delimiter: '/', Limit: 101}, nil)
+		must(e.t, err)
+		var prefix seekparquet.ListEntry
+		for _, ent := range ents {
+			if ent.IsPrefix() {
+				prefix = ent
+			}
+		}
+		e.step("browse/count-prefix", func() string {
+			p, err := d.PlanRows(ctx, []seekparquet.RowSpan{prefix.Rows}, nil, nil)
+			return withErr(planText(p, err))
+		})
+		e.step("browse/sum-prefix", func() string {
+			p, err := d.PlanRows(ctx, []seekparquet.RowSpan{prefix.Rows}, []string{"size"}, nil)
+			if err != nil {
+				return errResult(err)
+			}
+			var sum, rows int64
+			err = p.ScanValues(ctx, nil, func(b *seekparquet.ValueBatch) error {
+				col := b.Column(0)
+				for i := range b.Len() {
+					sum += col.Int64(i)
+				}
+				rows += int64(b.Len())
+				return nil
+			})
+			text, _ := planText(p, nil)
+			return withErr(fmt.Sprintf("%q %s: %d rows, size %d", prefix.CommonPrefix, text, rows, sum), err)
+		})
+	}})
+	out = append(out, ioScenario{"sum-all", func(e *ioEnv) {
+		d := e.open()
+		p, err := d.Plan(ctx, []seekparquet.Selection{{}}, []string{"size"}, nil)
+		must(e.t, err)
+		e.step("sum-all/scan", func() string {
+			var sum, rows int64
+			err := p.ScanValues(ctx, nil, func(b *seekparquet.ValueBatch) error {
+				for i := range b.Len() {
+					sum += b.Column(0).Int64(i)
+				}
+				rows += int64(b.Len())
+				return nil
+			})
+			return withErr(fmt.Sprintf("%d rows, size %d", rows, sum), err)
+		})
 	}})
 	out = append(out, ioScenario{"verify", func(e *ioEnv) {
 		d := e.open()

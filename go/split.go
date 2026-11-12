@@ -212,6 +212,7 @@ func (plan *Plan) shard(lo, hi int64) *Plan {
 		}
 		sp.end = min(sp.end, hi)
 		shard.spans = append(shard.spans, sp)
+		shard.inputs = append(shard.inputs, rowRange{sp.start, sp.end})
 		shard.rows += sp.end - sp.start
 	}
 	g := sort.Search(len(plan.groups), func(g int) bool { return plan.groups[g].start >= lo })

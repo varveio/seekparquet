@@ -28,7 +28,8 @@ type generator struct {
 	goPkgs map[string]*goPackage
 	// java is the Java source to check names against, nil while
 	// parity.json marks the Java names pending and no override was given.
-	java *javaSource
+	java      *javaSource
+	forceJava bool // -java checks pending parity rows too
 
 	limits  limitsData
 	stats   statsData
@@ -86,10 +87,11 @@ type parityData struct {
 	Sections    []struct {
 		Title string `json:"title"`
 		Rows  []struct {
-			Concept string  `json:"concept"`
-			Go      *string `json:"go"`
-			Java    *string `json:"java"`
-			Note    string  `json:"note"`
+			Concept     string  `json:"concept"`
+			Go          *string `json:"go"`
+			Java        *string `json:"java"`
+			Note        string  `json:"note"`
+			JavaPending string  `json:"java_pending"`
 		} `json:"rows"`
 	} `json:"sections"`
 }
@@ -126,7 +128,7 @@ type specStatus struct {
 // set, is a java/ directory to check Java names against even while they
 // are marked pending.
 func newGenerator(root, javaDir string) (*generator, error) {
-	g := &generator{root: root, goPkgs: map[string]*goPackage{}}
+	g := &generator{root: root, goPkgs: map[string]*goPackage{}, forceJava: javaDir != ""}
 	data := map[string]any{
 		"docs/data/limits.json":          &g.limits,
 		"docs/data/read-stats.json":      &g.stats,
@@ -573,7 +575,7 @@ func (g *generator) checkJava() []error {
 	fail := func(format string, args ...any) { errs = append(errs, fmt.Errorf("java: "+format, args...)) }
 	for _, s := range g.parity.Sections {
 		for _, r := range s.Rows {
-			if r.Java != nil && !strings.HasPrefix(*r.Java, "std:") && !g.java.has(*r.Java) {
+			if r.Java != nil && (r.JavaPending == "" || g.forceJava) && !strings.HasPrefix(*r.Java, "std:") && !g.java.has(*r.Java) {
 				fail("parity.json: no public %s", *r.Java)
 			}
 		}

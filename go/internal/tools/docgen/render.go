@@ -307,7 +307,14 @@ func (g *generator) renderParity() (string, error) {
 	for _, s := range g.parity.Sections {
 		fmt.Fprintf(&b, "\n## %s\n\n| Concept | Go | Java | Note |\n|---|---|---|---|\n", s.Title)
 		for _, r := range s.Rows {
-			fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", cell(r.Concept), symbolCell(r.Go), symbolCell(r.Java), cell(r.Note))
+			note := r.Note
+			if r.JavaPending != "" {
+				if note != "" {
+					note += " "
+				}
+				note += "Java pending on " + r.JavaPending + "."
+			}
+			fmt.Fprintf(&b, "| %s | %s | %s | %s |\n", cell(r.Concept), symbolCell(r.Go), symbolCell(r.Java), cell(note))
 		}
 	}
 	return b.String(), nil

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -352,6 +353,7 @@ func TestWindowsOperationExit(t *testing.T) {
 // recordingWaveSource records descriptors, never the caller-owned buffers.
 type recordingWaveSource struct {
 	Source
+	mu      sync.Mutex
 	batches [][][2]int64
 }
 type recordingWaveFile struct {
@@ -379,8 +381,11 @@ func (f *recordingWaveFile) ReadRanges(ctx context.Context, ranges []ReadRange) 
 		}
 		failed = failed || errs[i] != nil
 	}
-	// Tests use one handle and synchronous waves, so this recorder needs no lock.
+	// Different parts can complete in parallel. Tests inspect the recorded
+	// descriptors only after the synchronous wave or operation returns.
+	f.owner.mu.Lock()
 	f.owner.batches = append(f.owner.batches, batch)
+	f.owner.mu.Unlock()
 	if failed {
 		return &BatchError{Errs: errs}
 	}

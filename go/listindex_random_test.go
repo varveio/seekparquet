@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"testing"
 
@@ -103,7 +102,7 @@ func testListIndexRandomSeed(t *testing.T, seed int64) {
 				}
 				for _, tc := range cases {
 					got, err := idx.List(ctx, tc.query, nil)
-					if (tc.err == nil) != (err == nil) || !reflect.DeepEqual(tc.want, got) {
+					if (tc.err == nil) != (err == nil) || !sameEntries(tc.want, got) {
 						t.Fatalf("seed=%d cap=%d budget=%d prefix=%q limit=%d cursor=%+v err=%v/%v\nwant=%v\ngot =%v", seed, cap, budget, tc.query.Prefix, tc.query.Limit, tc.query.Cursor, tc.err, err, entriesOf(tc.want), entriesOf(got))
 					}
 				}

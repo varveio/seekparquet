@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -74,7 +75,7 @@ func TestDemandedWindowSourcePanic(t *testing.T) {
 				_, err = d.BuildListIndex(ctx, ListIndexOptions{})
 			}
 			var refusal *RefusalError
-			if src.calls.Load() == 0 || !errors.Is(err, errSourcePanic) || !isEnvironment(ctx, err) || errors.As(err, &refusal) {
+			if src.calls.Load() == 0 || !errors.Is(err, errSourcePanic) || !strings.Contains(err.Error(), "the source panicked: source") || !isEnvironment(ctx, err) || errors.As(err, &refusal) {
 				t.Fatalf("calls %d, error %T %v", src.calls.Load(), err, err)
 			}
 		})
@@ -160,6 +161,18 @@ func TestListIndexBudgetLookahead(t *testing.T) {
 }
 
 func TestSourceErrorWalkBudget(t *testing.T) {
+	// A broken pin beyond the walk budget cannot override a missing-part
+	// classification already found. Reversing their order does expose it.
+	unreached := error(ErrObjectChanged)
+	for range maxEOFCauses {
+		unreached = fmt.Errorf("retry: %w", unreached)
+	}
+	if got := sourceError("p", errors.Join(fs.ErrNotExist, unreached)); RefusalCodeOf(got) != CodeMissingPart {
+		t.Fatal(got)
+	}
+	if got := sourceError("p", errors.Join(ErrObjectChanged, fs.ErrNotExist, unreached)); !isEnvironment(ctx, got) {
+		t.Fatal(got)
+	}
 	for _, n := range []int{31, 32, 64, 100} {
 		for _, mismatch := range []bool{false, true} {
 			causes := make([]error, n)
@@ -322,13 +335,97 @@ func TestReadRangesScalarSourcePanic(t *testing.T) {
 			t.Fatalf("%d errors", len(errs))
 		}
 		for _, err := range errs {
-			if !errors.Is(err, errSourcePanic) || !isEnvironment(ctx, err) || RefusalCodeOf(err) != "" {
+			if !errors.Is(err, errSourcePanic) || !strings.Contains(err.Error(), "the source panicked: source") || !isEnvironment(ctx, err) || RefusalCodeOf(err) != "" {
 				t.Fatal(err)
 			}
 		}
 		if st.SourceReads != 3 || st.SourceBytes != 30 || st.ScalarFallbackReads != 3 || op.limit.free != width {
 			t.Fatalf("width %d: %+v", width, st)
 		}
+	}
+}
+
+func TestProjectedWindowsKeepEarlierColumns(t *testing.T) {
+	type item struct {
+		Key  string `parquet:"key"`
+		A    int64  `parquet:"a,plain"`
+		B    int64  `parquet:"b,plain"`
+		Blob string `parquet:"blob,plain"`
+		Dict string `parquet:"dict,dict"`
+		Last int64  `parquet:"last,plain"`
+	}
+	rows := make([]item, 100)
+	for i := range rows {
+		rows[i] = item{fmt.Sprintf("k%04d", i), int64(i), int64(i), strings.Repeat("x", 2048), fmt.Sprintf("%04d-%s", i, strings.Repeat("d", 128)), int64(i)}
+	}
+	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: rows, PageBytes: 256}}})
+	for _, oversized := range []string{"blob", "dict"} {
+		t.Run(oversized, func(t *testing.T) {
+			src := &recordingWaveSource{Source: dirOf(t, dir)}
+			d := openWith(t, ctx, src, OpenOptions{}, false)
+			cols := []string{"a", "b", oversized, "last"}
+			_, err := d.Plan(ctx, []Selection{{}}, cols, nil)
+			must(t, err)
+			d.r.limits.PageBytes = 1000
+			p := d.r.parts[0]
+			col := p.leaves[oversized]
+			loc := (*p.locs[0][col.index].Load())[0]
+			start, _, ok := chunkRange(&p.footer.Metadata().RowGroups[0].Columns[col.index].MetaData)
+			if !ok || oversized == "blob" && loc.size <= 1000 || oversized == "dict" && loc.offset-start <= 1000 {
+				t.Fatal("fixture has no oversized extent")
+			}
+			op, err := d.r.begin(ctx)
+			must(t, err)
+			var st ReadStats
+			defer op.end(&st)
+			w := op.windows()
+			src.batches = nil
+			d.r.projectWindows(w, p, []position{{groupRef{}, 0}}, cols)
+			for _, name := range cols {
+				loc := (*p.locs[0][p.leaves[name].index].Load())[0]
+				held := w.holds(p, loc.offset, loc.size)
+				want := name == "a" || name == "b"
+				if held != want {
+					t.Fatalf("%s held %v, want %v; batches %v", name, held, want, src.batches)
+				}
+			}
+			if len(src.batches) != 1 {
+				t.Fatalf("earlier columns need one batch: %v", src.batches)
+			}
+		})
+	}
+}
+
+// Both landing/following and the prediction after an emitted row leave
+// pages larger than PageBytes to demand, without fetching later pages.
+func TestListReadAheadPageLimit(t *testing.T) {
+	dir := write(t, parts(testutil.Part{PageBytes: 128}, fixtureKeys(1000)))
+	for _, path := range []string{"landing", "predict"} {
+		t.Run(path, func(t *testing.T) {
+			src := &recordingWaveSource{Source: dirOf(t, dir)}
+			d := openWith(t, ctx, src, OpenOptions{}, false)
+			must(t, d.Verify(ctx, nil))
+			op, err := d.r.begin(ctx)
+			must(t, err)
+			var st ReadStats
+			defer op.end(&st)
+			s := d.r.newScan(op, nil, &st)
+			must(t, s.seek(nil, true))
+			if len(s.kp.index.pages) < 2 {
+				t.Fatal("fixture needs multiple pages")
+			}
+			d.r.limits.PageBytes = 1
+			s.ahead = d.r.newReadAhead(op, 8, 8)
+			src.batches = nil
+			if path == "landing" {
+				s.ahead.landing(s, s.kp, 0)
+			} else {
+				s.readAhead(&ListQuery{}, 8)
+			}
+			if len(src.batches) != 0 {
+				t.Fatalf("oversized read-ahead fetched: %v", src.batches)
+			}
+		})
 	}
 }
 

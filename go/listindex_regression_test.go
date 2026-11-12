@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"runtime/debug"
 	"slices"
@@ -33,7 +32,7 @@ func TestListIndexRegressionArbitraryPrefixCursor(t *testing.T) {
 	q := ListQuery{Prefix: []byte("a/"), Delimiter: '/', Limit: 100, Cursor: &Cursor{Prefix: []byte("a/x")}}
 	want, e1 := plain.List(ctx, q, nil)
 	got, e2 := indexed.List(ctx, q, nil)
-	if e1 != nil || e2 != nil || !reflect.DeepEqual(want, got) {
+	if e1 != nil || e2 != nil || !sameEntries(want, got) {
 		t.Fatalf("build=%+v want=%v got=%v err=%v/%v", st, entriesOf(want), entriesOf(got), e1, e2)
 	}
 }
@@ -81,8 +80,8 @@ func compareListIndex(t *testing.T, plain, indexed *Dataset, q ListQuery) ReadSt
 	want, e1 := plain.List(ctx, q, nil)
 	var st ReadStats
 	got, e2 := indexed.List(ctx, q, &st)
-	if e1 != nil || e2 != nil || !reflect.DeepEqual(want, got) {
-		t.Fatalf("query=%+v plain=%v/%v indexed=%v/%v", q, entriesOf(want), e1, entriesOf(got), e2)
+	if e1 != nil || e2 != nil || !sameEntries(want, got) {
+		t.Fatalf("query=%+v cursor=%+v plain=%+v/%v indexed=%+v/%v", q, q.Cursor, want, e1, got, e2)
 	}
 	return st
 }
