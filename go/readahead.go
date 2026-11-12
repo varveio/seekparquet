@@ -72,7 +72,10 @@ type readAhead struct {
 	// that were taken or dropped, for the request's counts; the pages
 	// still pending are counted when the read-ahead closes.
 	reads, readBytes, unused, unusedBytes int64
-	closed                                bool
+	// unreported counts the reads of parts whose files do not report
+	// their physical requests (UnreportedIOCalls).
+	unreported int64
+	closed     bool
 	// lastG and lastAt are the page the last prediction of rows started
 	// from: a scan stepping through rows predicts again only on a new page.
 	lastG  groupRef
@@ -136,6 +139,9 @@ func (a *readAhead) retire(e *aheadPage, used bool) {
 	}
 	a.reads++
 	a.readBytes += e.size
+	if !e.key.p.reports {
+		a.unreported++
+	}
 	if !used {
 		a.unused++
 		a.unusedBytes += e.size
@@ -263,6 +269,7 @@ func (a *readAhead) close(st *ReadStats) {
 	st.ReadAheadReads += a.reads
 	st.ReadAheadUnused += a.unused
 	st.ReadAheadUnusedBytes += a.unusedBytes
+	st.UnreportedIOCalls += a.unreported
 	a.queue, a.qhead = nil, 0
 }
 

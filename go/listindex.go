@@ -89,7 +89,7 @@ func (d *Dataset) BuildListIndex(ctx context.Context, opt ListIndexOptions) (sta
 		opt.MaxChangesPerPage = 8
 	}
 	r := d.r
-	rctx, end, err := r.begin(ctx)
+	rctx, end, err := r.begin(ctx, nil)
 	if err != nil {
 		return stats, err
 	}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -67,6 +68,12 @@ func checkStats(t *testing.T, name string, st, want ReadStats, src *accessSource
 	}
 	// Bytes follow from the encoding, not from the geometry.
 	want.SourceBytes = st.SourceBytes
+	// The counting Source does not report its physical requests: every
+	// read is a storage call it leaves unreported.
+	if st.UnreportedIOCalls != st.SourceReads {
+		t.Errorf("%s: %d unreported storage calls for %d reads", name, st.UnreportedIOCalls, st.SourceReads)
+	}
+	want.UnreportedIOCalls = st.UnreportedIOCalls
 	if st != want {
 		t.Errorf("%s:\n got %+v\nwant %+v", name, st, want)
 	}
@@ -332,8 +339,8 @@ func TestReadStatsIndexRefused(t *testing.T) {
 	}
 }
 
-// TestReadStatsAdd: Add sums every field, so that a field added later and
-// not summed fails here.
+// TestReadStatsAdd: Add sums every field but the peaks, of which it keeps
+// the larger, so that a field added later and not summed fails here.
 func TestReadStatsAdd(t *testing.T) {
 	var a, b, want ReadStats
 	va, vb, vw := reflect.ValueOf(&a).Elem(), reflect.ValueOf(&b).Elem(), reflect.ValueOf(&want).Elem()
@@ -344,6 +351,9 @@ func TestReadStatsAdd(t *testing.T) {
 		va.Field(i).SetInt(int64(i + 1))
 		vb.Field(i).SetInt(int64(100 * (i + 1)))
 		vw.Field(i).SetInt(int64(101 * (i + 1)))
+		if strings.HasPrefix(va.Type().Field(i).Name, "Peak") {
+			vw.Field(i).SetInt(int64(100 * (i + 1)))
+		}
 	}
 	a.Add(b)
 	if a != want {

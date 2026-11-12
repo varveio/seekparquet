@@ -28,6 +28,7 @@
 package fakestore
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -184,8 +185,8 @@ func stateOf(ctx context.Context) CtxState {
 // concurrent use.
 type Source struct {
 	opt     Options
-	objects map[string]Object // in memory, nil when on disk
-	root    *os.Root          // on disk, nil when in memory
+	objects map[string]*stored // in memory, nil when on disk; under mu
+	root    *os.Root           // on disk, nil when in memory
 	closed  chan struct{}
 	once    sync.Once
 
@@ -196,17 +197,68 @@ type Source struct {
 	queue       []*waiter
 	dispatching bool
 
-	mu  sync.Mutex
-	op  *Operation // the operation being recorded, nil for none
-	seq int64      // requests made by the source
+	mu      sync.Mutex
+	op      *Operation // the operation being recorded, nil for none
+	seq     int64      // requests made by the source
+	batches int        // ReadRanges calls made
 
 	inFlight, openFiles atomic.Int64
 }
 
+// stored is an object as the store holds it now: its generation counts
+// its replacements, so that a handle pinned to an earlier one can tell.
+type stored struct {
+	Object
+	gen int
+}
+
 // New returns a source serving objects, keyed by slash-separated path.
-// The source keeps the map and the objects' data, which must not change.
+// The source keeps the objects' data, which must not change; Replace and
+// Remove change what the source holds, not the map given.
 func New(objects map[string]Object, opt Options) *Source {
-	return &Source{opt: opt, objects: objects, closed: make(chan struct{}), free: opt.MaxInFlight}
+	s := &Source{opt: opt, closed: make(chan struct{}), free: opt.MaxInFlight}
+	if objects != nil {
+		s.objects = make(map[string]*stored, len(objects))
+		for name, o := range objects {
+			if o.Identity == "" {
+				o.Identity = name + "#1"
+			}
+			s.objects[name] = &stored{Object: o, gen: 1}
+		}
+	}
+	return s
+}
+
+// Replace replaces (or creates) the object at name with o: a handle opened
+// on the object before fails its next read with ErrObjectChanged.
+func (s *Source) Replace(name string, o Object) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	gen := 1
+	if old, ok := s.objects[name]; ok {
+		gen = old.gen + 1
+	}
+	if o.Identity == "" {
+		o.Identity = fmt.Sprintf("%s#%d", name, gen)
+	}
+	s.objects[name] = &stored{Object: o, gen: gen}
+}
+
+// Remove removes the object at name: a handle opened on it before fails
+// its next read with ErrObjectChanged, a later open or first read with an
+// error wrapping fs.ErrNotExist.
+func (s *Source) Remove(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.objects, name)
+}
+
+// lookup returns the object at name now.
+func (s *Source) lookup(name string) (*stored, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	o, ok := s.objects[name]
+	return o, ok
 }
 
 // Load reads every regular file under dir into memory and returns a
@@ -257,15 +309,40 @@ func (s *Source) InFlight() int64 { return s.inFlight.Load() }
 // OpenFiles returns the Files opened and not yet closed.
 func (s *Source) OpenFiles() int64 { return s.openFiles.Load() }
 
+// ErrObjectChanged reports a read of a handle whose object was replaced
+// or removed after the handle was pinned to it.
+var ErrObjectChanged = errors.New("fakestore: object changed")
+
+// ErrTooLarge reports a whole-object read of an object beyond its limit.
+var ErrTooLarge = errors.New("fakestore: object too large")
+
+// SizeMismatchError reports a sized open whose object, found by its first
+// read, has another size.
+type SizeMismatchError struct {
+	Path             string
+	Expected, Actual int64
+}
+
+func (e *SizeMismatchError) Error() string {
+	return fmt.Sprintf("fakestore: %s is %d bytes, expected %d", e.Path, e.Actual, e.Expected)
+}
+
 // File is an opened object. Its reads are safe for concurrent use; it
-// implements seekparquet.SourceFile and seekparquet.ContextBinder.
+// implements seekparquet.SourceFile and seekparquet.ContextBinder. A file
+// opened with OpenSized is pinned to its object by its first non-empty
+// read; one opened with Open when it is opened.
 type File struct {
 	s      *Source
 	name   string
-	data   []byte   // in memory
 	f      *os.File // on disk
 	size   int64
 	closed atomic.Bool
+
+	// In memory: the object the file is pinned to, its generation (0
+	// until pinned) and its data.
+	pin  sync.Mutex
+	gen  int
+	data []byte
 }
 
 // Open opens the object at name. With Options.MetadataOnOpen it makes one
@@ -276,7 +353,7 @@ func (s *Source) Open(ctx context.Context, name string) (*File, error) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
 	}
 	if s.opt.MetadataOnOpen {
-		if _, err := s.do(ctx, Metadata, name, 0, nil, nil); err != nil {
+		if _, err := s.do(ctx, Metadata, name, 0, nil, 0, nil); err != nil {
 			return nil, &fs.PathError{Op: "open", Path: name, Err: err}
 		}
 	} else if ctx != nil && ctx.Err() != nil {
@@ -297,14 +374,144 @@ func (s *Source) Open(ctx context.Context, name string) (*File, error) {
 		}
 		file.f, file.size = f, info.Size()
 	} else {
-		o, ok := s.objects[name]
+		o, ok := s.lookup(name)
 		if !ok {
 			return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 		}
-		file.data, file.size = o.Data, int64(len(o.Data))
+		file.data, file.size, file.gen = o.Data, int64(len(o.Data)), o.gen
 	}
 	s.openFiles.Add(1)
 	return file, nil
+}
+
+// OpenSized opens the object at name with the size the caller expects,
+// making no request: its first non-empty read pins the object, and fails
+// with *SizeMismatchError when it has another size, or with an error
+// wrapping fs.ErrNotExist when there is none. On disk it is Open without
+// the metadata request.
+func (s *Source) OpenSized(ctx context.Context, name string, expected int64) (*File, error) {
+	if !fs.ValidPath(name) || expected < 0 {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if s.root != nil {
+		meta := s.opt.MetadataOnOpen
+		s.opt.MetadataOnOpen = false
+		defer func() { s.opt.MetadataOnOpen = meta }()
+		return s.Open(ctx, name)
+	}
+	s.openFiles.Add(1)
+	return &File{s: s, name: name, size: expected}, nil
+}
+
+// establish pins an unpinned in-memory file to its object, or checks that
+// a pinned one's object is still there, unchanged.
+func (f *File) establish() error {
+	o, ok := f.s.lookup(f.name)
+	f.pin.Lock()
+	defer f.pin.Unlock()
+	switch {
+	case f.gen == 0 && !ok:
+		return &fs.PathError{Op: "read", Path: f.name, Err: fs.ErrNotExist}
+	case f.gen == 0 && int64(len(o.Data)) != f.size:
+		return &SizeMismatchError{Path: f.name, Expected: f.size, Actual: int64(len(o.Data))}
+	case f.gen == 0:
+		f.gen, f.data = o.gen, o.Data
+	case !ok || o.gen != f.gen:
+		return fmt.Errorf("%w: %s", ErrObjectChanged, f.name)
+	}
+	return nil
+}
+
+// ReadObject reads the whole object at name in one Whole request, at most
+// limit bytes: a larger object fails with ErrTooLarge. It returns a copy of
+// its data and its identity. A ShortRead fault returns the object's first
+// half and no error.
+func (s *Source) ReadObject(ctx context.Context, name string, limit int64) ([]byte, string, error) {
+	if !fs.ValidPath(name) {
+		return nil, "", &fs.PathError{Op: "read", Path: name, Err: fs.ErrInvalid}
+	}
+	var data []byte
+	var identity string
+	_, err := s.do(ctx, Whole, name, 0, nil, 0, func(fault Fault) (int, error) {
+		o, ok := s.lookup(name)
+		if !ok {
+			return 0, &fs.PathError{Op: "read", Path: name, Err: fs.ErrNotExist}
+		}
+		if int64(len(o.Data)) > limit {
+			return 0, ErrTooLarge
+		}
+		n := len(o.Data)
+		switch fault.Kind {
+		case Fail:
+			return 0, ErrInjected
+		case ShortRead, FailAfter:
+			n = len(o.Data) / 2
+			if fault.Bytes > 0 && fault.Bytes < len(o.Data) {
+				n = fault.Bytes
+			}
+		}
+		data, identity = bytes.Clone(o.Data[:n]), o.Identity
+		if fault.Kind == FailAfter {
+			return n, ErrInjected
+		}
+		return n, nil
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return data, identity, nil
+}
+
+// Extent is one range of a ReadRanges call.
+type Extent struct {
+	Off int64
+	Buf []byte
+}
+
+// BatchError gives one outcome per range of a ReadRanges call.
+type BatchError struct{ Errs []error }
+
+func (e *BatchError) Error() string {
+	return fmt.Sprintf("fakestore: %d ranges, some failed", len(e.Errs))
+}
+
+// ReadRanges reads every range as its own Range request, all in flight
+// together (within MaxInFlight), recorded with the call's batch number,
+// and returns nil or a *BatchError. It merges nothing.
+func (f *File) ReadRanges(ctx context.Context, ranges []Extent) error {
+	for _, rg := range ranges {
+		if rg.Off < 0 || rg.Off > f.size || int64(len(rg.Buf)) > f.size-rg.Off {
+			return fmt.Errorf("fakestore: range %d+%d outside %s (%d bytes)", rg.Off, len(rg.Buf), f.name, f.size)
+		}
+	}
+	f.s.mu.Lock()
+	f.s.batches++
+	batch := f.s.batches
+	f.s.mu.Unlock()
+	errs := make([]error, len(ranges))
+	var wg sync.WaitGroup
+	for i, rg := range ranges {
+		if len(rg.Buf) == 0 {
+			continue
+		}
+		wg.Go(func() {
+			n, err := f.readBatch(ctx, rg.Buf, rg.Off, batch)
+			if err == nil && n < len(rg.Buf) {
+				err = io.ErrUnexpectedEOF
+			}
+			errs[i] = err
+		})
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return &BatchError{Errs: errs}
+		}
+	}
+	return nil
 }
 
 // Name returns the object's path.
@@ -340,6 +547,10 @@ type view struct {
 func (v view) ReadAt(p []byte, off int64) (int, error) { return v.f.read(v.ctx, p, off) }
 
 func (f *File) read(ctx context.Context, p []byte, off int64) (int, error) {
+	return f.readBatch(ctx, p, off, 0)
+}
+
+func (f *File) readBatch(ctx context.Context, p []byte, off int64, batch int) (int, error) {
 	if f.closed.Load() {
 		return 0, fs.ErrClosed
 	}
@@ -349,7 +560,32 @@ func (f *File) read(ctx context.Context, p []byte, off int64) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-	return f.s.do(ctx, Range, f.name, off, p, f)
+	return f.s.do(ctx, Range, f.name, off, p, batch, func(fault Fault) (int, error) { return f.serveRange(fault, p, off) })
+}
+
+// serveRange fills p from the object at off, as fault says, once the
+// request's latency has passed.
+func (f *File) serveRange(fault Fault, p []byte, off int64) (int, error) {
+	if f.f == nil {
+		if err := f.establish(); err != nil {
+			return 0, err
+		}
+	}
+	short := len(p) / 2
+	if fault.Bytes > 0 && fault.Bytes < len(p) {
+		short = fault.Bytes
+	}
+	switch fault.Kind {
+	case Fail:
+		return 0, ErrInjected
+	case ShortRead:
+		n, _ := f.fill(p[:short], off)
+		return n, nil
+	case FailAfter:
+		n, _ := f.fill(p[:short], off)
+		return n, ErrInjected
+	}
+	return f.fill(p, off)
 }
 
 // fill copies the object's bytes at off into p, as io.ReaderAt does.
@@ -367,10 +603,25 @@ func (f *File) fill(p []byte, off int64) (int, error) {
 	return n, nil
 }
 
+// Observer is told of every physical request a source makes, for the
+// context it was made under (WithObserver): Begin when it starts, and the
+// function Begin returns when it ends, with the bytes it returned and its
+// error.
+type Observer interface {
+	Begin(kind Kind, name string, off, length int64) func(got int64, err error)
+}
+
+type observerKey struct{}
+
+// WithObserver returns ctx whose requests are reported to o.
+func WithObserver(ctx context.Context, o Observer) context.Context {
+	return context.WithValue(ctx, observerKey{}, o)
+}
+
 // do makes one physical request: it waits for a slot, starts the request
 // on the clock, waits for its latency and transfer (or its context, or its
-// fault), fills p from file and records it.
-func (s *Source) do(ctx context.Context, kind Kind, name string, off int64, p []byte, file *File) (int, error) {
+// fault), serves it (serve, or a Metadata request's check) and records it.
+func (s *Source) do(ctx context.Context, kind Kind, name string, off int64, p []byte, batch int, fill func(Fault) (int, error)) (int, error) {
 	var done <-chan struct{}
 	if ctx != nil {
 		done = ctx.Done()
@@ -392,7 +643,7 @@ func (s *Source) do(ctx context.Context, kind Kind, name string, off int64, p []
 	s.mu.Lock()
 	s.seq++
 	op := s.op
-	r := &Request{Global: s.seq, Object: name, Kind: kind, Off: off, Len: int64(len(p)), Ctx: stateOf(ctx), End: -1}
+	r := &Request{Global: s.seq, Object: name, Kind: kind, Off: off, Len: int64(len(p)), Ctx: stateOf(ctx), End: -1, Batch: batch}
 	var fault Fault
 	if op != nil {
 		op.n++
@@ -408,18 +659,30 @@ func (s *Source) do(ctx context.Context, kind Kind, name string, off int64, p []
 	}
 	s.mu.Unlock()
 
-	n, err := s.serve(ctx, done, r, fault, p, file)
+	var observed func(int64, error)
+	if ctx != nil {
+		if o, ok := ctx.Value(observerKey{}).(Observer); ok {
+			observed = o.Begin(kind, name, off, int64(len(p)))
+		}
+	}
+	n, err := s.serve(ctx, done, r, fault, p, fill)
+	if observed != nil {
+		observed(int64(n), err)
+	}
 
 	s.mu.Lock()
 	if op != nil {
 		r.End = time.Since(op.began)
 	}
 	r.Got, r.Err = int64(n), err
+	if kind == Whole {
+		r.Len = int64(n)
+	}
 	s.mu.Unlock()
 	return n, err
 }
 
-func (s *Source) serve(ctx context.Context, done <-chan struct{}, r *Request, fault Fault, p []byte, file *File) (int, error) {
+func (s *Source) serve(ctx context.Context, done <-chan struct{}, r *Request, fault Fault, p []byte, fill func(Fault) (int, error)) (int, error) {
 	if fault.Kind == Hang {
 		select {
 		case <-done:
@@ -451,28 +714,12 @@ func (s *Source) serve(ctx context.Context, done <-chan struct{}, r *Request, fa
 			if _, err := s.root.Stat(filepath.FromSlash(r.Object)); err != nil {
 				return 0, err
 			}
-		} else if _, ok := s.objects[r.Object]; !ok {
+		} else if _, ok := s.lookup(r.Object); !ok {
 			return 0, fs.ErrNotExist
 		}
 		return 0, nil
 	}
-	short := func() int {
-		if fault.Bytes > 0 && fault.Bytes < len(p) {
-			return fault.Bytes
-		}
-		return len(p) / 2
-	}
-	switch fault.Kind {
-	case Fail:
-		return 0, ErrInjected
-	case ShortRead:
-		n, _ := file.fill(p[:short()], r.Off)
-		return n, nil
-	case FailAfter:
-		n, _ := file.fill(p[:short()], r.Off)
-		return n, ErrInjected
-	}
-	return file.fill(p, r.Off)
+	return fill(fault)
 }
 
 // waiter is a request waiting for a slot.

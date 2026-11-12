@@ -28,7 +28,11 @@ import (
 type reader struct {
 	key    Key
 	limits Limits
-	parts  []*part
+	policy ReadPolicy
+	// sourceReports is set when the Source reports its physical requests
+	// (IOReporter): each request then carries a collector for them.
+	sourceReports bool
+	parts         []*part
 	// rows is the dataset's row count.
 	rows int64
 	// bounded reports that every part has its key bounds, so reads are
@@ -105,7 +109,9 @@ type part struct {
 	file   io.ReaderAt
 	size   int64
 	footer *parquet.File
-	key    leaf
+	// reports is set when file reports its physical requests.
+	reports bool
+	key     leaf
 	// groups are the part's non-empty row groups.
 	groups []*group
 	// utf8Key reports a key column annotated STRING or UTF8 (KEY-6).
@@ -157,6 +163,8 @@ type partInput struct {
 	file   io.ReaderAt
 	size   int64
 	footer *parquet.File
+	// reports is set when file reports its physical requests.
+	reports bool
 	// minKey and maxKey, when set, are the part's exact first and last
 	// keys. They route reads to the part without decoding its keys, and a
 	// decoded key outside them, or a first or last key that differs from
@@ -178,7 +186,7 @@ type partInput struct {
 // openParts takes ownership of every file that implements io.Closer: when
 // it fails it closes them all, and on success reader.close closes them.
 func openParts(ctx context.Context, inputs []partInput, key Key, opt OpenOptions) (_ *reader, err error) {
-	r := &reader{key: key, limits: opt.Limits.withDefaults(), bounded: true, columns: map[string]column{}}
+	r := &reader{key: key, limits: opt.Limits.withDefaults(), policy: opt.Read.withDefaults(), bounded: true, columns: map[string]column{}}
 	r.closing, r.closeNow = context.WithCancelCause(context.Background())
 	defer func() {
 		if err != nil {
@@ -406,7 +414,7 @@ func (r *reader) fill(ctx context.Context, p *part, in partInput, st *ReadStats)
 	if p.rows == 0 {
 		p.rows = rows
 	}
-	p.file, p.size, p.groups = in.file, in.size, groups
+	p.file, p.size, p.groups, p.reports = in.file, in.size, groups, reportsIO(in.file)
 	return nil
 }
 
@@ -678,13 +686,20 @@ func bind(ctx context.Context, file io.ReaderAt) io.ReaderAt {
 // at returns the part's file for reads under ctx, its errors marked as
 // the source's own, its calls counted in st.
 func (p *part) at(ctx context.Context, st *ReadStats) io.ReaderAt {
-	return storageReader{r: bind(ctx, p.file), st: st}
+	return storageReader{r: bind(ctx, p.file), st: st, name: p.name, unreported: !p.reports}
 }
 
 // begin takes a read lease that close waits for, and returns the request's
-// context: it ends with ctx, or with close (cause ErrClosed). Once close has
+// context: it ends with ctx, or with close (cause ErrClosed), and carries
+// the request's collector of physical requests for st when the Source
+// reports them. An unknown cache mode (WithCacheMode) is an invalid
+// request. Once close has
 // begun (it cancels r.closing first), begin fails with ErrClosed at once.
-func (r *reader) begin(ctx context.Context) (context.Context, func(), error) {
+func (r *reader) begin(ctx context.Context, st *ReadStats) (context.Context, func(), error) {
+	if err := checkCacheMode(ctx); err != nil {
+		return nil, nil, err
+	}
+	ctx = observing(ctx, st, r.sourceReports)
 	r.mu.Lock()
 	if r.closed || r.closing.Err() != nil {
 		r.mu.Unlock()

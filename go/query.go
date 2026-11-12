@@ -236,7 +236,7 @@ func (e ListEntry) Cursor() *Cursor {
 // request checks what every request shares and takes a read lease. done
 // releases it and maps an error of a request ended by Close to ErrClosed.
 // A limit of zero is accepted only when unlimited is set (Dataset.Scan).
-func (r *reader) request(ctx context.Context, cur *Cursor, prefixes bool, limit int64, unlimited bool, columns []string) (context.Context, func(*error), error) {
+func (r *reader) request(ctx context.Context, st *ReadStats, cur *Cursor, prefixes bool, limit int64, unlimited bool, columns []string) (context.Context, func(*error), error) {
 	if err := cur.check(prefixes); err != nil {
 		return nil, nil, err
 	}
@@ -246,7 +246,7 @@ func (r *reader) request(ctx context.Context, cur *Cursor, prefixes bool, limit 
 	if err := r.checkProjection(columns); err != nil {
 		return nil, nil, err
 	}
-	rctx, end, err := r.begin(ctx)
+	rctx, end, err := r.begin(ctx, st)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -289,7 +289,7 @@ func (r *reader) readRange(ctx context.Context, q Query, st *ReadStats) (_ []Row
 	if q.Limit > int64(math.MaxInt) {
 		return nil, invalidRequest("limit %d is beyond a slice's length", q.Limit)
 	}
-	ctx, done, err := r.request(ctx, q.Cursor, false, q.Limit, false, q.Columns)
+	ctx, done, err := r.request(ctx, st, q.Cursor, false, q.Limit, false, q.Columns)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +301,7 @@ func (r *reader) readRange(ctx context.Context, q Query, st *ReadStats) (_ []Row
 // readGet returns the group of key; see Dataset.Get.
 func (r *reader) readGet(ctx context.Context, key []byte, st *ReadStats, columns []string) (_ []Row, err error) {
 	st = resetStats(st)
-	ctx, done, err := r.request(ctx, nil, false, 1, false, columns)
+	ctx, done, err := r.request(ctx, st, nil, false, 1, false, columns)
 	if err != nil {
 		return nil, err
 	}
@@ -364,7 +364,7 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 	if req.ReadAhead < 0 {
 		return nil, invalidRequest("read-ahead %d is negative", req.ReadAhead)
 	}
-	ctx, done, err := r.request(ctx, req.Cursor, true, int64(req.Limit), false, req.Columns)
+	ctx, done, err := r.request(ctx, st, req.Cursor, true, int64(req.Limit), false, req.Columns)
 	if err != nil {
 		return nil, err
 	}

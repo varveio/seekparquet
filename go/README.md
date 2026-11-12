@@ -247,6 +247,20 @@ mid-call; the reader checks the context between pages.
 `OpenDataset` opens and closes only the manifest. `Dataset.Close` closes every part file the dataset opened,
 after the reads in progress end.
 
+A remote `Source` can offer optional capabilities; a source with none of them is read through `Open` and
+`ReadAt` as before. `ManifestReader.ReadManifest` reads the manifest whole within `Limits.ManifestBytes`, in one
+request (`ErrObjectTooLarge` becomes a `*LimitError` naming `ManifestBytes`). `SizedSource.OpenSized` opens a
+part with its manifest size, so that no metadata request precedes its first read, which must prove the size:
+a `*SizeMismatchError` from it, or from `OpenSized`, is refused `part_mismatch`, a missing object
+`missing_part`, and `ErrObjectChanged` (a broken pin) stays an environment error, never a refusal. A part file
+that is a `RangeReader` reads several ranges in one `ReadRanges` call, with a `*BatchError` giving each range's
+outcome; without it, ranges the reader issues together go to concurrent `ReadAt` calls, at most
+`ReadPolicy.Concurrency` (default 64) per operation. A source that implements `IOReporter` reports its
+physical requests to the `IOObserver` on each operation's context (`IOObserverFromContext`): the reader counts
+them in `ReadStats` (`PhysicalRequests`, `PhysicalBytes`, `PeakPhysicalRequests`, ...; `OpenOptions.OpenStats`
+for the open) and passes them on to an observer the caller set with `WithIOObserver`. `WithCacheMode` asks a
+source's byte cache to be bypassed (`CacheBypass`).
+
 Projected value pages reuse buffers within each `Rows`, `Get`, `Scan`, `List`, or `Plan.Scan` call,
 including across row groups. `Rows`, `Get` and `List` results own their keys and binary values;
 `Dataset.Scan` and `Plan.Scan` borrow page storage as described below. Dictionaries have separate storage

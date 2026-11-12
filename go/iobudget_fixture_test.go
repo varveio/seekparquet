@@ -5,7 +5,9 @@ package seekparquet_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -256,6 +258,13 @@ func ioFixtureOf(t testing.TB, spec ioFixtureSpec) *ioFixture {
 	parent, err := os.MkdirTemp(ioFixtureDir, "fixture-")
 	must(t, err)
 	f := writeIOFixture(t, parent, spec)
+	// The reader's ZSTD decoder is shared by the process and made on first
+	// use: made inside a synctest bubble, it could serve no one outside
+	// that bubble. Decode a page out of any bubble first.
+	d, err := seekparquet.OpenDir(context.Background(), f.dir, seekparquet.OpenOptions{})
+	must(t, err)
+	_, err = d.Get(context.Background(), f.first, nil, ioColumns...)
+	must(t, errors.Join(err, d.Close()))
 	ioFixtures[spec] = f
 	return f
 }
@@ -286,15 +295,128 @@ func must(t testing.TB, err error) {
 	}
 }
 
-// fakeSource adapts a fakestore.Source to seekparquet.Source.
+// fakeSource adapts a fakestore.Source to seekparquet.Source as objfile's
+// adapter serves a remote store today: Open (with the store's metadata
+// request), and files with ReadAt and WithContext only. It reports its
+// physical requests (IOReporter), and maps the store's errors to the
+// module's. capableSource adds the optional capabilities.
 type fakeSource struct{ *fakestore.Source }
 
 func (s fakeSource) Open(ctx context.Context, path string) (seekparquet.SourceFile, error) {
-	f, err := s.Source.Open(ctx, path)
+	f, err := s.Source.Open(observed(ctx), path)
 	if err != nil {
-		return nil, err
+		return nil, fakeError(err)
 	}
-	return f, nil
+	return fakeFile{f}, nil
 }
 
-var _ seekparquet.ContextBinder = (*fakestore.File)(nil)
+func (fakeSource) ReportsIO() bool { return true }
+
+// capableSource is fakeSource with every optional capability: OpenSized,
+// ReadManifest and, on its files, ReadRanges.
+type capableSource struct{ fakeSource }
+
+func (s capableSource) OpenSized(ctx context.Context, path string, size int64) (seekparquet.SourceFile, error) {
+	f, err := s.Source.OpenSized(observed(ctx), path, size)
+	if err != nil {
+		return nil, fakeError(err)
+	}
+	return fakeRangeFile{fakeFile{f}}, nil
+}
+
+func (s capableSource) ReadManifest(ctx context.Context, maxBytes int64) ([]byte, string, error) {
+	data, identity, err := s.Source.ReadObject(observed(ctx), seekparquet.ManifestName, maxBytes)
+	return data, identity, fakeError(err)
+}
+
+type fakeFile struct{ f *fakestore.File }
+
+func (f fakeFile) Size() int64     { return f.f.Size() }
+func (f fakeFile) Close() error    { return f.f.Close() }
+func (f fakeFile) ReportsIO() bool { return true }
+
+func (f fakeFile) ReadAt(p []byte, off int64) (int, error) {
+	n, err := f.f.ReadAt(p, off)
+	return n, fakeError(err)
+}
+
+func (f fakeFile) WithContext(ctx context.Context) io.ReaderAt {
+	return fakeView{f.f.WithContext(observed(ctx))}
+}
+
+type fakeView struct{ r io.ReaderAt }
+
+func (v fakeView) ReadAt(p []byte, off int64) (int, error) {
+	n, err := v.r.ReadAt(p, off)
+	return n, fakeError(err)
+}
+
+type fakeRangeFile struct{ fakeFile }
+
+func (f fakeRangeFile) ReadRanges(ctx context.Context, ranges []seekparquet.ReadRange) error {
+	extents := make([]fakestore.Extent, len(ranges))
+	for i, rg := range ranges {
+		extents[i] = fakestore.Extent{Off: rg.Off, Buf: rg.Buf}
+	}
+	err := f.f.ReadRanges(observed(ctx), extents)
+	var be *fakestore.BatchError
+	if errors.As(err, &be) {
+		errs := make([]error, len(be.Errs))
+		for i, e := range be.Errs {
+			errs[i] = fakeError(e)
+		}
+		return &seekparquet.BatchError{Errs: errs}
+	}
+	return fakeError(err)
+}
+
+// fakeError maps the store's errors to the module's: a broken pin to
+// ErrObjectChanged, a sized open's size to *SizeMismatchError, an object
+// beyond its read limit to ErrObjectTooLarge, keeping the store's error.
+func fakeError(err error) error {
+	var mismatch *fakestore.SizeMismatchError
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, fakestore.ErrObjectChanged):
+		return fmt.Errorf("%w: %w", seekparquet.ErrObjectChanged, err)
+	case errors.Is(err, fakestore.ErrTooLarge):
+		return fmt.Errorf("%w: %w", seekparquet.ErrObjectTooLarge, err)
+	case errors.As(err, &mismatch):
+		return &seekparquet.SizeMismatchError{Path: mismatch.Path, Expected: mismatch.Expected, Actual: mismatch.Actual}
+	}
+	return err
+}
+
+// observed returns ctx with the store reporting its requests to the
+// operation's IOObserver, when it has one.
+func observed(ctx context.Context) context.Context {
+	if o := seekparquet.IOObserverFromContext(ctx); o != nil {
+		return fakestore.WithObserver(ctx, observer{o})
+	}
+	return ctx
+}
+
+type observer struct{ o seekparquet.IOObserver }
+
+func (o observer) Begin(kind fakestore.Kind, name string, off, length int64) func(int64, error) {
+	req := seekparquet.IORequest{Path: name, Offset: off, Length: length}
+	switch kind {
+	case fakestore.Metadata:
+		req.Kind = seekparquet.IOMetadata
+	case fakestore.Whole:
+		req.Kind, req.Length = seekparquet.IOWholeObject, -1
+	default:
+		req.Kind = seekparquet.IORange
+	}
+	done := o.o.Begin(req)
+	return func(got int64, err error) { done(seekparquet.IOResult{Bytes: got, Err: err}) }
+}
+
+var (
+	_ seekparquet.ContextBinder  = fakeFile{}
+	_ seekparquet.RangeReader    = fakeRangeFile{}
+	_ seekparquet.SizedSource    = capableSource{}
+	_ seekparquet.ManifestReader = capableSource{}
+	_ seekparquet.IOReporter     = fakeSource{}
+)

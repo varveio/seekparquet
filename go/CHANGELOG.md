@@ -5,6 +5,18 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Optional storage capabilities for remote sources, each with a fallback to `Open` and `ReadAt`:
+  `ManifestReader` (one bounded whole-manifest read; `Metadata.ManifestIdentity`), `SizedSource` (part
+  opens with the manifest's size, proven by the first read; `SizeMismatchError` is refused `part_mismatch`
+  wherever it surfaces, a missing object `missing_part`), `RangeReader` with `ReadRange`, `BatchError`,
+  `MaxReadRanges` and `MaxReadBatchBytes`, and `ErrObjectChanged` and `ErrObjectTooLarge`. Physical
+  reporting: `IOReporter`, `IOObserver` (`WithIOObserver`, `IOObserverFromContext`) with `IORequest`,
+  `IORequestKind` and `IOResult`, counted in new `ReadStats` fields (`SourceBatches`, `ScalarFallbackReads`,
+  `Physical*`, `Planned*`, `ByteCacheHitBytes`, `MetadataHitBytes`, `UnreportedIOCalls`,
+  `PeakPhysicalRequests`; `Add` keeps the larger peak) and in `OpenOptions.OpenStats` for the open. Cache
+  control: `CacheMode` with `WithCacheMode` and `CacheModeFromContext`. `OpenOptions.Read` is a
+  `ReadPolicy` (`Concurrency`, default 64).
+
 - **Breaking: the read API is redesigned** before any stability promise (no deprecated aliases):
   - Requests: `Range`, `KeyRange` and `PrefixRange` are replaced by `Span` (`KeySpan`, exactly
     `[key, key+0x00)`, and `PrefixSpan`), `Selection` (a span and a row cursor) and `Query` (a selection,

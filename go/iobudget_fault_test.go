@@ -4,11 +4,13 @@
 package seekparquet_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -179,7 +181,7 @@ type faultRun struct {
 // runFaulted runs op on a fresh store, in its own bubble, with faults
 // injected into the operation (none: the clean run). The open is the
 // operation when op is nil.
-func runFaulted(t *testing.T, fx *ioFixture, op *faultOp, faults ...fakestore.Fault) faultRun {
+func runFaulted(t *testing.T, fx *ioFixture, store ioStore, op *faultOp, faults ...fakestore.Fault) faultRun {
 	t.Helper()
 	var out faultRun
 	synctest.Test(t, func(t *testing.T) {
@@ -191,7 +193,7 @@ func runFaulted(t *testing.T, fx *ioFixture, op *faultOp, faults ...fakestore.Fa
 		if op == nil {
 			run = func(ctx context.Context) (string, error) {
 				var err error
-				d, err = seekparquet.OpenDataset(ctx, fakeSource{src}, seekparquet.OpenOptions{})
+				d, err = seekparquet.OpenDataset(ctx, store.wrap(src), store.opt)
 				if err != nil {
 					return "", err
 				}
@@ -199,7 +201,7 @@ func runFaulted(t *testing.T, fx *ioFixture, op *faultOp, faults ...fakestore.Fa
 			}
 		} else {
 			var err error
-			d, err = seekparquet.OpenDataset(ctx, fakeSource{src}, seekparquet.OpenOptions{})
+			d, err = seekparquet.OpenDataset(ctx, store.wrap(src), store.opt)
 			must(t, err)
 			run = op.setup(ctx, d)
 		}
@@ -269,39 +271,41 @@ func TestFaultMatrix(t *testing.T) {
 	ops := faultOps(fx, ents[len(ents)-1].Cursor())
 	cells := 0
 	outcomes := map[string]int{}
-	for i := -1; i < len(ops); i++ {
-		var op *faultOp
-		name := "open"
-		if i >= 0 {
-			op, name = &ops[i], ops[i].name
-		}
-		t.Run(name, func(t *testing.T) {
-			clean := runFaulted(t, fx, op)
-			if clean.err != nil || clean.inFlight != 0 || clean.leaked != 0 {
-				t.Fatalf("clean run: %v, %d in flight, %d goroutines left\n%s", clean.err, clean.inFlight, clean.leaked, clean.report.Trace(40))
+	for _, store := range ioStores {
+		for i := -1; i < len(ops); i++ {
+			var op *faultOp
+			name := "open"
+			if i >= 0 {
+				op, name = &ops[i], ops[i].name
 			}
-			n := len(clean.report.Requests)
-			for _, kind := range faultKinds {
-				for _, at := range positions(n, faultPositions) {
-					cells++
-					got := runFaulted(t, fx, op, fakestore.Fault{At: at, Kind: kind})
-					where := fmt.Sprintf("%s at request %d of %d", kind, at, n)
-					outcomes[fmt.Sprintf("%s: %s", kind, outcome(got.err))]++
-					switch {
-					case got.err == nil && got.text != clean.text:
-						t.Errorf("%s: a wrong result and no error:\n%.600s\nwant\n%.600s\n%s", where, got.text, clean.text, got.report.Trace(40))
-					case got.inFlight != 0:
-						t.Errorf("%s: %d requests in flight after the operation returned (%v)", where, got.inFlight, got.err)
-					case got.leaked != 0:
-						t.Errorf("%s: %d goroutines left after the operation returned (%v)", where, got.leaked, got.err)
-					case (kind == fakestore.Fail || kind == fakestore.FailAfter) && got.err != nil && (!errors.Is(got.err, fakestore.ErrInjected) || seekparquet.RefusalCodeOf(got.err) != ""):
-						t.Errorf("%s: %v (refusal %q), want the source's error", where, got.err, seekparquet.RefusalCodeOf(got.err))
-					case kind == fakestore.Hang && got.err != nil && !errors.Is(got.err, context.DeadlineExceeded):
-						t.Errorf("%s: %v, want the context's deadline", where, got.err)
+			t.Run(store.name+"/"+name, func(t *testing.T) {
+				clean := runFaulted(t, fx, store, op)
+				if clean.err != nil || clean.inFlight != 0 || clean.leaked != 0 {
+					t.Fatalf("clean run: %v, %d in flight, %d goroutines left\n%s", clean.err, clean.inFlight, clean.leaked, clean.report.Trace(40))
+				}
+				n := len(clean.report.Requests)
+				for _, kind := range faultKinds {
+					for _, at := range positions(n, faultPositions) {
+						cells++
+						got := runFaulted(t, fx, store, op, fakestore.Fault{At: at, Kind: kind})
+						where := fmt.Sprintf("%s at request %d of %d", kind, at, n)
+						outcomes[fmt.Sprintf("%s: %s", kind, outcome(got.err))]++
+						switch {
+						case got.err == nil && got.text != clean.text:
+							t.Errorf("%s: a wrong result and no error:\n%.600s\nwant\n%.600s\n%s", where, got.text, clean.text, got.report.Trace(40))
+						case got.inFlight != 0:
+							t.Errorf("%s: %d requests in flight after the operation returned (%v)", where, got.inFlight, got.err)
+						case got.leaked != 0:
+							t.Errorf("%s: %d goroutines left after the operation returned (%v)", where, got.leaked, got.err)
+						case (kind == fakestore.Fail || kind == fakestore.FailAfter) && got.err != nil && (!errors.Is(got.err, fakestore.ErrInjected) || seekparquet.RefusalCodeOf(got.err) != ""):
+							t.Errorf("%s: %v (refusal %q), want the source's error", where, got.err, seekparquet.RefusalCodeOf(got.err))
+						case kind == fakestore.Hang && got.err != nil && !errors.Is(got.err, context.DeadlineExceeded):
+							t.Errorf("%s: %v, want the context's deadline", where, got.err)
+						}
 					}
 				}
-			}
-		})
+			})
+		}
 	}
 	t.Logf("%d cells: %v", cells, outcomes)
 }
@@ -319,4 +323,175 @@ func outcome(err error) string {
 		return "source error"
 	}
 	return "other error"
+}
+
+// TestStorageFaults covers the storage paths the capabilities add, through
+// the plain and the capable store alike, with the same outcome on both: a
+// part of another size than its manifest entry is refused part_mismatch,
+// whether Open's size or a sized open's first read finds it; a missing
+// part missing_part, found by Open's metadata request or by the first
+// read; a part replaced after it was pinned fails the next read with
+// ErrObjectChanged, an environment error and never a refusal, and is not
+// refused later; a manifest beyond Limits.ManifestBytes fails with a
+// *LimitError naming ManifestBytes; a short manifest fails the open.
+func TestStorageFaults(t *testing.T) {
+	fx := ioFixtureOf(t, ioTiny)
+	part := "data/part-00001.parquet"
+	key := fx.mid
+	get := func(ctx context.Context, d *seekparquet.Dataset) error {
+		_, err := d.Get(ctx, key, nil, ioColumns...)
+		return err
+	}
+	type outcome struct {
+		code   seekparquet.RefusalCode
+		part   string
+		errStr string
+	}
+	run := func(t *testing.T, store ioStore, opt seekparquet.OpenOptions, setup func(*fakestore.Source), op func(context.Context, *seekparquet.Dataset, *fakestore.Source) error) (openErr, opErr error) {
+		synctest.Test(t, func(t *testing.T) {
+			ctx := context.Background()
+			src := fakestore.New(fx.objects, ioOptions)
+			if setup != nil {
+				setup(src)
+			}
+			store.opt = opt
+			d, err := seekparquet.OpenDataset(ctx, store.wrap(src), store.opt)
+			if err != nil {
+				openErr = err
+				return
+			}
+			defer d.Close()
+			opErr = op(ctx, d, src)
+		})
+		return openErr, opErr
+	}
+	refusal := func(err error) outcome {
+		var re *seekparquet.RefusalError
+		if errors.As(err, &re) {
+			return outcome{code: re.Code, part: re.Part}
+		}
+		return outcome{errStr: fmt.Sprint(err)}
+	}
+	for _, store := range ioStores {
+		t.Run(store.name, func(t *testing.T) {
+			// Another size: the object is 10 bytes longer than its entry.
+			_, err := run(t, store, seekparquet.OpenOptions{}, func(s *fakestore.Source) {
+				o := fx.objects[part]
+				s.Replace(part, fakestore.Object{Data: append(bytes.Clone(o.Data), make([]byte, 10)...)})
+			}, func(ctx context.Context, d *seekparquet.Dataset, _ *fakestore.Source) error {
+				if err := get(ctx, d); err == nil {
+					return errors.New("no error")
+				}
+				return d.Verify(ctx) // the refusal is kept
+			})
+			if got := refusal(err); got != (outcome{code: seekparquet.CodePartMismatch, part: part}) {
+				t.Errorf("resized part: %v", err)
+			}
+			// Missing.
+			_, err = run(t, store, seekparquet.OpenOptions{}, func(s *fakestore.Source) { s.Remove(part) },
+				func(ctx context.Context, d *seekparquet.Dataset, _ *fakestore.Source) error { return get(ctx, d) })
+			if got := refusal(err); got != (outcome{code: seekparquet.CodeMissingPart, part: part}) {
+				t.Errorf("missing part: %v", err)
+			}
+			// Replaced after it was pinned: the first read pins it.
+			_, err = run(t, store, seekparquet.OpenOptions{}, nil, func(ctx context.Context, d *seekparquet.Dataset, s *fakestore.Source) error {
+				if err := get(ctx, d); err != nil {
+					return fmt.Errorf("before the replacement: %w", err)
+				}
+				s.Replace(part, fx.objects[part])
+				_, err := d.Get(ctx, fx.first, nil, ioColumns...)
+				if !errors.Is(err, seekparquet.ErrObjectChanged) || seekparquet.RefusalCodeOf(err) != "" {
+					return fmt.Errorf("after the replacement: %v", err)
+				}
+				_, err = d.Get(ctx, fx.last, nil, ioColumns...)
+				if !errors.Is(err, seekparquet.ErrObjectChanged) {
+					return fmt.Errorf("again after the replacement: %v", err)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Error(err)
+			}
+			// A manifest one byte beyond the limit.
+			limit := int64(len(fx.objects[seekparquet.ManifestName].Data)) - 1
+			openErr, _ := run(t, store, seekparquet.OpenOptions{Limits: seekparquet.Limits{ManifestBytes: limit}}, nil, nil)
+			var le *seekparquet.LimitError
+			if !errors.As(openErr, &le) || le.Limit != seekparquet.LimitManifestBytes || le.Max != limit {
+				t.Errorf("oversized manifest: %v", openErr)
+			}
+			// A short manifest: the read returns half of it.
+			synctest.Test(t, func(t *testing.T) {
+				src := fakestore.New(fx.objects, ioOptions)
+				op := src.Begin("open", fakestore.Fault{At: 1 + boolInt(store.name == "plain"), Kind: fakestore.ShortRead})
+				_, err := seekparquet.OpenDataset(context.Background(), store.wrap(src), store.opt)
+				op.End()
+				if err == nil {
+					t.Error("a short manifest opened")
+				}
+			})
+		})
+	}
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// countingObserver counts the physical requests reported to it.
+type countingObserver struct{ begun, ended, bytes atomic.Int64 }
+
+func (o *countingObserver) Begin(seekparquet.IORequest) func(seekparquet.IOResult) {
+	o.begun.Add(1)
+	return func(r seekparquet.IOResult) { o.ended.Add(1); o.bytes.Add(r.Bytes) }
+}
+func (o *countingObserver) CacheHit(int64)                   {}
+func (o *countingObserver) BatchPlanned(int64, int64, int64) {}
+
+// TestPhysicalStats: a reporting Source's physical requests reach
+// ReadStats exactly, the open's through OpenStats, and reach an observer
+// the caller put on the context too; a Source that does not report
+// leaves them out and counts its calls as unreported.
+func TestPhysicalStats(t *testing.T) {
+	fx := ioFixtureOf(t, ioTiny)
+	for _, store := range ioStores {
+		t.Run(store.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				src := fakestore.New(fx.objects, ioOptions)
+				var open seekparquet.ReadStats
+				opt := store.opt
+				opt.OpenStats = &open
+				rec := src.Begin("open")
+				d, err := seekparquet.OpenDataset(context.Background(), store.wrap(src), opt)
+				must(t, err)
+				defer d.Close()
+				want := rec.End().Summary()
+				if open.PhysicalRequests != int64(want.Requests) || open.UnreportedIOCalls != 0 || open.PeakPhysicalRequests != 1 {
+					t.Fatalf("open: %+v, the store made %+v", open, want)
+				}
+				var obs countingObserver
+				ctx := seekparquet.WithIOObserver(context.Background(), &obs)
+				var st seekparquet.ReadStats
+				rec = src.Begin("get")
+				_, err = d.Get(ctx, fx.mid, &st, ioColumns...)
+				must(t, err)
+				got := rec.End().Summary()
+				if st.PhysicalRequests != int64(got.Requests) || st.PhysicalFailures != 0 || st.UnreportedIOCalls != 0 ||
+					obs.begun.Load() != st.PhysicalRequests || obs.ended.Load() != st.PhysicalRequests || obs.bytes.Load() != st.PhysicalBytes {
+					t.Fatalf("get: %+v, the store made %+v, the observer saw %d/%d", st, got, obs.begun.Load(), obs.ended.Load())
+				}
+			})
+		})
+	}
+	d, err := seekparquet.OpenDir(context.Background(), fx.dir, seekparquet.OpenOptions{})
+	must(t, err)
+	defer d.Close()
+	var st seekparquet.ReadStats
+	_, err = d.Get(context.Background(), fx.mid, &st, ioColumns...)
+	must(t, err)
+	if st.PhysicalRequests != 0 || st.UnreportedIOCalls != st.SourceReads+st.PartsOpened { // each read and the part's Open
+		t.Fatalf("local: %+v", st)
+	}
 }

@@ -113,7 +113,7 @@ func (r *reader) plan(ctx context.Context, selections []Selection, columns []str
 	if err := r.checkProjection(columns); err != nil {
 		return nil, err
 	}
-	rctx, end, err := r.begin(ctx)
+	rctx, end, err := r.begin(ctx, st)
 	if err != nil {
 		return nil, err
 	}

@@ -22,34 +22,6 @@ import (
 	"github.com/varveio/seekparquet/go/internal/thriftcheck"
 )
 
-// storageError marks an error the source itself returned from ReadAt, so
-// that a failure to read storage is never mistaken for corrupt data
-// (CHECK-5): it is reported as an error, not a refusal.
-type storageError struct{ err error }
-
-func (e *storageError) Error() string { return e.err.Error() }
-func (e *storageError) Unwrap() error { return e.err }
-
-// storageReader marks the errors of a source's ReadAt. io.EOF is left
-// unmarked: every location the reader follows is first checked to lie
-// inside the file, so reading past its end means the data lied.
-type storageReader struct {
-	r  io.ReaderAt
-	st *ReadStats // counts the reads of a request, nil for none
-}
-
-func (s storageReader) ReadAt(p []byte, off int64) (int, error) {
-	if s.st != nil {
-		s.st.SourceReads++
-		s.st.SourceBytes += int64(len(p))
-	}
-	n, err := s.r.ReadAt(p, off)
-	if err != nil && !errors.Is(err, io.EOF) {
-		err = &storageError{err}
-	}
-	return n, err
-}
-
 // isEnvironment reports whether err comes from the context, Close, a limit
 // or the source rather than from the data.
 func isEnvironment(ctx context.Context, err error) bool {
@@ -155,7 +127,7 @@ func decodeBounded(raw []byte, v any, budget int64) (int, error) {
 // and footer, nothing else (InspectFooter). Nothing is allocated from the
 // declared footer length before it is checked.
 func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, lim *Limits, st *ReadStats, maxWindow int64) (_ *parquet.File, err error) {
-	at := storageReader{r: bind(ctx, file), st: st}
+	at := storageReader{r: bind(ctx, file), st: st, name: name, unreported: !reportsIO(file)}
 	bad := func(format string, args ...any) error {
 		return refusePart(CodeInvalidFooter, name, -1, format, args...)
 	}
@@ -259,10 +231,12 @@ func readFooter(ctx context.Context, name string, file io.ReaderAt, size int64, 
 }
 
 // footerError classifies an error reading a footer: the environment's own
-// error as is, anything else invalid_footer.
+// error, or the refusal of a part the source found missing or of another
+// size (sourceError), as is; anything else invalid_footer.
 func footerError(ctx context.Context, name string, err error) error {
 	var unsupported *UnsupportedError
-	if isEnvironment(ctx, err) || errors.As(err, &unsupported) {
+	var refusal *RefusalError
+	if isEnvironment(ctx, err) || errors.As(err, &unsupported) || errors.As(err, &refusal) {
 		return err
 	}
 	return refusePart(CodeInvalidFooter, name, -1, "%v", err)

@@ -109,6 +109,7 @@ func TestOffsetIndexCacheReadStats(t *testing.T) {
 	// The repeat skips one read per projected column chunk: its OffsetIndex.
 	w := u2
 	w.SourceReads -= int64(len(columns))
+	w.UnreportedIOCalls -= int64(len(columns))
 	checkStats(t, "cached repeat", c2, w, csrc)
 	if u2.SourceBytes-c2.SourceBytes != indexBytes {
 		t.Fatalf("the repeat read %d fewer bytes, want the OffsetIndexes' %d", u2.SourceBytes-c2.SourceBytes, indexBytes)

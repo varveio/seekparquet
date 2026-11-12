@@ -1176,7 +1176,8 @@ func (p *part) badPage(physical, column int, off int64) func(string, ...any) err
 func (p *part) readPage(ctx context.Context, off, n int64, st *ReadStats, bad func(string, ...any) error, scratch *pageScratch) ([]byte, error) {
 	raw := scratch.readBuffer(int(n))
 	if err := readFull(p.at(ctx, st), raw, off); err != nil {
-		if isEnvironment(ctx, err) {
+		var refusal *RefusalError
+		if isEnvironment(ctx, err) || errors.As(err, &refusal) { // the source's own, or a part it found missing or resized
 			return nil, err
 		}
 		return nil, bad("%v", err)

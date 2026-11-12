@@ -140,6 +140,7 @@ func TestListReadAheadSameResults(t *testing.T) {
 					extra := st
 					extra.SourceReads -= st.ReadAheadUnused
 					extra.SourceBytes -= st.ReadAheadUnusedBytes
+					extra.UnreportedIOCalls -= st.ReadAheadUnused // a storage call each, as in SourceReads
 					extra.ReadAheadReads, extra.ReadAheadUnused, extra.ReadAheadUnusedBytes = 0, 0, 0
 					if extra != base {
 						t.Fatalf("%s, ReadAhead %d: counts beyond the unused reads ahead differ:\n got %+v\nwant %+v\n(%+v)", describe(req), n, extra, base, st)
@@ -263,6 +264,7 @@ func TestListReadAheadManyPages(t *testing.T) {
 	extra := stats[1]
 	extra.SourceReads -= extra.ReadAheadUnused
 	extra.SourceBytes -= extra.ReadAheadUnusedBytes
+	extra.UnreportedIOCalls -= extra.ReadAheadUnused // a storage call each, as in SourceReads
 	extra.ReadAheadReads, extra.ReadAheadUnused, extra.ReadAheadUnusedBytes = 0, 0, 0
 	if extra != stats[0] {
 		t.Fatalf("counts differ beyond the unused reads ahead:\n got %+v\nwant %+v", extra, stats[0])

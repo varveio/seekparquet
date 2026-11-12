@@ -46,7 +46,7 @@ func (plan *Plan) Split(ctx context.Context, n int, st *ReadStats) (_ []*Plan, e
 		return nil, invalidRequest("split into %d shards", n)
 	}
 	r := plan.r
-	rctx, end, err := r.begin(ctx)
+	rctx, end, err := r.begin(ctx, st)
 	if err != nil {
 		return nil, err
 	}

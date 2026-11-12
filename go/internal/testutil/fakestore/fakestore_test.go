@@ -292,3 +292,67 @@ func TestDeterministic(t *testing.T) {
 		})
 	}
 }
+
+// TestCapabilities: a sized open makes no request and its first read pins
+// the object, failing on another size or a missing object; a replaced
+// object fails a pinned handle's next read; a whole-object read is one
+// request within its limit; a batch is one round of requests together.
+func TestCapabilities(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		s := newSource(Options{Latency: 10 * time.Millisecond, MetadataOnOpen: true})
+		op := s.Begin("sized")
+		f, err := s.OpenSized(ctx, "a", 1000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		buf := make([]byte, 10)
+		if _, err := f.ReadAt(buf, 0); err != nil || !bytes.Equal(buf, data(1000)[:10]) {
+			t.Fatal(err)
+		}
+		if got := op.End().Summary(); got.Requests != 1 || got.Metadata != 0 {
+			t.Fatalf("%+v", got)
+		}
+		wrong, _ := s.OpenSized(ctx, "a", 999)
+		var mismatch *SizeMismatchError
+		if _, err := wrong.ReadAt(buf, 0); !errors.As(err, &mismatch) || mismatch.Actual != 1000 || mismatch.Expected != 999 {
+			t.Fatalf("wrong size: %v", err)
+		}
+		missing, _ := s.OpenSized(ctx, "nope", 5)
+		if _, err := missing.ReadAt(buf[:1], 0); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("missing: %v", err)
+		}
+		s.Replace("a", Object{Data: data(1000)})
+		if _, err := f.ReadAt(buf, 0); !errors.Is(err, ErrObjectChanged) {
+			t.Fatalf("replaced: %v", err)
+		}
+		op = s.Begin("whole")
+		got, id, err := s.ReadObject(ctx, "b", 500)
+		if err != nil || !bytes.Equal(got, data(500)) || id != "b#1" {
+			t.Fatalf("whole: %v %q", err, id)
+		}
+		if _, _, err := s.ReadObject(ctx, "b", 499); !errors.Is(err, ErrTooLarge) {
+			t.Fatalf("too large: %v", err)
+		}
+		if got := op.End().Summary(); got.Whole != 2 || got.Bytes != 500 {
+			t.Fatalf("%+v", got)
+		}
+		g, _ := s.Open(ctx, "b")
+		op = s.Begin("batch")
+		exts := []Extent{{Off: 0, Buf: make([]byte, 10)}, {Off: 100, Buf: make([]byte, 10)}, {Off: 200, Buf: nil}}
+		if err := g.ReadRanges(ctx, exts); err != nil || !bytes.Equal(exts[1].Buf, data(500)[100:110]) {
+			t.Fatal(err)
+		}
+		rep := op.End()
+		if got := rep.Summary(); got.Requests != 2 || got.Rounds != 1 || got.MaxInFlight != 2 || rep.Requests[0].Batch == 0 {
+			t.Fatalf("%+v", got)
+		}
+		op = s.Begin("batch fault", Fault{At: 2, Kind: Fail})
+		err = g.ReadRanges(ctx, exts)
+		var be *BatchError
+		if !errors.As(err, &be) || (be.Errs[0] == nil) == (be.Errs[1] == nil) || be.Errs[2] != nil {
+			t.Fatalf("batch fault: %v", err)
+		}
+		op.End()
+	})
+}

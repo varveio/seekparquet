@@ -125,6 +125,13 @@
 // No parquet-go type appears in the read API; package write takes a
 // parquet-go schema.
 //
+// A Source may offer optional capabilities for remote storage: a whole
+// manifest read (ManifestReader), part opens with the manifest's size and
+// no metadata request (SizedSource), batched range reads on its files
+// (RangeReader), and reports of its physical requests to the context's
+// IOObserver (IOReporter), which ReadStats counts. A Source with none is
+// read through Open and ReadAt.
+//
 // # Read statistics
 //
 // Passing a *ReadStats to a read (Rows, Get, Scan, List, Plan, Split,

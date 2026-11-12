@@ -124,7 +124,7 @@ func (plan *Plan) scanBatches(ctx context.Context, st *ReadStats, kr keyReuse, f
 		return invalidRequest("a nil batch callback")
 	}
 	r := plan.r
-	rctx, end, err := r.begin(ctx)
+	rctx, end, err := r.begin(ctx, st)
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func (r *reader) rangeBatches(ctx context.Context, q Query, st *ReadStats, kr ke
 	if fn == nil {
 		return invalidRequest("a nil batch callback")
 	}
-	ctx, done, err := r.request(ctx, q.Cursor, false, q.Limit, true, q.Columns)
+	ctx, done, err := r.request(ctx, st, q.Cursor, false, q.Limit, true, q.Columns)
 	if err != nil {
 		return err
 	}

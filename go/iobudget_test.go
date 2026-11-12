@@ -127,34 +127,84 @@ var ioBudgets = []ioBudget{
 	{"plan-20/plan-warm", ioMetrics{20, 20, 103002, 0, 1}, none, current},
 	{"plan-20/scan-warm", ioMetrics{60, 60, 289574, 0, 1}, ioTarget{60, 2}, current},
 	{"split/plan", ioMetrics{10, 10, 74142, 0, 1}, none, current},
-	{"split/split4", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, current},
+	{"split/split4", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
 	{"split/shards-concurrent", ioMetrics{202, 52, 673818, 0, 4}, ioTarget{20, 5}, current},
 	{"verify/cold", ioMetrics{64, 64, 391382, 0, 1}, ioTarget{24, 3}, current},
 	{"verify/warm", ioMetrics{4, 4, 9216, 0, 1}, ioTarget{0, 0}, current},
 }
 
-// ioRepeatedBudgets is measured on the repeated-key variant of ioSmall.
+// ioCapableBudgets is measured on ioSmall through capableStore.
+var ioCapableBudgets = []ioBudget{
+	{"open/cold", ioMetrics{1, 1, 1591, 0, 1}, ioTarget{1, 1}, atTarget},
+	{"open/again", ioMetrics{1, 1, 1591, 0, 1}, ioTarget{1, 1}, atTarget},
+	{"rows-key/first/cold", ioMetrics{9, 9, 82784, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-key/first/warm", ioMetrics{3, 3, 14005, 0, 1}, ioTarget{3, 1}, current},
+	{"rows-key/mid/cold", ioMetrics{13, 13, 95166, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-key/mid/warm", ioMetrics{3, 3, 16685, 0, 1}, ioTarget{3, 1}, current},
+	{"rows-key/other-group/warm", ioMetrics{7, 7, 17963, 0, 1}, ioTarget{3, 1}, current},
+	{"rows-key/last/cold", ioMetrics{13, 13, 77386, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-key/last/warm", ioMetrics{3, 3, 5467, 0, 1}, ioTarget{3, 1}, current},
+	{"get/first/cold", ioMetrics{9, 9, 82784, 0, 1}, ioTarget{8, 5}, current},
+	{"get/first/warm", ioMetrics{3, 3, 14005, 0, 1}, ioTarget{3, 2}, current},
+	{"get/mid/cold", ioMetrics{13, 13, 95166, 0, 1}, ioTarget{8, 5}, current},
+	{"get/mid/warm", ioMetrics{3, 3, 16685, 0, 1}, ioTarget{3, 2}, current},
+	{"get/other-group/warm", ioMetrics{7, 7, 17963, 0, 1}, ioTarget{3, 2}, current},
+	{"get/last/cold", ioMetrics{13, 13, 77386, 0, 1}, ioTarget{8, 5}, current},
+	{"get/last/warm", ioMetrics{3, 3, 5467, 0, 1}, ioTarget{3, 2}, current},
+	{"rows-100/2-cols/cold", ioMetrics{13, 13, 95166, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-100/2-cols/warm", ioMetrics{3, 3, 16685, 0, 1}, ioTarget{3, 1}, current},
+	{"rows-100/keys/cold", ioMetrics{9, 9, 85190, 0, 1}, none, current},
+	{"rows-100/keys/warm", ioMetrics{1, 1, 7349, 0, 1}, none, current},
+	{"list-ra0/page1-cold", ioMetrics{90, 90, 205244, 3, 1}, ioTarget{25, 8}, current},
+	{"list-ra0/page2", ioMetrics{38, 38, 34411, 1, 1}, ioTarget{4, 2}, current},
+	{"list-ra0/page1-warm", ioMetrics{68, 68, 49712, 0, 1}, ioTarget{4, 2}, current},
+	{"list-ra8/page1-cold", ioMetrics{96, 35, 209031, 3, 8}, ioTarget{25, 8}, current},
+	{"list-ra8/page2", ioMetrics{38, 12, 34411, 1, 8}, ioTarget{4, 2}, current},
+	{"list-ra8/page1-warm", ioMetrics{74, 13, 53499, 0, 8}, ioTarget{4, 2}, current},
+	{"build-list-index", ioMetrics{432, 432, 2303934, 0, 1}, ioTarget{40, 10}, current},
+	{"list-indexed-ra0/page1-cold", ioMetrics{76, 76, 59242, 0, 1}, ioTarget{25, 8}, current},
+	{"list-indexed-ra0/page2", ioMetrics{39, 39, 30164, 1, 1}, ioTarget{4, 2}, current},
+	{"list-indexed-ra0/page1-warm", ioMetrics{68, 68, 49712, 0, 1}, ioTarget{4, 2}, current},
+	{"scan-part/cold", ioMetrics{210, 210, 743236, 0, 1}, ioTarget{20, 5}, current},
+	{"scan-part/warm", ioMetrics{196, 196, 666598, 0, 1}, ioTarget{20, 5}, current},
+	{"plan-part/plan-cold", ioMetrics{9, 9, 74142, 0, 1}, none, current},
+	{"plan-part/scan-cold", ioMetrics{202, 202, 673818, 0, 1}, ioTarget{20, 5}, current},
+	{"plan-part/plan-warm", ioMetrics{1, 1, 4724, 0, 1}, none, current},
+	{"plan-part/scan-warm", ioMetrics{196, 196, 666598, 0, 1}, ioTarget{20, 5}, current},
+	{"plan-20/plan-cold", ioMetrics{104, 104, 474836, 0, 1}, ioTarget{32, 4}, current},
+	{"plan-20/scan-cold", ioMetrics{60, 60, 289574, 0, 1}, ioTarget{60, 2}, current},
+	{"plan-20/plan-warm", ioMetrics{20, 20, 103002, 0, 1}, none, current},
+	{"plan-20/scan-warm", ioMetrics{60, 60, 289574, 0, 1}, ioTarget{60, 2}, current},
+	{"split/plan", ioMetrics{9, 9, 74142, 0, 1}, none, current},
+	{"split/split4", ioMetrics{0, 0, 0, 0, 0}, ioTarget{0, 0}, atTarget},
+	{"split/shards-concurrent", ioMetrics{202, 52, 673818, 0, 4}, ioTarget{20, 5}, current},
+	{"verify/cold", ioMetrics{60, 60, 391382, 0, 1}, ioTarget{24, 3}, current},
+	{"verify/warm", ioMetrics{4, 4, 9216, 0, 1}, ioTarget{0, 0}, current},
+}
+
+// ioRepeatedBudgets is measured on the repeated-key variant of ioSmall,
+// through capableStore.
 var ioRepeatedBudgets = []ioBudget{
-	{"open/cold", ioMetrics{2, 2, 1592, 0, 1}, ioTarget{1, 1}, current},
-	{"open/again", ioMetrics{2, 2, 1592, 0, 1}, ioTarget{1, 1}, current},
-	{"rows-key/mid/cold", ioMetrics{14, 14, 91589, 0, 1}, ioTarget{8, 4}, current},
+	{"open/cold", ioMetrics{1, 1, 1592, 0, 1}, ioTarget{1, 1}, atTarget},
+	{"open/again", ioMetrics{1, 1, 1592, 0, 1}, ioTarget{1, 1}, atTarget},
+	{"rows-key/mid/cold", ioMetrics{13, 13, 91589, 0, 1}, ioTarget{8, 4}, current},
 	{"rows-key/mid/warm", ioMetrics{3, 3, 13555, 0, 1}, ioTarget{3, 1}, current},
 	{"rows-key/other-group/warm", ioMetrics{7, 7, 16241, 0, 1}, ioTarget{3, 1}, current},
-	{"get/first/cold", ioMetrics{10, 10, 81632, 0, 1}, ioTarget{8, 5}, current},
+	{"get/first/cold", ioMetrics{9, 9, 81632, 0, 1}, ioTarget{8, 5}, current},
 	{"get/first/warm", ioMetrics{3, 3, 12866, 0, 1}, ioTarget{3, 2}, current},
-	{"get/mid/cold", ioMetrics{14, 14, 91589, 0, 1}, ioTarget{8, 5}, current},
+	{"get/mid/cold", ioMetrics{13, 13, 91589, 0, 1}, ioTarget{8, 5}, current},
 	{"get/mid/warm", ioMetrics{3, 3, 13555, 0, 1}, ioTarget{3, 2}, current},
 	{"get/other-group/warm", ioMetrics{7, 7, 16241, 0, 1}, ioTarget{3, 2}, current},
-	{"get/last/cold", ioMetrics{14, 14, 80431, 0, 1}, ioTarget{8, 5}, current},
+	{"get/last/cold", ioMetrics{13, 13, 80431, 0, 1}, ioTarget{8, 5}, current},
 	{"get/last/warm", ioMetrics{3, 3, 6903, 0, 1}, ioTarget{3, 2}, current},
-	{"rows-100/2-cols/cold", ioMetrics{14, 14, 91589, 0, 1}, ioTarget{8, 4}, current},
+	{"rows-100/2-cols/cold", ioMetrics{13, 13, 91589, 0, 1}, ioTarget{8, 4}, current},
 	{"rows-100/2-cols/warm", ioMetrics{3, 3, 13555, 0, 1}, ioTarget{3, 1}, current},
-	{"list-ra0/page1-cold", ioMetrics{54, 54, 204744, 2, 1}, ioTarget{25, 8}, current},
+	{"list-ra0/page1-cold", ioMetrics{52, 52, 204744, 2, 1}, ioTarget{25, 8}, current},
 	{"list-ra0/page2", ioMetrics{41, 41, 58033, 0, 1}, ioTarget{4, 2}, current},
 	{"list-ra0/page1-warm", ioMetrics{36, 36, 54592, 0, 1}, ioTarget{4, 2}, current},
-	{"scan-part/cold", ioMetrics{211, 211, 677265, 0, 1}, ioTarget{20, 5}, current},
+	{"scan-part/cold", ioMetrics{210, 210, 677265, 0, 1}, ioTarget{20, 5}, current},
 	{"scan-part/warm", ioMetrics{196, 196, 600710, 0, 1}, ioTarget{20, 5}, current},
-	{"verify/cold", ioMetrics{64, 64, 370182, 0, 1}, ioTarget{24, 3}, current},
+	{"verify/cold", ioMetrics{60, 60, 370182, 0, 1}, ioTarget{24, 3}, current},
 	{"verify/warm", ioMetrics{4, 4, 8391, 0, 1}, ioTarget{0, 0}, current},
 }
 
@@ -164,6 +214,7 @@ type ioEnv struct {
 	t       *testing.T
 	fx      *ioFixture
 	src     *fakestore.Source // nil for the local directory
+	store   ioStore
 	reports map[string]fakestore.Report
 	results map[string]string
 }
@@ -175,7 +226,7 @@ func (e *ioEnv) open() *seekparquet.Dataset {
 	var d *seekparquet.Dataset
 	var err error
 	if e.src != nil {
-		d, err = seekparquet.OpenDataset(context.Background(), fakeSource{e.src}, seekparquet.OpenOptions{})
+		d, err = seekparquet.OpenDataset(context.Background(), e.store.wrap(e.src), e.store.opt)
 	} else {
 		d, err = seekparquet.OpenDir(context.Background(), e.fx.dir, seekparquet.OpenOptions{})
 	}
@@ -480,32 +531,56 @@ func (h *batchHash) text(err error) (string, error) {
 	return fmt.Sprintf("%d rows sha256 %x ", h.rows, h.h.Sum(nil)), err
 }
 
-// runIOScenarios runs every scenario through the store, each in its own
-// bubble, and through the local directory, and reports the store's
+// ioStore is a way of serving the fixture: the Source the store is seen
+// through, and the options the dataset is opened with.
+type ioStore struct {
+	name string
+	wrap func(*fakestore.Source) seekparquet.Source
+	opt  seekparquet.OpenOptions
+}
+
+var (
+	// plainStore is a remote store as objfile's adapter serves it today:
+	// Open with a metadata request, ReadAt and WithContext only.
+	plainStore = ioStore{name: "plain", wrap: func(s *fakestore.Source) seekparquet.Source { return fakeSource{s} }}
+	// capableStore offers every optional capability: sized opens (no
+	// metadata request), a whole-manifest read and batched ranges.
+	capableStore = ioStore{name: "capable", wrap: func(s *fakestore.Source) seekparquet.Source { return capableSource{fakeSource{s}} }}
+	// ioStores are the stores every scenario runs through.
+	ioStores = []ioStore{plainStore, capableStore}
+)
+
+// runIOScenarios runs every scenario through each store, each in its own
+// bubble, and through the local directory, and reports each store's
 // operations after checking that each step's result is the local one.
-func runIOScenarios(t *testing.T, fx *ioFixture, scenarios []ioScenario) map[string]fakestore.Report {
+func runIOScenarios(t *testing.T, fx *ioFixture, scenarios []ioScenario, stores []ioStore) map[string]map[string]fakestore.Report {
 	t.Helper()
-	reports := map[string]fakestore.Report{}
+	reports := map[string]map[string]fakestore.Report{}
+	for _, store := range stores {
+		reports[store.name] = map[string]fakestore.Report{}
+	}
 	for _, sc := range scenarios {
 		t.Run(sc.name, func(t *testing.T) {
 			want := map[string]string{}
 			t.Run("local", func(t *testing.T) {
 				sc.run(&ioEnv{t: t, fx: fx, results: want})
 			})
-			got := map[string]string{}
-			synctest.Test(t, func(t *testing.T) {
-				src := fakestore.New(fx.objects, ioOptions)
-				sc.run(&ioEnv{t: t, fx: fx, src: src, reports: reports, results: got})
-			})
-			for name, w := range want {
-				if g := got[name]; g != w {
-					t.Errorf("%s: through the store\n%.2000s\nfrom the local directory\n%.2000s", name, g, w)
-				} else if strings.Contains(w, "error") {
-					t.Errorf("%s: %s", name, w[max(0, len(w)-300):])
+			for _, store := range stores {
+				got := map[string]string{}
+				synctest.Test(t, func(t *testing.T) {
+					src := fakestore.New(fx.objects, ioOptions)
+					sc.run(&ioEnv{t: t, fx: fx, src: src, store: store, reports: reports[store.name], results: got})
+				})
+				for name, w := range want {
+					if g := got[name]; g != w {
+						t.Errorf("%s through the %s store:\n%.2000s\nfrom the local directory\n%.2000s", name, store.name, g, w)
+					} else if strings.Contains(w, "error") {
+						t.Errorf("%s: %s", name, w[max(0, len(w)-300):])
+					}
 				}
-			}
-			if len(got) != len(want) {
-				t.Errorf("steps: %d through the store, %d locally", len(got), len(want))
+				if len(got) != len(want) {
+					t.Errorf("steps: %d through the %s store, %d locally", len(got), store.name, len(want))
+				}
 			}
 		})
 	}
@@ -599,11 +674,13 @@ func TestReadBudgets(t *testing.T) {
 	seekparquet.NoTestReadAhead(t)
 	fx := ioFixtureOf(t, ioSmall)
 	t.Logf("fixture: %s", describeFixture(fx))
-	checkBudgets(t, "unique", ioBudgets, runIOScenarios(t, fx, ioScenarios(fx)))
+	reports := runIOScenarios(t, fx, ioScenarios(fx), ioStores)
+	checkBudgets(t, "plain", ioBudgets, reports["plain"])
+	checkBudgets(t, "capable", ioCapableBudgets, reports["capable"])
 
 	rfx := ioFixtureOf(t, ioRepeated)
 	t.Logf("repeated fixture: %s", describeFixture(rfx))
-	checkBudgets(t, "repeated", ioRepeatedBudgets, runIOScenarios(t, rfx, ioRepeatedScenarios(rfx)))
+	checkBudgets(t, "repeated", ioRepeatedBudgets, runIOScenarios(t, rfx, ioRepeatedScenarios(rfx), []ioStore{capableStore})["capable"])
 }
 
 // TestReadBudgetsAuditSize runs the operations on a fixture of the audit's
@@ -616,7 +693,7 @@ func TestReadBudgetsAuditSize(t *testing.T) {
 	seekparquet.NoTestReadAhead(t)
 	fx := ioFixtureOf(t, ioAudit)
 	t.Logf("fixture: %s", describeFixture(fx))
-	reports := runIOScenarios(t, fx, ioScenarios(fx))
+	reports := runIOScenarios(t, fx, ioScenarios(fx), []ioStore{capableStore})["capable"]
 	var ops []string
 	for op := range reports {
 		ops = append(ops, op)

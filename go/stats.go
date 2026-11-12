@@ -15,7 +15,8 @@ package seekparquet
 // one, may do the same read with different counts. All fields are plain
 // integers; a ReadStats must not be shared between concurrent requests.
 //
-// The manifest read when the Dataset was opened is not counted. Work shared
+// The manifest read when the Dataset was opened is not counted here: pass
+// OpenOptions.OpenStats for it. Work shared
 // with earlier requests is counted only where a field says so: a part
 // checked by an earlier request, or by Verify, is not checked again, a key
 // page index loaded by an earlier request is reused, not loaded, a
@@ -77,6 +78,37 @@ type ReadStats struct {
 	// pages past where the listing stopped, and reads that failed (the
 	// page is then read again).
 	ReadAheadReads, ReadAheadUnused, ReadAheadUnusedBytes int64
+
+	// SourceBatches is the number of RangeReader.ReadRanges calls the
+	// request made, and ScalarFallbackReads the ranges it read together
+	// through concurrent ReadAt calls instead, from a file without
+	// RangeReader. Ranges read in a batch are counted in SourceReads and
+	// SourceBytes too: those count logical ranges, not physical requests.
+	SourceBatches, ScalarFallbackReads int64
+
+	// The physical counters come from a Source that reports its requests
+	// (IOReporter): the requests it made for the operation, opens and
+	// metadata requests included, their payload bytes, the retries among
+	// them and the attempts that failed. They are exact only when
+	// UnreportedIOCalls is zero.
+	PhysicalRequests, PhysicalBytes, PhysicalRetries, PhysicalFailures int64
+	// PlannedRanges, PlannedRequests and PlannedOverReadBytes are what a
+	// reporting source said it planned for the batches it was given
+	// (IOObserver.BatchPlanned); do not subtract them to infer requests.
+	PlannedRanges, PlannedRequests, PlannedOverReadBytes int64
+	// ByteCacheHitBytes are the bytes a reporting source served from its
+	// own byte cache. MetadataHitBytes are the bytes of footers and page
+	// indexes the reader served from the part metadata it retained
+	// (ReadPolicy.MetadataPrefetchBytes) instead of reading them.
+	ByteCacheHitBytes, MetadataHitBytes int64
+	// UnreportedIOCalls is the number of storage calls (ReadAt,
+	// ReadRanges, Open, OpenSized, ReadManifest) made on a source or file
+	// that does not report its physical requests: the physical counters
+	// leave their work out.
+	UnreportedIOCalls int64
+	// PeakPhysicalRequests is the most physical requests a reporting
+	// source had in flight at once for the operation.
+	PeakPhysicalRequests int64
 }
 
 // resetStats zeroes st for a new request, or returns a throwaway one when
@@ -89,8 +121,9 @@ func resetStats(st *ReadStats) *ReadStats {
 	return st
 }
 
-// Add adds every count of o to st: the work of several operations, such as
-// a plan, its split and the scans of its shards.
+// Add adds every count of o to st, and keeps the larger of each peak: the
+// work of several operations, such as a plan, its split and the scans of
+// its shards.
 func (st *ReadStats) Add(o ReadStats) {
 	st.ListIndexSkips += o.ListIndexSkips
 	st.ListIndexDelimiter += o.ListIndexDelimiter
@@ -111,4 +144,19 @@ func (st *ReadStats) Add(o ReadStats) {
 	st.ReadAheadReads += o.ReadAheadReads
 	st.ReadAheadUnused += o.ReadAheadUnused
 	st.ReadAheadUnusedBytes += o.ReadAheadUnusedBytes
+	st.SourceBatches += o.SourceBatches
+	st.ScalarFallbackReads += o.ScalarFallbackReads
+	st.PhysicalRequests += o.PhysicalRequests
+	st.PhysicalBytes += o.PhysicalBytes
+	st.PhysicalRetries += o.PhysicalRetries
+	st.PhysicalFailures += o.PhysicalFailures
+	st.PlannedRanges += o.PlannedRanges
+	st.PlannedRequests += o.PlannedRequests
+	st.PlannedOverReadBytes += o.PlannedOverReadBytes
+	st.ByteCacheHitBytes += o.ByteCacheHitBytes
+	st.MetadataHitBytes += o.MetadataHitBytes
+	st.UnreportedIOCalls += o.UnreportedIOCalls
+	// A peak of several operations is the largest of theirs, not a
+	// measurement of their concurrent peak.
+	st.PeakPhysicalRequests = max(st.PeakPhysicalRequests, o.PeakPhysicalRequests)
 }
