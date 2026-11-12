@@ -12,15 +12,19 @@ versioning; while it is v0, minor versions may change the API.
 - Removed `ReadStats.PhysicalRequests`, `PhysicalBytes`, `PhysicalRetries`,
   `PhysicalFailures`, `PlannedRanges`, `PlannedRequests`, `PlannedOverReadBytes`,
   `ByteCacheHitBytes`, `UnreportedIOCalls`, and `PeakPhysicalRequests`.
-  Logical and format counters, `Add`, and `OpenOptions.OpenStats` remain.
+  Removed the unreleased open-statistics field from `OpenOptions`.
+  Logical and format counters in `ReadStats`, and `Add`, remain.
 - Removed `CacheMode`, `CacheDefault`, `CacheBypass`, `WithCacheMode`, and
-  `CacheModeFromContext`. Scans and list-index builds leave source caching to storage;
-  `Plan.Scan` and `Plan.ScanValues` follow the same source-cache policy.
-  Reader metadata retention remains independent.
+  `CacheModeFromContext`. The end-to-end behavior change is that `Dataset.Scan`, `Plan.Scan`
+  and `BuildListIndex` no longer request a source-cache bypass. A caller whose storage caches bytes
+  chooses bypass in its storage, for example through its own context value. `Plan.ScanValues`
+  continues to follow the storage layer's cache policy. Reader metadata retention remains independent.
 - Removed `ReadPolicy.Concurrency`. Independent reads retain an internal limit;
   the Source bounds physical request concurrency. No compatibility shims are provided.
-- Documented supported Go writing: one part at a time from sorted rows, with profile
-  enforcement; the caller writes the manifest. Cursor token version 1 is stable.
+- Documented supported Go writing: package `write` produces one part at a time from sorted rows
+  and enforces the profile. `local.WriteDir` writes a complete new dataset, `local.Commit` publishes
+  a manifest for installed parts, and `MarshalManifest` returns manifest bytes for custom storage.
+  Cursor token version 1 is stable.
 
 - Added the row-position API: `RowPosition`, `RowSpan`, `ListEntry.Rows`,
   `Dataset.PlanRows`, `Plan.InputRowSpans`, `Plan.SelectRows`, `ValueBatch`, and
@@ -33,8 +37,8 @@ versioning; while it is v0, minor versions may change the API.
   positions, counts are inexact if any contributing part was unchecked at plan construction.
   There is no promise of an exact zero-request count for every listing entry.
   Value-only scans execute row positions without implicit
-  key decoding and allow Source caching under `CacheDefault`, while `Plan.Scan`
-  defaults to bypass. Counts and projected bytes report their exactness. No format change.
+  key decoding. Source caching follows the storage layer's policy. Counts and projected bytes report
+  their exactness. No format change.
 - Renamed `Plan.RowSpans` to `Plan.InputRowSpans` (pending Java name
   `inputRowSpans`) to identify original inputs, including overlaps and empties,
   rather than the normalized union. This is a breaking change to an API
@@ -100,8 +104,8 @@ versioning; while it is v0, minor versions may change the API.
   environment's error, never a refusal, keeping a size mismatch or broken pin it carries. Physical reporting: `IOReporter`, `IOObserver` (`WithIOObserver`, `IOObserverFromContext`) with
   `IORequest`, `IORequestKind` and `IOResult`, counted in new `ReadStats` fields (`SourceBatches`,
   `ScalarFallbackReads`, `Physical*`, `Planned*`, `ByteCacheHitBytes`, `MetadataHitBytes`, `RequestMemoHitBytes`,
-  `UnreportedIOCalls`, `PeakPhysicalRequests`; `Add` takes the larger peak) and in `OpenOptions.OpenStats` for
-  `OpenDataset` and `OpenDir`; every operation observes the requests of each receiver that reports, Source or file,
+  `UnreportedIOCalls`, `PeakPhysicalRequests`; `Add` takes the larger peak); every operation observes
+  the requests of each receiver that reports, Source or file,
   from its first call. Cache control: `CacheMode` with `WithCacheMode` and `CacheModeFromContext`;
   `Dataset.Scan`, `Plan.Scan` and `BuildListIndex` ask for `CacheBypass`. `OpenOptions.Read` is a `ReadPolicy`:
   `Concurrency` (default 64) bounds an operation's outstanding ranges, read-ahead included;

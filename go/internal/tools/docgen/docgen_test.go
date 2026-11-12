@@ -247,8 +247,6 @@ func TestReaderIOOperationReferences(t *testing.T) {
 	for _, want := range []string{
 		"Dataset.Verify(ctx, stats)",
 		"pass nil to discard statistics",
-		"OpenOptions.OpenStats",
-		"records logical and format work",
 	} {
 		if !strings.Contains(stats, want) {
 			t.Errorf("statistics reference is missing %q", want)
@@ -260,7 +258,6 @@ func TestReaderIOOperationReferences(t *testing.T) {
 	}
 	for _, want := range []string{
 		"| Logical read policy | `ReadPolicy` | — |",
-		"| Open statistics | `OpenOptions.OpenStats` | — |",
 	} {
 		if !strings.Contains(parity, want) {
 			t.Errorf("parity reference is missing %q", want)

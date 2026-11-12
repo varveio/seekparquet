@@ -47,5 +47,7 @@ The specification and the conformance suite are platform-independent. The confor
 
 ## Go writer support
 
-The Go `write` package is supported for producing one part at a time from sorted rows.
-It enforces the profile; the caller writes the manifest.
+The Go `write` package produces one part at a time from sorted rows and enforces the profile.
+In `go/local`, `local.WriteDir` writes a complete new dataset including its manifest, and `local.Commit`
+publishes a manifest for installed parts. For custom storage, `seekparquet.MarshalManifest` returns
+manifest bytes for the caller to store.

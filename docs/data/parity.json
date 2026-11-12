@@ -9,7 +9,6 @@
         {"concept": "Open options", "go": "OpenOptions", "java": "OpenOptions"},
         {"concept": "Logical read policy", "go": "ReadPolicy", "java": null, "note": "Go sets OpenOptions.Read for tail reads and speculation. Storage owns physical request execution, caching and observation."},
         {"concept": "Verify concurrency", "go": null, "java": "OpenOptions.verifyConcurrency", "note": "Java bounds concurrent part checks during verify. Go uses an internal limit; the Source bounds physical concurrency."},
-        {"concept": "Open statistics", "go": "OpenOptions.OpenStats", "java": null, "note": "Go only; logical and format counters reset on entry and filled on every exit. Manifest reads are excluded from SourceReads and SourceBytes. The Dataset does not retain it."},
         {"concept": "Resource limits", "go": "Limits", "java": "Limits", "note": "Java builds them with Limits.builder(). See the limits reference."},
         {"concept": "Retained raw page-index cache budget", "go": "Limits.PageIndexCacheMemory", "java": null, "note": "Go only; excludes footers and decoded indexes and does not bound overall metadata."},
         {"concept": "Check every part now", "go": "Dataset.Verify", "java": "Dataset.verify", "note": "Go: Verify(ctx, stats), with a *ReadStats or nil. Java: verify(ReadOptions)."},

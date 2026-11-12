@@ -14,7 +14,6 @@ A dash means the language has no counterpart. Names are checked against the code
 | Open options | `OpenOptions` | `OpenOptions` |  |
 | Logical read policy | `ReadPolicy` | — | Go sets OpenOptions.Read for tail reads and speculation. Storage owns physical request execution, caching and observation. |
 | Verify concurrency | — | `OpenOptions.verifyConcurrency` | Java bounds concurrent part checks during verify. Go uses an internal limit; the Source bounds physical concurrency. |
-| Open statistics | `OpenOptions.OpenStats` | — | Go only; logical and format counters reset on entry and filled on every exit. Manifest reads are excluded from SourceReads and SourceBytes. The Dataset does not retain it. |
 | Resource limits | `Limits` | `Limits` | Java builds them with Limits.builder(). See the limits reference. |
 | Retained raw page-index cache budget | `Limits.PageIndexCacheMemory` | — | Go only; excludes footers and decoded indexes and does not bound overall metadata. |
 | Check every part now | `Dataset.Verify` | `Dataset.verify` | Go: Verify(ctx, stats), with a *ReadStats or nil. Java: verify(ReadOptions). |

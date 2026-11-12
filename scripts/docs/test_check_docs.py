@@ -132,7 +132,7 @@ class DocumentationContracts(unittest.TestCase):
     def test_go_storage_capabilities_and_defaults(self):
         page = self.read('docs/concepts.md')
         for text in ('SizedSource.OpenSized', 'ManifestReader.ReadManifest', 'ErrObjectTooLarge',
-                     '*LimitError', 'ManifestBytes', 'OpenOptions.OpenStats',
+                     '*LimitError', 'ManifestBytes',
                      'Storage owns physical request execution, byte caching, and request observation.',
                      'Go bounds independent reads internally; the Source bounds physical concurrency.',
                      '| `MetadataPrefetchBytes` | 2 MiB; 64 KiB with `OpenDir` |',

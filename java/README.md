@@ -614,7 +614,7 @@ that fails when the process runs out, and opening a fresh dataset for it does no
 limitation, documented rather than solved: there is no cap that refuses such a pass early, and no eviction.
 
 **Verify (CHECK-3).** `Dataset.verify()` checks every part not yet checked, `verifyConcurrency` at a
-time (1 by default; the Go reader fetches up to `ReadPolicy.Concurrency` parts ahead and checks them in
+time (1 by default; the Go reader fetches parts ahead up to an internal limit and checks them in
 manifest order), then decodes every row group's first key page and each part's last, and compares
 each part's first and last key with the manifest (`bounds_mismatch`). It throws the first failure in
 manifest order. It reads one footer per unchecked part plus a page index and one or two key pages per
