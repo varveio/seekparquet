@@ -45,8 +45,9 @@ First public draft of format 1. Files carry `format_version` 0, `draft_revision`
   CHECK-5/RG-7 distinguish undecodable indexed headers and index disagreement from intrinsic header
   corruption, with explicit precedence. CHECK-1 requires recognized leaf annotation restrictions at first
   touch, including unprojected leaves, with COL-3 fallback for unknown alternatives. These explicit validity
-  and classification rules use the Parquet revision pinned in 0001. The proposal remains draft; unreleased
-  draft revision 1 is edited in place (VER-2), with no version bump.
+  and classification rules use the Parquet revision pinned in 0001. Unreleased draft revision 1 is edited
+  in place (VER-2), with no version bump. Proposal 0001 is accepted: Go, Java and the Python tools implement
+  it, and the shared suite pins it.
 
 - §3.3, §3.4, MAN-3, EXT-1 to EXT-5: each part MAY carry an `extensions` object, with the same schema as the
   top-level one (`$defs/extensions` in the schema). Readers ignore unknown namespaces and members (EXT-3);
