@@ -485,7 +485,17 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 					if j >= int64(len(todo)) {
 						return
 					}
-					read(todo[j])
+					// A panic of the source ends this range's read, not the
+					// process: the range fails.
+					func() {
+						defer func() {
+							if recover() != nil {
+								errs[todo[j]] = &storageError{errSourcePanic}
+								failed.Store(true)
+							}
+						}()
+						read(todo[j])
+					}()
 				}
 			})
 		}
@@ -505,6 +515,10 @@ func readRanges(ctx context.Context, rf rangeFile, ranges []ReadRange, st *ReadS
 	}
 	return errs
 }
+
+// errSourcePanic is the error of a range whose read panicked on a worker
+// goroutine of readRanges.
+var errSourcePanic = errors.New("seekparquet: the source panicked")
 
 // piece is part of one input range in a ReadRanges call: ranges beyond
 // MaxReadBatchBytes are read in pieces.

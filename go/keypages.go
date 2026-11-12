@@ -135,6 +135,9 @@ func (k *keyPages) decode(i int) error {
 	if k.plan != nil {
 		k.plan.page(k.scan, k, i)
 	}
+	if k.scan != nil && k.scan.ahead != nil {
+		k.scan.ahead.landing(k.scan, k, i)
+	}
 	if c.scratch != nil && k.reuse != nil {
 		k.reuse()
 	}

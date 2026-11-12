@@ -74,13 +74,6 @@ type ReadStats struct {
 	// requested bytes. Neither counts physical requests or wire bytes.
 	// Manifest reads are excluded.
 	SourceReads, SourceBytes int64
-	// ReadAheadReads is the number of key pages a listing read ahead
-	// (ListQuery.ReadAhead), each in one read counted in SourceReads and
-	// SourceBytes; ReadAheadUnused and ReadAheadUnusedBytes are the pages
-	// of them, and their bytes, that it did not use: wrong predictions,
-	// pages past where the listing stopped, and reads that failed (the
-	// page is then read again).
-	ReadAheadReads, ReadAheadUnused, ReadAheadUnusedBytes int64
 
 	// SourceBatches counts calls actually made to RangeReader.ReadRanges.
 	// ScalarFallbackReads counts non-empty ReadAt calls actually made
@@ -182,9 +175,6 @@ func (st *ReadStats) Add(o ReadStats) {
 	st.GroupsSkipped += o.GroupsSkipped
 	st.SourceReads += o.SourceReads
 	st.SourceBytes += o.SourceBytes
-	st.ReadAheadReads += o.ReadAheadReads
-	st.ReadAheadUnused += o.ReadAheadUnused
-	st.ReadAheadUnusedBytes += o.ReadAheadUnusedBytes
 	st.SourceBatches += o.SourceBatches
 	st.ScalarFallbackReads += o.ScalarFallbackReads
 	st.PhysicalRequests += o.PhysicalRequests

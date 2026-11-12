@@ -174,31 +174,25 @@ type ListQuery struct {
 	// Columns names the columns projected for each row entry and each
 	// exact row (ListEntry.Exact), as Query.Columns.
 	Columns []string
-	// ReadAhead, when positive, is the number of key pages the listing may
-	// read ahead concurrently (at most 64): within the row group it is
-	// in, it predicts from the key page index the pages it will decode
-	// next, after each common prefix at the prefix's successor, and reads
-	// them in the background, so that a listing that skips from prefix to
-	// prefix waits for about one read per ReadAhead pages instead of one
-	// per page. Memory: the request holds at most ReadAhead times 1 MiB of
-	// pages read ahead and not yet used, and at most 4 times ReadAhead
-	// pages, until the scan uses or passes them or the key scan ends. Pages
-	// read ahead are checked as any page read is, and the entries are the
-	// same with or without it. A page predicted wrongly is read and
-	// transferred for nothing, and held until the scan passes it or the
-	// key scan ends (ReadStats.ReadAheadUnused counts such reads). Each
-	// read runs in its own goroutine, ended and waited for when the key
-	// scan ends, before the values are projected and before List returns;
-	// a panic of the Source's ReadAt in one is treated as a failed read
-	// ahead. It pays where a read waits on a round trip (an object store),
-	// not on a local file. Zero, the default, reads no page ahead; a
-	// negative value is an invalid request. A listing with delimiter '/'
-	// reads no page ahead when a list index (Dataset.BuildListIndex) is
-	// built, whether or not the index serves a given row group. Read-ahead
-	// is speculation: ReadPolicy.DisableSpeculation turns it off, and it
-	// reads at most ReadPolicy.Concurrency-1 pages ahead at once, each only
-	// on a slot of the operation's Concurrency free with another left, so
-	// that its reads and the listing's own stay within Concurrency.
+	// ReadAhead bounds the key pages the listing reads ahead at once.
+	// From the key page index of the row group it is in, the listing
+	// predicts the key pages it will decode next, after each common prefix
+	// at the prefix's successor, toward its Limit and its upper bound, and
+	// reads them together, adjacent pages in one range of up to
+	// ReadPolicy.WindowBytes, so that a listing that skips from prefix to
+	// prefix waits for about one read per prediction instead of one per
+	// page. Zero, the default, predicts as many pages as the listing can
+	// still use, within WindowBytes, over a remote Source, and none from a
+	// local directory opened with a zero ReadPolicy (OpenDir); a positive
+	// value predicts at most that many; a negative value is an invalid
+	// request. Pages read ahead are checked as any page read is, and the
+	// entries are the same with or without it. It is speculation:
+	// ReadPolicy.DisableSpeculation turns it off, SpeculativeBytes and
+	// SpeculativeRanges bound it, and ReadStats.SpeculativeBytes and
+	// SpeculativeUnusedBytes count it. Its bytes are held, within
+	// Limits.ReadMemory, until the listing passes them or its key scan
+	// ends. A listing with delimiter '/' reads no page ahead when a list
+	// index (Dataset.BuildListIndex) is built.
 	ReadAhead int
 }
 
@@ -402,8 +396,7 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 	// even for a row group the index declines: the index answers its
 	// skips without decoding the pages a read-ahead would predict.
 	if s.listIndex == nil || len(s.listIndex.groups) == 0 || req.Delimiter != '/' {
-		s.ahead = r.newReadAhead(ctx, ahead)
-		defer s.ahead.close(st)
+		s.ahead = r.newReadAhead(ctx, ahead, req.Limit)
 	}
 	var l listing
 	if req.Cursor != nil && req.Cursor.Key != nil {
@@ -448,10 +441,8 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 			return nil, err
 		}
 	}
-	// The key scan is over, and the projection reads no key page ahead
-	// (chunk.ahead is the key scan's): end the reads ahead now. The deferred
-	// close is the safety net for the returns above.
-	s.ahead.close(st)
+	// The key scan is over: the pages read ahead are not needed any more.
+	s.ahead.close()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

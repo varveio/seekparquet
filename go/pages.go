@@ -141,9 +141,6 @@ type chunk struct {
 	walk  bool
 	stats *ReadStats
 	pages *int64 // the counter of the data pages decoded: key or value pages
-	// ahead, when set, holds key pages a listing read ahead: located takes
-	// a page's bytes from it instead of reading them (readAhead).
-	ahead *readAhead
 	// memo, when set, holds the key pages the request read (pageMemo).
 	memo *pageMemo
 }
@@ -189,19 +186,14 @@ func (c *chunk) located(off, size, rows int64) (*format.PageHeader, int64, []byt
 		return c.header(off)
 	}
 	var pre []byte
-	if c.ahead != nil {
-		pre, _ = c.ahead.take(c.p, off, size)
-	}
-	if pre == nil {
-		if kept := c.memo.get(c.p, off, size); kept != nil {
-			c.stats.RequestMemoHitBytes += size
-			pre = kept
-			// A scan decodes into its scratch, which its next page
-			// overwrites: it decodes a copy, as if it had read the page.
-			if c.scratch != nil {
-				pre = c.scratch.readBuffer(int(size))
-				copy(pre, kept)
-			}
+	if kept := c.memo.get(c.p, off, size); kept != nil {
+		c.stats.RequestMemoHitBytes += size
+		pre = kept
+		// A scan decodes into its scratch, which its next page overwrites:
+		// it decodes a copy, as if it had read the page.
+		if c.scratch != nil {
+			pre = c.scratch.readBuffer(int(size))
+			copy(pre, kept)
 		}
 	}
 	h, n, raw, err := c.p.pageExtent(c.ctx, c.physical, c.col.index, off, size, rows, c.end, c.stats, c.scratch, pre)
@@ -1168,7 +1160,7 @@ func (p *part) pageHeaderInto(ctx context.Context, physical, column int, off, en
 // header as pageHeader does, in a column chunk ending at end; rows is the
 // rows its OffsetIndex entry gives, or -1 (decodeHeader). The caller
 // bounds size (chunk.located). pre, when not nil, holds those size bytes,
-// read ahead (readAhead): they are checked exactly as bytes it reads.
+// already (the request's memo): they are checked exactly as bytes it reads.
 func (p *part) pageExtent(ctx context.Context, physical, column int, off, size, rows, end int64, st *ReadStats, scratch *pageScratch, pre []byte) (*format.PageHeader, int64, []byte, error) {
 	bad := p.badPage(physical, column, off)
 	if off < 0 || off >= end || size > end-off {

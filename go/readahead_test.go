@@ -173,11 +173,11 @@ type listing struct {
 	reads, bytes, maxInFlight int64
 }
 
-func measureList(t *testing.T, dir string, delay time.Duration, req seekparquet.ListQuery) listing {
+func measureList(t *testing.T, dir string, delay time.Duration, req seekparquet.ListQuery, opt seekparquet.OpenOptions) listing {
 	t.Helper()
 	ctx := context.Background()
 	src := newSlowSource(t, dir, delay)
-	d, err := seekparquet.OpenDataset(ctx, src, seekparquet.OpenOptions{})
+	d, err := seekparquet.OpenDataset(ctx, src, opt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,46 +216,46 @@ func sameEntries(t *testing.T, what string, got, want []seekparquet.ListEntry) {
 
 // TestListReadAheadLatency lists 100 folders of 1,000 keys (4 key pages of
 // 256 rows each, as the 4,000 keys of 1,024-row pages of a Common Crawl
-// segment) with a 5 ms wait per read: without read-ahead the listing makes
-// its page reads one after another; with ReadAhead 8 they overlap, at most
-// 8 read ahead (and the scan's own read) at once, for the same entries.
+// segment) with a 5 ms wait per read: without read-ahead
+// (DisableSpeculation) the listing makes its page reads one after another;
+// with it, adaptive (ReadAhead 0) or bounded, it reads the pages it
+// predicts together, for the same entries.
 func TestListReadAheadLatency(t *testing.T) {
 	seekparquet.NoTestReadAhead(t)
 	const delay = 5 * time.Millisecond
 	dir := folderDataset(t, 100, 1000, 256, 1)
 	req := seekparquet.ListQuery{Prefix: []byte("crawl-data/CC-MAIN-2024-18/segments/"), Delimiter: '/', Limit: 1000}
-	off := measureList(t, dir, delay, req)
+	off := measureList(t, dir, delay, req, seekparquet.OpenOptions{Read: seekparquet.ReadPolicy{DisableSpeculation: true}})
 	if len(off.entries) != 100 {
 		t.Fatalf("%d entries, want the 100 folders", len(off.entries))
 	}
 	report := func(name string, l listing) {
-		t.Logf("%-14s %3d entries  %4d reads  %8d bytes  %4d key pages  wall %6.1f ms (%5.1f delays)  max in flight %d  read ahead %d, unused %d (%d bytes)",
+		t.Logf("%-14s %3d entries  %4d reads  %8d bytes  %4d key pages  wall %6.1f ms (%5.1f delays)  max in flight %d  read ahead %d bytes, unused %d",
 			name, len(l.entries), l.reads, l.bytes, l.stats.KeyPagesDecoded, float64(l.wall)/1e6, float64(l.wall)/float64(delay), l.maxInFlight,
-			l.stats.ReadAheadReads, l.stats.ReadAheadUnused, l.stats.ReadAheadUnusedBytes)
+			l.stats.SpeculativeBytes, l.stats.SpeculativeUnusedBytes)
 	}
-	report("ReadAhead 0", off)
-	if off.maxInFlight != 1 || off.stats.ReadAheadReads != 0 {
-		t.Fatalf("without read-ahead: %d reads at once, %d read ahead", off.maxInFlight, off.stats.ReadAheadReads)
+	report("no read-ahead", off)
+	// A part's head and end are read together when it is checked.
+	if off.maxInFlight > 2 || off.stats.SpeculativeBytes != 0 {
+		t.Fatalf("without read-ahead: %d reads at once, %d bytes read ahead", off.maxInFlight, off.stats.SpeculativeBytes)
 	}
-	for _, n := range []int{2, 8, 32} {
+	for _, n := range []int{0, 2, 8, 32} {
 		req.ReadAhead = n
-		on := measureList(t, dir, delay, req)
+		on := measureList(t, dir, delay, req, seekparquet.OpenOptions{})
 		report(fmt.Sprintf("ReadAhead %d", n), on)
 		sameEntries(t, fmt.Sprintf("ReadAhead %d", n), on.entries, off.entries)
 		if on.stats.KeyPagesDecoded != off.stats.KeyPagesDecoded {
 			t.Errorf("ReadAhead %d decoded %d key pages, without %d", n, on.stats.KeyPagesDecoded, off.stats.KeyPagesDecoded)
 		}
-		if on.maxInFlight > int64(n)+1 {
+		if n > 0 && on.maxInFlight > int64(n)+1 {
 			t.Errorf("ReadAhead %d: %d reads at once", n, on.maxInFlight)
 		}
-		// Exact bounds predict every page; the pages read ahead and not
-		// used are at most those past the listing's end.
-		if on.stats.ReadAheadUnused > int64(n) || on.reads > off.reads+int64(n) {
-			t.Errorf("ReadAhead %d: %d of %d pages read ahead unused, %d reads (without: %d)", n,
-				on.stats.ReadAheadUnused, on.stats.ReadAheadReads, on.reads, off.reads)
+		// Exact bounds predict every page: no more reads than without.
+		if on.reads > off.reads || on.stats.SpeculativeUnusedBytes > on.stats.SpeculativeBytes {
+			t.Errorf("ReadAhead %d: %d reads (without: %d), %+v", n, on.reads, off.reads, on.stats)
 		}
-		if n == 8 && on.wall*2 > off.wall {
-			t.Errorf("ReadAhead 8 took %v, without %v: less than twice as fast", on.wall, off.wall)
+		if (n == 0 || n == 8) && on.wall*2 > off.wall {
+			t.Errorf("ReadAhead %d took %v, without %v: less than twice as fast", n, on.wall, off.wall)
 		}
 	}
 }
@@ -280,7 +280,8 @@ func TestListReadAheadPagination(t *testing.T) {
 			var pages [2][]seekparquet.ListEntry
 			for mode, ahead := range []int{0, 4} {
 				src := newSlowSource(t, dir, 0)
-				d, err := seekparquet.OpenDataset(context.Background(), src, seekparquet.OpenOptions{})
+				// The first mode reads nothing ahead.
+				d, err := seekparquet.OpenDataset(context.Background(), src, seekparquet.OpenOptions{Read: seekparquet.ReadPolicy{DisableSpeculation: mode == 0}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -289,7 +290,7 @@ func TestListReadAheadPagination(t *testing.T) {
 				var st seekparquet.ReadStats
 				for range 1000 {
 					entries, err := d.List(context.Background(), req, &st)
-					readAhead += st.ReadAheadReads
+					readAhead += st.SpeculativeBytes
 					if err != nil {
 						t.Fatal(err)
 					}

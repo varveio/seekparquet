@@ -137,24 +137,19 @@ func TestListReadAheadSameResults(t *testing.T) {
 					}) {
 						t.Fatalf("%s, ReadAhead %d:\n got %q\nwant %q", describe(req), n, entriesOf(got), entriesOf(want))
 					}
-					extra := st
-					extra.SourceReads -= st.ReadAheadUnused
-					extra.SourceBytes -= st.ReadAheadUnusedBytes
-					extra.UnreportedIOCalls -= st.ReadAheadUnused // a storage call each, as in SourceReads
-					extra.ReadAheadReads, extra.ReadAheadUnused, extra.ReadAheadUnusedBytes = 0, 0, 0
-					if extra != base {
-						t.Fatalf("%s, ReadAhead %d: counts beyond the unused reads ahead differ:\n got %+v\nwant %+v\n(%+v)", describe(req), n, extra, base, st)
+					if decodeCounts(st) != decodeCounts(base) {
+						t.Fatalf("%s, ReadAhead %d: decoding differs:\n got %+v\nwant %+v", describe(req), n, st, base)
 					}
-					if st.ReadAheadUnused > st.ReadAheadReads || st.ReadAheadReads > st.SourceReads {
+					if st.SpeculativeUnusedBytes > st.SpeculativeBytes {
 						t.Fatalf("%s, ReadAhead %d: %+v", describe(req), n, st)
 					}
-					predicted += st.ReadAheadReads
-					wasted += st.ReadAheadUnused
+					predicted += st.SpeculativeBytes
+					wasted += st.SpeculativeUnusedBytes
 				}
 			}
 		})
 	}
-	t.Logf("%d pages read ahead, %d of them unused", predicted, wasted)
+	t.Logf("%d bytes read ahead, %d of them unused", predicted, wasted)
 	if predicted == 0 || wasted == 0 {
 		t.Fatalf("the fixtures exercised no read-ahead (%d) or no wrong prediction (%d)", predicted, wasted)
 	}
@@ -216,7 +211,7 @@ func TestListReadAheadListIndex(t *testing.T) {
 		var st ReadStats
 		_, err = d.List(ctx, ListQuery{Prefix: []byte("seg001/"), Delimiter: 'k', Limit: 1000, ReadAhead: n}, &st)
 		must(t, err)
-		if n > 0 && st.ReadAheadReads == 0 {
+		if n > 0 && st.SpeculativeBytes == 0 {
 			t.Errorf("a 'k' listing with the index built read nothing ahead: %+v", st)
 		}
 	}
@@ -258,16 +253,11 @@ func TestListReadAheadManyPages(t *testing.T) {
 	if len(entries[0]) != len(keys) || !slices.Equal(entries[0], entries[1]) {
 		t.Fatalf("%d and %d entries, want %d alike", len(entries[0]), len(entries[1]), len(keys))
 	}
-	if stats[1].ReadAheadReads == 0 {
-		t.Fatalf("nothing was read ahead: %+v", stats[1])
+	if stats[1].SpeculativeBytes == 0 || stats[1].SourceReads >= stats[0].SourceReads {
+		t.Fatalf("nothing was read ahead, or not in fewer reads: %+v, without %+v", stats[1], stats[0])
 	}
-	extra := stats[1]
-	extra.SourceReads -= extra.ReadAheadUnused
-	extra.SourceBytes -= extra.ReadAheadUnusedBytes
-	extra.UnreportedIOCalls -= extra.ReadAheadUnused // a storage call each, as in SourceReads
-	extra.ReadAheadReads, extra.ReadAheadUnused, extra.ReadAheadUnusedBytes = 0, 0, 0
-	if extra != stats[0] {
-		t.Fatalf("counts differ beyond the unused reads ahead:\n got %+v\nwant %+v", extra, stats[0])
+	if decodeCounts(stats[1]) != decodeCounts(stats[0]) {
+		t.Fatalf("decoding differs:\n got %+v\nwant %+v", stats[1], stats[0])
 	}
 	if limit := 5*took[0] + time.Second; took[1] > limit {
 		t.Fatalf("ReadAhead 64 took %v, ReadAhead 0 %v (limit %v)", took[1], took[0], limit)
@@ -311,7 +301,7 @@ func TestListReadAheadByteFlips(t *testing.T) {
 				text = err.Error()
 			}
 			texts, got = append(texts, text), append(got, entries)
-			ahead += int(st.ReadAheadReads)
+			ahead += int(st.SpeculativeBytes)
 		}
 		if texts[0] != texts[1] || texts[0] != texts[2] || got[0] != got[1] || got[0] != got[2] {
 			t.Fatalf("byte %d flipped: errors %q, entries differ: %v", off, texts, got[0] != got[1] || got[0] != got[2])
@@ -321,14 +311,14 @@ func TestListReadAheadByteFlips(t *testing.T) {
 		}
 	}
 	must(t, os.WriteFile(file, orig, 0o644))
-	t.Logf("%d bytes, every %dth flipped: %d refused or failed, %d pages read ahead", len(orig), stride, failed, ahead)
+	t.Logf("%d bytes, every %dth flipped: %d refused or failed, %d bytes read ahead", len(orig), stride, failed, ahead)
 	if failed == 0 || ahead == 0 {
-		t.Fatalf("%d flips failed, %d pages read ahead", failed, ahead)
+		t.Fatalf("%d flips failed, %d bytes read ahead", failed, ahead)
 	}
 }
 
 // panicSource panics in ReadAt when it is called from a read-ahead's
-// goroutine, once per extent.
+// wave, once per extent.
 type panicSource struct {
 	Source
 	mu     sync.Mutex
@@ -351,7 +341,7 @@ func (s *panicSource) Open(ctx context.Context, path string) (SourceFile, error)
 
 func (f panicFile) ReadAt(p []byte, off int64) (int, error) {
 	var stack [4096]byte
-	if strings.Contains(string(stack[:runtime.Stack(stack[:], false)]), "(*readAhead).fetch") {
+	if strings.Contains(string(stack[:runtime.Stack(stack[:], false)]), "(*windows).read") {
 		f.s.mu.Lock()
 		first := !f.s.seen[off]
 		f.s.seen[off] = true
@@ -388,7 +378,15 @@ func TestListReadAheadSourcePanic(t *testing.T) {
 	if !slices.Equal(entriesOf(got), entriesOf(want)) {
 		t.Fatalf("entries %q, want %q", entriesOf(got), entriesOf(want))
 	}
-	if src.panics == 0 || st.ReadAheadReads < int64(src.panics) || st.ReadAheadUnused < int64(src.panics) {
+	if src.panics == 0 || st.SpeculativeFallbackReads == 0 {
 		t.Fatalf("%d panics, stats %+v", src.panics, st)
 	}
+}
+
+// decodeCounts returns the counts of st that do not depend on how pages
+// were read: what was decoded and how the scan moved.
+func decodeCounts(st ReadStats) ReadStats {
+	return ReadStats{PartsOpened: st.PartsOpened, KeyPagesDecoded: st.KeyPagesDecoded, ValuePagesDecoded: st.ValuePagesDecoded,
+		KeysDecoded: st.KeysDecoded, RowGroupsOpened: st.RowGroupsOpened, IndexLoads: st.IndexLoads, PageIndexSeeks: st.PageIndexSeeks,
+		PrefixSkips: st.PrefixSkips, GroupsSkipped: st.GroupsSkipped}
 }
