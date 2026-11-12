@@ -170,6 +170,36 @@ class ReviewFixesTest {
                 assertThrows(RefusalException.class, () -> Manifest.parse(broken, Limits.builder().parts(3).build())).code());
     }
 
+    /**
+     * An excess part entry is checked and built into nothing: one with a huge extension array parses with
+     * far less allocation than its tree would take, while its syntax, escapes, duplicate names and nesting
+     * are still checked.
+     */
+    @Test
+    void anExcessPartEntryIsNotMaterialized() throws Exception {
+        String kept = manifest("0", 3);
+        StringBuilder huge = new StringBuilder("{\"path\":\"data/x.parquet\",\"rows\":1,\"bytes\":1,\"min_key_base64\":\"eg==\",")
+                .append("\"max_key_base64\":\"eg==\",\"extensions\":{\"t\":[");
+        for (int i = 0; i < 1_000_000; i++) huge.append(i == 0 ? "" : ",").append("\"v\\u00e9\"");
+        huge.append("]}}");
+        byte[] raw = kept.replace("]}", "," + huge + "]}").getBytes(StandardCharsets.UTF_8);
+        Json.Arr parts = (Json.Arr) ((Json.Obj) Json.parse(raw, 3)).members().get("parts");
+        assertEquals(4, parts.total());
+        assertEquals(3, parts.items().size());
+        long bytes = allocated(() -> Json.parse(raw, 3));
+        long whole = allocated(() -> Json.parse(raw, 4));
+        assertTrue(bytes < raw.length / 4, "parsing past the limit allocated " + bytes + " bytes for a " + raw.length + "-byte manifest");
+        assertTrue(whole > 4 * bytes, "keeping the entry allocates its tree: " + whole + " against " + bytes);
+        // Still checked strictly in the excess: an invalid escape, a duplicate name, nesting beyond 512.
+        Limits three = Limits.builder().parts(3).build();
+        for (String bad : List.of("{\"a\":\"\\q\"}", "{\"a\":1,\"a\":2}", "{\"a\":\"\\ud800\"}")) {
+            byte[] m = kept.replace("]}", "," + bad + "]}").getBytes(StandardCharsets.UTF_8);
+            assertEquals(RefusalCode.INVALID_MANIFEST, assertThrows(RefusalException.class, () -> Manifest.parse(m, three)).code(), bad);
+        }
+        byte[] deep = kept.replace("]}", "," + "[".repeat(600) + "]".repeat(600) + "]}").getBytes(StandardCharsets.UTF_8);
+        assertEquals(LimitName.MANIFEST_NESTING, assertThrows(LimitExceededException.class, () -> Manifest.parse(deep, three)).limit());
+    }
+
     private Path dataset(String name, TestDatasets.Spec spec, int rows) throws IOException {
         List<TestRow> part = new ArrayList<>();
         for (int i = 0; i < rows; i++) part.add(TestRow.of(String.format("k%05d", i), i % 7 == 3 ? -1 : i));
@@ -221,6 +251,10 @@ class ReviewFixesTest {
             deliveredOnce(IllegalArgumentException.class, o -> d.rows(Query.builder().limit(Integer.MAX_VALUE + 1L).build(), o));
             deliveredOnce(IllegalArgumentException.class, o -> d.rows(Query.builder().limit(Long.MAX_VALUE).build(), o));
             deliveredOnce(IndexOutOfBoundsException.class, o -> d.columns(5, o));
+            deliveredOnce(NullPointerException.class, o -> d.rows(null, o));
+            deliveredOnce(NullPointerException.class, o -> { d.scan(null, o, b -> true); return null; });
+            deliveredOnce(NullPointerException.class, o -> d.list(null, o));
+            deliveredOnce(NullPointerException.class, o -> d.plan(null, List.of(), o));
             // rows takes up to Integer.MAX_VALUE; scan any limit.
             assertEquals(10, d.rows(Query.builder().limit(Integer.MAX_VALUE).build()).size());
             long[] n = new long[1];

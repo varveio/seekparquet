@@ -136,10 +136,11 @@ public final class Limits {
 
     /**
      * {@return the estimated decoded size of one footer, page index or page header, in bytes} The estimate
-     * is computed by a walk of the encoded Thrift bytes before the decoder allocates anything: 48 bytes per
-     * structure, 16 per list or set element (32 per map entry), and for each string or binary value 48 plus
-     * twice its encoded length (a decoded Java string can take two bytes per UTF-8 byte), every declared
-     * length checked against the bytes that remain. It bounds the decoded metadata, not its encoded size
+     * is charged in the protocol the Thrift decoder reads through, so that it holds for whatever the decoder
+     * reads, before each string, binary or container is allocated: 48 bytes per structure, 16 per list or set
+     * element (32 per map entry), 48 plus the length of each binary, and 48 plus twice the encoded length of
+     * each string (a decoded Java string can take two bytes per UTF-8 byte), every declared length checked
+     * against the bytes that remain. It bounds the decoded metadata, not its encoded size
      * (see {@link #footerBytes()}). It also caps the window a page header of unknown length is read in,
      * at 16 MiB. Default 256 MiB.
      */

@@ -481,10 +481,11 @@ column's representation (boolean 1, int 4, long 8, byte array 24), a null flag p
 and for byte arrays the arena's bytes; a byte-array dictionary counts 80 bytes per entry and its bytes twice. A
 page over it fails with `LimitExceededException` naming `PAGE_MEMORY`. Its default derives as Go's does, so a
 byte-array dictionary near both `pageValues` and `pageBytes` can exceed it under this reader's estimate; set it
-higher to admit such a page. `metadataMemory` is charged by a walk of a footer's, page index's or page header's encoded bytes before the
-decoder allocates anything: 48 bytes per structure, 16 per list element (32 per map entry), and 48 plus twice its
-encoded length per string or binary value (a Java string can take two bytes per UTF-8 byte), each declared length
-checked against the bytes left. A page header of unknown length is read in windows of at most min(16 MiB,
+higher to admit such a page. `metadataMemory` is charged in the protocol the Thrift decoder reads a footer, page index or page header
+through, before each string, binary or container is allocated, so it holds whatever element types the bytes
+declare: 48 bytes per structure, 16 per list element (32 per map entry), 48 plus the length of each binary, and
+48 plus twice the encoded length of each string (a Java string can take two bytes per UTF-8 byte), each declared
+length checked against the bytes left. A page header of unknown length is read in windows of at most min(16 MiB,
 `metadataMemory`). The parts limit is enforced before materializing more than the permitted number of part
 entries, including intermediate JSON representations, and after the manifest's version is decided. `indexMemory` is a dataset-wide budget for retained key indexes and exact row-group first
 keys; publication is charged once under a shared lock, and a budget failure leaves already cached indexes

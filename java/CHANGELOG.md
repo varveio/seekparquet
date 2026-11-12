@@ -38,8 +38,8 @@ resource-accounting and execution differences listed in README.md remain; see it
 - `Limits` is an immutable class with `builder()`/`toBuilder()` and named settings, with the Go reader's
   defaults: footer 16 MiB (was 64), page 64 MiB (was 256), 16,777,216 page values (was 4,194,304), index memory
   1 GiB (was 256 MiB), page memory derived as Go derives it (48 × page values + page bytes, 832 MiB), the new
-  `metadataMemory` (256 MiB), charged by an allocation-free walk of each footer, page index and page header
-  before it is decoded (strings at twice their encoded length), which also caps page-header probing at
+  `metadataMemory` (256 MiB), charged in the protocol the Thrift decoder reads each footer, page index and page
+  header through, before each string, binary or container is allocated (strings at twice their encoded length), which also caps page-header probing at
   min(16 MiB, `metadataMemory`) as in Go (was up to the page-byte limit), and `getRows` (1,000). Zero means the default; a negative setting is `IllegalArgumentException`. `maxResultEntries` is
   removed: `rows` and `list` are bounded by the caller's limit, `scan` by nothing.
 - `LimitExceededException.limit()` is a `LimitName` enum. A manifest whose row total exceeds 2^63-1 is refused

@@ -399,8 +399,8 @@ public final class Dataset implements AutoCloseable {
      * @throws IllegalStateException if the dataset is closed
      */
     public List<Row> rows(Query query, ReadOptions options) {
-        Objects.requireNonNull(query, "query");
         return run(options, () -> {
+            Objects.requireNonNull(query, "query");
             if (query.limit() <= 0 || query.limit() > Integer.MAX_VALUE) {
                 throw new IllegalArgumentException("rows limit must be between 1 and Integer.MAX_VALUE, not " + query.limit());
             }

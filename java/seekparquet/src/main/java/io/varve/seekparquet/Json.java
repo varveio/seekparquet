@@ -59,6 +59,12 @@ final class Json {
     private int maxParts = Integer.MAX_VALUE;
     /** Set while the value of the top-level {@code parts} member is parsed. */
     private boolean bounded;
+    /**
+     * Set while an excess {@code parts} entry is checked: its syntax is checked as strictly as any JSON's
+     * (escapes, surrogates, duplicate member names, nesting), but no node, value string or container is built;
+     * only each object's member names are held, for the duplicate check, until the object ends.
+     */
+    private boolean discard;
 
     private Json(byte[] in) {
         this.in = in;
@@ -114,13 +120,13 @@ final class Json {
         return switch (b) {
             case '{' -> object(depth + 1);
             case '[' -> array(depth + 1);
-            case '"' -> string();
-            case 't' -> literal("true", new Bool(true, pos, pos + 4));
-            case 'f' -> literal("false", new Bool(false, pos, pos + 5));
-            case 'n' -> literal("null", new Null(pos, pos + 4));
+            case '"' -> discard ? skipString() : string();
+            case 't' -> literal("true", discard ? null : new Bool(true, pos, pos + 4));
+            case 'f' -> literal("false", discard ? null : new Bool(false, pos, pos + 5));
+            case 'n' -> literal("null", discard ? null : new Null(pos, pos + 4));
             default -> {
                 if (b == '-' || (b >= '0' && b <= '9')) {
-                    yield number();
+                    yield discard ? skipNumber() : number();
                 }
                 throw new SyntaxException("unexpected character", pos);
             }
@@ -151,10 +157,11 @@ final class Json {
         checkDepth(depth);
         int start = pos++;
         Map<String, Node> members = new LinkedHashMap<>();
+        java.util.Set<String> names = discard ? new java.util.HashSet<>() : null;
         skipWhitespace();
         if (pos < in.length && in[pos] == '}') {
             pos++;
-            return new Obj(members, start, pos);
+            return discard ? null : new Obj(members, start, pos);
         }
         while (true) {
             skipWhitespace();
@@ -172,7 +179,7 @@ final class Json {
             bounded = depth == 1 && name.equals("parts");
             Node v = value(depth);
             bounded = false;
-            if (members.putIfAbsent(name, v) != null) {
+            if (discard ? !names.add(name) : members.putIfAbsent(name, v) != null) {
                 throw new SyntaxException("duplicate member name \"" + name + "\"", nameAt);
             }
             skipWhitespace();
@@ -185,7 +192,7 @@ final class Json {
             }
             if (in[pos] == '}') {
                 pos++;
-                return new Obj(members, start, pos);
+                return discard ? null : new Obj(members, start, pos);
             }
             throw new SyntaxException("expected ',' or '}'", pos);
         }
@@ -201,13 +208,21 @@ final class Json {
         skipWhitespace();
         if (pos < in.length && in[pos] == ']') {
             pos++;
-            return new Arr(items, 0, start, pos);
+            return discard ? null : new Arr(items, 0, start, pos);
         }
         while (true) {
             skipWhitespace();
-            Node item = value(depth);
             if (total++ < keep) {
-                items.add(item);
+                Node item = value(depth);
+                if (!discard) {
+                    items.add(item);
+                }
+            } else {
+                // An excess entry: checked, counted, and built into nothing.
+                boolean outer = discard;
+                discard = true;
+                value(depth);
+                discard = outer;
             }
             skipWhitespace();
             if (pos >= in.length) {
@@ -219,7 +234,7 @@ final class Json {
             }
             if (in[pos] == ']') {
                 pos++;
-                return new Arr(items, total, start, pos);
+                return discard ? null : new Arr(items, total, start, pos);
             }
             throw new SyntaxException("expected ',' or ']'", pos);
         }
@@ -285,6 +300,58 @@ final class Json {
         }
     }
 
+    /** Checks a string as {@link #string()} does, building nothing. {@return null} */
+    private Str skipString() throws SyntaxException {
+        int start = pos++;
+        while (true) {
+            if (pos >= in.length) {
+                throw new SyntaxException("unterminated string", start);
+            }
+            int b = in[pos] & 0xFF;
+            if (b == '"') {
+                pos++;
+                return null;
+            }
+            if (b < 0x20) {
+                throw new SyntaxException("unescaped control character in a string", pos);
+            }
+            if (b == '\\') {
+                pos++;
+                if (pos >= in.length) {
+                    throw new SyntaxException("unterminated escape", pos);
+                }
+                byte e = in[pos++];
+                switch (e) {
+                    case '"', '\\', '/', 'b', 'f', 'n', 'r', 't' -> { }
+                    case 'u' -> {
+                        char c = hex4();
+                        if (Character.isHighSurrogate(c)) {
+                            if (pos + 1 < in.length && in[pos] == '\\' && in[pos + 1] == 'u') {
+                                pos += 2;
+                                if (!Character.isLowSurrogate(hex4())) {
+                                    throw new SyntaxException("unpaired surrogate escape", pos);
+                                }
+                            } else {
+                                throw new SyntaxException("unpaired surrogate escape", pos);
+                            }
+                        } else if (Character.isLowSurrogate(c)) {
+                            throw new SyntaxException("unpaired surrogate escape", pos);
+                        }
+                    }
+                    default -> throw new SyntaxException("invalid escape", pos - 1);
+                }
+                continue;
+            }
+            pos += b < 0x80 ? 1 : b < 0xE0 ? 2 : b < 0xF0 ? 3 : 4;
+        }
+    }
+
+    /** Checks a number as {@link #number()} does, building nothing. {@return null} */
+    private Num skipNumber() throws SyntaxException {
+        numberEnd();
+        return null;
+    }
+
     private char hex4() throws SyntaxException {
         if (pos + 4 > in.length) {
             throw new SyntaxException("truncated \\u escape", pos);
@@ -302,6 +369,13 @@ final class Json {
     }
 
     private Num number() throws SyntaxException {
+        int start = pos;
+        numberEnd();
+        return new Num(new String(in, start, pos - start, java.nio.charset.StandardCharsets.US_ASCII), start, pos);
+    }
+
+    /** Moves past a number, checking its grammar. */
+    private void numberEnd() throws SyntaxException {
         int start = pos;
         if (in[pos] == '-') {
             pos++;
@@ -341,6 +415,5 @@ final class Json {
                 throw new SyntaxException("invalid number", start);
             }
         }
-        return new Num(new String(in, start, pos - start, java.nio.charset.StandardCharsets.US_ASCII), start, pos);
     }
 }
