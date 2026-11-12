@@ -32,7 +32,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * Borrowed batch scans ({@link RangePlan#scanBatches}, {@link Dataset#rangeBatches}) against the
+ * Borrowed batch scans ({@link Plan#scan}, {@link Dataset#scan}) against the
  * row-returning paths: the same rows, offsets and values, read statistics and errors; batch boundaries;
  * the accessors against the owning values; lifetime, cancellation and close.
  */
@@ -65,15 +65,15 @@ class BatchScanTest {
         assertThrows(IndexOutOfBoundsException.class, () -> batch.column(batch.columns().size()));
         for (int i = 0; i < batch.size(); i++) {
             Row row = batch.row(i);
-            assertEquals(row.key(), batch.key(i));
+            assertEquals(row.key(), batch.copyKey(i));
             assertEquals(row.offset(), batch.offset(i));
-            assertEquals(row.continuation(), batch.continuation(i));
+            assertEquals(row.cursor(), batch.cursor(i));
             assertEquals(row.key().length(), batch.keyLength(i));
             byte[] key = new byte[batch.keyLength(i) + 3];
             assertEquals(batch.keyLength(i), batch.copyKey(i, key, 3));
             assertEquals(row.key(), Bytes.of(key, 3, batch.keyLength(i)));
-            assertEquals(row.key(), Bytes.of(batch.keyBuffer(i)));
-            assertTrue(batch.keyBuffer(i).isReadOnly());
+            assertEquals(row.key(), Bytes.of(batch.key(i)));
+            assertTrue(batch.key(i).isReadOnly());
             assertEquals(0, batch.compareKey(i, row.key()));
             assertEquals(Integer.signum(row.key().compareTo(Bytes.utf8("m"))), Integer.signum(batch.compareKey(i, Bytes.utf8("m"))));
             for (int c = 0; c < batch.columns().size(); c++) {
@@ -84,12 +84,12 @@ class BatchScanTest {
 
     private static void checkValue(BatchColumn col, int i, Value want) {
         assertEquals(want, col.value(i));
-        assertEquals(want instanceof Value.Absent, col.isAbsent());
+        assertEquals(!(want instanceof Value.Absent), col.isPresent());
         assertEquals(want instanceof Value.Null, col.isNull(i));
         if (want instanceof Value.Absent) {
             assertThrows(IllegalStateException.class, col::type);
             assertThrows(IllegalStateException.class, () -> col.getLong(i));
-            assertThrows(IllegalStateException.class, () -> col.length(i));
+            assertThrows(IllegalStateException.class, () -> col.byteLength(i));
             return;
         }
         Column.Type type = col.type();
@@ -102,7 +102,7 @@ class BatchScanTest {
                     case FLOAT -> assertThrows(IllegalStateException.class, () -> col.getFloat(i));
                     case DOUBLE -> assertThrows(IllegalStateException.class, () -> col.getDouble(i));
                     default -> {
-                        assertThrows(IllegalStateException.class, () -> col.length(i));
+                        assertThrows(IllegalStateException.class, () -> col.byteLength(i));
                         assertThrows(IllegalStateException.class, () -> col.bytes(i));
                     }
                 }
@@ -115,7 +115,7 @@ class BatchScanTest {
             case Value.Int64 v -> {
                 assertEquals(v.value(), col.getLong(i));
                 assertThrows(IllegalStateException.class, () -> col.getInt(i));
-                assertThrows(IllegalStateException.class, () -> col.length(i));
+                assertThrows(IllegalStateException.class, () -> col.byteLength(i));
             }
             case Value.Float32 v -> {
                 assertEquals(v.bits(), col.getFloatBits(i));
@@ -127,15 +127,19 @@ class BatchScanTest {
             }
             case Value.ByteArray v -> checkBytes(col, i, v.value(), Column.Type.BYTE_ARRAY);
             case Value.FixedLenByteArray v -> checkBytes(col, i, v.value(), Column.Type.FIXED_LEN_BYTE_ARRAY);
+            case Value.Int96 v -> {
+                assertEquals(v, col.getInt96(i));
+                assertThrows(IllegalStateException.class, () -> col.byteLength(i));
+            }
             case Value.Absent a -> fail();
         }
     }
 
     private static void checkBytes(BatchColumn col, int i, Bytes want, Column.Type type) {
         assertEquals(type, col.type());
-        assertEquals(want.length(), col.length(i));
-        assertEquals(want, col.bytes(i));
-        ByteBuffer view = col.byteBuffer(i);
+        assertEquals(want.length(), col.byteLength(i));
+        assertEquals(want, col.copyBytes(i));
+        ByteBuffer view = col.bytes(i);
         assertTrue(view.isReadOnly());
         assertEquals(want, Bytes.of(view));
         byte[] dst = new byte[want.length() + 2];
@@ -149,7 +153,7 @@ class BatchScanTest {
 
     /** The projectable columns of a verified dataset, the key, a column no part has, and a duplicate. */
     static List<String> columns(Dataset d) {
-        List<String> out = new ArrayList<>(d.columns().stream().filter(Column::projectable).map(Column::name).toList());
+        List<String> out = new ArrayList<>(Reads.columns(d).stream().filter(Column::projectable).map(Column::name).toList());
         if (!out.contains(d.manifest().key().column())) {
             out.add(d.manifest().key().column());
         }
@@ -163,30 +167,40 @@ class BatchScanTest {
     }
 
     /** A range read's statistics, on a dataset of its own so that no earlier request warms its caches. */
-    private static ReadStats rangeStats(Path root, RangeQuery q, boolean batches) {
+    private static ReadStats rangeStats(Path root, Query q, boolean batches) {
         AtomicReference<ReadStats> stats = new AtomicReference<>();
         try (Dataset d = Dataset.open(root)) {
             if (batches) {
-                d.rangeBatches(q, Cancellation.none(), stats::set, batch -> {});
+                Reads.rangeBatches(d, q, Cancellation.none(), stats::set, batch -> {});
             } else {
-                d.range(q, Cancellation.none(), stats::set);
+                Reads.range(d, q, Cancellation.none(), stats::set);
             }
         }
         return stats.get();
     }
 
-    /** A plan's scan statistics, on a dataset of its own so that no earlier request warms its caches. */
-    private static ReadStats scanStats(Path root, List<RangeQuery> ranges, List<String> columns, boolean batches) {
-        AtomicReference<ReadStats> stats = new AtomicReference<>();
-        try (Dataset d = Dataset.open(root)) {
-            RangePlan plan = d.planRanges(ranges, columns);
-            if (batches) {
-                plan.scanBatches(Cancellation.none(), stats::set, batch -> {});
-            } else {
-                plan.scan(Cancellation.none(), stats::set, row -> {});
-            }
+    /**
+     * Checks a plan's scan statistics against what is recorded independently, on a dataset of its own so that
+     * no earlier request warms its caches: the storage calls and bytes the scan made, and at least one decoded
+     * key per row of the plan.
+     */
+    private static void checkScanStats(Path root, List<Query> ranges, List<String> columns, String name) {
+        RangePlanTest.RecordingStorage storage = new RangePlanTest.RecordingStorage(root);
+        try (Dataset d = Dataset.open(storage)) {
+            Plan plan = Reads.plan(d, ranges, columns);
+            storage.take();
+            AtomicReference<ReadStats> stats = new AtomicReference<>();
+            long[] rows = new long[1];
+            plan.scan(ReadOptions.of(stats::set), batch -> {
+                rows[0] += batch.size();
+                return true;
+            });
+            List<RangePlanTest.RecordingStorage.Read> reads = storage.take();
+            assertEquals(reads.size(), stats.get().sourceReads(), name);
+            assertEquals(reads.stream().mapToLong(RangePlanTest.RecordingStorage.Read::length).sum(), stats.get().sourceBytes(), name);
+            assertEquals(plan.count().value(), rows[0], name);
+            assertTrue(stats.get().keysDecoded() >= rows[0], name + ": " + stats.get());
         }
-        return stats.get();
     }
 
     /**
@@ -202,27 +216,26 @@ class BatchScanTest {
         try (Dataset d = Dataset.open(root)) {
             d.verify();
             List<String> columns = columns(d);
-            RangeQuery whole = RangeQuery.builder().limit(1_000_000).columns(columns).build();
-            List<Row> all = d.range(whole);
-            assertEquals(all, rows(action -> d.rangeBatches(whole, action)), name);
+            Query whole = Reads.builder().limit(1_000_000).columns(columns).build();
+            List<Row> all = d.rows(whole);
+            assertEquals(all, rows(action -> Reads.rangeBatches(d, whole, action)), name);
             assertEquals(rangeStats(root, whole, false), rangeStats(root, whole, true), name);
 
-            RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), columns);
+            Plan plan = Reads.plan(d, List.of(Reads.all(1)), columns);
             List<Row> scanned = new ArrayList<>();
-            plan.scan(scanned::add);
+            Reads.scan(plan, scanned::add);
             assertEquals(all, scanned, name);
-            assertEquals(all, rows(plan::scanBatches), name);
-            assertEquals(scanStats(root, List.of(RangeQuery.all(1)), columns, false),
-                    scanStats(root, List.of(RangeQuery.all(1)), columns, true), name);
+            assertEquals(all, rows(action -> Reads.scanBatches(plan, action)), name);
+            checkScanStats(root, List.of(Reads.all(1)), columns, name);
 
-            List<RangeQuery> ranges = RangePlanTest.ranges(all);
-            for (RangeQuery q : ranges) {
+            List<Query> ranges = RangePlanTest.ranges(all);
+            for (Query q : ranges) {
                 for (int limit : new int[] {1, 3, 1000}) {
-                    RangeQuery page = q.toBuilder().limit(limit).columns(columns).build();
+                    Query page = q.toBuilder().limit(limit).columns(columns).build();
                     for (int n = 0; n < 4; n++) {
-                        RangeQuery current = page;
-                        List<Row> want = d.range(current);
-                        assertEquals(want, rows(action -> d.rangeBatches(current, action)), name + " " + current);
+                        Query current = page;
+                        List<Row> want = d.rows(current);
+                        assertEquals(want, rows(action -> Reads.rangeBatches(d, current, action)), name + " " + current);
                         if (want.size() < limit) {
                             break;
                         }
@@ -231,22 +244,22 @@ class BatchScanTest {
                 }
             }
             for (int i = 0; i < ranges.size(); i += Math.max(1, ranges.size() / 16)) {
-                RangeQuery q = ranges.get(i).toBuilder().limit(2).columns(columns).build();
+                Query q = ranges.get(i).toBuilder().limit(2).columns(columns).build();
                 assertEquals(rangeStats(root, q, false), rangeStats(root, q, true), name + " " + q);
             }
             Random random = new Random(all.size());
             for (int i = 0; i < 20; i++) {
-                List<RangeQuery> set = new ArrayList<>();
+                List<Query> set = new ArrayList<>();
                 for (int n = 1 + random.nextInt(4); n > 0; n--) {
                     set.add(ranges.get(random.nextInt(ranges.size())));
                 }
-                RangePlan p = d.planRanges(set, columns);
+                Plan p = Reads.plan(d, set, columns);
                 List<Row> want = new ArrayList<>();
-                p.scan(want::add);
-                assertEquals(p.count(), want.size());
-                assertEquals(want, rows(p::scanBatches), name + " " + set);
+                Reads.scan(p, want::add);
+                assertEquals(p.count().value(), want.size());
+                assertEquals(want, rows(action -> Reads.scanBatches(p, action)), name + " " + set);
                 if (i % 5 == 0) {
-                    assertEquals(scanStats(root, set, columns, false), scanStats(root, set, columns, true), name + " " + set);
+                    checkScanStats(root, set, columns, name + " " + set);
                 }
             }
         }
@@ -290,18 +303,18 @@ class BatchScanTest {
                     pages = new int[] {7, 5};
                 }
                 int[] widths = pages;
-                RangeQuery all = RangeQuery.builder().limit(1000).columns(columns).build();
-                List<Row> want = d.range(all);
+                Query all = Reads.builder().limit(1000).columns(columns).build();
+                List<Row> want = d.rows(all);
                 assertEquals(240, want.size());
                 for (BatchSource scan : List.<BatchSource>of(
-                        action -> d.rangeBatches(all, action),
-                        action -> d.planRanges(List.of(RangeQuery.all(1)), columns).scanBatches(action))) {
+                        action -> Reads.rangeBatches(d, all, action),
+                        action -> Reads.scanBatches(Reads.plan(d, List.of(Reads.all(1)), columns), action))) {
                     List<Row> got = new ArrayList<>();
                     scan.run(batch -> {
                         check(batch);
-                        int first = Integer.parseInt(batch.key(0).toStringUtf8().substring(1));
+                        int first = Integer.parseInt(batch.copyKey(0).toStringUtf8().substring(1));
                         int last = first + batch.size() - 1;
-                        assertEquals(key(last), batch.key(batch.size() - 1).toStringUtf8());
+                        assertEquals(key(last), batch.copyKey(batch.size() - 1).toStringUtf8());
                         assertEquals(first / 80, last / 80, "a batch crosses a part");
                         assertEquals(first % 80 / 40, last % 80 / 40, "a batch crosses a row group");
                         for (int w : widths) {
@@ -314,23 +327,23 @@ class BatchScanTest {
                     assertEquals(want, got, columns.toString());
                 }
                 // Two ranges with a gap between them: no batch holds rows of both.
-                RangePlan plan = d.planRanges(List.of(
-                        RangeQuery.builder().start(Bytes.utf8(key(3))).end(Bytes.utf8(key(5))).limit(1).build(),
-                        RangeQuery.builder().start(Bytes.utf8(key(6))).end(Bytes.utf8(key(13))).limit(1).build()), columns);
+                Plan plan = Reads.plan(d, List.of(
+                        Reads.builder().start(Bytes.utf8(key(3))).end(Bytes.utf8(key(5))).limit(1).build(),
+                        Reads.builder().start(Bytes.utf8(key(6))).end(Bytes.utf8(key(13))).limit(1).build()), columns);
                 List<Integer> sizes = new ArrayList<>();
-                plan.scanBatches(batch -> sizes.add(batch.size()));
+                Reads.scanBatches(plan, batch -> sizes.add(batch.size()));
                 assertEquals(List.of(2, 1), sizes.subList(0, 2), columns.toString());
                 assertEquals(9, sizes.stream().mapToInt(Integer::intValue).sum());
                 // A gap inside one page of every projected column and of the keys (rows 0..2 share a page of 7, 5
                 // and 3 rows): rows 0 and 2 are one page's neighbours but still two batches.
-                RangePlan inPage = d.planRanges(List.of(
-                        RangeQuery.builder().start(Bytes.utf8(key(0))).end(Bytes.utf8(key(1))).limit(1).build(),
-                        RangeQuery.builder().start(Bytes.utf8(key(2))).end(Bytes.utf8(key(3))).limit(1).build()), columns);
+                Plan inPage = Reads.plan(d, List.of(
+                        Reads.builder().start(Bytes.utf8(key(0))).end(Bytes.utf8(key(1))).limit(1).build(),
+                        Reads.builder().start(Bytes.utf8(key(2))).end(Bytes.utf8(key(3))).limit(1).build()), columns);
                 List<List<String>> batches = new ArrayList<>();
-                inPage.scanBatches(batch -> {
+                Reads.scanBatches(inPage, batch -> {
                     List<String> keys = new ArrayList<>();
                     for (int i = 0; i < batch.size(); i++) {
-                        keys.add(batch.key(i).toStringUtf8());
+                        keys.add(batch.copyKey(i).toStringUtf8());
                     }
                     batches.add(keys);
                 });
@@ -347,18 +360,18 @@ class BatchScanTest {
         spec.rowsPerPage = 10;
         try (Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(80, 1)))) {
             List<Integer> sizes = new ArrayList<>();
-            d.rangeBatches(RangeQuery.builder().start(Bytes.utf8(key(2))).limit(5).build(), batch -> sizes.add(batch.size()));
+            Reads.rangeBatches(d, Reads.builder().start(Bytes.utf8(key(2))).limit(5).build(), batch -> sizes.add(batch.size()));
             assertEquals(List.of(5), sizes);
             sizes.clear();
-            d.rangeBatches(RangeQuery.builder().start(Bytes.utf8(key(2))).end(Bytes.utf8(key(14))).limit(50).build(),
+            Reads.rangeBatches(d, Reads.builder().start(Bytes.utf8(key(2))).end(Bytes.utf8(key(14))).limit(50).build(),
                     batch -> sizes.add(batch.size()));
             assertEquals(List.of(8, 4), sizes);
             sizes.clear();
-            d.rangeBatches(RangeQuery.prefix(Bytes.utf8("k0003"), 50), batch -> sizes.add(batch.size()));
+            Reads.rangeBatches(d, Reads.prefix(Bytes.utf8("k0003"), 50), batch -> sizes.add(batch.size()));
             assertEquals(List.of(10), sizes);
-            d.rangeBatches(RangeQuery.prefix(Bytes.utf8("x"), 50), batch -> fail("a batch of an empty range"));
-            d.rangeBatches(RangeQuery.builder().end(Bytes.empty()).limit(1).build(), batch -> fail("a batch of an empty range"));
-            d.planRanges(List.of(RangeQuery.prefix(Bytes.utf8("x"), 1)), List.of("size")).scanBatches(batch -> fail("a batch of an empty plan"));
+            Reads.rangeBatches(d, Reads.prefix(Bytes.utf8("x"), 50), batch -> fail("a batch of an empty range"));
+            Reads.rangeBatches(d, Reads.builder().end(Bytes.empty()).limit(1).build(), batch -> fail("a batch of an empty range"));
+            Reads.scanBatches(Reads.plan(d, List.of(Reads.prefix(Bytes.utf8("x"), 1)), List.of("size")), batch -> fail("a batch of an empty plan"));
         }
     }
 
@@ -386,27 +399,27 @@ class BatchScanTest {
         try (Dataset d = Dataset.open(repeated())) {
             List<String> columns = List.of("size", "key", "note");
             for (int limit : new int[] {1, 2, 5, 100}) {
-                RangeQuery q = RangeQuery.lookup(Bytes.utf8("b"), limit).toBuilder().columns(columns).build();
+                Query q = Reads.lookup(Bytes.utf8("b"), limit).toBuilder().columns(columns).build();
                 List<Row> want = new ArrayList<>();
                 List<Row> got = new ArrayList<>();
-                for (RangeQuery page = q; ; ) {
-                    List<Row> rows = d.range(page);
+                for (Query page = q; ; ) {
+                    List<Row> rows = d.rows(page);
                     want.addAll(rows);
                     List<Row> batched = new ArrayList<>();
-                    AtomicReference<Continuation.RowPosition> last = new AtomicReference<>();
-                    d.rangeBatches(page, batch -> {
+                    AtomicReference<Cursor.RowPosition> last = new AtomicReference<>();
+                    Reads.rangeBatches(d, page, batch -> {
                         check(batch);
                         for (int i = 0; i < batch.size(); i++) {
                             batched.add(batch.row(i));
                         }
-                        last.set(batch.continuation(batch.size() - 1));
+                        last.set(batch.cursor(batch.size() - 1));
                     });
                     got.addAll(batched);
                     if (rows.size() < limit) {
                         break;
                     }
-                    assertEquals(rows.getLast().continuation(), last.get());
-                    page = page.toBuilder().after(last.get()).build();
+                    assertEquals(rows.getLast().cursor(), last.get());
+                    page = page.toBuilder().cursor(last.get()).build();
                 }
                 assertEquals(want, got);
                 assertEquals(17, got.size());
@@ -415,16 +428,16 @@ class BatchScanTest {
                     assertEquals(new Value.Int64(17 - i), got.get(i).values().getFirst());
                 }
             }
-            RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), columns);
+            Plan plan = Reads.plan(d, List.of(Reads.all(1)), columns);
             List<Row> want = new ArrayList<>();
-            plan.scan(want::add);
-            assertEquals(want, rows(plan::scanBatches));
-            List<RangePlan> shards = plan.split(4);
+            Reads.scan(plan, want::add);
+            assertEquals(want, rows(action -> Reads.scanBatches(plan, action)));
+            List<Plan> shards = plan.split(4);
             assertTrue(shards.size() > 1);
             try (ExecutorService ex = Executors.newFixedThreadPool(shards.size())) {
                 List<Future<List<Row>>> parts = new ArrayList<>();
-                for (RangePlan shard : shards) {
-                    parts.add(ex.submit(() -> rows(shard::scanBatches)));
+                for (Plan shard : shards) {
+                    parts.add(ex.submit(() -> rows(action -> Reads.scanBatches(shard, action))));
                 }
                 List<Row> got = new ArrayList<>();
                 for (Future<List<Row>> f : parts) {
@@ -446,36 +459,40 @@ class BatchScanTest {
         spec.rowsPerGroup = 40;
         spec.rowsPerPage = 10;
         Path root = TestDatasets.write(tmp.resolve("ok"), spec, split(80, 2));
-        Limits small = new Limits(1 << 20, 10, 1 << 20, 1 << 20, 1 << 20, 1 << 20, 50);
+        Limits small = Limits.builder().manifestBytes(1 << 20).parts(10).footerBytes(1 << 20).pageIndexBytes(1 << 20).pageBytes(1 << 20).pageValues(1 << 20).build();
         try (Dataset d = Dataset.open(io.varve.seekparquet.storage.LocalStorage.of(root), OpenOptions.DEFAULT.withLimits(small), Cancellation.none())) {
             AtomicReference<ReadStats> stats = new AtomicReference<>();
-            assertThrows(LimitExceededException.class, () -> d.range(RangeQuery.all(51)));
-            assertThrows(LimitExceededException.class,
-                    () -> d.rangeBatches(RangeQuery.all(51), Cancellation.none(), stats::set, batch -> fail("a batch")));
+            // A collected result is bounded by the caller's limit only; a scan has no result cap at all.
+            assertEquals(80, d.rows(Reads.all(1_000_000)).size());
+            long[] scanned = new long[1];
+            Reads.rangeBatches(d, Reads.all(0), Cancellation.none(), stats::set, batch -> scanned[0] += batch.size());
+            assertEquals(80, scanned[0]);
+            assertThrows(IllegalArgumentException.class,
+                    () -> d.rows(Reads.all(0), new ReadOptions(Cancellation.none(), stats::set)));
             assertEquals(ReadStats.NONE, stats.get());
-            assertThrows(NullPointerException.class, () -> d.rangeBatches(RangeQuery.all(1), null));
-            RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of());
-            assertThrows(NullPointerException.class, () -> plan.scanBatches(null));
+            assertThrows(NullPointerException.class, () -> Reads.rangeBatches(d, Reads.all(1), null));
+            Plan plan = Reads.plan(d, List.of(Reads.all(1)), List.of());
+            assertThrows(NullPointerException.class, () -> Reads.scanBatches(plan, null));
         }
-        Limits tinyPages = Limits.DEFAULT.withMaxPageMemory(64);
+        Limits tinyPages = Limits.DEFAULT.toBuilder().pageMemory(64).build();
         try (Dataset d = Dataset.open(io.varve.seekparquet.storage.LocalStorage.of(root), OpenOptions.DEFAULT.withLimits(tinyPages), Cancellation.none())) {
-            LimitExceededException a = assertThrows(LimitExceededException.class, () -> d.range(RangeQuery.all(5)));
-            LimitExceededException b = assertThrows(LimitExceededException.class, () -> d.rangeBatches(RangeQuery.all(5), batch -> fail("a batch")));
+            LimitExceededException a = assertThrows(LimitExceededException.class, () -> d.rows(Reads.all(5)));
+            LimitExceededException b = assertThrows(LimitExceededException.class, () -> Reads.rangeBatches(d, Reads.all(5), batch -> fail("a batch")));
             assertEquals(a.limit(), b.limit());
         }
         spec.swapFirstKeys = true;
         Path bad = TestDatasets.write(tmp.resolve("bad"), spec, split(80, 2));
         try (Dataset d = Dataset.open(bad)) {
-            assertEquals(RefusalCode.KEY_ORDER, assertThrows(RefusalException.class, () -> d.range(RangeQuery.all(5))).code());
+            assertEquals(RefusalCode.KEY_ORDER, assertThrows(RefusalException.class, () -> d.rows(Reads.all(5))).code());
             assertEquals(RefusalCode.KEY_ORDER,
-                    assertThrows(RefusalException.class, () -> d.rangeBatches(RangeQuery.all(5), batch -> fail("a batch"))).code());
+                    assertThrows(RefusalException.class, () -> Reads.rangeBatches(d, Reads.all(5), batch -> fail("a batch"))).code());
         }
         Path projection = ConformanceFixturesTest.fixture("datasets/projection");
         try (Dataset d = Dataset.open(projection)) {
             d.verify();
-            RangeQuery nested = RangeQuery.builder().limit(5).columns("meta").build();
-            UnsupportedFeatureException a = assertThrows(UnsupportedFeatureException.class, () -> d.range(nested));
-            UnsupportedFeatureException b = assertThrows(UnsupportedFeatureException.class, () -> d.rangeBatches(nested, batch -> fail("a batch")));
+            Query nested = Reads.builder().limit(5).columns("meta").build();
+            UnsupportedFeatureException a = assertThrows(UnsupportedFeatureException.class, () -> d.rows(nested));
+            UnsupportedFeatureException b = assertThrows(UnsupportedFeatureException.class, () -> Reads.rangeBatches(d, nested, batch -> fail("a batch")));
             assertEquals(a.code(), b.code());
         }
     }
@@ -491,10 +508,10 @@ class BatchScanTest {
         spec.rowsPerGroup = 40;
         spec.rowsPerPage = 5;
         try (Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(80, 2)))) {
-            RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size"));
-            RangeQuery all = RangeQuery.builder().limit(100).columns("size").build();
+            Plan plan = Reads.plan(d, List.of(Reads.all(1)), List.of("size"));
+            Query all = Reads.builder().limit(100).columns("size").build();
             List<java.util.function.BiConsumer<Cancellation, Consumer<? super Batch>>> scans = List.of(
-                    (c, a) -> d.rangeBatches(all, c, a), (c, a) -> plan.scanBatches(c, a));
+                    (c, a) -> Reads.rangeBatches(d, all, c, a), (c, a) -> Reads.scanBatches(plan, c, a));
             for (var scan : scans) {
                 Cancellation cancel = Cancellation.create();
                 AtomicInteger calls = new AtomicInteger();
@@ -508,21 +525,21 @@ class BatchScanTest {
             Cancellation cancelled = Cancellation.create();
             cancelled.cancel();
             AtomicReference<ReadStats> stats = new AtomicReference<>();
-            assertThrows(CancellationException.class, () -> plan.scanBatches(cancelled, stats::set, batch -> fail("a batch")));
+            assertThrows(CancellationException.class, () -> Reads.scanBatches(plan, cancelled, stats::set, batch -> fail("a batch")));
             assertEquals(ReadStats.NONE, stats.get());
-            assertThrows(CancellationException.class, () -> d.rangeBatches(all, cancelled, stats::set, batch -> fail("a batch")));
+            assertThrows(CancellationException.class, () -> Reads.rangeBatches(d, all, cancelled, stats::set, batch -> fail("a batch")));
             assertEquals(ReadStats.NONE, stats.get());
 
             RuntimeException stop = new RuntimeException("stop");
             List<Row> some = new ArrayList<>();
-            assertSame(stop, assertThrows(RuntimeException.class, () -> d.rangeBatches(all, Cancellation.none(), stats::set, batch -> {
+            assertSame(stop, assertThrows(RuntimeException.class, () -> Reads.rangeBatches(d, all, Cancellation.none(), stats::set, batch -> {
                 some.add(batch.row(0));
                 throw stop;
             })));
             assertEquals(1, some.size());
             assertEquals(1, stats.get().keyPagesDecoded());
             assertEquals(1, stats.get().valuePagesDecoded());
-            assertSame(stop, assertThrows(RuntimeException.class, () -> plan.scanBatches(Cancellation.none(), stats::set, batch -> {
+            assertSame(stop, assertThrows(RuntimeException.class, () -> Reads.scanBatches(plan, Cancellation.none(), stats::set, batch -> {
                 throw stop;
             })));
             assertEquals(1, stats.get().valuePagesDecoded());
@@ -539,21 +556,21 @@ class BatchScanTest {
             List<BatchColumn> columns = new ArrayList<>();
             List<Row> owned = new ArrayList<>();
             List<Bytes> notes = new ArrayList<>();
-            RangeQuery all = RangeQuery.builder().limit(100).columns("size", "note").build();
-            d.rangeBatches(all, batch -> {
+            Query all = Reads.builder().limit(100).columns("size", "note").build();
+            Reads.rangeBatches(d, all, batch -> {
                 kept.add(batch);
                 columns.add(batch.column(1));
                 for (int i = 0; i < batch.size(); i++) {
                     owned.add(batch.row(i));
                     if (!batch.column(1).isNull(i)) {
-                        notes.add(batch.column(1).bytes(i));
+                        notes.add(batch.column(1).copyBytes(i));
                     }
                 }
             });
             assertTrue(kept.size() > 1);
-            assertEquals(d.range(all), owned, "owning rows survive later pages, groups and parts");
+            assertEquals(d.rows(all), owned, "owning rows survive later pages, groups and parts");
             List<Bytes> want = new ArrayList<>();
-            for (Row r : d.range(all)) {
+            for (Row r : d.rows(all)) {
                 if (r.values().get(1) instanceof Value.ByteArray b) {
                     want.add(b.value());
                 }
@@ -565,15 +582,15 @@ class BatchScanTest {
                 assertThrows(IllegalStateException.class, () -> b.key(0));
                 assertThrows(IllegalStateException.class, () -> b.offset(0));
                 assertThrows(IllegalStateException.class, () -> b.row(0));
-                assertThrows(IllegalStateException.class, () -> b.continuation(0));
+                assertThrows(IllegalStateException.class, () -> b.cursor(0));
                 assertThrows(IllegalStateException.class, () -> b.column(0));
-                assertThrows(IllegalStateException.class, () -> b.keyBuffer(0));
+                assertThrows(IllegalStateException.class, () -> b.key(0));
             }
             for (BatchColumn c : columns) {
-                assertThrows(IllegalStateException.class, c::isAbsent);
+                assertThrows(IllegalStateException.class, c::isPresent);
                 assertThrows(IllegalStateException.class, () -> c.isNull(0));
                 assertThrows(IllegalStateException.class, () -> c.value(0));
-                assertThrows(IllegalStateException.class, () -> c.length(0));
+                assertThrows(IllegalStateException.class, () -> c.byteLength(0));
             }
         }
     }
@@ -587,14 +604,14 @@ class BatchScanTest {
     void closeDuringAScan() throws Exception {
         for (boolean planned : new boolean[] {false, true}) {
             Dataset d = Dataset.open(TestDatasets.write(tmp.resolve(Boolean.toString(planned)), new TestDatasets.Spec(), split(30, 2)));
-            RangeQuery all = RangeQuery.builder().limit(100).columns("size").build();
-            RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size"));
-            BatchScanTest.BatchSource scan = planned ? plan::scanBatches : action -> d.rangeBatches(all, action);
+            Query all = Reads.builder().limit(100).columns("size").build();
+            Plan plan = Reads.plan(d, List.of(Reads.all(1)), List.of("size"));
+            BatchScanTest.BatchSource scan = planned ? action -> Reads.scanBatches(plan, action) : action -> Reads.rangeBatches(d, all, action);
 
             AtomicReference<RuntimeException> inside = new AtomicReference<>();
             AtomicInteger nested = new AtomicInteger();
             scan.run(batch -> {
-                nested.addAndGet(d.range(RangeQuery.all(3)).size());
+                nested.addAndGet(d.rows(Reads.all(3)).size());
                 try {
                     d.close();
                 } catch (RuntimeException e) {
@@ -603,7 +620,7 @@ class BatchScanTest {
             });
             assertTrue(inside.get() instanceof IllegalStateException, "close inside the scan: " + inside.get());
             assertTrue(nested.get() > 0);
-            assertEquals(30, d.range(RangeQuery.all(100)).size(), "the failed close changed nothing");
+            assertEquals(30, d.rows(Reads.all(100)).size(), "the failed close changed nothing");
 
             AtomicReference<Thread> closer = new AtomicReference<>();
             AtomicInteger calls = new AtomicInteger();
@@ -641,7 +658,7 @@ class BatchScanTest {
         spec.rowsPerPage = 512;
         int rows = 16384;
         try (Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(rows, 2)))) {
-            RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), List.of("size"));
+            Plan plan = Reads.plan(d, List.of(Reads.all(1)), List.of("size"));
             com.sun.management.ThreadMXBean bean = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
             long[] sum = new long[1];
             int[] seen = new int[1];
@@ -656,7 +673,7 @@ class BatchScanTest {
                 seen[0] += batch.size();
             };
             for (int warm = 0; warm < 40; warm++) {
-                plan.scanBatches(reading);
+                Reads.scanBatches(plan, reading);
             }
             long tid = Thread.currentThread().threadId();
             long best = Long.MAX_VALUE;
@@ -664,12 +681,12 @@ class BatchScanTest {
             for (int round = 0; round < extra.length; round++) {
                 seen[0] = 0;
                 long before = bean.getThreadAllocatedBytes(tid);
-                plan.scanBatches(idle);
+                Reads.scanBatches(plan, idle);
                 long idleBytes = bean.getThreadAllocatedBytes(tid) - before;
                 assertEquals(rows, seen[0]);
                 seen[0] = 0;
                 before = bean.getThreadAllocatedBytes(tid);
-                plan.scanBatches(reading);
+                Reads.scanBatches(plan, reading);
                 long readingBytes = bean.getThreadAllocatedBytes(tid) - before;
                 assertEquals(rows, seen[0]);
                 best = Math.min(best, readingBytes / rows);
@@ -691,18 +708,18 @@ class BatchScanTest {
         spec.dictionaryNote = true;
         try (Dataset d = Dataset.open(TestDatasets.write(tmp, spec, split(300, 3))); ExecutorService ex = Executors.newFixedThreadPool(8)) {
             List<String> columns = List.of("note", "size", "key");
-            RangePlan plan = d.planRanges(List.of(RangeQuery.all(1)), columns);
-            List<Row> want = d.range(RangeQuery.builder().limit(1000).columns(columns).build());
+            Plan plan = Reads.plan(d, List.of(Reads.all(1)), columns);
+            List<Row> want = d.rows(Reads.builder().limit(1000).columns(columns).build());
             List<Future<Boolean>> results = new ArrayList<>();
             for (int i = 0; i < 32; i++) {
-                results.add(ex.submit(() -> want.equals(rows(plan::scanBatches))
-                        && want.equals(rows(action -> d.rangeBatches(RangeQuery.builder().limit(1000).columns(columns).build(), action)))));
+                results.add(ex.submit(() -> want.equals(rows(action -> Reads.scanBatches(plan, action)))
+                        && want.equals(rows(action -> Reads.rangeBatches(d, Reads.builder().limit(1000).columns(columns).build(), action)))));
             }
             for (Future<Boolean> r : results) {
                 assertTrue(r.get());
             }
             byte[] first = new byte[16];
-            d.rangeBatches(RangeQuery.all(1), batch -> assertArrayEquals(Bytes.utf8(key(0)).toByteArray(),
+            Reads.rangeBatches(d, Reads.all(1), batch -> assertArrayEquals(Bytes.utf8(key(0)).toByteArray(),
                     java.util.Arrays.copyOf(first, batch.copyKey(0, first, 0))));
         }
     }

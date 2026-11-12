@@ -156,9 +156,9 @@ class ReviewRegressionTest {
 
     @Test
     void deltaScratchIncludesPaddingAndWidthArrays() throws DataException {
-        Limits small = new Limits(1024, 4, 1024, 1024, 1024, 4);
+        Limits small = Limits.builder().manifestBytes(1024).parts(4).footerBytes(1024).pageIndexBytes(1024).pageBytes(1024).pageValues(4).build();
         byte[] hostile = {(byte) 128, (byte) 128, 64, 1, 1, 0};
-        assertEquals("maxPageBytes", assertThrows(LimitExceededException.class,
+        assertEquals(LimitName.PAGE_BYTES, assertThrows(LimitExceededException.class,
                 () -> EncodingChecks.deltaBinaryPacked(hostile, 0, hostile.length, 1, false, small, "test")).limit());
         byte[] ordinary = {(byte) 128, 1, 4, 1, 0};
         assertEquals(ordinary.length, EncodingChecks.deltaBinaryPacked(ordinary, 0, ordinary.length, 1, false, small, "test"));
@@ -238,14 +238,14 @@ class ReviewRegressionTest {
             // Opening reads no part: the first touch (at 1 and 2) or a later read (at 3) meets the timeout.
             try (Dataset ds = Dataset.open(storage)) {
                 if (at == 3) {
-                    assertEquals(1, ds.range(RangeQuery.all(1)).size());
+                    assertEquals(1, ds.rows(Reads.all(1)).size());
                     failRead.set(true);
                 }
-                assertSame(timeout, assertThrows(StorageException.class, () -> ds.range(RangeQuery.all(1))).getCause());
+                assertSame(timeout, assertThrows(StorageException.class, () -> ds.rows(Reads.all(1))).getCause());
                 if (at != 1) {
                     // A storage failure is not kept: the next read checks the part again.
                     failRead.set(false);
-                    assertEquals(1, ds.range(RangeQuery.all(1)).size());
+                    assertEquals(1, ds.rows(Reads.all(1)).size());
                 }
             }
         }
@@ -315,7 +315,7 @@ class ReviewRegressionTest {
         byte[] original = Files.readAllBytes(file);
         int length = ByteBuffer.wrap(original).order(ByteOrder.LITTLE_ENDIAN).getInt(original.length - 8);
         int start = original.length - 8 - length;
-        var footer = Thrift.fileMetaData(Arrays.copyOfRange(original, start, start + length));
+        var footer = Thrift.fileMetaData(Arrays.copyOfRange(original, start, start + length), Limits.DEFAULT.metadataMemory());
         footer.addToKey_value_metadata(new KeyValue("padding").setValue("x".repeat(75_000)));
         ByteArrayOutputStream encoded = new ByteArrayOutputStream();
         Util.writeFileMetaData(footer, encoded);
@@ -347,7 +347,7 @@ class ReviewRegressionTest {
             }
         };
         for (int i = 0; i < 2; i++) {
-            try (Dataset ds = Dataset.open(storage)) { assertEquals(1, ds.range(RangeQuery.all(1)).size()); }
+            try (Dataset ds = Dataset.open(storage)) { assertEquals(1, ds.rows(Reads.all(1)).size()); }
         }
         cache.values().forEach(buffer -> assertEquals(3, buffer.position()));
     }
@@ -356,29 +356,29 @@ class ReviewRegressionTest {
     void retainedBudgetCoversKeyIndexesAndConcurrentPublication() throws Exception {
         Path root = dataset(1);
         // One key page costs 320 bytes. Value OffsetIndexes are kept under maxOffsetIndexMemoryBytes instead.
-        Limits limits = Limits.DEFAULT.withMaxIndexMemoryBytes(400);
+        Limits limits = Limits.DEFAULT.toBuilder().indexMemory(400).build();
         try (Dataset ds = Dataset.open(LocalStorage.of(root), OpenOptions.DEFAULT.withLimits(limits), Cancellation.none());
                 var executor = java.util.concurrent.Executors.newFixedThreadPool(4)) {
             var reads = executor.invokeAll(java.util.stream.IntStream.range(0, 16)
-                    .<java.util.concurrent.Callable<Integer>>mapToObj(i -> () -> ds.range(RangeQuery.all(1)).size()).toList());
+                    .<java.util.concurrent.Callable<Integer>>mapToObj(i -> () -> ds.rows(Reads.all(1)).size()).toList());
             for (var read : reads) { assertEquals(1, read.get()); }
-            assertEquals(1, ds.range(RangeQuery.builder().limit(1).columns("size").build()).size());
-            assertEquals(1, ds.range(RangeQuery.all(1)).size());
+            assertEquals(1, ds.rows(Reads.builder().limit(1).columns("size").build()).size());
+            assertEquals(1, ds.rows(Reads.all(1)).size());
         }
         try (Dataset ds = Dataset.open(LocalStorage.of(root),
-                OpenOptions.DEFAULT.withLimits(limits.withMaxIndexMemoryBytes(1)), Cancellation.none())) {
-            assertThrows(LimitExceededException.class, () -> ds.range(RangeQuery.all(1)));
+                OpenOptions.DEFAULT.withLimits(limits.toBuilder().indexMemory(1).build()), Cancellation.none())) {
+            assertThrows(LimitExceededException.class, () -> ds.rows(Reads.all(1)));
         }
     }
 
     @Test
     void retainedBudgetIsSharedAcrossParts() throws IOException {
-        Limits limits = Limits.DEFAULT.withMaxIndexMemoryBytes(400);
+        Limits limits = Limits.DEFAULT.toBuilder().indexMemory(400).build();
         try (Dataset ds = Dataset.open(LocalStorage.of(dataset(2)), OpenOptions.DEFAULT.withLimits(limits), Cancellation.none())) {
-            assertEquals(1, ds.lookup(Bytes.utf8("k0"), 1).size());
-            assertEquals("maxIndexMemoryBytes", assertThrows(LimitExceededException.class,
-                    () -> ds.lookup(Bytes.utf8("k1"), 1)).limit());
-            assertEquals(1, ds.lookup(Bytes.utf8("k0"), 1).size());
+            assertEquals(1, ds.get(Bytes.utf8("k0"), List.of()).size());
+            assertEquals(LimitName.INDEX_MEMORY, assertThrows(LimitExceededException.class,
+                    () -> ds.get(Bytes.utf8("k1"), List.of())).limit());
+            assertEquals(1, ds.get(Bytes.utf8("k0"), List.of()).size());
         }
     }
 

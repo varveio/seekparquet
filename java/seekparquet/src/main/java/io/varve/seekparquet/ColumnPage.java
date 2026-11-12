@@ -56,7 +56,8 @@ final class ColumnPage {
             case DOUBLE -> new Value.Float64(longs[i]);
             case BYTE_ARRAY -> new Value.ByteArray(ownBytes(i));
             case FIXED_LEN_BYTE_ARRAY -> new Value.FixedLenByteArray(ownBytes(i));
-            case INT96, GROUP -> throw new IllegalStateException("not projectable: " + type);
+            case INT96 -> Value.Int96.of(binaries[i]);
+            case GROUP -> throw new IllegalStateException("not projectable: " + type);
         };
     }
 

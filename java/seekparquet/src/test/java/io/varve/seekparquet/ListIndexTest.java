@@ -56,7 +56,7 @@ class ListIndexTest {
                     for (Bytes prefix : prefixes) for (byte delimiter : new byte[] {'/', 'f'}) {
                         ListQuery base = ListQuery.builder(delimiter).prefix(prefix).columns("size", "note").limit(1000).build();
                         List<ListEntry> all = plain.list(base);
-                        List<Optional<Continuation>> cursors = new ArrayList<>(); cursors.add(Optional.empty());
+                        List<Optional<Cursor>> cursors = new ArrayList<>(); cursors.add(Optional.empty());
                         for (int i = 0; i < all.size(); i++) if (i < 4 || i == all.size() - 1) cursors.add(base.next(all.get(i)).cursor());
                         List<Optional<Bytes>> ends = new ArrayList<>(); ends.add(Optional.empty());
                         if (all.size() > 1) {
@@ -70,8 +70,8 @@ class ListIndexTest {
                             ends.add(Optional.of(Bytes.of(Arrays.copyOf(anchor, anchor.length + 1))));
                             ends.add(Optional.of(Bytes.of(Arrays.copyOf(anchor, anchor.length - 1))));
                         }
-                        for (Optional<Continuation> cursor : cursors) for (Optional<Bytes> end : ends) for (int limit : new int[] {1, 2, 4, 1000}) {
-                            ListQuery q = new ListQuery(prefix, delimiter, end, limit, base.columns(), cursor);
+                        for (Optional<Cursor> cursor : cursors) for (Optional<Bytes> end : ends) for (int limit : new int[] {1, 2, 4, 1000}) {
+                            ListQuery q = Reads.listQuery(prefix, delimiter, end, limit, base.columns(), cursor, 0);
                             assertEquals(plain.list(q), indexed.list(q), () -> "cap=" + cap + " budget=" + budget + " query=" + q);
                         }
                     }
@@ -93,11 +93,11 @@ class ListIndexTest {
                 dataset.buildListIndex(new ListIndexOptions(0, 2, 0), Cancellation.none());
                 concurrent.get();
                 AtomicReference<ReadStats> stats = new AtomicReference<>();
-                assertEquals(want, dataset.list(q, Cancellation.none(), stats::set));
+                assertEquals(want, Reads.list(dataset, q, Cancellation.none(), stats::set));
                 assertTrue(stats.get().keyPagesDecoded() <= 2, stats.toString());
                 assertTrue(stats.get().listIndexSkips() >= 99, stats.toString());
                 var resumed = q.next(want.get(49));
-                assertEquals(want.subList(50, want.size()), dataset.list(resumed, Cancellation.none(), stats::set));
+                assertEquals(want.subList(50, want.size()), Reads.list(dataset, resumed, Cancellation.none(), stats::set));
                 assertTrue(stats.get().keyPagesDecoded() <= 2, stats.toString());
                 List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
                 for (int i = 0; i < 4; i++) futures.add(pool.submit(() -> {
@@ -181,7 +181,7 @@ class ListIndexTest {
             var stats = d.buildListIndex(new ListIndexOptions(0, 2, 0), Cancellation.none());
             assertEquals(2, stats.groupsFailed()); assertEquals(0, stats.groupsIndexed());
             assertEquals(RefusalCode.KEY_ORDER, assertThrows(RefusalException.class,
-                    () -> d.range(RangeQuery.all(1000))).code());
+                    () -> d.rows(Reads.all(1000))).code());
         }
     }
 

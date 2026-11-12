@@ -36,9 +36,9 @@ class ConformanceFixturesTest {
         OpenOptions options = OpenOptions.DEFAULT.withVerifyConcurrency(1);
         try (Dataset ds = Dataset.open(LocalStorage.of(root), options, Cancellation.none())) {
             ds.verify();
-            List<String> columns = ds.columns().stream().filter(Column::projectable).map(Column::name).toList();
-            List<Row> rows = ds.range(RangeQuery.builder().limit(1_000_000).columns(columns).build());
-            assertEquals(ds.rows(), rows.size());
+            List<String> columns = Reads.columns(ds).stream().filter(Column::projectable).map(Column::name).toList();
+            List<Row> rows = ds.rows(Reads.builder().limit(1_000_000).columns(columns).build());
+            assertEquals(ds.rowCount(), rows.size());
             for (int i = 1; i < rows.size(); i++) {
                 assertTrue(rows.get(i - 1).key().compareTo(rows.get(i).key()) <= (ds.manifest().key().unique() ? -1 : 0));
             }

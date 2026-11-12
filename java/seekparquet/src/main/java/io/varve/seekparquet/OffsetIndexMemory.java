@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
  * Dataset-wide accounting for kept value-column OffsetIndex page locations ({@link
- * Limits#maxOffsetIndexMemoryBytes()}), apart from {@link IndexMemory}. Lock-free.
+ * Limits#offsetIndexMemory()}), apart from {@link IndexMemory}. Lock-free.
  */
 final class OffsetIndexMemory {
     private final long maximum;

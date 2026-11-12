@@ -24,7 +24,7 @@ class ManifestTest {
     }
 
     private static Manifest parse(String json) {
-        return Manifest.parse(json.getBytes(StandardCharsets.UTF_8));
+        return Manifest.parse(json.getBytes(StandardCharsets.UTF_8), Limits.DEFAULT);
     }
 
     private static RefusalCode refusal(String json) {
@@ -36,7 +36,7 @@ class ManifestTest {
         Manifest m = parse(manifest(PART, ",\"extensions\":{\"tool\": {\"n\": 1.50e3, \"list\":[1, 2]}}"));
         assertEquals(FormatVersion.DRAFT_1, m.version());
         assertEquals("s/v1", m.schemaId());
-        assertEquals(List.of(new ManifestPart("data/p.parquet", 3, 100, Bytes.utf8("a"), Bytes.utf8("c"), Optional.empty())), m.parts());
+        assertEquals(List.of(new ManifestPart("data/p.parquet", 3, 100, Bytes.utf8("a"), Bytes.utf8("c"), Optional.empty(), java.util.Map.of())), m.parts());
         assertEquals(Map.of("tool", "{\"n\": 1.50e3, \"list\":[1, 2]}"), m.extensions());
         assertEquals(3, m.rows());
     }
@@ -78,7 +78,7 @@ class ManifestTest {
         for (var at : List.of(top, part)) {
             parse(at.apply(512));
             LimitExceededException e = assertThrows(LimitExceededException.class, () -> parse(at.apply(513)));
-            assertEquals(true, e.getMessage().contains("manifestNesting"), e.getMessage());
+            assertEquals(true, e.getMessage().contains("MANIFEST_NESTING"), e.getMessage());
         }
         String core = manifest(PART, "").replace("\"s/v1\"", nest.apply(511));
         assertEquals(RefusalCode.INVALID_MANIFEST, refusal(core));
@@ -178,6 +178,6 @@ class ManifestTest {
         assertEquals(RefusalCode.INVALID_MANIFEST, refusal("\uFEFF" + manifest(PART, "")));
         byte[] bad = manifest(PART, ",\"extensions\":{\"t\":\"\u00e9\"}").getBytes(StandardCharsets.UTF_8);
         bad[bad.length - 5] = (byte) 0xC0;
-        assertEquals(RefusalCode.INVALID_MANIFEST, assertThrows(RefusalException.class, () -> Manifest.parse(bad)).code());
+        assertEquals(RefusalCode.INVALID_MANIFEST, assertThrows(RefusalException.class, () -> Manifest.parse(bad, Limits.DEFAULT)).code());
     }
 }

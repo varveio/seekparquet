@@ -93,7 +93,7 @@ class QueryTest {
         Bytes end = maybe(random);
         boolean exclusive = random.nextBoolean();
         int limit = 1 + random.nextInt(70);
-        RangeQuery.Builder b = RangeQuery.builder().prefix(prefix).limit(limit).columns("size", "note", "missing", "key");
+        Reads.Builder b = Reads.builder().prefix(prefix).limit(limit).columns("size", "note", "missing", "key");
         if (start != null) {
             if (exclusive) {
                 b.startAfter(start);
@@ -104,8 +104,8 @@ class QueryTest {
         if (end != null) {
             b.end(end);
         }
-        RangeQuery query = b.build();
-        List<Row> got = ds.range(query);
+        Query query = b.build();
+        List<Row> got = ds.rows(query);
         List<TestRow> want = new ArrayList<>();
         for (TestRow r : all) {
             Bytes k = Bytes.of(r.key());
@@ -141,8 +141,8 @@ class QueryTest {
         Bytes p = q.prefix();
         for (TestRow r : all) {
             Bytes k = Bytes.of(r.key());
-            if (!k.startsWith(p) || (q.cursor().isPresent() && (k.compareTo(q.cursor().get().bytes()) <= 0
-                    || (q.cursor().get() instanceof Continuation.CommonPrefix && k.startsWith(q.cursor().get().bytes()))))
+            if (!k.startsWith(p) || (q.cursor().isPresent() && (k.compareTo(cursorBytes(q.cursor().get())) <= 0
+                    || (q.cursor().get() instanceof Cursor.CommonPrefix c && k.startsWith(c.prefix()))))
                     || (q.end().isPresent() && k.compareTo(q.end().get()) >= 0)) {
                 continue;
             }
@@ -172,7 +172,7 @@ class QueryTest {
         }
         Bytes after = maybe(random);
         if (after != null) {
-            b.after(random.nextBoolean() ? new Continuation.RowPosition(after, 0) : new Continuation.CommonPrefix(after));
+            b.cursor(random.nextBoolean() ? new Cursor.RowPosition(after, 0) : new Cursor.CommonPrefix(after));
         }
         Bytes end = maybe(random);
         if (end != null) {
@@ -202,10 +202,10 @@ class QueryTest {
             }
             assertEquals(want, got, "pagination of " + full);
 
-            RangeQuery range = RangeQuery.all(1 + random.nextInt(5));
+            Query range = Reads.all(1 + random.nextInt(5));
             List<Row> rows = new ArrayList<>();
             for (int guard = 0; guard < 1000; guard++) {
-                List<Row> r = ds.range(range);
+                List<Row> r = ds.rows(range);
                 rows.addAll(r);
                 if (r.size() < range.limit()) {
                     break;
@@ -217,5 +217,12 @@ class QueryTest {
                 assertTrue(Arrays.equals(all.get(j).key(), rows.get(j).key().toByteArray()));
             }
         }
+    }
+
+    private static Bytes cursorBytes(Cursor c) {
+        return switch (c) {
+            case Cursor.RowPosition r -> r.key();
+            case Cursor.CommonPrefix p -> p.prefix();
+        };
     }
 }

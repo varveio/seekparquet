@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.varve.seekparquet.storage.LocalStorage;
+import io.varve.seekparquet.storage.ParquetJavaInterop;
 import io.varve.seekparquet.storage.PartSource;
 import java.io.EOFException;
 import java.io.IOException;
@@ -29,7 +30,7 @@ class StorageInteropTest {
         Path root = TestDatasets.write(tmp, new TestDatasets.Spec(),
                 List.of(List.of(TestDatasets.TestRow.of("a", 1))));
         try (PartSource source = LocalStorage.of(root).openPart("data/part-00000.parquet", 0, Cancellation.none())) {
-            InputFile file = source;
+            InputFile file = ParquetJavaInterop.inputFile(source);
             assertEquals(source.size(), file.getLength());
             try (SeekableInputStream first = file.newStream(); SeekableInputStream second = file.newStream()) {
                 byte[] magic = new byte[4];
@@ -48,7 +49,7 @@ class StorageInteropTest {
                 assertThrows(EOFException.class, () -> second.seek(-1));
             }
             // Adapting a parquet InputFile keeps read positions private to each concurrent call.
-            try (PartSource adapted = PartSource.of(source.path(), file, source.version());
+            try (PartSource adapted = ParquetJavaInterop.partSource(source.path(), file, source.version());
                     var executor = Executors.newFixedThreadPool(4)) {
                 var reads = executor.invokeAll(java.util.stream.IntStream.range(0, 16)
                         .<java.util.concurrent.Callable<ByteBuffer>>mapToObj(i ->
@@ -62,7 +63,7 @@ class StorageInteropTest {
                 assertThrows(EOFException.class, () -> adapted.read(source.size(), 1, Cancellation.none()));
             }
             assertEquals(4, source.read(0, 4, Cancellation.none()).remaining());
-            SeekableInputStream closed = source.newStream();
+            SeekableInputStream closed = file.newStream();
             closed.close();
             assertThrows(IOException.class, closed::read);
         }
