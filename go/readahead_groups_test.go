@@ -99,9 +99,8 @@ func TestListReadAheadWideFolders(t *testing.T) {
 	}
 }
 
-// sameRows requires the row spans of got to agree with want's: a boundary
-// both listings established is the same row, and got establishes every
-// boundary want does.
+// sameRows requires the row spans of got to be want's: each boundary is
+// established by both listings or by neither, and is the same row.
 func sameRows(t *testing.T, what string, got, want []seekparquet.ListEntry) {
 	t.Helper()
 	for i := range want {
@@ -111,7 +110,7 @@ func sameRows(t *testing.T, what string, got, want []seekparquet.ListEntry) {
 		}{{"start", got[i].Rows.Start, want[i].Rows.Start}, {"end", got[i].Rows.End, want[i].Rows.End}} {
 			g, gok := b.got.Ordinal()
 			w, wok := b.want.Ordinal()
-			if wok && !gok || gok && wok && g != w {
+			if gok != wok || gok && g != w {
 				t.Fatalf("%s: entry %d %q rows %s is %d (known %v), want %d (known %v)", what, i, want[i].Bytes(), b.name, g, gok, w, wok)
 			}
 		}
