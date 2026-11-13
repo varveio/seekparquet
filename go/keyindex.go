@@ -312,7 +312,8 @@ func (l *pageLog) add(s pageSpan) error {
 func (p *part) readIndexPair(ctx context.Context, physical int, meta *format.ColumnChunk, st *ReadStats) (columns, offsets []byte, offsetsErr, err error) {
 	ci, oi := [2]int64{meta.ColumnIndexOffset, int64(meta.ColumnIndexLength)}, [2]int64{meta.OffsetIndexOffset, int64(meta.OffsetIndexLength)}
 	together := !p.r.local && p.checkIndexExtent(physical, ci[0], int32(ci[1])) == nil && p.checkIndexExtent(physical, oi[0], int32(oi[1])) == nil &&
-		!p.retained(ci[0], ci[1]) && !p.retained(oi[0], oi[1])
+		!p.retained(ci[0], ci[1]) && !p.retained(oi[0], oi[1]) &&
+		!windowsOf(ctx).holds(p, ci[0], ci[1]) && !windowsOf(ctx).holds(p, oi[0], oi[1])
 	if !together {
 		if columns, err = p.readIndexBytes(ctx, physical, meta.ColumnIndexOffset, meta.ColumnIndexLength, st); err != nil {
 			return nil, nil, nil, err
