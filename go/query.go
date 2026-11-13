@@ -539,9 +539,9 @@ func (l *listing) prefix(prefix []byte, exact bool, offset int64, at position, s
 // rolling up to it (scan.shortcut), and moving past it.
 func (s *scan) seekList(from []byte, req ListQuery, l *listing) error {
 	for len(l.out) < req.Limit {
-		if _, ok := s.forward(from, true); ok {
-			// The seek needs no routing: it lands in a group the scan
-			// reaches by the key page indexes at hand.
+		if g, ok := s.forward(from, true); ok && !s.mayShortcut(g, from) {
+			// The seek needs no routing: the key page indexes at hand
+			// prove where it lands.
 			if err := s.seek(from, true); err != nil {
 				return err
 			}
@@ -589,6 +589,17 @@ func (s *scan) seekList(from []byte, req ListQuery, l *listing) error {
 	}
 	s.key = nil
 	return nil
+}
+
+// mayShortcut reports whether the routing search for from could land on
+// row group g, which forward found, and shortcut emit its common prefix
+// without reading it: g is not the scan's group, and its first key is
+// known, not below from, and not above it as the routing search compares
+// them, so the search could begin at g. No group between the scan's and g
+// can: their keys are below from.
+func (s *scan) mayShortcut(g groupRef, from []byte) bool {
+	first := s.r.group(g).first.Load()
+	return g != s.g && first != nil && bytes.Compare(*first, from) >= 0 && !s.r.above(*first, from, true)
 }
 
 // project reads the projected values of rows, which a scan found at the

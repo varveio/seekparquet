@@ -979,13 +979,22 @@ func (r *reader) groupFor(ctx context.Context, from []byte, inclusive bool, log 
 		if err != nil {
 			return groupRef{}, err
 		}
-		if cmp := bytes.Compare(key, from); cmp > 0 || cmp == 0 && inclusive && !r.key.Unique {
+		if r.above(key, from, inclusive) {
 			b = mid
 		} else {
 			a = mid + 1
 		}
 	}
 	return at(a - 1), nil
+}
+
+// above reports whether the routing search (groupFor) places a row group
+// whose first key is key after the one a read of the keys at or after from
+// (after it unless inclusive) begins in: key is above from, or equal to it
+// when the read includes from and keys repeat (ROUTE-1).
+func (r *reader) above(key, from []byte, inclusive bool) bool {
+	cmp := bytes.Compare(key, from)
+	return cmp > 0 || cmp == 0 && inclusive && !r.key.Unique
 }
 
 // routeWindows fetches at most three levels (seven candidates) of the

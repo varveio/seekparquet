@@ -231,14 +231,23 @@ func (a *readAhead) indexExtents(s *scan, g groupRef, skipping bool) []extent {
 	return exts
 }
 
-// hint returns the key page index of row group g to predict with, without
-// reading storage: the checked index the Dataset keeps, or one decoded and
-// checked from page-index bytes at hand, in the part's retained metadata or
-// read ahead into the windows (indexExtents), which the read-ahead keeps
-// for the one group it last predicted into. It is nil when the bytes are
-// not at hand or do not make a valid index. A hint decides only which pages
-// are read ahead; the scan loads and checks the index itself before it
-// uses the group.
+// hint returns the key page index of row group g without reading storage:
+// the checked index the Dataset keeps, or one decoded and checked from
+// page-index bytes at hand, in the part's retained metadata or read ahead
+// into the windows (indexExtents), which the read-ahead keeps for the one
+// group it last asked for. It is nil when the bytes are not at hand or do
+// not make a valid index. It decides which pages are read ahead, and it
+// routes the scan's forward seeks (scan.forward): their bounds decide
+// which row groups a seek passes and where it lands. An index decoded here
+// has had a load's checks (checkKeyIndex: the extents, RG-3 as far as the
+// indexes allow, RG-4, no inverted bound), and its bounds are taken as
+// bounds (RG-5), unchecked against keys, as every index is until the pages
+// it bounds are decoded. The scan loads the index itself before it opens
+// the group, and checks each page it decodes against its bounds (CHECK-2).
+// A file whose bounds are not bounds, which validation refuses
+// (invalid_page_index), can make a seek pass a group that holds rows it
+// should return; like any read, the seek certifies only the pages it
+// decodes (CHECK-4).
 func (a *readAhead) hint(r *reader, g groupRef) *groupIndex {
 	p := r.parts[g.part]
 	physical := p.groups[g.index].physical
