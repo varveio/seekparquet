@@ -136,44 +136,94 @@ func (s *scan) seek(from []byte, inclusive bool) error {
 	}
 }
 
-// forward returns a row group at or before the one that holds the first
-// row at or after from (after it unless inclusive), for a scan over a
-// non-local Source that is on a row before it, when key page indexes at
-// hand say so without a read: the scan's group, or one of the next few in
-// its part, the first whose last page's maximum reaches from. A group whose
+// forward returns the row group a seek to the first row at or after from
+// (after it unless inclusive) decodes first, for a scan over a non-local
+// Source that is on a row before it, when the key page indexes at hand
+// prove it without a read: the scan's group, or one of the next few in its
+// part, the first whose last page's maximum reaches from. A group whose
 // maximum is below from holds no such row (RG-5), whatever the length of
-// its bounds, so none is passed; a maximum written above the group's keys
-// only stops the walk early, and seek continues into the next group as it
-// does after any group that holds none. It saves the routing search, which
-// decodes the first key page of each row group it compares, a read each
-// over a remote Source. It reports false when the scan cannot tell: the
-// routing search then decides.
+// its bounds, so none is passed. A maximum is only an upper bound, so the
+// group it stops at is taken only when the routing search would begin no
+// later (lands): every page the seek then decodes is one the seek after
+// routing decodes too, and forward saves the routing search, which decodes
+// the first key page of each row group it compares, a read each over a
+// remote Source, and the key page indexes of the groups passed. It reports
+// false when the bounds at hand do not decide: the routing search then
+// decides, as it does without them.
 func (s *scan) forward(from []byte, inclusive bool) (groupRef, bool) {
-	if s.r.local || s.kp == nil || s.synthetic || s.key == nil || from == nil || !before(s.key, from, inclusive) {
+	if testRouteOnly || s.r.local || s.kp == nil || s.synthetic || s.key == nil || from == nil || !before(s.key, from, inclusive) {
 		return groupRef{}, false
 	}
 	g, index := s.g, s.kp.index
-	p := s.r.parts[g.part]
 	for hops := 0; ; hops++ {
-		if cmp := bytes.Compare(index.pages[len(index.pages)-1].hi, from); cmp > 0 || cmp == 0 && inclusive {
-			return g, true
+		if reaches(index.pages[len(index.pages)-1].hi, from, inclusive) {
+			return g, s.lands(g, index, from, inclusive)
 		}
-		if g = g.next(); hops == indexAhead || g.index >= len(p.groups) || s.end != nil && s.r.startsAtOrAfter(g, s.end) {
+		if g = g.next(); hops == indexAhead || g.index >= len(s.r.parts[g.part].groups) || s.end != nil && s.r.startsAtOrAfter(g, s.end) {
 			return groupRef{}, false
 		}
-		physical := p.groups[g.index].physical
-		if index = p.index[physical].Load(); index != nil {
-			continue
-		}
-		if s.ahead != nil {
-			index = s.ahead.hint(s.r, g)
-		} else {
-			index = p.keyIndexAtHand(physical, windowsOf(s.ctx))
-		}
-		if index == nil {
+		if index = s.indexAtHand(g); index == nil {
 			return groupRef{}, false
 		}
 	}
+}
+
+// testRouteOnly, when set, makes forward report false, so that every seek
+// routes as it did before forward routing existed: tests compare the work
+// of the two. It is false otherwise.
+var testRouteOnly bool
+
+// lands reports whether the routing search (groupFor) for from begins at
+// or before row group g of the scan's part, by bounds at hand: whether the
+// first key of the group after g is above from as the search compares
+// them. The routing search begins at the group before the first whose
+// first key is above from, and the scan is in no later group than g, so
+// the seek would continue from the scan's row or begin at a group no later
+// than g. Every key from the last page of g on is at or above that page's
+// minimum, the next group's first key at or above its first page's
+// minimum (RG-5); past the part's last group, the routing search chooses
+// the first part whose maximum key reaches from. Bounds that do not decide
+// (shortened, conservative or not monotone) report false.
+func (s *scan) lands(g groupRef, index *groupIndex, from []byte, inclusive bool) bool {
+	above := func(key []byte) bool { return s.r.above(key, from, inclusive) }
+	if above(index.pages[len(index.pages)-1].lo) {
+		return true
+	}
+	p := s.r.parts[g.part]
+	next := g.next()
+	if next.index >= len(p.groups) {
+		return s.r.bounded && reaches(p.maxKey, from, inclusive)
+	}
+	if first := p.groups[next.index].first.Load(); first != nil {
+		return above(*first)
+	}
+	if index = s.indexAtHand(next); index != nil {
+		return above(index.pages[0].lo)
+	}
+	return false
+}
+
+// indexAtHand returns the key page index of row group g of a checked part
+// when it is at hand without a read: the Dataset's, or one decoded and
+// checked from bytes the part's retained metadata or the operation's
+// windows hold (readAhead.hint, part.keyIndexAtHand). It is nil otherwise.
+func (s *scan) indexAtHand(g groupRef) *groupIndex {
+	p := s.r.parts[g.part]
+	physical := p.groups[g.index].physical
+	if index := p.index[physical].Load(); index != nil {
+		return index
+	}
+	if s.ahead != nil {
+		return s.ahead.hint(s.r, g)
+	}
+	return p.keyIndexAtHand(physical, windowsOf(s.ctx))
+}
+
+// reaches reports whether a maximum bound reaches from: a row at or after
+// from (after it unless inclusive) can be at or below it.
+func reaches(hi, from []byte, inclusive bool) bool {
+	cmp := bytes.Compare(hi, from)
+	return cmp > 0 || cmp == 0 && inclusive
 }
 
 // before reports whether key, and so every row up to it, precedes the
