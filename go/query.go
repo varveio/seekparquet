@@ -403,7 +403,9 @@ func (r *reader) readList(ctx context.Context, req ListQuery, st *ReadStats) (_ 
 	if ahead == 0 {
 		ahead = testListReadAhead
 	}
-	s.ahead = r.newReadAhead(ctx, ahead, req.Limit)
+	if s.ahead = r.newReadAhead(ctx, ahead, req.Limit); s.ahead != nil {
+		s.ahead.prefix, s.ahead.delim = req.Prefix, req.Delimiter
+	}
 	l := listing{r: r}
 	if req.Cursor != nil && req.Cursor.Key != nil {
 		err = s.start(from, false, req.Cursor)
@@ -537,6 +539,15 @@ func (l *listing) prefix(prefix []byte, exact bool, offset int64, at position, s
 // rolling up to it (scan.shortcut), and moving past it.
 func (s *scan) seekList(from []byte, req ListQuery, l *listing) error {
 	for len(l.out) < req.Limit {
+		if _, ok := s.forward(from, true); ok {
+			// The seek needs no routing: it lands in a group the scan
+			// reaches by the key page indexes at hand.
+			if err := s.seek(from, true); err != nil {
+				return err
+			}
+			l.reached(s, from)
+			return nil
+		}
 		whole, g, err := s.shortcut(from, req.Prefix, req.Delimiter)
 		if err != nil {
 			return err

@@ -5,6 +5,15 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Changed listing read-ahead over a non-local `Source` to follow a delimited listing's skips across
+  row groups. It predicts one key page per common prefix from the key page indexes at hand, reads
+  ahead the key page indexes of the row groups it has yet to open, and routes a forward skip by those
+  indexes without decoding a row group's first key page. Previously it read pages in file order
+  after every row-group boundary and every page it had not predicted, and could read nearly every key
+  page under the listed prefix. `ReadAheadReads` and the unused counters now also count key page
+  indexes read ahead. Results are unchanged; `OpenDir`'s default policy and listings served by a list
+  index read as before. No format change.
+
 - Fixed `Plan.Split` to keep equal selected keys across a gap in one shard.
   A valid repeated-key `PlanRows` plan could previously be refused with `key_order`.
   Splitting disjoint plans may now seek additional key pages.

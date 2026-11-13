@@ -96,9 +96,17 @@ func (s *scan) seek(from []byte, inclusive bool) error {
 		s.kp.next = 0
 		s.synthetic = false
 	}
-	g, err := s.r.groupFor(s.ctx, from, inclusive, &s.log, s.stats)
-	if err != nil {
-		return err
+	g, ok := s.forward(from, inclusive)
+	if ok && g != s.g && s.kp.at+1 < len(s.kp.index.pages) {
+		// Leaving the scan's group skips the rest of its pages by its
+		// index, as the seek that found none there would.
+		s.stats.PageIndexSeeks++
+	}
+	if !ok {
+		var err error
+		if g, err = s.r.groupFor(s.ctx, from, inclusive, &s.log, s.stats); err != nil {
+			return err
+		}
 	}
 	switch {
 	case s.kp == nil || s.g.less(g):
@@ -124,6 +132,46 @@ func (s *scan) seek(from []byte, inclusive bool) error {
 		}
 		if ok, err := s.open(s.g.next()); !ok || err != nil {
 			return err
+		}
+	}
+}
+
+// forward returns a row group at or before the one that holds the first
+// row at or after from (after it unless inclusive), for a scan over a
+// non-local Source that is on a row before it, when key page indexes at
+// hand say so without a read: the scan's group, or one of the next few in
+// its part, the first whose last page's maximum reaches from. A group whose
+// maximum is below from holds no such row (RG-5), whatever the length of
+// its bounds, so none is passed; a maximum written above the group's keys
+// only stops the walk early, and seek continues into the next group as it
+// does after any group that holds none. It saves the routing search, which
+// decodes the first key page of each row group it compares, a read each
+// over a remote Source. It reports false when the scan cannot tell: the
+// routing search then decides.
+func (s *scan) forward(from []byte, inclusive bool) (groupRef, bool) {
+	if s.r.local || s.kp == nil || s.synthetic || s.key == nil || from == nil || !before(s.key, from, inclusive) {
+		return groupRef{}, false
+	}
+	g, index := s.g, s.kp.index
+	p := s.r.parts[g.part]
+	for hops := 0; ; hops++ {
+		if cmp := bytes.Compare(index.pages[len(index.pages)-1].hi, from); cmp > 0 || cmp == 0 && inclusive {
+			return g, true
+		}
+		if g = g.next(); hops == indexAhead || g.index >= len(p.groups) || s.end != nil && s.r.startsAtOrAfter(g, s.end) {
+			return groupRef{}, false
+		}
+		physical := p.groups[g.index].physical
+		if index = p.index[physical].Load(); index != nil {
+			continue
+		}
+		if s.ahead != nil {
+			index = s.ahead.hint(s.r, g)
+		} else {
+			index = p.keyIndexAtHand(physical, windowsOf(s.ctx))
+		}
+		if index == nil {
+			return groupRef{}, false
 		}
 	}
 }

@@ -98,7 +98,13 @@ type aheadPage struct {
 	used bool
 }
 
+// fetchAhead reads ahead what a listing predicts it will read: key pages,
+// and the key page indexes of row groups it has yet to open. Each is
+// counted as read ahead, and as unused when the listing never reads it.
 func (w *windows) fetchAhead(exts []extent) {
+	if len(exts) == 0 {
+		return
+	}
 	fresh := make([]bool, len(exts))
 	w.mu.Lock()
 	for i, e := range exts {
