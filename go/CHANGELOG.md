@@ -9,7 +9,8 @@ versioning; while it is v0, minor versions may change the API.
   row groups. It predicts one key page per common prefix from the key page indexes at hand, reads
   ahead the key page indexes of the row groups it has yet to open, and routes a forward seek by those
   indexes without decoding a row group's first key page where their bounds prove the seek lands no
-  later than routing would; it never decodes a key page that routing would not. Previously it read pages in file order
+  later than routing would; such a seek decodes no key page the routed seek would not. Predictions
+  skip pages the request has already read. Previously it read pages in file order
   after every row-group boundary and every page it had not predicted, and could read nearly every key
   page under the listed prefix. `ReadAheadReads` and the unused counters now also count key page
   indexes read ahead. Results are unchanged; `OpenDir`'s default policy and listings served by a list

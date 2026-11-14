@@ -120,6 +120,9 @@ func (s *scan) readAhead(req *ListQuery, remaining int) {
 // page before it, and not at all when it skips pages: the scan loads that group's index when it gets there, and
 // the prediction resumes from the page it lands on (landing).
 //
+// A page the request has already read, which a routing probe keeps in
+// the request's memo (pageMemo), is predicted but not read again.
+//
 // Bounds may be shortened or overlap (RG-5, RG-6), so the prediction may be
 // wrong; it stops at the part's end and at a page beginning at or after the
 // scan's upper bound. With no extent yet, a first predicted page the
@@ -173,6 +176,14 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 		page := &index.pages[j]
 		if s.end != nil && bytes.Compare(page.lo, s.end) >= 0 {
 			break
+		}
+		if s.log.memo.get(p, page.offset, page.size) != nil {
+			// The request has read the page (a routing probe): the scan
+			// takes it from the request's memo.
+			n++
+			pos = j
+			cur = commonPrefix(page.hi, a.prefix, a.delim)
+			continue
 		}
 		if len(exts) == 0 && a.w.holds(p, page.offset, page.size) {
 			return nil // read ahead already: predict again once the scan reaches what is not
@@ -329,8 +340,12 @@ func (a *readAhead) landing(s *scan, k *keyPages, i int) {
 		a.w.fetchAhead(exts)
 		return
 	}
-	exts := []extent{{k.part, page.offset, page.size, s.r.group(k.g).start + page.first + page.rows}}
-	a.w.fetchAhead(a.chain(s, k.g, k.index, i, commonPrefix(page.hi, a.prefix, a.delim), exts, page.size, 1))
+	var exts []extent
+	var size int64
+	if s.log.memo.get(k.part, page.offset, page.size) == nil { // else the walker takes it from the request's memo
+		exts, size = []extent{{k.part, page.offset, page.size, s.r.group(k.g).start + page.first + page.rows}}, page.size
+	}
+	a.w.fetchAhead(a.chain(s, k.g, k.index, i, commonPrefix(page.hi, a.prefix, a.delim), exts, size, 1))
 }
 
 // following appends to exts, of size bytes and n pages, the key pages of

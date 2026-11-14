@@ -18,9 +18,9 @@ import (
 
 // A forward seek over a non-local Source (scan.forward) routes by the key
 // page indexes at hand instead of the routing search. These tests hold it
-// to the routing search: the same results as a local open, and no key page
-// decoded, no source read made and no failure met that a seek routed by
-// the routing search alone (testRouteOnly) would not meet.
+// to a request routed by the routing search alone (testRouteOnly): the
+// same results as a local open, no failure where the routed request
+// succeeds, and no more key pages decoded or source reads made.
 
 // routeOnly runs fn with every seek routed by the routing search.
 func routeOnly(t testing.TB, fn func()) {
@@ -40,11 +40,11 @@ func overSource(t testing.TB, dir string, opt OpenOptions) *Dataset {
 }
 
 // noMoreWork requires a forward-routed request to have decoded no more key
-// pages than the same request routed by the routing search, and, when
-// reads counts, to have made no more source reads.
-func noMoreWork(t testing.TB, what string, forward, routed *ReadStats, reads bool) {
+// pages, and made no more source reads, than the same request routed by
+// the routing search.
+func noMoreWork(t testing.TB, what string, forward, routed *ReadStats) {
 	t.Helper()
-	if forward.KeyPagesDecoded > routed.KeyPagesDecoded || reads && forward.SourceReads > routed.SourceReads {
+	if forward.KeyPagesDecoded > routed.KeyPagesDecoded || forward.SourceReads > routed.SourceReads {
 		t.Errorf("%s: %d key pages decoded and %d source reads; routed by the routing search, %d and %d",
 			what, forward.KeyPagesDecoded, forward.SourceReads, routed.KeyPagesDecoded, routed.SourceReads)
 	}
@@ -124,7 +124,7 @@ func TestForwardSeekDecodesNoSkippedPage(t *testing.T) {
 				}
 				routeOnly(t, func() { _, err = overSource(t, dir, opt).List(ctx, q, &rst) })
 				must(t, err)
-				noMoreWork(t, what+": listing", &fst, &rst, !speculate)
+				noMoreWork(t, what+": listing", &fst, &rst)
 
 				page, err := overSource(t, dir, opt).Page(ctx, PageQuery{ListQuery: q, Reductions: []Reduction{{Op: CountRows}}}, nil)
 				must(t, err)
@@ -145,7 +145,7 @@ func TestForwardSeekDecodesNoSkippedPage(t *testing.T) {
 				}
 				routeOnly(t, func() { _, err = overSource(t, dir, opt).Plan(ctx, sel, nil, &rst) })
 				must(t, err)
-				noMoreWork(t, what+": plan", &fst, &rst, !speculate)
+				noMoreWork(t, what+": plan", &fst, &rst)
 
 				agg, err := overSource(t, dir, opt).Aggregate(ctx, sel, []Reduction{{Op: CountRows}}, AggregateOptions{}, nil)
 				if err != nil || !reflect.DeepEqual(agg, wantAgg) {
@@ -184,7 +184,7 @@ func TestForwardSeekBroadMaxima(t *testing.T) {
 	must(t, err)
 	t.Logf("%d key pages decoded and %d source reads; routed by the routing search, %d and %d",
 		fst.KeyPagesDecoded, fst.SourceReads, rst.KeyPagesDecoded, rst.SourceReads)
-	noMoreWork(t, "plan", &fst, &rst, true)
+	noMoreWork(t, "plan", &fst, &rst)
 }
 
 // TestForwardSeekPageEvidence lists the root of four one-row parts, the
@@ -219,6 +219,49 @@ func TestForwardSeekPageEvidence(t *testing.T) {
 	}
 }
 
+// TestForwardSeekCursorPages pages a listing one entry at a time, each
+// page resumed from the last one's cursor on the same handle. Forward
+// routing leaves a row group's first key undecoded where the routing
+// search would have decoded it, so a later page's routing search reads
+// that page; the read-ahead then read it a second time, the request's own
+// probe notwithstanding: one source read more over the pages than routing
+// alone (#80 review). A prediction now skips the pages the request has
+// read (pageMemo).
+func TestForwardSeekCursorPages(t *testing.T) {
+	noTestReadAhead(t)
+	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: testutil.Rows("c/f", "c0f", "f/a"), GroupRows: 2, PageBytes: 64}}})
+	fullyValid(t, dir)
+	q := PageQuery{ListQuery: ListQuery{Delimiter: '/', Limit: 1}, Reductions: []Reduction{{Op: CountRows}}}
+	pages := func(d *Dataset) ([]PageEntry, ReadStats) {
+		var entries []PageEntry
+		var total ReadStats
+		for next := q; ; {
+			var st ReadStats
+			p, err := d.Page(ctx, next, &st)
+			must(t, err)
+			total.Add(st)
+			entries = append(entries, p.Entries...)
+			if p.Next == nil {
+				return entries, total
+			}
+			next.Cursor = p.Next
+		}
+	}
+	want, _ := pages(open(t, dir, OpenOptions{}))
+	for _, speculate := range []bool{true, false} {
+		opt := OpenOptions{Read: ReadPolicy{DisableSpeculation: !speculate}}
+		got, fst := pages(overSource(t, dir, opt))
+		if !sameAnswer(want, got) {
+			t.Fatalf("speculation %v: pages %+v, want %+v", speculate, got, want)
+		}
+		var rst ReadStats
+		routeOnly(t, func() { _, rst = pages(overSource(t, dir, opt)) })
+		t.Logf("speculation %v: %d key pages decoded and %d source reads; routed by the routing search, %d and %d",
+			speculate, fst.KeyPagesDecoded, fst.SourceReads, rst.KeyPagesDecoded, rst.SourceReads)
+		noMoreWork(t, fmt.Sprintf("speculation %v", speculate), &fst, &rst)
+	}
+}
+
 // loosenBounds rewrites each part's key page bounds at random into other
 // valid bounds (RG-5): a maximum widened to all 0xFF bytes or shortened
 // with its last kept byte incremented, a minimum shortened or empty. The
@@ -250,10 +293,11 @@ func loosenBounds(t testing.TB, dir string, parts int, rng *rand.Rand, p float64
 // plans over random datasets, some with conservative, shortened and
 // non-monotone key page bounds, unique and repeated keys, through a
 // non-local open with and without speculation, some under a page limit
-// that some of their pages exceed. Each answer, or error, must be a local
-// open's, and each request must decode no more key pages, and
-// without speculation make no more source reads, than the same request on
-// a fresh handle with every seek routed by the routing search.
+// that some of their pages exceed. Run on a fresh handle, each request,
+// a Page with every page its cursors lead to, must fail only where the
+// same request routed by the routing search alone fails; otherwise it must
+// answer as a local open does and decode no more key pages and make no more
+// source reads than the routed one.
 func TestForwardSeekDifferential(t *testing.T) {
 	noTestReadAhead(t)
 	seeds := 24
@@ -326,15 +370,23 @@ func TestForwardSeekDifferential(t *testing.T) {
 			case 1:
 				q := PageQuery{ListQuery: ListQuery{Delimiter: '/', Limit: 1 + rng.IntN(6), Prefix: bound()}, Reductions: []Reduction{{Op: CountRows}}}
 				request = q.ListQuery
+				// Follow the cursors to the end on one handle, adding up
+				// the work of every page: what one page leaves cached is
+				// what the next one reads.
 				page := func(d *Dataset, st *ReadStats) ([]PageEntry, error) {
-					first, err := d.Page(ctx, q, st)
-					if err != nil || first.Next == nil {
-						return first.Entries, err
+					var entries []PageEntry
+					for next := q; ; {
+						var one ReadStats
+						p, err := d.Page(ctx, next, &one)
+						if st != nil {
+							st.Add(one)
+						}
+						if err != nil || p.Next == nil {
+							return append(entries, p.Entries...), err
+						}
+						entries = append(entries, p.Entries...)
+						next.Cursor = p.Next
 					}
-					next := q
-					next.Cursor = first.Next
-					second, err := d.Page(ctx, next, nil)
-					return append(first.Entries, second.Entries...), err
 				}
 				want, werr = page(local, nil)
 				got, gerr = page(overSource(t, dir, opt), &fst)
@@ -360,10 +412,12 @@ func TestForwardSeekDifferential(t *testing.T) {
 				got, gerr = plan(overSource(t, dir, opt), &fst)
 				routeOnly(t, func() { routed, rerr = plan(overSource(t, dir, opt), &rst) })
 			}
-			if (werr == nil) != (gerr == nil) || (werr == nil) != (rerr == nil) {
-				t.Fatalf("%s: %s: errors local %v, remote %v, routed %v", what, describe(request), werr, gerr, rerr)
+			// Forward routing may succeed where routing fails (it loads
+			// fewer indexes, under IndexMemory), never the reverse.
+			if gerr != nil && rerr == nil {
+				t.Fatalf("%s: %s (speculation %v): forward-routed %v; routed by the routing search, no error", what, describe(request), speculate, gerr)
 			}
-			if werr != nil {
+			if gerr != nil || rerr != nil {
 				continue
 			}
 			if c, ok := want.(count); ok {
@@ -373,10 +427,10 @@ func TestForwardSeekDifferential(t *testing.T) {
 				c.exact = routed.(count).exact
 				want = c
 			}
-			if !sameAnswer(want, got) || !sameAnswer(want, routed) {
+			if werr == nil && (!sameAnswer(want, got) || !sameAnswer(want, routed)) {
 				t.Fatalf("%s: %s (speculation %v):\nlocal  %+v\nremote %+v\nrouted %+v", what, describe(request), speculate, want, got, routed)
 			}
-			noMoreWork(t, fmt.Sprintf("%s: %s", what, describe(request)), &fst, &rst, !speculate)
+			noMoreWork(t, fmt.Sprintf("%s: %s (speculation %v)", what, describe(request), speculate), &fst, &rst)
 		}
 	}
 }
