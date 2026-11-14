@@ -205,3 +205,40 @@ func TestListReadAheadWideFoldersResults(t *testing.T) {
 		})
 	}
 }
+
+// TestListReadAheadFlatListing lists rows that do not roll up, 1,000 at a
+// time over ten 100-row key pages, from the start and from a cursor: the
+// read-ahead sizes its prediction by the rows a page of rows yields, not by
+// one page for every entry the listing can still return, which read up to
+// 1,000 pages ahead (4 MiB of them) for a page of the listing.
+func TestListReadAheadFlatListing(t *testing.T) {
+	seekparquet.NoTestReadAhead(t)
+	const pageRows, limit = 100, 1000
+	dir := wideFolderDataset(t, 40, 5000, pageRows, 20000, 1)
+	prefix := []byte("crawl-data/CC-MAIN-2024-18/segments/")
+	local, err := seekparquet.OpenDir(context.Background(), dir, seekparquet.OpenOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	req := seekparquet.ListQuery{Prefix: prefix, Delimiter: 0x01, Limit: limit}
+	for page := range 3 {
+		want, err := local.List(context.Background(), req, nil)
+		if err != nil || len(want) != limit {
+			t.Fatalf("page %d: %d entries, %v", page, len(want), err)
+		}
+		on := measureList(t, dir, 0, req, seekparquet.OpenOptions{})
+		sameEntries(t, "flat", on.entries, want)
+		sameRows(t, "flat", on.entries, want)
+		st := on.stats
+		t.Logf("page %d: %d reads of %d bytes, %d key pages decoded, %d read ahead, %d unused", page, on.reads, on.bytes, st.KeyPagesDecoded, st.ReadAheadReads, st.ReadAheadUnused)
+		// The walk decodes 10 or 11 pages (a fresh handle also decodes a
+		// few to route and to position on the cursor); a page of rows is
+		// counted as a quarter of its rows, so about four times as many
+		// are predicted.
+		if needed := int64(limit/pageRows + 1); st.ReadAheadReads > 4*needed+4 {
+			t.Errorf("page %d: read %d key pages ahead for %d rows of %d-row pages (%d decoded)", page, st.ReadAheadReads, limit, pageRows, st.KeyPagesDecoded)
+		}
+		req.Cursor = want[len(want)-1].Cursor()
+	}
+}

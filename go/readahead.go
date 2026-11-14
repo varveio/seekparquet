@@ -112,7 +112,8 @@ func (s *scan) readAhead(req *ListQuery, remaining int) {
 // maximum then stands for the entry that follows it: its
 // common prefix, or a row when it has none. So a listing that skips from
 // prefix to prefix is predicted one page per prefix, however many pages
-// lie between them, and a listing of rows page after page.
+// lie between them, and a listing of rows page after page, until the pages
+// predicted can yield the entries the listing can still return (yield).
 //
 // The prediction continues into the row groups after g in its part while
 // their key page indexes are at hand without a read (hint), through at most
@@ -150,7 +151,10 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 	if len(exts) > 0 {
 		end, last = index.pages[pos].offset+index.pages[pos].size, pos
 	}
-	for n < min(a.remaining, a.pages, MaxReadRanges) {
+	// covered is the entries the pages predicted so far are taken to
+	// yield (yield): one for each page the caller already chose.
+	covered := int64(n)
+	for covered < int64(a.remaining) && n < min(a.pages, MaxReadRanges) {
 		j := pos + 1
 		if cur != nil {
 			next, ok := successor(cur)
@@ -181,7 +185,7 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 			}
 			if index = a.hint(r, g); index == nil {
 				if cur == nil || adjacent {
-					exts, _ = a.following(s, g, 0, exts, size, n)
+					exts, _ = a.following(s, g, 0, exts, size, n, covered, cur == nil)
 				}
 				exts = append(exts, a.indexExtents(s, g, cur != nil && !adjacent)...)
 				break
@@ -202,6 +206,7 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 			n++
 			pos, end, last = j, -1, -1
 			cur = commonPrefix(page.hi, a.prefix, a.delim)
+			covered += a.yield(page, cur)
 			continue
 		}
 		if page.size > r.limits.PageBytes || size+page.size > a.bytes && len(exts) > 0 {
@@ -228,6 +233,7 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 		n++
 		pos, end, last = j, page.offset+page.size, j
 		cur = commonPrefix(page.hi, a.prefix, a.delim)
+		covered += a.yield(page, cur)
 	}
 	return exts
 }
@@ -238,6 +244,25 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 // object store's GET against its egress price per byte), and well within
 // a request's latency.
 const readGapBytes = 4 << 10
+
+// yield is the entries a predicted key page is taken to stand for. A page
+// with a common prefix in either bound yields at least one entry, and is
+// counted as one. A page whose bounds are both rows of their own is mostly
+// rows when the listing does not roll up, and each row is then an entry;
+// but keys between two such bounds can still roll up (a directory's files
+// and folders interleave), and the page then yields far fewer entries than
+// it has rows. It is counted as a quarter of its rows: a listing of rows
+// reads a few pages ahead instead of one for every entry, and a mixed
+// directory's prediction does not end at its first page of files. hi is
+// the common prefix of the page's maximum. The count only sizes the
+// prediction; a wrong one costs bytes or a later prediction, never a
+// result.
+func (a *readAhead) yield(page *keyPage, hi []byte) int64 {
+	if hi == nil && commonPrefix(page.lo, a.prefix, a.delim) == nil {
+		return max(page.rows/4, 1)
+	}
+	return 1
+}
 
 // indexAhead is the number of row groups whose key page indexes a listing
 // that skips from prefix to prefix reads ahead at once, when they are not
@@ -375,7 +400,7 @@ func (a *readAhead) landing(s *scan, k *keyPages, i int) {
 		// pages a prediction from bounds would name: read the pages in
 		// file order from this one, as the walk reads them when it does
 		// decode.
-		exts, _ := a.following(s, k.g, i, nil, 0, 0)
+		exts, _ := a.following(s, k.g, i, nil, 0, 0, 0, false)
 		a.w.fetchAhead(exts)
 		return
 	}
@@ -393,10 +418,10 @@ func (a *readAhead) landing(s *scan, k *keyPages, i int) {
 // them and their pages. Pages are located by the group's checked key page
 // index, or by the OffsetIndex held in the part's retained metadata; a
 // group located by neither ends them.
-func (a *readAhead) following(s *scan, g groupRef, i int, exts []extent, size int64, n int) ([]extent, int) {
+func (a *readAhead) following(s *scan, g groupRef, i int, exts []extent, size int64, n int, covered int64, rows bool) ([]extent, int) {
 	r := s.r
 	p := r.parts[g.part]
-	for ; g.index < len(p.groups) && n < min(a.remaining, a.pages, MaxReadRanges); g, i = g.next(), 0 {
+	for ; g.index < len(p.groups) && covered < int64(a.remaining) && n < min(a.pages, MaxReadRanges); g, i = g.next(), 0 {
 		if s.end != nil && i == 0 && r.startsAtOrAfter(g, s.end) {
 			break
 		}
@@ -411,7 +436,7 @@ func (a *readAhead) following(s *scan, g groupRef, i int, exts []extent, size in
 			break
 		}
 		index := p.index[grp.physical].Load()
-		for ; i < len(locs) && n < min(a.remaining, a.pages, MaxReadRanges); i++ {
+		for ; i < len(locs) && covered < int64(a.remaining) && n < min(a.pages, MaxReadRanges); i++ {
 			loc := locs[i]
 			if s.end != nil && index != nil && bytes.Compare(index.pages[i].lo, s.end) >= 0 {
 				return exts, n
@@ -422,6 +447,11 @@ func (a *readAhead) following(s *scan, g groupRef, i int, exts []extent, size in
 			size += loc.size
 			exts = append(exts, extent{p, loc.offset, loc.size, grp.start + loc.first + loc.rows})
 			n++
+			if rows {
+				covered += max(loc.rows/4, 1) // as yield counts a page of rows
+			} else {
+				covered++
+			}
 		}
 	}
 	return exts, n

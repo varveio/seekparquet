@@ -5,6 +5,11 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+- Changed listing read-ahead to size a prediction by the entries its pages yield: a key page whose
+  bounds are both rows of their own counts for a quarter of its rows, any other page for one entry.
+  A listing that does not roll up previously read ahead one key page for every entry it could still
+  return, up to 4 MiB of key pages for each page of the listing. Results are unchanged.
+
 - Changed listing read-ahead over a non-local `Source` to follow a delimited listing's skips across
   row groups. It predicts one key page per common prefix from the key page indexes at hand, reads
   ahead the key page indexes of the row groups it has yet to open, and routes a forward seek by those
