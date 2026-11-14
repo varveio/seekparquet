@@ -177,6 +177,9 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 		if s.end != nil && bytes.Compare(page.lo, s.end) >= 0 {
 			break
 		}
+		if len(exts) == 0 && a.w.holds(p, page.offset, page.size) {
+			return nil // read ahead already: predict again once the scan reaches what is not
+		}
 		if s.log.memo.get(p, page.offset, page.size) != nil {
 			// The request has read the page (a routing probe): the scan
 			// takes it from the request's memo.
@@ -184,9 +187,6 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 			pos = j
 			cur = commonPrefix(page.hi, a.prefix, a.delim)
 			continue
-		}
-		if len(exts) == 0 && a.w.holds(p, page.offset, page.size) {
-			return nil // read ahead already: predict again once the scan reaches what is not
 		}
 		if page.size > r.limits.PageBytes || size+page.size > a.bytes && len(exts) > 0 {
 			break

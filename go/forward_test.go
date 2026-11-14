@@ -17,10 +17,14 @@ import (
 )
 
 // A forward seek over a non-local Source (scan.forward) routes by the key
-// page indexes at hand instead of the routing search. These tests hold it
-// to a request routed by the routing search alone (testRouteOnly): the
-// same results as a local open, no failure where the routed request
-// succeeds, and no more key pages decoded or source reads made.
+// page indexes at hand instead of the routing search. These tests compare
+// it with requests routed by the routing search alone (testRouteOnly): the
+// same results as a local open, and no failure where the routed request
+// succeeds. A forward-routed seek decodes no key page the routed seek
+// would not, from the same state; a whole request can differ by a key page
+// or a source read, since the two leave different first keys cached for
+// the request's later seeks (TestForwardSeekKnownDifferences). The tests
+// require no more work in the cases they name, and over the differential.
 
 // routeOnly runs fn with every seek routed by the routing search.
 func routeOnly(t testing.TB, fn func()) {
@@ -219,46 +223,77 @@ func TestForwardSeekPageEvidence(t *testing.T) {
 	}
 }
 
-// TestForwardSeekCursorPages pages a listing one entry at a time, each
-// page resumed from the last one's cursor on the same handle. Forward
-// routing leaves a row group's first key undecoded where the routing
-// search would have decoded it, so a later page's routing search reads
-// that page; the read-ahead then read it a second time, the request's own
-// probe notwithstanding: one source read more over the pages than routing
-// alone (#80 review). A prediction now skips the pages the request has
-// read (pageMemo).
+// TestForwardSeekCursorPages pages listings a few entries at a time, each
+// page resumed from the last one's cursor on the same handle, and requires
+// the pages to decode no more key pages and make no more source reads in
+// all than routing alone, which the #80 reviews found them to exceed by a
+// read:
+//
+//   - a later page's routing search read a page the read-ahead then read
+//     a second time: a prediction now skips the pages the request has read
+//     (pageMemo);
+//   - that skip let a prediction run past a page the windows already held,
+//     where it stops, and read a page it did not use;
+//   - a page left a row group's first key undecoded that the routing search
+//     would have decoded from bytes the read-ahead had read, and the next
+//     page read them again to route: forward now decodes it (scan.noteNext).
 func TestForwardSeekCursorPages(t *testing.T) {
 	noTestReadAhead(t)
-	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: testutil.Rows("c/f", "c0f", "f/a"), GroupRows: 2, PageBytes: 64}}})
-	fullyValid(t, dir)
-	q := PageQuery{ListQuery: ListQuery{Delimiter: '/', Limit: 1}, Reductions: []Reduction{{Op: CountRows}}}
-	pages := func(d *Dataset) ([]PageEntry, ReadStats) {
-		var entries []PageEntry
-		var total ReadStats
-		for next := q; ; {
-			var st ReadStats
-			p, err := d.Page(ctx, next, &st)
-			must(t, err)
-			total.Add(st)
-			entries = append(entries, p.Entries...)
-			if p.Next == nil {
-				return entries, total
+	for _, fx := range []struct {
+		name  string
+		part  testutil.Part
+		limit int
+		edit  func(group int, index *format.ColumnIndex)
+	}{
+		{"probe read ahead again", testutil.Part{Rows: testutil.Rows("c/f", "c0f", "f/a"), GroupRows: 2, PageBytes: 64}, 1, nil},
+		{"prediction past a held page", testutil.Part{Rows: testutil.Rows("b/c", "c/e", "d/d", "d0d", "e/b", "e/c", "e0d", "f/c", "f/e"), Groups: []int{1, 2, 2, 2, 2}, PageBytes: 1}, 4,
+			func(group int, index *format.ColumnIndex) {
+				switch group {
+				case 2: // "e/b"
+					index.MaxValues[1] = []byte("z")
+				case 4: // "f/c"
+					index.MaxValues[0] = []byte("z")
+				}
+				index.BoundaryOrder = format.Unordered
+			}},
+		{"next first key left undecoded", testutil.Part{Rows: testutil.Rows("a/f", "a0a", "a0b", "a0f", "d0b", "d0c", "d0e", "e/d"), GroupRows: 4, PageBytes: 16}, 3, nil},
+	} {
+		t.Run(fx.name, func(t *testing.T) {
+			dir := write(t, testutil.Dataset{Parts: []testutil.Part{fx.part}})
+			if fx.edit != nil {
+				editColumnIndexes(t, dir, 0, fx.edit)
 			}
-			next.Cursor = p.Next
-		}
-	}
-	want, _ := pages(open(t, dir, OpenOptions{}))
-	for _, speculate := range []bool{true, false} {
-		opt := OpenOptions{Read: ReadPolicy{DisableSpeculation: !speculate}}
-		got, fst := pages(overSource(t, dir, opt))
-		if !sameAnswer(want, got) {
-			t.Fatalf("speculation %v: pages %+v, want %+v", speculate, got, want)
-		}
-		var rst ReadStats
-		routeOnly(t, func() { _, rst = pages(overSource(t, dir, opt)) })
-		t.Logf("speculation %v: %d key pages decoded and %d source reads; routed by the routing search, %d and %d",
-			speculate, fst.KeyPagesDecoded, fst.SourceReads, rst.KeyPagesDecoded, rst.SourceReads)
-		noMoreWork(t, fmt.Sprintf("speculation %v", speculate), &fst, &rst)
+			fullyValid(t, dir)
+			q := PageQuery{ListQuery: ListQuery{Delimiter: '/', Limit: fx.limit}, Reductions: []Reduction{{Op: CountRows}}}
+			pages := func(d *Dataset) ([]PageEntry, ReadStats) {
+				var entries []PageEntry
+				var total ReadStats
+				for next := q; ; {
+					var st ReadStats
+					p, err := d.Page(ctx, next, &st)
+					must(t, err)
+					total.Add(st)
+					entries = append(entries, p.Entries...)
+					if p.Next == nil {
+						return entries, total
+					}
+					next.Cursor = p.Next
+				}
+			}
+			want, _ := pages(open(t, dir, OpenOptions{}))
+			for _, speculate := range []bool{true, false} {
+				opt := OpenOptions{Read: ReadPolicy{DisableSpeculation: !speculate}}
+				got, fst := pages(overSource(t, dir, opt))
+				if !sameAnswer(want, got) {
+					t.Fatalf("speculation %v: pages %+v, want %+v", speculate, got, want)
+				}
+				var rst ReadStats
+				routeOnly(t, func() { _, rst = pages(overSource(t, dir, opt)) })
+				t.Logf("speculation %v: %d key pages decoded and %d source reads; routed by the routing search, %d and %d",
+					speculate, fst.KeyPagesDecoded, fst.SourceReads, rst.KeyPagesDecoded, rst.SourceReads)
+				noMoreWork(t, fmt.Sprintf("speculation %v", speculate), &fst, &rst)
+			}
+		})
 	}
 }
 
@@ -293,145 +328,207 @@ func loosenBounds(t testing.TB, dir string, parts int, rng *rand.Rand, p float64
 // plans over random datasets, some with conservative, shortened and
 // non-monotone key page bounds, unique and repeated keys, through a
 // non-local open with and without speculation, some under a page limit
-// that some of their pages exceed. Run on a fresh handle, each request,
-// a Page with every page its cursors lead to, must fail only where the
-// same request routed by the routing search alone fails; otherwise it must
-// answer as a local open does and decode no more key pages and make no more
-// source reads than the routed one.
+// that some of their pages exceed (forwardSeed). Each request must decode
+// no more key pages than the same request routed by the routing search
+// alone, as these seeds do; over all the requests, forward routing must
+// make no more source reads. A request's reads can differ by one either
+// way with speculation, and other seeds show a request that decodes more
+// (TestForwardSeekKnownDifferences).
 func TestForwardSeekDifferential(t *testing.T) {
 	noTestReadAhead(t)
 	seeds := 24
 	if testing.Short() {
 		seeds = 6
 	}
+	var forward, routed ReadStats
 	for seed := range uint64(seeds) {
-		rng := rand.New(rand.NewPCG(seed, 79))
-		repeated := seed%3 == 2
-		keys := fixtureKeys(30 + rng.IntN(150))
-		var rows []string
-		for _, k := range keys {
+		forwardSeed(t, seed, func(_ int, what string, fst, rst *ReadStats) {
+			if fst.KeyPagesDecoded > rst.KeyPagesDecoded {
+				t.Errorf("%s: %d key pages decoded; routed by the routing search, %d", what, fst.KeyPagesDecoded, rst.KeyPagesDecoded)
+			}
+			forward.Add(*fst)
+			routed.Add(*rst)
+		})
+	}
+	t.Logf("%d key pages decoded and %d source reads; routed by the routing search, %d and %d",
+		forward.KeyPagesDecoded, forward.SourceReads, routed.KeyPagesDecoded, routed.SourceReads)
+	noMoreWork(t, "all requests", &forward, &routed)
+}
+
+// TestForwardSeekKnownDifferences pins requests of seeds beyond the
+// differential's that forward routing makes with more work than the
+// routing search alone. Each seek forward routes decodes no page the
+// routed seek would not, from the same state; but the routing search's
+// probes decode row groups' first keys that later seeks of the request
+// use, and forward routing skips them. In seed 831 the routed listing
+// stops at its End by a first key a probe decoded, without reading that
+// group, where the forward-routed one decodes a key page of it to find a
+// key at or after End: one key page more. In seed 402, with speculation,
+// the pages read for a first key left undecoded cost one source read
+// more. Should a change remove a difference, update its row.
+func TestForwardSeekKnownDifferences(t *testing.T) {
+	noTestReadAhead(t)
+	for _, k := range []struct {
+		seed            uint64
+		op              int
+		forward, routed [2]int64 // key pages decoded, source reads
+	}{
+		{831, 24, [2]int64{12, 5}, [2]int64{11, 5}},
+		{402, 3, [2]int64{21, 16}, [2]int64{22, 15}},
+	} {
+		found := false
+		forwardSeed(t, k.seed, func(op int, what string, fst, rst *ReadStats) {
+			if op != k.op {
+				return
+			}
+			found = true
+			got, routed := [2]int64{fst.KeyPagesDecoded, fst.SourceReads}, [2]int64{rst.KeyPagesDecoded, rst.SourceReads}
+			if got != k.forward || routed != k.routed {
+				t.Errorf("%s: key pages decoded and source reads %v, routed by the routing search %v; pinned %v and %v", what, got, routed, k.forward, k.routed)
+			}
+		})
+		if !found {
+			t.Errorf("seed %d: no successful operation %d", k.seed, k.op)
+		}
+	}
+}
+
+// forwardSeed writes the random dataset of seed and runs 30 random
+// requests on it: listings, pages following every cursor on one handle,
+// range reads and plans, each on fresh non-local handles with and without
+// speculation. Each request must fail only where the same request routed
+// by the routing search alone (testRouteOnly) fails, and otherwise answer
+// as a local open does; work is called with the work of each request
+// both succeed in.
+func forwardSeed(t *testing.T, seed uint64, work func(op int, what string, forward, routed *ReadStats)) {
+	t.Helper()
+	rng := rand.New(rand.NewPCG(seed, 79))
+	repeated := seed%3 == 2
+	keys := fixtureKeys(30 + rng.IntN(150))
+	var rows []string
+	for _, k := range keys {
+		rows = append(rows, k)
+		for repeated && rng.IntN(2) == 0 {
 			rows = append(rows, k)
-			for repeated && rng.IntN(2) == 0 {
-				rows = append(rows, k)
-			}
 		}
-		geometry := testutil.Part{GroupRows: 2 + rng.IntN(20), PageBytes: []int{1, 1, 64, 300}[rng.IntN(4)], IndexSizeLimit: []int{0, 6, 1 << 10}[rng.IntN(3)]}
-		chunks := split(keys, 1+rng.IntN(3))
-		var d testutil.Dataset
-		d.RepeatedKeys = repeated
-		at := 0
-		for _, chunk := range chunks {
-			p := geometry
-			n := 0
-			for at+n < len(rows) && rows[at+n] <= chunk[len(chunk)-1] {
-				n++
-			}
-			p.Rows = testutil.Rows(rows[at : at+n]...)
-			at += n
-			d.Parts = append(d.Parts, p)
+	}
+	geometry := testutil.Part{GroupRows: 2 + rng.IntN(20), PageBytes: []int{1, 1, 64, 300}[rng.IntN(4)], IndexSizeLimit: []int{0, 6, 1 << 10}[rng.IntN(3)]}
+	chunks := split(keys, 1+rng.IntN(3))
+	var d testutil.Dataset
+	d.RepeatedKeys = repeated
+	at := 0
+	for _, chunk := range chunks {
+		p := geometry
+		n := 0
+		for at+n < len(rows) && rows[at+n] <= chunk[len(chunk)-1] {
+			n++
 		}
-		dir := write(t, d)
-		loosenBounds(t, dir, len(chunks), rng, []float64{0, 0.2, 0.7}[rng.IntN(3)])
-		fullyValid(t, dir)
-		// A page limit below the largest pages makes a request fail when
-		// it decodes one: forward routing must fail where routing fails.
-		limits := Limits{}
-		if rng.IntN(3) == 0 {
-			limits.PageBytes = 200
+		p.Rows = testutil.Rows(rows[at : at+n]...)
+		at += n
+		d.Parts = append(d.Parts, p)
+	}
+	dir := write(t, d)
+	loosenBounds(t, dir, len(chunks), rng, []float64{0, 0.2, 0.7}[rng.IntN(3)])
+	fullyValid(t, dir)
+	// A page limit below the largest pages makes a request fail when
+	// it decodes one: forward routing must fail where routing fails.
+	limits := Limits{}
+	if rng.IntN(3) == 0 {
+		limits.PageBytes = 200
+	}
+	local := open(t, dir, OpenOptions{Limits: limits})
+	bounds := probes(keys, 5)
+	bound := func() []byte { return bounds[rng.IntN(len(bounds))] }
+	for op := range 30 {
+		what := fmt.Sprintf("seed %d op %d", seed, op)
+		speculate := rng.IntN(2) == 0
+		opt := OpenOptions{Limits: limits, Read: ReadPolicy{DisableSpeculation: !speculate}}
+		start, end := bound(), bound()
+		if rng.IntN(3) == 0 || bytes.Compare(end, start) <= 0 {
+			end = nil
 		}
-		local := open(t, dir, OpenOptions{Limits: limits})
-		bounds := probes(keys, 5)
-		bound := func() []byte { return bounds[rng.IntN(len(bounds))] }
-		for op := range 30 {
-			what := fmt.Sprintf("seed %d op %d", seed, op)
-			speculate := rng.IntN(2) == 0
-			opt := OpenOptions{Limits: limits, Read: ReadPolicy{DisableSpeculation: !speculate}}
-			start, end := bound(), bound()
-			if rng.IntN(3) == 0 || bytes.Compare(end, start) <= 0 {
-				end = nil
+		var fst, rst ReadStats
+		var want, got, routed any
+		var werr, gerr, rerr error
+		var request any
+		switch rng.IntN(4) {
+		case 0:
+			q := ListQuery{Delimiter: '/', Limit: 1 + rng.IntN(12), End: end}
+			if rng.IntN(4) > 0 {
+				q.Prefix = bound()
 			}
-			var fst, rst ReadStats
-			var want, got, routed any
-			var werr, gerr, rerr error
-			var request any
-			switch rng.IntN(4) {
-			case 0:
-				q := ListQuery{Delimiter: '/', Limit: 1 + rng.IntN(12), End: end}
-				if rng.IntN(4) > 0 {
-					q.Prefix = bound()
-				}
-				if rng.IntN(5) == 0 {
-					q.Delimiter = 0
-				}
-				request = q
-				want, werr = local.List(ctx, q, nil)
-				got, gerr = overSource(t, dir, opt).List(ctx, q, &fst)
-				routeOnly(t, func() { routed, rerr = overSource(t, dir, opt).List(ctx, q, &rst) })
-			case 1:
-				q := PageQuery{ListQuery: ListQuery{Delimiter: '/', Limit: 1 + rng.IntN(6), Prefix: bound()}, Reductions: []Reduction{{Op: CountRows}}}
-				request = q.ListQuery
-				// Follow the cursors to the end on one handle, adding up
-				// the work of every page: what one page leaves cached is
-				// what the next one reads.
-				page := func(d *Dataset, st *ReadStats) ([]PageEntry, error) {
-					var entries []PageEntry
-					for next := q; ; {
-						var one ReadStats
-						p, err := d.Page(ctx, next, &one)
-						if st != nil {
-							st.Add(one)
-						}
-						if err != nil || p.Next == nil {
-							return append(entries, p.Entries...), err
-						}
-						entries = append(entries, p.Entries...)
-						next.Cursor = p.Next
+			if rng.IntN(5) == 0 {
+				q.Delimiter = 0
+			}
+			request = q
+			want, werr = local.List(ctx, q, nil)
+			got, gerr = overSource(t, dir, opt).List(ctx, q, &fst)
+			routeOnly(t, func() { routed, rerr = overSource(t, dir, opt).List(ctx, q, &rst) })
+		case 1:
+			q := PageQuery{ListQuery: ListQuery{Delimiter: '/', Limit: 1 + rng.IntN(6), Prefix: bound()}, Reductions: []Reduction{{Op: CountRows}}}
+			request = q.ListQuery
+			// Follow the cursors to the end on one handle, adding up
+			// the work of every page: what one page leaves cached is
+			// what the next one reads.
+			page := func(d *Dataset, st *ReadStats) ([]PageEntry, error) {
+				var entries []PageEntry
+				for next := q; ; {
+					var one ReadStats
+					p, err := d.Page(ctx, next, &one)
+					if st != nil {
+						st.Add(one)
 					}
-				}
-				want, werr = page(local, nil)
-				got, gerr = page(overSource(t, dir, opt), &fst)
-				routeOnly(t, func() { routed, rerr = page(overSource(t, dir, opt), &rst) })
-			case 2:
-				q := Query{Selection: Selection{Span: Span{Start: start, End: end, StartExclusive: rng.IntN(2) == 0}}, Limit: int64(1 + rng.IntN(20))}
-				request = q
-				want, werr = local.Rows(ctx, q, nil)
-				got, gerr = overSource(t, dir, opt).Rows(ctx, q, &fst)
-				routeOnly(t, func() { routed, rerr = overSource(t, dir, opt).Rows(ctx, q, &rst) })
-			default:
-				sel := []Selection{{Span: Span{Start: start, End: end}}}
-				request = sel[0]
-				plan := func(d *Dataset, st *ReadStats) (count, error) {
-					p, err := d.Plan(ctx, sel, nil, st)
-					if err != nil {
-						return count{}, err
+					if err != nil || p.Next == nil {
+						return append(entries, p.Entries...), err
 					}
-					n, exact := p.Count()
-					return count{n, exact}, nil
+					entries = append(entries, p.Entries...)
+					next.Cursor = p.Next
 				}
-				want, werr = plan(local, nil)
-				got, gerr = plan(overSource(t, dir, opt), &fst)
-				routeOnly(t, func() { routed, rerr = plan(overSource(t, dir, opt), &rst) })
 			}
-			// Forward routing may succeed where routing fails (it loads
-			// fewer indexes, under IndexMemory), never the reverse.
-			if gerr != nil && rerr == nil {
-				t.Fatalf("%s: %s (speculation %v): forward-routed %v; routed by the routing search, no error", what, describe(request), speculate, gerr)
+			want, werr = page(local, nil)
+			got, gerr = page(overSource(t, dir, opt), &fst)
+			routeOnly(t, func() { routed, rerr = page(overSource(t, dir, opt), &rst) })
+		case 2:
+			q := Query{Selection: Selection{Span: Span{Start: start, End: end, StartExclusive: rng.IntN(2) == 0}}, Limit: int64(1 + rng.IntN(20))}
+			request = q
+			want, werr = local.Rows(ctx, q, nil)
+			got, gerr = overSource(t, dir, opt).Rows(ctx, q, &fst)
+			routeOnly(t, func() { routed, rerr = overSource(t, dir, opt).Rows(ctx, q, &rst) })
+		default:
+			sel := []Selection{{Span: Span{Start: start, End: end}}}
+			request = sel[0]
+			plan := func(d *Dataset, st *ReadStats) (count, error) {
+				p, err := d.Plan(ctx, sel, nil, st)
+				if err != nil {
+					return count{}, err
+				}
+				n, exact := p.Count()
+				return count{n, exact}, nil
 			}
-			if gerr != nil || rerr != nil {
-				continue
-			}
-			if c, ok := want.(count); ok {
-				// Whether a count is exact follows the parts the handle
-				// has checked, which a local open checks as it opens: a
-				// forward-routed count must be exact as the routed one is.
-				c.exact = routed.(count).exact
-				want = c
-			}
-			if werr == nil && (!sameAnswer(want, got) || !sameAnswer(want, routed)) {
-				t.Fatalf("%s: %s (speculation %v):\nlocal  %+v\nremote %+v\nrouted %+v", what, describe(request), speculate, want, got, routed)
-			}
-			noMoreWork(t, fmt.Sprintf("%s: %s (speculation %v)", what, describe(request), speculate), &fst, &rst)
+			want, werr = plan(local, nil)
+			got, gerr = plan(overSource(t, dir, opt), &fst)
+			routeOnly(t, func() { routed, rerr = plan(overSource(t, dir, opt), &rst) })
 		}
+		// Forward routing may succeed where routing fails (it loads
+		// fewer indexes, under IndexMemory); it must not fail where
+		// routing succeeds.
+		if gerr != nil && rerr == nil {
+			t.Fatalf("%s: %s (speculation %v): forward-routed %v; routed by the routing search, no error", what, describe(request), speculate, gerr)
+		}
+		if gerr != nil || rerr != nil {
+			continue
+		}
+		if c, ok := want.(count); ok {
+			// Whether a count is exact follows the parts the handle
+			// has checked, which a local open checks as it opens: a
+			// forward-routed count must be exact as the routed one is.
+			c.exact = routed.(count).exact
+			want = c
+		}
+		if werr == nil && (!sameAnswer(want, got) || !sameAnswer(want, routed)) {
+			t.Fatalf("%s: %s (speculation %v):\nlocal  %+v\nremote %+v\nrouted %+v", what, describe(request), speculate, want, got, routed)
+		}
+		work(op, fmt.Sprintf("%s: %s (speculation %v)", what, describe(request), speculate), &fst, &rst)
 	}
 }
 

@@ -539,7 +539,11 @@ func (l *listing) prefix(prefix []byte, exact bool, offset int64, at position, s
 // rolling up to it (scan.shortcut), and moving past it.
 func (s *scan) seekList(from []byte, req ListQuery, l *listing) error {
 	for len(l.out) < req.Limit {
-		if g, ok := s.forward(from, true); ok && !s.mayShortcut(g, from) {
+		g, ok, err := s.forward(from, true)
+		if err != nil {
+			return err
+		}
+		if ok && !s.mayShortcut(g, from) {
 			// The seek needs no routing: the key page indexes at hand
 			// prove where it lands.
 			if err := s.seek(from, true); err != nil {

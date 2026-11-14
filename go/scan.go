@@ -96,14 +96,16 @@ func (s *scan) seek(from []byte, inclusive bool) error {
 		s.kp.next = 0
 		s.synthetic = false
 	}
-	g, ok := s.forward(from, inclusive)
+	g, ok, err := s.forward(from, inclusive)
+	if err != nil {
+		return err
+	}
 	if ok && g != s.g && s.kp.at+1 < len(s.kp.index.pages) {
 		// Leaving the scan's group skips the rest of its pages by its
 		// index, as the seek that found none there would.
 		s.stats.PageIndexSeeks++
 	}
 	if !ok {
-		var err error
 		if g, err = s.r.groupFor(s.ctx, from, inclusive, &s.log, s.stats); err != nil {
 			return err
 		}
@@ -150,20 +152,23 @@ func (s *scan) seek(from []byte, inclusive bool) error {
 // remote Source, and the key page indexes of the groups passed. It reports
 // false when the bounds at hand do not decide: the routing search then
 // decides, as it does without them.
-func (s *scan) forward(from []byte, inclusive bool) (groupRef, bool) {
+func (s *scan) forward(from []byte, inclusive bool) (groupRef, bool, error) {
 	if testRouteOnly || s.r.local || s.kp == nil || s.synthetic || s.key == nil || from == nil || !before(s.key, from, inclusive) {
-		return groupRef{}, false
+		return groupRef{}, false, nil
 	}
 	g, index := s.g, s.kp.index
 	for hops := 0; ; hops++ {
 		if reaches(index.pages[len(index.pages)-1].hi, from, inclusive) {
-			return g, s.lands(g, index, from, inclusive)
+			if !s.lands(g, index, from, inclusive) {
+				return groupRef{}, false, nil
+			}
+			return g, true, s.noteNext(g, index, from, inclusive)
 		}
 		if g = g.next(); hops == indexAhead || g.index >= len(s.r.parts[g.part].groups) || s.end != nil && s.r.startsAtOrAfter(g, s.end) {
-			return groupRef{}, false
+			return groupRef{}, false, nil
 		}
 		if index = s.indexAtHand(g); index == nil {
-			return groupRef{}, false
+			return groupRef{}, false, nil
 		}
 	}
 }
@@ -201,6 +206,36 @@ func (s *scan) lands(g groupRef, index *groupIndex, from []byte, inclusive bool)
 		return above(index.pages[0].lo)
 	}
 	return false
+}
+
+// noteNext decodes the first key of the row group after g, where forward
+// lands, when the routing search it replaces would have decoded it and its
+// bytes are at hand: the first key page and the key page index, read
+// ahead or retained. The routing search begins at g only after finding
+// the next group's first key above from, so it decodes that key whenever
+// it is not known and the search begins at g: the scan's group, or a
+// later group whose first page's maximum is not above from. The key is
+// then known to the requests that follow, as after routing (a cursor's
+// next page routes by it), and no read is made for it.
+func (s *scan) noteNext(g groupRef, index *groupIndex, from []byte, inclusive bool) error {
+	if g != s.g && s.r.above(index.pages[0].hi, from, inclusive) {
+		return nil // the routing search may begin before g
+	}
+	p := s.r.parts[g.part]
+	next := g.next()
+	if next.index >= len(p.groups) || p.groups[next.index].first.Load() != nil {
+		return nil
+	}
+	if index = s.indexAtHand(next); index == nil {
+		return nil
+	}
+	meta := &p.footer.Metadata().RowGroups[p.groups[next.index].physical].Columns[p.key.index].MetaData
+	start, _, ok := chunkRange(meta)
+	if page := index.pages[0]; !ok || page.offset < start || !windowsOf(s.ctx).holds(p, start, page.offset+page.size-start) {
+		return nil
+	}
+	_, err := s.r.first(s.ctx, next, &s.log, s.stats)
+	return err
 }
 
 // indexAtHand returns the key page index of row group g of a checked part
