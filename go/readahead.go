@@ -107,8 +107,9 @@ func (s *scan) readAhead(req *ListQuery, remaining int) {
 // page index is index, when the entry that follows that page is cur: a
 // common prefix, after which the scan seeks to its successor and lands on
 // the first page from pos whose maximum reaches it (keyPages.seek,
-// groupIndex.pageFor), or nil for a row, after which it decodes the next
-// page. A page's maximum then stands for the entry that follows it: its
+// groupIndex.pageFor), or nil for a row, after which the rows of page pos
+// lead to the entry its maximum stands for, as after any page. A page's
+// maximum then stands for the entry that follows it: its
 // common prefix, or a row when it has none. So a listing that skips from
 // prefix to prefix is predicted one page per prefix, however many pages
 // lie between them, and a listing of rows page after page.
@@ -121,7 +122,10 @@ func (s *scan) readAhead(req *ListQuery, remaining int) {
 // the prediction resumes from the page it lands on (landing).
 //
 // A page the request has already read, which a routing probe keeps in
-// the request's memo (pageMemo), is predicted but not read again.
+// the request's memo (pageMemo), is predicted but not read again. The
+// pages between two pages predicted in a row group are read too when they
+// are at most readGapBytes: a listing that skips folders of a few pages
+// each then reads its pages in one request rather than one a page.
 //
 // Bounds may be shortened or overlap (RG-5, RG-6), so the prediction may be
 // wrong; it stops at the part's end and at a page beginning at or after the
@@ -134,6 +138,16 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 	// adjacent says the last step went to the page after the one before
 	// it; crossed counts the row groups this prediction has entered.
 	adjacent, crossed := true, 0
+	if cur == nil && pos >= 0 {
+		// A row: the rows after it on page pos lead to the entry its
+		// maximum stands for, as for any page.
+		cur = commonPrefix(index.pages[pos].hi, a.prefix, a.delim)
+	}
+	// last is the page of group g that exts ends with, -1 for none.
+	last := -1
+	if len(exts) > 0 {
+		last = pos
+	}
 	for n < min(a.remaining, a.pages, MaxReadRanges) {
 		j := pos + 1
 		if cur != nil {
@@ -170,7 +184,7 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 				exts = append(exts, a.indexExtents(s, g, cur != nil && !adjacent)...)
 				break
 			}
-			pos = -1
+			pos, last = -1, -1
 			continue
 		}
 		page := &index.pages[j]
@@ -184,21 +198,41 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 			// The request has read the page (a routing probe): the scan
 			// takes it from the request's memo.
 			n++
-			pos = j
+			pos, last = j, -1
 			cur = commonPrefix(page.hi, a.prefix, a.delim)
 			continue
 		}
 		if page.size > r.limits.PageBytes || size+page.size > a.bytes && len(exts) > 0 {
 			break
 		}
+		if last >= 0 && j > last+1 {
+			// Read the few bytes of the pages skipped since the last page
+			// predicted with this one, rather than make it a request of
+			// its own.
+			from := index.pages[last].offset + index.pages[last].size
+			if gap := page.offset - from; gap > 0 && gap <= readGapBytes && size+gap+page.size <= a.bytes {
+				for k := last + 1; k < j; k++ {
+					skipped := &index.pages[k]
+					size += skipped.size
+					exts = append(exts, extent{p, skipped.offset, skipped.size, r.group(g).start + skipped.first + skipped.rows})
+				}
+			}
+		}
 		size += page.size
 		exts = append(exts, extent{p, page.offset, page.size, r.group(g).start + page.first + page.rows})
 		n++
-		pos = j
+		pos, last = j, j
 		cur = commonPrefix(page.hi, a.prefix, a.delim)
 	}
 	return exts
 }
+
+// readGapBytes is the most bytes of key pages a prediction reads between
+// two pages it predicts in one row group, to read them in one request
+// rather than two: about what a request costs in transfer (an object
+// store's GET against its egress price per byte), and well within a
+// request's latency.
+const readGapBytes = 4 << 10
 
 // indexAhead is the number of row groups whose key page indexes a listing
 // that skips from prefix to prefix reads ahead at once, when they are not

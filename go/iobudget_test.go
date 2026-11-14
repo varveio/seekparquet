@@ -778,6 +778,77 @@ func TestReadBudgets(t *testing.T) {
 	checkBudgets(t, "repeated", ioRepeatedBudgets, runIOScenarios(t, rfx, ioRepeatedScenarios(rfx), []ioStore{capableStore})["capable"])
 }
 
+// ioBrowseBudgets is measured on ioBrowse through capableStore and
+// noSpeculationStore, which count each range a request (fakestore merges
+// none): a browser's page of acct-0500/, as swath serves one (its
+// TestRequestBudgetsLarge), with the listing's columns, a sum and a count
+// of each prefix, cold on a fresh handle.
+var ioBrowseBudgets = []ioBudget{
+	{"browse-page/cold", ioMetrics{136, 11, 4950031, 0, 48}, ioTarget{137, 12}, atTarget},
+}
+
+// ioBrowseNoSpecBudgets is ioBrowseBudgets without speculation.
+var ioBrowseNoSpecBudgets = []ioBudget{
+	{"browse-page/cold", ioMetrics{211, 84, 836845, 0, 48}, none, current},
+}
+
+// TestReadBudgetsBrowsePage pages a browser through a folder that skips
+// from child folder to child folder across a part and a row-group
+// boundary. Predicting one key page per child folder reads every other
+// key page: those pages must not each cost a request where reading the
+// run whole costs one (swath's request budget measured 105 requests
+// against 15 when they did).
+func TestReadBudgetsBrowsePage(t *testing.T) {
+	seekparquet.NoTestReadAhead(t)
+	fx := ioFixtureOf(t, ioBrowse)
+	t.Logf("browse fixture: %s", describeFixture(fx))
+	first, last := -1, -1
+	for i, k := range fx.keys {
+		if bytes.HasPrefix(k, fx.listPrefix) {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+	}
+	part := func(row int) int {
+		p := 0
+		for p+1 < len(fx.starts) && fx.starts[p+1] <= row {
+			p++
+		}
+		return p
+	}
+	group := func(row int) int {
+		p := part(row)
+		end := len(fx.keys)
+		if p+1 < len(fx.starts) {
+			end = fx.starts[p+1]
+		}
+		per := (end - fx.starts[p] + fx.spec.groups - 1) / fx.spec.groups
+		return (row - fx.starts[p]) / per
+	}
+	if part(first) == part(last) || group(first) == group(last) && part(first)+1 == part(last) && group(last) == 0 {
+		t.Fatalf("%s is rows %d..%d: it must straddle a part boundary and a row-group boundary inside a part", fx.listPrefix, first, last)
+	}
+	ctx := context.Background()
+	scenario := ioScenario{"browse-page", func(e *ioEnv) {
+		d := e.open()
+		q := seekparquet.PageQuery{ListQuery: seekparquet.ListQuery{Prefix: fx.listPrefix, Delimiter: '/', Limit: 1000, Columns: ioColumns},
+			Reductions: []seekparquet.Reduction{{Op: seekparquet.Sum, Column: "size"}, {Op: seekparquet.CountRows}}}
+		e.step("browse-page/cold", func() string {
+			page, err := d.Page(ctx, q, nil)
+			var b strings.Builder
+			for _, ent := range page.Entries {
+				fmt.Fprintf(&b, "%q %v\n", ent.Bytes(), ent.Aggregates)
+			}
+			return withErr(b.String(), err)
+		})
+	}}
+	reports := runIOScenarios(t, fx, []ioScenario{scenario}, []ioStore{capableStore, noSpeculationStore})
+	checkBudgets(t, "browse", ioBrowseBudgets, reports["capable"])
+	checkBudgets(t, "browse, no speculation", ioBrowseNoSpecBudgets, reports[noSpeculationStore.name])
+}
+
 // TestReadBudgetsAuditSize runs the operations on a fixture of the audit's
 // size (4 parts of about 1M rows) and logs their numbers: unasserted
 // evidence, compared with the audit by hand, not a budget. Set

@@ -332,7 +332,10 @@ func waitStarted(t *testing.T, src *slowSource, n int64) {
 // flight ends when its context is cancelled, or when the Dataset closes,
 // and no read, and no goroutine, outlives it.
 func TestListReadAheadCancelAndClose(t *testing.T) {
-	dir := folderDataset(t, 40, 500, 64, 1)
+	// Folders of many pages: the pages between two predicted ones are more
+	// bytes than a prediction reads across (readGapBytes), so the pages
+	// predicted are read ahead apart, several in flight at once.
+	dir := folderDataset(t, 40, 3000, 64, 1)
 	req := seekparquet.ListQuery{Prefix: []byte("crawl-data/CC-MAIN-2024-18/segments/"), Delimiter: '/', Limit: 1000, ReadAhead: 8}
 	for _, how := range []string{"cancel", "close"} {
 		t.Run(how, func(t *testing.T) {
