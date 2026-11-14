@@ -5,15 +5,12 @@ package seekparquet
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
 
-	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
 	"github.com/varveio/seekparquet/go/internal/testutil"
 )
@@ -199,17 +196,7 @@ func TestIndexedAccessNonMonotoneScaling(t *testing.T) {
 
 func broadNonMonotoneIndexes(t *testing.T, dir string) {
 	t.Helper()
-	path := partFile(dir, 0)
-	raw, err := os.ReadFile(path)
-	must(t, err)
-	meta, err := testutil.ReadFooter(path)
-	must(t, err)
-	footerLen := int(binary.LittleEndian.Uint32(raw[len(raw)-8 : len(raw)-4]))
-	body := append([]byte(nil), raw[:len(raw)-8-footerLen]...)
-	for g := range meta.RowGroups {
-		col := &meta.RowGroups[g].Columns[0]
-		var index format.ColumnIndex
-		must(t, thrift.Unmarshal(new(thrift.CompactProtocol), raw[col.ColumnIndexOffset:col.ColumnIndexOffset+int64(col.ColumnIndexLength)], &index))
+	editColumnIndexes(t, dir, 0, func(_ int, index *format.ColumnIndex) {
 		if len(index.MinValues) < 2 {
 			t.Fatal("need multiple key pages per group")
 		}
@@ -220,19 +207,7 @@ func broadNonMonotoneIndexes(t *testing.T, dir string) {
 			}
 		}
 		index.BoundaryOrder = format.Unordered
-		encoded, err := thrift.Marshal(new(thrift.CompactProtocol), &index)
-		must(t, err)
-		col.ColumnIndexOffset = int64(len(body))
-		col.ColumnIndexLength = int32(len(encoded))
-		body = append(body, encoded...)
-	}
-	footer, err := thrift.Marshal(new(thrift.CompactProtocol), meta)
-	must(t, err)
-	body = append(body, footer...)
-	body = binary.LittleEndian.AppendUint32(body, uint32(len(footer)))
-	body = append(body, "PAR1"...)
-	must(t, os.WriteFile(path, body, 0o644))
-	must(t, testutil.SyncSizes(dir))
+	})
 }
 
 // Machine-readable observations for the common regression runner. Budgets remain

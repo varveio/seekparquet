@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/parquet-go/parquet-go"
+	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
 
 	"github.com/varveio/seekparquet/go/internal/testutil"
@@ -130,6 +132,38 @@ func partFile(dir string, i int) string {
 func rewrite(t testing.TB, dir string, i int, change func(*format.FileMetaData)) {
 	t.Helper()
 	must(t, testutil.RewriteFooter(partFile(dir, i), func(m *format.FileMetaData) error { change(m); return nil }))
+	must(t, testutil.SyncSizes(dir))
+}
+
+// editColumnIndexes applies edit to the key ColumnIndex of each row group
+// of part i, writing the indexes after the part's data and pointing its
+// footer at them, and fixes the manifest size.
+func editColumnIndexes(t testing.TB, dir string, i int, edit func(group int, index *format.ColumnIndex)) {
+	t.Helper()
+	path := partFile(dir, i)
+	raw, err := os.ReadFile(path)
+	must(t, err)
+	meta, err := testutil.ReadFooter(path)
+	must(t, err)
+	footerLen := int(binary.LittleEndian.Uint32(raw[len(raw)-8 : len(raw)-4]))
+	body := append([]byte(nil), raw[:len(raw)-8-footerLen]...)
+	for g := range meta.RowGroups {
+		col := &meta.RowGroups[g].Columns[0]
+		var index format.ColumnIndex
+		must(t, thrift.Unmarshal(new(thrift.CompactProtocol), raw[col.ColumnIndexOffset:col.ColumnIndexOffset+int64(col.ColumnIndexLength)], &index))
+		edit(g, &index)
+		encoded, err := thrift.Marshal(new(thrift.CompactProtocol), &index)
+		must(t, err)
+		col.ColumnIndexOffset = int64(len(body))
+		col.ColumnIndexLength = int32(len(encoded))
+		body = append(body, encoded...)
+	}
+	footer, err := thrift.Marshal(new(thrift.CompactProtocol), meta)
+	must(t, err)
+	body = append(body, footer...)
+	body = binary.LittleEndian.AppendUint32(body, uint32(len(footer)))
+	body = append(body, "PAR1"...)
+	must(t, os.WriteFile(path, body, 0o644))
 	must(t, testutil.SyncSizes(dir))
 }
 
