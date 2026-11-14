@@ -260,7 +260,7 @@ decodes and how many dependent requests it waits for. Defaults of the Go writer 
 | Rows per key page (1,024, [GEO-1](../../spec/format-1.md#geo-1)) | fewer keys decoded to find one; a larger page index | more keys decoded per seek |
 | Row group (8 MiB or 1,000,000 rows) | more row-group first keys to route by; a larger footer | a larger key page index to load per row group |
 | Part (`PartBytes`, 128 MiB) | more first touches, each a footer read, and more open files | larger footers to read on first touch |
-| Page bounds | exact bounds distinguish neighboring pages and help a seek skip unrelated pages; routing still decodes first key pages | bounds shortened until they cannot tell neighboring pages apart can force decoding many pages, up to a whole row group |
+| Page bounds | exact bounds distinguish neighboring pages, help a seek skip unrelated pages, and let a Go listing over a non-local Source seek past a common prefix without routing probes; other routing still decodes first key pages | bounds shortened until they cannot tell neighboring pages apart can force decoding many pages, up to a whole row group |
 | Value-column OffsetIndex ([COL-4](../../spec/format-1.md#col-4)) | present: a read fetches only the value pages of the rows it returns | absent: the reader walks page headers to find them |
 
 - Keys that share a long prefix need bounds long enough to tell pages apart. For example, if keys share
