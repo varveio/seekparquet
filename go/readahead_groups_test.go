@@ -236,7 +236,7 @@ func TestListReadAheadFlatListing(t *testing.T) {
 		// few to route and to position on the cursor); a page of rows is
 		// counted as a quarter of its rows, so about four times as many
 		// are predicted.
-		if needed := int64(limit/pageRows + 1); st.ReadAheadReads > 4*needed+4 {
+		if needed := int64(limit/pageRows + 1); st.ReadAheadReads == 0 || st.ReadAheadReads > 4*needed+4 {
 			t.Errorf("page %d: read %d key pages ahead for %d rows of %d-row pages (%d decoded)", page, st.ReadAheadReads, limit, pageRows, st.KeyPagesDecoded)
 		}
 		req.Cursor = want[len(want)-1].Cursor()
