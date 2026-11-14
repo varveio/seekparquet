@@ -112,9 +112,10 @@ func pagesScenario(name, prefix string, limit, pages int) ioScenario {
 // The budgets of TestReadBudgetsListingShapes. Pages 2 and 3 resume from
 // a cursor, with no scan position to route forward from: they route by
 // the routing search, which reads what the first page's forward routing
-// did not (row groups' first keys, the next part). The work moves from
-// the first page to the second; over the three pages it is no more than
-// before #78 (7264a9f), pinned as the targets' totals below.
+// did not (row groups' first keys, the next part). In these shapes the
+// work moves from the first page to the second, and over the three pages
+// it is no more than before #78 (7264a9f), pinned as the targets' totals
+// below; not every listing shape is so (issue 82).
 var (
 	// Dictionary keys, speculation off, root/g00/ one folder a page.
 	// Before #78: 18/14, 3/3 and 3/3 requests/rounds (24/20, 22,425 B).
@@ -140,8 +141,8 @@ var (
 
 // TestReadBudgetsListingShapes measures listing shapes the #81 review
 // found doing more work in a request than before #78 (issue 82), and
-// checks that over each sequence of pages the work is no more than before
-// #78: requests and rounds at most its totals.
+// checks that over each of these sequences of pages the work is no more
+// than before #78: requests and rounds at most its totals.
 func TestReadBudgetsListingShapes(t *testing.T) {
 	seekparquet.NoTestReadAhead(t)
 	for _, c := range []struct {

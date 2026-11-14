@@ -391,10 +391,11 @@ func TestForwardSeekDifferential(t *testing.T) {
 // first keys, which later seeks use to route, to stop at an upper bound,
 // or to emit a common prefix without reading its group, and forward
 // routing skips them, so its read-ahead also reads other ranges. No bound
-// is claimed, either way: of 60,000 requests of a 1,000-seed run of the
-// differential, 39 read more (17 with plain keys, 22 with dictionary keys),
-// the most by 6 ranges (seed 551: 98 against 92), and seed 831's is the
-// only one found to decode more. Should a change move a row, update it.
+// is claimed, either way: in 1,000-seed runs of the differential a few
+// dozen of the 60,000 requests read more, with plain keys and with
+// dictionary keys, the most by 6 ranges (seed 551: 98 against 92), and
+// seed 831's is the only one found to decode more. Should a change move a
+// row, update it.
 func TestForwardSeekKnownDifferences(t *testing.T) {
 	noTestReadAhead(t)
 	for _, k := range []struct {

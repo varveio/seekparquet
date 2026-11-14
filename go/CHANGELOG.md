@@ -22,10 +22,14 @@ versioning; while it is v0, minor versions may change the API.
   Over a whole request, key pages decoded and source reads can differ from a request routed
   throughout in either direction, with no bound claimed: routing's probes leave first keys, and open
   parts, that later seeks and pages use. A listing continued from a cursor can therefore do on its
-  second page work its first page skipped; over the pages it is no more than before. In the tests'
-  randomized comparison forward routing does less in total (5,927 key pages and 8,388 reads against
-  6,014 and 8,434; with dictionary keys read in batches, 4,569 and 10,423 against 4,649 and 10,508);
-  of the 60,000 requests of a 1,000-seed run, 39 read more, by at most 6 ranges (98 against 92).
+  second page work its first page skipped; in the two shapes of issue 82 the work over the pages is
+  the same as before or less. It is not so for every listing: summed over each sequence of pages of
+  a matrix of listing shapes, the totals are lower than before, no sequence decodes more key pages,
+  and some use more requests or rounds (a root listing of eight row groups a part and folders of
+  640 objects: 10 requests in 4 rounds against 4 in 4). In the tests' randomized comparison forward
+  routing does less in total (5,927 key pages and 8,388 reads against 6,014 and 8,434; with
+  dictionary keys read in batches, 4,569 and 10,423 against 4,649 and 10,508); in 1,000-seed runs a
+  few dozen of the 60,000 requests read more, by at most 6 ranges (98 against 92).
 
 - Fixed `Plan.Split` to keep equal selected keys across a gap in one shard.
   A valid repeated-key `PlanRows` plan could previously be refused with `key_order`.
