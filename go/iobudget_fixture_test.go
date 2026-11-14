@@ -58,6 +58,12 @@ var (
 	ioRepeated = ioFixtureSpec{rows: 200_000, parts: 4, groups: 4, perFolder: 500, repeated: true}
 	ioAudit    = ioFixtureSpec{rows: 4_000_000, parts: 4, groups: 4, perFolder: 1000}
 	ioTiny     = ioFixtureSpec{rows: 40_000, parts: 4, groups: 4, perFolder: 100}
+	// ioBrowse is swath's large browse geometry at a quarter of its rows:
+	// two row groups per part, and acct-0500/'s folders of 2,000 objects,
+	// each about two key pages, so that a listing that skips them reads
+	// every other key page; the folder straddles a part boundary and a
+	// row-group boundary (TestReadBudgetsBrowsePage).
+	ioBrowse = ioFixtureSpec{rows: 400_000, parts: 4, groups: 2, perFolder: 2000}
 )
 
 // ioFixture is a written fixture: its directory, its files in memory (for

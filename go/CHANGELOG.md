@@ -12,12 +12,15 @@ versioning; while it is v0, minor versions may change the API.
   later than routing would; such a seek decodes no key page the routed seek would not. Over a whole
   request, key pages decoded and source reads can differ from a request routed throughout in either
   direction, with no bound claimed: routing's probes leave first keys that later seeks use. In the
-  tests' randomized comparison forward routing does less in total (5,927 key pages and 8,489 reads
-  against 6,014 and 8,544; with dictionary keys read in batches, 4,569 and 10,583 against 4,649 and
-  10,702), and the worst request found reads 21 ranges against 16. Predictions skip pages the request
-  has already read. Previously it read pages in file order after every row-group boundary and every
-  page it had not predicted, and could read nearly every key page under the listed prefix. `ReadAheadReads` and the unused counters now also count key page
-  indexes read ahead. Results are unchanged; `OpenDir`'s default policy and listings served by a list
+  tests' randomized comparison forward routing does less in total (5,927 key pages and 8,468 reads
+  against 6,014 and 8,523; with dictionary keys read in batches, 4,569 and 10,563 against 4,649 and
+  10,678), and the worst request found reads 21 ranges against 16. Predictions skip pages the request
+  has already read, read the pages between two predicted pages of a row group as well when they are
+  at most 4 KiB, so that a listing skipping folders of a few pages each makes one request, not one a
+  page, and predict from a row as from the page's last entry, not always the next page. Previously it
+  read pages in file order after every row-group boundary and every page it had not predicted, and
+  could read nearly every key page under the listed prefix. `ReadAheadReads` and the unused counters
+  now also count key page indexes read ahead. Results are unchanged; `OpenDir`'s default policy and listings served by a list
   index read as before. No format change.
 
 - Fixed `Plan.Split` to keep equal selected keys across a gap in one shard.
