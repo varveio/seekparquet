@@ -97,7 +97,7 @@ Use reader controls to choose logical work; configure physical execution in your
 | Retained raw page indexes | `Limits.PageIndexCacheMemory` | Reuse tail bytes for later index loads; eviction trades memory for logical reads |
 | Batched index reads | `RangeReader` capability | Submit independent logical ranges together; storage chooses their physical execution |
 | Operation memo | Internal reader policy | Reuse admitted complete key-page extents during routing and walking; not a cross-operation byte cache |
-| Listing read-ahead | `ListQuery.ReadAhead` | Predict future key pages; unused reads add bytes and work |
+| Listing read-ahead | `ListQuery.ReadAhead` | Predict the key pages a listing decodes next, one for each common prefix it seeks past, and the key page indexes of the row groups ahead; unused reads add bytes and work |
 | Scan and projection windows | `ReadPolicy` and storage capabilities | Fetch bounded ranges across columns and pages, including value routing probes |
 | Suppress optional fetching | `ReadPolicy.DisableSpeculation` | Disable speculative fetching while retaining demanded batching and reuse of available bytes |
 

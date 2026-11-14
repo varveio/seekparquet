@@ -235,8 +235,10 @@ flowchart TD
 ```
 
 This diagram shows logical dependencies, not a fixed number of storage rounds. Routing may probe several row
-groups. What the reader already holds, speculative reads, and how the storage batches requests all change
-the requests a read needs. The readers retain checked footers, key indexes and first keys within their
+groups. A Go listing over a non-local Source that seeks forward past a common prefix makes no probe when the
+key page indexes it holds prove which row group the seek lands in ([`forward`](../go/scan.go)). What the
+reader already holds, speculative reads, and how the storage batches requests all change the requests a read
+needs. The readers retain checked footers, key indexes and first keys within their
 [limits](reference/limits.md): a **cold** read is the first operation on a freshly
 opened dataset; a **warm** read repeats a similar operation on the same open dataset and reuses the footers,
 key page indexes and first keys it already loaded.
