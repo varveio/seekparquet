@@ -9,19 +9,27 @@ versioning; while it is v0, minor versions may change the API.
   row groups. It predicts one key page per common prefix from the key page indexes at hand, reads
   ahead the key page indexes of the row groups it has yet to open, and routes a forward seek by those
   indexes without decoding a row group's first key page where their bounds prove the seek lands no
-  later than routing would; such a seek decodes no key page the routed seek would not. Over a whole
-  request, key pages decoded and source reads can differ from a request routed throughout in either
-  direction, with no bound claimed: routing's probes leave first keys that later seeks use. In the
-  tests' randomized comparison forward routing does less in total (5,927 key pages and 8,468 reads
-  against 6,014 and 8,523; with dictionary keys read in batches, 4,569 and 10,563 against 4,649 and
-  10,678), and the worst request found reads 21 ranges against 16. Predictions skip pages the request
-  has already read, read the pages between two predicted pages of a row group as well when they are
-  at most 4 KiB, so that a listing skipping folders of a few pages each makes one request, not one a
-  page, and predict from a row as from the page's last entry, not always the next page. Previously it
-  read pages in file order after every row-group boundary and every page it had not predicted, and
-  could read nearly every key page under the listed prefix. `ReadAheadReads` and the unused counters
-  now also count key page indexes read ahead. Results are unchanged; `OpenDir`'s default policy and listings served by a list
-  index read as before. No format change.
+  later than routing would; such a seek decodes no key page the routed seek would not. Predictions
+  skip pages the request has already read, and read the bytes between two predicted pages of a part,
+  in one row group or across two, when they are at most 4 KiB, so that a listing skipping folders of
+  a few pages each makes one request, not one a page. After a row they predict from the page's last
+  entry, not always the next page. Previously it read pages in file order after every row-group
+  boundary and every page it had not predicted, and could read nearly every key page under the listed
+  prefix. `ReadAheadReads` and the unused counters now also count key page indexes read ahead.
+  Results are unchanged; `OpenDir`'s default policy and listings served by a list index read as
+  before. No format change.
+
+  Over a whole request, key pages decoded and source reads can differ from a request routed
+  throughout in either direction, with no bound claimed: routing's probes leave first keys, and open
+  parts, that later seeks and pages use. A listing continued from a cursor can therefore do on its
+  second page work its first page skipped; in the two shapes of issue 82 the work over the pages is
+  the same as before or less. It is not so for every listing: summed over each sequence of pages of
+  a matrix of listing shapes, the totals are lower than before, no sequence decodes more key pages,
+  and some use more requests or rounds (a root listing of eight row groups a part and folders of
+  640 objects: 10 requests in 4 rounds against 4 in 4). In the tests' randomized comparison forward
+  routing does less in total (5,927 key pages and 8,388 reads against 6,014 and 8,434; with
+  dictionary keys read in batches, 4,569 and 10,423 against 4,649 and 10,508); in 1,000-seed runs a
+  few dozen of the 60,000 requests read more, by at most 6 ranges (98 against 92).
 
 - Fixed `Plan.Split` to keep equal selected keys across a gap in one shard.
   A valid repeated-key `PlanRows` plan could previously be refused with `key_order`.

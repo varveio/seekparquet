@@ -225,25 +225,30 @@ func TestForwardSeekPageEvidence(t *testing.T) {
 }
 
 // TestForwardSeekCursorPages pages listings a few entries at a time, each
-// page resumed from the last one's cursor on the same handle, and requires
-// the pages to decode no more key pages and make no more source reads in
-// all than routing alone, which the #80 reviews found them to exceed by a
-// read:
+// page resumed from the last one's cursor on the same handle, decoding no
+// more key pages than routing alone, and pins their source reads with
+// speculation, forward-routed and routed, which the #80 reviews found
+// regressed:
 //
 //   - a later page's routing search read a page the read-ahead then read
 //     a second time: a prediction now skips the pages the request has read
 //     (pageMemo);
 //   - that skip let a prediction run past a page the windows already held,
-//     where it stops, and read a page it did not use, routed either way:
-//     reads pins the source reads with speculation.
+//     where it stops, and read a page it did not use.
+//
+// Since a prediction reads the few bytes between row groups too
+// (readGapBytes), each listing reads 5 ranges forward-routed (7 and 8
+// before) and 4 routed (7 and 8): routing's first page decodes the next
+// row group's first key from a read it makes anyway, which forward
+// routing's later page reads alone (TestForwardSeekKnownDifferences).
 func TestForwardSeekCursorPages(t *testing.T) {
 	noTestReadAhead(t)
 	for _, fx := range []struct {
 		name  string
 		fx    cursorFixture
-		reads int64
+		reads [2]int64 // with speculation: forward-routed, routed
 	}{
-		{"probe read ahead again", cursorFixture{testutil.Part{Rows: testutil.Rows("c/f", "c0f", "f/a"), GroupRows: 2, PageBytes: 64}, 1, nil}, 7},
+		{"probe read ahead again", cursorFixture{testutil.Part{Rows: testutil.Rows("c/f", "c0f", "f/a"), GroupRows: 2, PageBytes: 64}, 1, nil}, [2]int64{5, 4}},
 		{"prediction past a held page", cursorFixture{testutil.Part{Rows: testutil.Rows("b/c", "c/e", "d/d", "d0d", "e/b", "e/c", "e0d", "f/c", "f/e"), Groups: []int{1, 2, 2, 2, 2}, PageBytes: 1}, 4,
 			func(group int, index *format.ColumnIndex) {
 				switch group {
@@ -253,16 +258,18 @@ func TestForwardSeekCursorPages(t *testing.T) {
 					index.MaxValues[0] = []byte("z")
 				}
 				index.BoundaryOrder = format.Unordered
-			}}, 8},
+			}}, [2]int64{5, 4}},
 	} {
 		t.Run(fx.name, func(t *testing.T) {
 			for _, speculate := range []bool{true, false} {
 				fst, rst := fx.fx.work(t, speculate)
 				t.Logf("speculation %v: %d key pages decoded and %d source reads; routed by the routing search, %d and %d",
 					speculate, fst.KeyPagesDecoded, fst.SourceReads, rst.KeyPagesDecoded, rst.SourceReads)
-				noMoreWork(t, fmt.Sprintf("speculation %v", speculate), &fst, &rst)
-				if speculate && fst.SourceReads != fx.reads {
-					t.Errorf("%d source reads with speculation, want %d", fst.SourceReads, fx.reads)
+				if fst.KeyPagesDecoded > rst.KeyPagesDecoded {
+					t.Errorf("speculation %v: %d key pages decoded; routed by the routing search, %d", speculate, fst.KeyPagesDecoded, rst.KeyPagesDecoded)
+				}
+				if reads := [2]int64{fst.SourceReads, rst.SourceReads}; speculate && reads != fx.reads {
+					t.Errorf("source reads with speculation %v (forward-routed, routed), want %v", reads, fx.reads)
 				}
 			}
 		})
@@ -384,10 +391,11 @@ func TestForwardSeekDifferential(t *testing.T) {
 // first keys, which later seeks use to route, to stop at an upper bound,
 // or to emit a common prefix without reading its group, and forward
 // routing skips them, so its read-ahead also reads other ranges. No bound
-// is claimed, either way: the worst request a 1,000-seed run of the
-// differential found reads 21 ranges against 16 (seed 498, dictionary
-// keys), and seed 831's is the only one found to decode more. Should a
-// change move a row, update it.
+// is claimed, either way: in 1,000-seed runs of the differential a few
+// dozen of the 60,000 requests read more, with plain keys and with
+// dictionary keys, the most by 6 ranges (seed 551: 98 against 92), and
+// seed 831's is the only one found to decode more. Should a change move a
+// row, update it.
 func TestForwardSeekKnownDifferences(t *testing.T) {
 	noTestReadAhead(t)
 	for _, k := range []struct {
@@ -396,10 +404,9 @@ func TestForwardSeekKnownDifferences(t *testing.T) {
 		op              int
 		forward, routed [2]int64 // key pages decoded, source reads
 	}{
-		{831, false, 24, [2]int64{12, 5}, [2]int64{11, 5}}, // the routed listing stops at End by a probe's first key
-		{402, false, 3, [2]int64{20, 17}, [2]int64{22, 15}},
-		{535, true, 2, [2]int64{6, 14}, [2]int64{12, 10}},
-		{498, true, 14, [2]int64{9, 21}, [2]int64{18, 16}},
+		{831, false, 24, [2]int64{12, 4}, [2]int64{11, 5}}, // the routed listing stops at End by a probe's first key
+		{551, false, 18, [2]int64{164, 98}, [2]int64{174, 92}},
+		{704, true, 22, [2]int64{72, 95}, [2]int64{73, 91}},
 	} {
 		found := false
 		forwardSeed(t, k.seed, k.dict, func(op int, what string, fst, rst *ReadStats) {
@@ -418,11 +425,11 @@ func TestForwardSeekKnownDifferences(t *testing.T) {
 	}
 	// Paged by cursor: the first page leaves the next row group's first key
 	// undecoded, though the read-ahead read its page; the next page's
-	// routing search reads it again (7 source reads against 6).
+	// routing search reads it again (6 source reads against 4).
 	fx := cursorFixture{testutil.Part{Rows: testutil.Rows("a/f", "a0a", "a0b", "a0f", "d0b", "d0c", "d0e", "e/d"), GroupRows: 4, PageBytes: 16}, 3, nil}
 	fst, rst := fx.work(t, true)
-	if got, routed := [2]int64{fst.KeyPagesDecoded, fst.SourceReads}, [2]int64{rst.KeyPagesDecoded, rst.SourceReads}; got != [2]int64{10, 7} || routed != [2]int64{10, 6} {
-		t.Errorf("cursor pages: key pages decoded and source reads %v, routed by the routing search %v; pinned [10 7] and [10 6]", got, routed)
+	if got, routed := [2]int64{fst.KeyPagesDecoded, fst.SourceReads}, [2]int64{rst.KeyPagesDecoded, rst.SourceReads}; got != [2]int64{10, 6} || routed != [2]int64{10, 4} {
+		t.Errorf("cursor pages: key pages decoded and source reads %v, routed by the routing search %v; pinned [10 6] and [10 4]", got, routed)
 	}
 }
 
