@@ -123,9 +123,10 @@ func (s *scan) readAhead(req *ListQuery, remaining int) {
 //
 // A page the request has already read, which a routing probe keeps in
 // the request's memo (pageMemo), is predicted but not read again. The
-// pages between two pages predicted in a row group are read too when they
-// are at most readGapBytes: a listing that skips folders of a few pages
-// each then reads its pages in one request rather than one a page.
+// bytes between two pages predicted in a part, in one row group or in two
+// in a row, are read too when they are at most readGapBytes: a listing
+// that skips folders of a few pages each then reads its pages in one
+// request rather than one a page.
 //
 // Bounds may be shortened or overlap (RG-5, RG-6), so the prediction may be
 // wrong; it stops at the part's end and at a page beginning at or after the
@@ -143,10 +144,11 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 		// maximum stands for, as for any page.
 		cur = commonPrefix(index.pages[pos].hi, a.prefix, a.delim)
 	}
-	// last is the page of group g that exts ends with, -1 for none.
-	last := -1
+	// end is where in the part the last extent of exts ends, -1 for none,
+	// and last its page when it is of group g, -1 otherwise.
+	end, last := int64(-1), -1
 	if len(exts) > 0 {
-		last = pos
+		end, last = index.pages[pos].offset+index.pages[pos].size, pos
 	}
 	for n < min(a.remaining, a.pages, MaxReadRanges) {
 		j := pos + 1
@@ -198,40 +200,43 @@ func (a *readAhead) chain(s *scan, g groupRef, index *groupIndex, pos int, cur [
 			// The request has read the page (a routing probe): the scan
 			// takes it from the request's memo.
 			n++
-			pos, last = j, -1
+			pos, end, last = j, -1, -1
 			cur = commonPrefix(page.hi, a.prefix, a.delim)
 			continue
 		}
 		if page.size > r.limits.PageBytes || size+page.size > a.bytes && len(exts) > 0 {
 			break
 		}
-		if last >= 0 && j > last+1 {
-			// Read the few bytes of the pages skipped since the last page
-			// predicted with this one, rather than make it a request of
-			// its own.
-			from := index.pages[last].offset + index.pages[last].size
-			if gap := page.offset - from; gap > 0 && gap <= readGapBytes && size+gap+page.size <= a.bytes {
+		if gap := page.offset - end; end >= 0 && gap > 0 && gap <= min(readGapBytes, r.limits.PageBytes) && size+gap+page.size <= a.bytes {
+			// Read the few bytes skipped since the last page predicted
+			// with this one, rather than make it a request of its own:
+			// the pages between them in a row group, or, across row
+			// groups, the bytes between their pages (the end of one key
+			// column chunk and the start of the next, its dictionary).
+			if last >= 0 {
 				for k := last + 1; k < j; k++ {
 					skipped := &index.pages[k]
-					size += skipped.size
 					exts = append(exts, extent{p, skipped.offset, skipped.size, r.group(g).start + skipped.first + skipped.rows})
 				}
+			} else {
+				exts = append(exts, extent{p, end, gap, r.group(g).start + page.first + page.rows})
 			}
+			size += gap
 		}
 		size += page.size
 		exts = append(exts, extent{p, page.offset, page.size, r.group(g).start + page.first + page.rows})
 		n++
-		pos, last = j, j
+		pos, end, last = j, page.offset+page.size, j
 		cur = commonPrefix(page.hi, a.prefix, a.delim)
 	}
 	return exts
 }
 
-// readGapBytes is the most bytes of key pages a prediction reads between
-// two pages it predicts in one row group, to read them in one request
-// rather than two: about what a request costs in transfer (an object
-// store's GET against its egress price per byte), and well within a
-// request's latency.
+// readGapBytes is the most bytes a prediction reads between two pages it
+// predicts in one part (and at most Limits.PageBytes), to read them in
+// one request rather than two: about what a request costs in transfer (an
+// object store's GET against its egress price per byte), and well within
+// a request's latency.
 const readGapBytes = 4 << 10
 
 // indexAhead is the number of row groups whose key page indexes a listing
