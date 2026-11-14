@@ -9,13 +9,14 @@ versioning; while it is v0, minor versions may change the API.
   row groups. It predicts one key page per common prefix from the key page indexes at hand, reads
   ahead the key page indexes of the row groups it has yet to open, and routes a forward seek by those
   indexes without decoding a row group's first key page where their bounds prove the seek lands no
-  later than routing would; such a seek decodes no key page the routed seek would not, and decodes
-  the next row group's first key where routing would have and its bytes are at hand. A whole request
-  can still differ from one routed throughout by a key page or a source read, either way: routing's
-  probes leave first keys that the request's later seeks use. Predictions skip pages the request has
-  already read. Previously it read pages in file order
-  after every row-group boundary and every page it had not predicted, and could read nearly every key
-  page under the listed prefix. `ReadAheadReads` and the unused counters now also count key page
+  later than routing would; such a seek decodes no key page the routed seek would not. Over a whole
+  request, key pages decoded and source reads can differ from a request routed throughout in either
+  direction, with no bound claimed: routing's probes leave first keys that later seeks use. In the
+  tests' randomized comparison forward routing does less in total (5,927 key pages and 8,489 reads
+  against 6,014 and 8,544; with dictionary keys read in batches, 4,569 and 10,583 against 4,649 and
+  10,702), and the worst request found reads 21 ranges against 16. Predictions skip pages the request
+  has already read. Previously it read pages in file order after every row-group boundary and every
+  page it had not predicted, and could read nearly every key page under the listed prefix. `ReadAheadReads` and the unused counters now also count key page
   indexes read ahead. Results are unchanged; `OpenDir`'s default policy and listings served by a list
   index read as before. No format change.
 
