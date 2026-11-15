@@ -208,7 +208,7 @@ Run the examples from the repository root with `go -C go test -run '^Example_cou
 The listing itself reads storage; the column-free `PlanRows` and `Count` calls after it read nothing. A row
 span's boundaries can be unknown, and unknown never means empty or zero:
 
-- A common prefix's end is unknown when a full page ends on it, or when the listing's `End` cuts through it.
+- A common prefix's end can be unknown when a full page ends on it, or when the listing's `End` cuts through it.
   This fixture's three prefixes have known ends only because a result limit of four lets the traversal pass
   them.
 - A start clipped by a row or prefix cursor is known, and identifies the first remaining candidate row.
@@ -223,8 +223,9 @@ Exactness does not certify unread keys or values.
 
 `InputRowSpans()` returns the original spans in input order, overlaps and empties included; a `Split` shard
 has one input per span of the plan's rows in it. `SelectRows` selects spans of the parent's rows with the
-parent's projection and no I/O. Its spans must have known boundaries from the same dataset and lie within the
-parent's selected rows; anything else is `ErrInvalidRequest`.
+parent's projection and no I/O. Its spans must have known boundaries from the same dataset, and each nonempty
+span must lie within the parent's selected rows; anything else is `ErrInvalidRequest`. An empty span is
+accepted anywhere in the dataset.
 
 `ScanValues` yields borrowed, read-only `ValueBatch`es in dataset order, each within a row group, projected
 pages and a normalized span; a batch may cross adjacent input spans, so distribute rows by ordinal as the
