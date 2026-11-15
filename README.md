@@ -3,7 +3,7 @@
 **A sorted-key profile for Apache Parquet.**
 
 <!-- generated: status -->
-> **Pre-release.** Format 1 is a draft: draft revision 1, stored on disk as `format_version` 0 so that a draft file is never mistaken for a final one. The conformance suite is at revision `0.1.0-draft.5`. The Go module and the Java reader have no release of this API yet: this documentation describes `main`, which may change before the first release. See [compatibility](docs/reference/compatibility.md) for what is stable.
+> **Pre-release.** Format 1 is a draft: draft revision 1, stored on disk as `format_version` 0 so that a draft file is never mistaken for a final one. The conformance suite is at revision `0.1.0-draft.5`. The Go module has version 0 releases ([changelog](go/CHANGELOG.md)); the Java reader has none. This documentation describes `main`, which may be ahead of the latest release. See [compatibility](docs/reference/compatibility.md) for what is stable.
 <!-- /generated -->
 
 A SeekParquet dataset is a set of ordinary Parquet files sorted by one byte-string key column, split into

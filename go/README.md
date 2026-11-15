@@ -15,11 +15,11 @@ plus writing, validation, row-position counting and aggregation.
 ## Install
 
 ```sh
-go get github.com/varveio/seekparquet/go@main
+go get github.com/varveio/seekparquet/go@v0.2.0
 ```
 
-This README describes `main`. The tagged `go/v0.1.0` has an earlier API; until the next release, pin a
-`main` commit as a pseudo-version ([compatibility](../docs/reference/compatibility.md#using-the-go-module-before-its-next-release),
+This README describes `main`, which may be ahead of the latest release; the [changelog](CHANGELOG.md) lists
+the changes ([compatibility](../docs/reference/compatibility.md#installing-the-go-module),
 [RELEASING.md](../RELEASING.md#go)).
 
 ## Read and list

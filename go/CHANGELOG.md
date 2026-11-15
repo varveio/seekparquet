@@ -5,10 +5,13 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+## v0.2.0 (2026-11-15)
+
 Changes since `go/v0.1.0`. Implements format 1, draft revision 1 (on disk `format_version` 0,
 `draft_revision` 1). Passes conformance revision `0.1.0-draft.5`, targets `reader`, `validator-structural`,
 `validator-profile`, `validator-full` and `validator-digest`, with the optional `verify` and `planning`
-capabilities. No format change.
+capabilities. No format change. The first release that writes files of draft revision 1, so that revision is
+no longer edited in place ([VER-2](../spec/format-1.md#ver-2)).
 
 ### Breaking
 

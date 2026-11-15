@@ -326,9 +326,9 @@ func (g *generator) renderStatus(page string) (string, error) {
 	}
 	return fmt.Sprintf("> **Pre-release.** Format %d is a draft: draft revision %d, stored on disk as `format_version` %d so that a draft file is never mistaken for a final one. "+
 		"The conformance suite is at revision `%s`. "+
-		"The Go module and the Java reader have no release of this API yet: this documentation describes `main`, which may change before the first release. "+
+		"The Go module has version 0 releases ([changelog](%s)); the Java reader has none. This documentation describes `main`, which may be ahead of the latest release. "+
 		"See [compatibility](%s) for what is stable.\n",
-		s.TargetFormatVersion, s.DraftRevision, s.OnDisk.FormatVersion, s.ConformanceRevision, rel(page, "docs/reference/compatibility.md")), nil
+		s.TargetFormatVersion, s.DraftRevision, s.OnDisk.FormatVersion, s.ConformanceRevision, rel(page, "go/CHANGELOG.md"), rel(page, "docs/reference/compatibility.md")), nil
 }
 
 func (g *generator) renderTroubleRefusals(page string) (string, error) {
