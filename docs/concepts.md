@@ -113,44 +113,18 @@ Every query can **project** columns by name. Each projected column of each row i
 
 ## Row positions and spans
 
-Implementation behavior: sorted hierarchical keys can identify tenants, categories, dates, or any other ordered dimensions.
-Keys locate rows; columns supply their values.
-Go `RowPosition` marks a boundary before a row, or the dataset's end, in that same row order.
-Its `Ordinal()` is a zero-based dataset coordinate, distinct from a row's offset within its key group.
-The zero value is unknown.
-Positions belong to one `Dataset` handle, even when another handle reads the same data, and remain inspectable after `Close`.
-`Plan.SelectRows` remains allowed after close; `Dataset.PlanRows`, scans, and `Plan.Split` require the open Dataset.
-`Split` may read key pages to keep repeated keys together.
-Go `RowSpan` selects from `Start` inclusive to `End` exclusive; equal known boundaries select no rows.
-Its zero value is incomplete and invalid as input; unknown boundaries are legitimate listing output, never evidence of zero rows.
-It differs from the key-based `Span`, whose zero value selects every key.
+Implementation behavior, Go only: keys locate rows, and a **row position** names a place in the dataset's row
+order. Go `RowPosition` is a boundary before a row, or at the dataset's end; its `Ordinal()` is a zero-based
+dataset coordinate, distinct from a row's offset in its key group, and its zero value is unknown. Positions
+belong to the `Dataset` handle that made them. A **row span**, Go `RowSpan`, selects from `Start` inclusive
+to `End` exclusive; unlike the key-based `Span`, its zero value is invalid input.
 
-Go `ListEntry.Rows` describes the entry's candidate rows, restricted by the listing's prefix, end, and cursor.
-A row entry has both boundaries known.
-A common prefix has the boundaries the traversal establishes without additional I/O.
-Its end can be unknown when the listing stops at its result limit or its end bound cuts through the prefix.
-Cursor-clipped starts are known and identify the first remaining candidate row, even inside a common prefix or row group.
-Check both boundaries with `Ordinal()` before using the span.
-Unknown must never be treated as empty or zero; use `Dataset.Plan` over the corresponding key selection, which may read storage.
-The [counting guide](guides/counting.md#resolve-unknown-rows) shows this fallback and how to preserve listing restrictions.
-
-Go `Dataset.PlanRows` without projected columns and `Plan.Count` make no storage requests.
-Even with known positions, a plan's count is inexact if any contributing part was unchecked at plan construction.
-There is no promise of an exact zero-request count for every listing entry.
-An ordinal alone does not certify row counts or unread keys.
-With columns, planning checks selected parts and locates projected pages without reading their data pages.
-`Plan.InputRowSpans` preserves input order, overlaps, and empties before union normalization; `Plan.SelectRows` selects contained spans without I/O.
-Overlapping selected rows count once in a plan.
-
-A **value-only scan**, Go `Plan.ScanValues`, reads projected columns at planned row positions as borrowed `ValueBatch` values.
-It does not seek through keys or compute equal-key offsets.
-It reads the key column only if you project it explicitly; success does not certify unread key pages.
-Copying a batch or `ColumnView` does not retain values; `Value(i).Clone()` does, and `Start()` is independently owned.
-Only scan-produced batches carry data; a batch may cross adjacent input-span boundaries after union normalization.
-Distribute rows by ordinal for per-input aggregation.
-Ordinals and counts are `int64`; batch indexes and lengths are `int`. Compute `start + int64(i)`.
-See [counting and aggregating by prefix](guides/counting.md) for a worked example.
-The [parity table](reference/parity.md#planning) records language availability for this API.
+A listing gives each entry its candidate rows as a row span (`ListEntry.Rows`), with the boundaries its
+traversal established without extra reads. A boundary can be unknown, for example a common prefix's end when
+the listing stops at its result limit; unknown never means empty or zero. Known spans plan and count without
+storage reads (`Dataset.PlanRows`, `Plan.Count`), and a **value-only scan** (`Plan.ScanValues`) reads projected
+columns at those positions without decoding keys. The [counting guide](guides/counting.md) shows the workflow,
+the fallback for unknown boundaries, and what each step reads.
 
 ## Pagination
 
@@ -254,9 +228,6 @@ may merge or split logical reads. A **round** is one set of requests that must f
 start.
 
 ## What is checked, and when
-
-Go `PlanRows` without columns performs no I/O; `ScanValues` reads projected values without implicit key-index access or key decoding.
-Explicitly projecting the key column requests its values.
 
 A reader checks what it reads. It does not certify what it skips
 ([§7](../spec/format-1.md#7-what-readers-check-and-when)).

@@ -1,25 +1,27 @@
 # Documentation
 
-Start with [concepts](concepts.md) for the terms every other page uses.
+Start with the job you have; [concepts](concepts.md) defines the terms every page uses.
 
-## Learn
+## Read, list and count
 
 - [Quickstart](quickstart.md): read a checked-in dataset with Go in five minutes.
-- [Concepts](concepts.md): datasets, keys, queries, cursors, how a read finds rows, what is checked, errors.
-- [Related work](related-work.md): how SeekParquet compares with other approaches.
+- [Reading](guides/reading.md): open, look up, read ranges and prefixes, list, project, scan, plan, and classify errors.
+- [Pagination](guides/pagination.md): row and prefix cursors, tokens, service envelopes, and browse pages.
+- [Counting and aggregating](guides/counting.md): reductions by prefix, counts over listed row spans, filters.
+- [Operating](guides/operating.md): limits, memory, open parts, verification, the list index, and concurrency.
+- [Storage](guides/storage-sources.md): implement a Go `Source` or Java `DatasetStorage` for an object store.
+- [Remote I/O](guides/remote-io.md): what a read costs, read-ahead, tuning and measuring.
+- The [Go README](../go/README.md) and the [Java README](../java/README.md), which states what Java lacks.
 
-## Guides
+## Produce a dataset
 
-- [Reading](guides/reading.md): open, query, project, scan, plan, and classify errors.
-- [Pagination](guides/pagination.md): row and prefix cursors, tokens, and service envelopes.
-- [Operating](guides/operating.md): limits, memory, file handles, verification, concurrency, and list indexes.
-- [Storage Sources](guides/storage-sources.md): contracts, capabilities, identity, cancellation, and storage observation.
-- [Remote I/O](guides/remote-io.md): logical reads, fake-store counts, speculation, and measurement.
+- [Producing datasets](guides/producing.md): the recipe, the Go writer, geometry, and pyarrow.
 
-- [Counting and aggregating by prefix](guides/counting.md): count listed row spans without I/O, select rows, and sum a column.
-- [Producing datasets](guides/producing.md): the recipe, the Go writer, geometry, pyarrow.
+## Check a dataset or an implementation
+
 - [Validating datasets](guides/validating.md): levels, the `seekparquet` command, the API.
 - [Troubleshooting](guides/troubleshooting.md): every refusal, unsupported and limit code, and what to do.
+- [Conformance suite](../conformance/README.md): qualify an implementation in any language.
 
 ## Reference
 
@@ -30,14 +32,12 @@ Start with [concepts](concepts.md) for the terms every other page uses.
 - [Compatibility and stability](reference/compatibility.md)
 - Go API: the package documentation in [`go/`](../go/); Java API: the Javadoc of [`java/`](../java/).
 
-## Specification and conformance
+## Specification
 
 - [Specification](../spec/format-1.md), the only normative text, and the [implementer's guide](../spec/IMPLEMENTING.md).
-- [Conformance suite](../conformance/README.md): run it against an implementation.
-
-## Background
-
-- [Workload fit](background/workload-fit.md): candidate workloads and alternatives to evaluate.
+- [Concepts](concepts.md): datasets, keys, queries, cursors, how a read finds rows, what is checked, errors.
+- [Related work](related-work.md) and [workload fit](background/workload-fit.md): when to use SeekParquet and
+  what to compare it with.
 
 ## Contributors
 

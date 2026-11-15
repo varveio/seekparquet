@@ -203,43 +203,38 @@ fmt.Printf("size sums per input: %v; key pages decoded: %d\n", sums, scan.KeyPag
 
 **Java:** pending; see the [parity table](../reference/parity.md#planning).
 
-Run the compiled examples from the repository root with `go -C go test -run '^Example_count' .`.
-The fixture has three common prefixes under `logs/2026/`; a result limit of four lets traversal establish their ends.
-This is fixture-specific: a full page ending on a common prefix can leave that entry's end unknown.
-A listing `End` inside a common prefix's keys can also leave its end unknown, even without a full result page.
-Cursor-clipped starts identify the first remaining candidate row; they do not include earlier rows under the prefix.
-Both row cursors and prefix cursors can clip a start inside a common prefix, and the current reader establishes that start.
-Unknown boundaries must never be treated as empty spans or zero counts; use the [key-range fallback](#resolve-unknown-rows).
-The listing itself reads storage; only the subsequent column-free `PlanRows` and `Count` calls cost zero reads.
-There is no promise of an exact zero-request count for every listing entry.
+Run the examples from the repository root with `go -C go test -run '^Example_count' .`.
 
-`PlanRows` unions overlapping spans, counting each row once in dataset order.
-`Count` returns both the number and its exactness; do not present a provisional count as exact.
-Even with known positions, a column-free plan's count is inexact if any contributing part was unchecked at plan construction.
-This includes a span crossing an unopened part between the listing's established boundaries.
-Count exactness is a snapshot; checking more parts later does not update an existing plan's result.
-Planning with columns checks those parts and loads projection metadata, so the resulting count is exact.
-Count exactness does not certify unread keys or values.
+The listing itself reads storage; the column-free `PlanRows` and `Count` calls after it read nothing. A row
+span's boundaries can be unknown, and unknown never means empty or zero:
 
-`InputRowSpans()` returns the caller's original spans, including overlaps and empties, in input order, rather than the normalized union.
-For a key plan, these are the resolved input selections; a `Split` shard has one input per span of the plan's rows in it.
-`SelectRows` uses the parent plan's projection and performs no I/O.
-Its spans must have known boundaries from the same dataset; each nonempty span must fit within the parent's selected rows.
-Unknown or foreign boundaries and reversed spans return `ErrInvalidRequest`, as do nonempty spans outside the parent's selected rows.
+- A common prefix's end can be unknown when a full page ends on it, or when the listing's `End` cuts through it.
+  This fixture's three prefixes have known ends only because a result limit of four lets the traversal pass
+  them.
+- A start clipped by a row or prefix cursor is known, and identifies the first remaining candidate row.
+- Use the [key-range fallback](#resolve-unknown-rows) for an unknown boundary. No listing promises a
+  zero-read count for every entry.
 
-`ScanValues` yields borrowed, read-only batches in dataset order; each batch stays within a row group, projected pages, and a normalized selected span.
-A batch may cross adjacent input-span boundaries after union normalization.
-For per-input aggregation, distribute each row by ordinal as the example does; overlapping inputs each receive their matching rows.
-Only scan-produced batches carry data; a zero `ValueBatch` is empty.
-`ValueBatch.Start()` supplies the first row's independently owned position, and `Len()` supplies the row count.
-Ordinals and counts are `int64`; batch indexes and lengths are `int` on both 32-bit and 64-bit systems.
-Compute `start + int64(i)`; converting a dataset ordinal to `int` can truncate it on 32-bit systems.
-`Column(c)` uses the projection order returned by `Plan.Columns()`.
-Copying a `ValueBatch` or `ColumnView` does not retain values.
-Use `Column(c).Value(i).Clone()` before the callback returns to retain an owning value.
-The scan executes row positions without decoding interior key pages for positioning or computing equal-key offsets.
-Selected parts and projected pages still receive their normal structural and decoding checks.
-A key column explicitly included in the projection is read as requested; success does not certify unread key pages.
+`PlanRows` unions overlapping spans, counting each row once in dataset order. `Count` returns the number and
+whether it is exact. A column-free plan's count is inexact if any contributing part was unchecked when the plan
+was built, including a part between the listing's established boundaries that no read has opened; checking
+more parts later does not update the plan. Planning with columns checks those parts, so its count is exact.
+Exactness does not certify unread keys or values.
+
+`InputRowSpans()` returns the original spans in input order, overlaps and empties included; a `Split` shard
+has one input per span of the plan's rows in it. `SelectRows` selects spans of the parent's rows with the
+parent's projection and no I/O. Its spans must have known boundaries from the same dataset, and each nonempty
+span must lie within the parent's selected rows; anything else is `ErrInvalidRequest`. An empty span is
+accepted anywhere in the dataset.
+
+`ScanValues` yields borrowed, read-only `ValueBatch`es in dataset order, each within a row group, projected
+pages and a normalized span; a batch may cross adjacent input spans, so distribute rows by ordinal as the
+example does. `Start()` is the first row's position (independently owned), `Len()` the row count, and
+`Column(c)` follows `Plan.Columns()` order. Ordinals are `int64` and batch indexes `int`: compute
+`start + int64(i)`, never convert an ordinal to `int`. Copying a batch or a `ColumnView` keeps no values;
+`Column(c).Value(i).Clone()` does. Only scan-produced batches carry data. The scan reads no key page for
+positioning, but selected parts and pages get their usual checks, and a projected key column is read as a
+value column; success does not certify unread key pages.
 
 ## Resolve unknown rows
 
@@ -299,42 +294,30 @@ Its `InputRowSpans()` can then be reused with `PlanRows` on the same dataset han
 
 ## Estimate the work
 
-Count-only row planning needs no storage requests or rounds once both positions are known, but its count may still be inexact.
-Planning with columns checks selected parts and loads projected OffsetIndexes that the reader has not retained.
-It does not re-resolve row positions through keys or read projected data pages.
-`SelectRows` reuses the parent plan's retained projection metadata without storage I/O.
-`ScanValues` reads projected pages and dictionaries; chunks without an OffsetIndex require walking page headers from the chunk's start.
-Storage can merge or split logical reads into physical requests, and dependent reads add rounds.
-Use [read statistics](../reference/read-stats.md) to measure your Source and cache state.
+Once both positions are known, a count-only row plan needs no storage requests, though its count may be
+inexact. Planning with columns checks the selected parts and loads the projected OffsetIndexes the reader has
+not kept, without reading data pages. `SelectRows` reuses the parent's kept projection metadata.
+`ScanValues` reads projected pages and dictionaries; a chunk without an OffsetIndex has its page headers
+walked from its start. Measure your Source and cache state with [read statistics](../reference/read-stats.md).
 
-The counting test store pins `browse/count-prefix` at **0 physical requests, 0 rounds**, after an unrecorded listing.
-It pins `browse/sum-prefix`, including projected planning and scanning, at **1 physical request, 1 round, 6,153 bytes**.
-Both the scalar and capable store tables assert these numbers in [`TestReadBudgets`](../../go/iobudget_test.go).
-[`TestReadBudgetsGeneric`](../../go/generic_iobudget_test.go) pins the same counts and single-prefix sum for `AggregateRows`.
-Its 64 KiB budget admits exactly nine sums from more complete prefixes than fit; adding counts causes no additional physical requests.
-They describe that test's fixture and setup, not the small example above or arbitrary prefixes.
+The counting test store pins `browse/count-prefix` at **0 physical requests, 0 rounds**, after an unrecorded
+listing, and `browse/sum-prefix`, including projected planning and scanning, at **1 physical request,
+1 round, 6,153 bytes**, for both its scalar and capable stores ([`TestReadBudgets`](../../go/iobudget_test.go)).
+[`TestReadBudgetsGeneric`](../../go/generic_iobudget_test.go) pins the same counts and single-prefix sum for `AggregateRows`; its 64 KiB
+budget admits exactly nine sums from more complete prefixes than fit, and adding counts costs no request.
+These describe that test's fixture, not arbitrary prefixes.
 
-`ProjectedBytes()` counts unique compressed projected page and dictionary extents, once each for the selected union.
-It excludes footers, indexes, and implicit key reads; it is not a physical transfer estimate or a request count.
-Without an OffsetIndex, it omits that chunk and reports `exact == false`.
-After `SelectRows`, discarded page locations can also make the estimate inexact, even if the parent estimate was exact.
-Only page locations retained within `Limits.OffsetIndexMemory` remain available to price the selection.
-Check the boolean before using the byte estimate as a complete projected extent total.
-
-`ScanValues` and `Plan.Scan` both leave byte caching to the caller's storage layer.
-Reader-owned metadata reuse is independent of storage caching.
+`ProjectedBytes()` counts unique compressed projected page and dictionary extents, once each for the selected
+union. It excludes footers, indexes and implicit key reads, and is not a transfer estimate or a request count.
+A chunk without an OffsetIndex, or page locations a `SelectRows` child lacks because they were not
+kept within `Limits.OffsetIndexMemory`, make it inexact: check the boolean. Byte caching is the storage
+layer's, for `ScanValues` and `Plan.Scan` alike.
 
 ## Respect the dataset lifetime
 
-Keep the dataset open for `Dataset.PlanRows`, scans, and `Plan.Split`.
-`Split` can read key pages for repeated keys and requires the open Dataset even when it needs no reads.
-Positions belong to that handle and cannot be transferred to another handle opened on the same Source.
-Positions remain inspectable after `Close`.
-`Count`, `ProjectedBytes`, `Columns`, `InputRowSpans`, and `SelectRows` remain usable as in-memory plan operations after close.
-Their results do not reopen storage; scanning a plan or calling `Dataset.PlanRows` then fails with `ErrClosed` for valid arguments.
-
-`ScanValues` follows `Plan.Scan` for cancellation, callback errors, and `Stop`.
-Return `Stop` to end successfully; other callback errors are returned.
-Read statistics are filled on failure too.
-Both scans hold a dataset lease during callbacks.
-Do not call `Close` from a callback or wait there for a goroutine calling it; close after the scan returns.
+Positions belong to the `Dataset` handle that made them, not to another handle on the same Source, and stay
+inspectable after `Close`. `Count`, `ProjectedBytes`, `Columns`, `InputRowSpans` and `SelectRows` work after
+close; `Dataset.PlanRows`, scans and `Plan.Split` (which can read key pages for repeated keys) need the open
+`Dataset` and fail with `ErrClosed`. `ScanValues` follows `Plan.Scan` for cancellation, callback errors and
+`Stop`, fills read statistics on failure too, and holds a dataset lease during callbacks: close after the
+scan returns, never from a callback.

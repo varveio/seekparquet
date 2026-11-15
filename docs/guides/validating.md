@@ -148,6 +148,27 @@ and `Err` (the cause of an incomplete level).
 
 `ValidateOptions.Limits` applies the [specific input and decoding limits](../reference/limits.md) used by
 the reader; it does not impose an overall memory budget. A limit exceeded leaves the level incomplete; it is not a fault of the data.
+Validation keeps no page index, so `IndexMemory` does not apply.
+
+## What the Go validator checks at each level
+
+| Level | What this implementation checks |
+|---|---|
+| `structural` | the manifest and every part, as the first read to touch each would ([CHECK-1](../../spec/format-1.md#check-1); with every part checked, [COL-5](../../spec/format-1.md#col-5) covers every column); for every non-empty row group, the key column's ColumnIndex and OffsetIndex ([RG-2](../../spec/format-1.md#rg-2) to [RG-4](../../spec/format-1.md#rg-4)), and the page header at every OffsetIndex entry, which must begin one data page of exactly the entry's size and rows ([RG-3](../../spec/format-1.md#rg-3)). Page data is not read. |
+| `profile` | every key column chunk walked page header by page header from its start, without the OffsetIndex, which must then list exactly the data pages found (offsets, sizes, row positions, count); every key page decoded and every key checked: non-empty, valid UTF-8 for a `STRING` key, bounds valid UTF-8 too ([KEY-2](../../spec/format-1.md#key-2), [KEY-6](../../spec/format-1.md#key-6)), in the declared order across pages, row groups and parts ([KEY-3](../../spec/format-1.md#key-3), [PART-4](../../spec/format-1.md#part-4)), inside its page's ColumnIndex bounds ([RG-5](../../spec/format-1.md#rg-5)); each part's first and last keys equal to its manifest bounds ([PART-3](../../spec/format-1.md#part-3)); the key chunk's metadata value count |
+| `full` | every other column chunk walked the same way and decoded: a dictionary page is checked and decoded when found, whether or not a page uses it; each page passes its CRC when its header carries one, decompresses to its declared size, and its levels (RLE; `BIT_PACKED` is unsupported, anything else corrupt) and values agree with its header, V2 null counts included (nested and repeated columns too; a chunk, and every V2 page, begins a row); the chunk holds exactly the row group's rows and the value count its metadata declares; an OffsetIndex, when present, lists exactly the pages found; a ColumnIndex, when present, has one entry per page and, for a column that is neither nested nor repeated, marks a page null only if every value is null and counts nulls exactly |
+| `digest` | the SHA-256 of every part that declares `sha256`, streamed from the file, whether or not it is valid Parquet ([PART-5](../../spec/format-1.md#part-5)) |
+
+The indexes under examination never choose what is read: every page the profile and full levels check is one
+they found by walking the chunk, and an index that omits, adds or misplaces a page fails the level. A fault
+fails the level that finds it with its refusal code (`digest_mismatch` only at the digest level). An
+unsupported codec or encoding (for example LZO, or legacy `BIT_PACKED` levels or values), an encrypted part, a
+limit or a storage error leaves the level incomplete, never failed. The full level still decodes the other
+columns, so that a fault in one of them fails it.
+
+Not checked: value-column ColumnIndex bounds against their values (their order depends on the column's type),
+and what validation cannot see ([VAL-3](../../spec/format-1.md#val-3)): atomic publication, and that files
+stay unchanged after they are read.
 
 ## Validation, verify and reading
 

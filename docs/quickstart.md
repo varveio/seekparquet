@@ -51,12 +51,13 @@ representative performance benchmark**. No files are written by this example.
 
 - Read [remote I/O](guides/remote-io.md) and [writer geometry](guides/producing.md#choose-geometry) before choosing part, row-group and page
   sizes. This tiny example demonstrates semantics, not cold remote performance.
-- Read the [Go API and examples](../go/README.md) for ranges, projected values,
-  repeated keys, limits, and refusal errors. Run the quickstart's regression test
-  with `go -C go test ./examples/quickstart` from the repository root.
+- Read the [reading guide](guides/reading.md) for ranges, lookups, projected values,
+  repeated keys and errors, and [counting](guides/counting.md) for counts and sums by prefix.
+  Run the quickstart's regression test with `go -C go test ./examples/quickstart` from the
+  repository root.
 - Java users can start with the [Java build and usage guide](../java/README.md).
 - To write your own dataset, follow [producing datasets](guides/producing.md); arbitrary sorted Parquet
   files alone do not satisfy the profile. To check one, see [validating](guides/validating.md).
 - This example reads local files. To read from other storage, implement the reader's source interface,
   which must return the bytes of one object version for as long as a file is open. See
-  [Go sources and ownership](../go/README.md#sources-contexts-and-ownership).
+  [storage Sources](guides/storage-sources.md).

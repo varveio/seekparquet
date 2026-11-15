@@ -3,12 +3,9 @@
 Separate what the reader chooses to read from how storage executes it.
 The reader routes by metadata, loads page indexes, and fetches demanded and speculative ranges.
 Your Source schedules physical requests, retries them, caches bytes, and records wire traffic.
-
-> Pending: WP-L step W9 (real-store run) needs a dated SeekParquet-stack receipt naming store, region, geometry, and cache state.
-
-> Pending: WP-L Java examples and the batched/sized SPI wait for Java API alignment (`claude/java-api-alignment`).
-
-<!-- java: pending alignment -->
+This guide describes the Go reader; [the Java reader](#the-java-readers-access-path) issues scalar reads
+without batching or adaptive read-ahead. It gives no latency numbers: none has been measured on a real store
+yet.
 
 ## Measure dependent rounds, requests, and bytes
 
@@ -29,6 +26,60 @@ Measure these phases separately:
 A successful query does not validate skipped data ([CHECK-4](../../spec/format-1.md#check-4)).
 Reopening per operation repeats first-touch work and changes the experiment.
 Reader metadata reuse and storage byte-cache reuse are separate variables.
+
+## Know what a read costs
+
+What the Go reader reads, by step:
+
+| Step | Logical reads |
+|---|---|
+| Open | the manifest, in one read, whatever the number of parts |
+| First touch of a part | a tail read of the part's last `ReadPolicy.MetadataPrefetchBytes` (2 MiB; 64 KiB through `OpenDir`), the whole part when smaller; a 4-byte read of its head when it is larger; one more read of exactly the missing bytes when the footer is larger than the window |
+| Index loads | page index bytes the tail read held are kept within `Limits.PageIndexCacheMemory` and serve later loads without a read (`MetadataHitBytes`); a key column chunk's ColumnIndex and OffsetIndex not kept are read together |
+| Routing within a part | a binary search over row groups' first keys; the first time a row group is needed, its key page index is loaded and its first key page decoded, and both are kept within `Limits.IndexMemory` |
+| Seek to a repeated key or a cursor | starts at the predecessor of the first row group whose first key is at or above it, so earlier rows of the key group are kept; a cursor moves to its row through the OffsetIndex row positions without decoding the rows between |
+| Projected values | the value pages of the returned rows; a projected chunk's OffsetIndex is read the first time a request needs it and kept within `Limits.OffsetIndexMemory`; a chunk without one has its page headers walked from its start |
+| Listing | resumes after each common prefix at the prefix's successor, skipping the pages wholly under it; the page it lands on and the pages around a prefix's boundaries still decode some keys under it |
+| `Verify` | checks parts concurrently, each in two rounds (its end; then its row groups' first key pages and its last key page); a second `Verify` of the same `Dataset` reads nothing |
+
+Within a request, complete key-page extents admitted to a bounded memo are reused (`RequestMemoHitBytes`).
+So a cold query costs the manifest plus one tail read per part it touches, then the index loads and pages
+above; a warm query on the same `Dataset` skips the tail reads and kept indexes. `OpenDir` with a zero
+`ReadPolicy` reads as suits a local file: a 64 KiB window, each part's ranges one at a time, no kept raw
+page index bytes and no memo.
+
+### Listing read-ahead and forward routing
+
+Over a non-local Source, a listing predicts the key pages it decodes next and reads them ahead. A zero
+`ListQuery.ReadAhead` sizes each prediction toward `Limit`+1 entries; a positive value caps the future key
+pages one prediction considers. It predicts one key page per common prefix it will seek past, counts a page
+whose bounds are both rows as a quarter of its rows in entries, skips pages the request has already read, and
+reads the bytes between two predicted pages of a part, in one row group or across two, when they are at most
+4 KiB. It also reads ahead the key page indexes of the row groups it has yet to open. With those indexes at
+hand, a forward seek past a common prefix is routed by their bounds, with no first-key probe, when they prove
+the seek lands no later than routing would; otherwise routing decides.
+
+Pages read ahead are checked exactly as pages read on demand, so results are the same with or without
+read-ahead. Unused reads count in `ReadAheadUnused` and `ReadAheadUnusedBytes`. A zero-policy `OpenDir` reads
+on demand unless `ReadAhead` is positive; `ReadPolicy.DisableSpeculation` turns read-ahead off; `/` listings
+on a dataset with a [list index](operating.md#build-a-list-index-for-wide-listings) do not read ahead.
+
+### The Java reader's access path
+
+The Java reader reads through scalar `PartSource.read` calls: it has no batched range reads, no fetch windows,
+no `ReadPolicy` and no kept raw page index bytes. Its tail read is the last 64 KiB of a part, never more than
+`footerBytes` plus the 8-byte trailer, with the same 4-byte head read and extra footer read. It routes by
+binary search over checked row-group first keys, and scans index bounds directly when at most eight row groups
+remain. It coalesces two index reads only when the gap between them is no larger than the bytes used (and at
+most 64 KiB). A cursor inside a large key group jumps to its physical row through the OffsetIndex.
+
+Java listing read-ahead is opt-in and fixed: `ListQuery.Builder.readAhead(n)` (default 0, off; at most 64)
+reads up to `n` predicted key pages concurrently on virtual threads, holding at most 1 MiB per slot and
+`4 * n` pages. It predicts from the key page index of the row group the listing is in, at most one page per
+entry the listing can still return: after a common prefix, the page its successor lands on; after a row, the
+next page. It stops at the row group's end. It does not read ahead key page indexes, read the gaps between
+pages, or route seeks by read-ahead indexes. On a local file it saves nothing; leave it off there. The
+[indexed-access evidence](../dev/indexed-access.md) lists the Java tests that bound its reads.
 
 ## Compare counts on the fake store
 
