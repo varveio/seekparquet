@@ -214,6 +214,11 @@ fmt.Printf("%s: %d rows, %s to %s\n", part.Path, part.Rows, part.MinKey, part.Ma
 | 2 to 5 | `local.WriteDir` |
 | inspect a written part | `seekparquet.InspectFooter`, `seekparquet.InspectKeyPages` |
 
+`ParseManifest` keeps the top-level `Extensions` and each `PartInfo.Extensions` as written, and
+`MarshalManifest` (so `local.Commit` too) writes them compacted; set a part's extensions before you commit.
+`InspectFooter` and `InspectKeyPages` check a written part's footer and key page index against its own stamps
+without reading its data pages.
+
 ### What `write` guarantees
 
 The writer installs the required profile metadata and exact page bounds. `WriteRows` checks

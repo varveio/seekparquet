@@ -2,10 +2,8 @@
 
 Keep the same query and immutable dataset when carrying a cursor between pages
 ([PAGE-1](../../spec/format-1.md#page-1), [PAGE-2](../../spec/format-1.md#page-2)).
-
-> Pending: WP-G Java examples wait for Java API alignment (`claude/java-api-alignment`).
-
-<!-- java: pending alignment -->
+The examples are Go; in Java, `Query.next(row)` and `ListQuery.next(entry)` build the next page's request,
+`Cursor.encode()` and `Cursor.parse(token)` carry it as text, and each reader reads the other's tokens.
 
 ## Resume from the last result
 

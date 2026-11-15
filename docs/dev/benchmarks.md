@@ -61,3 +61,34 @@ It does not establish current reader counts or remote latency.
 
 Use the [indexed-access evidence page](indexed-access.md) for the selected regression runner,
 its JSON output, instrumentation scope, and qualification gaps.
+
+## List index
+
+The list-index benchmark generates 2,000 directories × 3,000 keys with `local.WriteDir` defaults, plus six
+million flat keys with 1,000-byte numeric fields. Set `SEEKPARQUET_LIST_BENCH_DIR` to an existing parent
+directory to keep and reuse its `wide/` and `flat/` datasets:
+
+```sh
+SEEKPARQUET_LIST_BENCH_DIR=/path/to/bench go -C go test ./local -run '^$' -bench BenchmarkListBoundary -benchtime=5x
+```
+
+The Java benchmark reuses those datasets, so the geometry is identical. It prints plain and indexed latency,
+decoded pages, build time, retained bytes and entries to the test XML's standard output, and is skipped without
+the variable:
+
+```sh
+SEEKPARQUET_LIST_BENCH_DIR=/path/to/bench java/gradlew -p java :seekparquet:test --tests '*ListIndexBenchmarkTest' --rerun-tasks
+```
+
+## Java page allocation
+
+An opt-in generated-fixture benchmark reports current-thread allocated bytes and time per row for plan scans of
+65,536 rows: once making an owning `Batch.row` per row (`PAGE_BENCH`), once through the borrowed typed
+accessors (`BATCH_BENCH`). The fixture has two parts, 4,096 rows per row group and 256 rows per page, with
+nullable binary and INT64 projections, comparing PLAIN with dictionary binary pages, each with uncompressed and
+Zstd value pages. Results, with a field checksum, are in the test XML under `seekparquet/build/test-results/test/`.
+Timing is informational on shared hosts.
+
+```sh
+SEEKPARQUET_PAGE_BENCH=1 java/gradlew -p java :seekparquet:test --tests '*PageReuseBenchmarkTest' --offline --max-workers=1 --rerun-tasks
+```
