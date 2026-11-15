@@ -13,8 +13,10 @@ package io.varve.seekparquet;
  *
  * <p>They are diagnostics of this reader's access path, not part of the SeekParquet format contract:
  * another reader, or a later version of this one, may do the same read with different counts. The
- * Go reader's {@code ReadStats} has the same fields and counting rules, but its access path differs
- * (its listing skips whole row groups, for one), so the two can count the same request differently.
+ * Go reader's {@code ReadStats} has these fields with the same counting rules, plus counters of storage
+ * batching and metadata reuse this reader has no counterpart for; its access path differs (its listing
+ * skips whole row groups and reads key page indexes ahead, for two), so the two can count the same
+ * request differently.
  *
  * <p>The manifest read when the dataset was opened is not counted. Work shared with earlier requests
  * is counted only where a component says so: a part checked by an earlier request, or by {@link
