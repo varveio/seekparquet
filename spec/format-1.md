@@ -64,8 +64,7 @@ named `manifest.json` and the Parquet files the manifest lists, which are its **
   this document are not allowed, at the top level, in `key` or in a part, except inside an `extensions` object
   (§3.4), which the top level and each part may have. A reader MUST refuse a manifest with an undefined member
   (`invalid_manifest`). After a release, new members arrive only with a new format version or draft revision
-  (VER-2); metadata a reader may ignore arrives inside `extensions`. Unreleased draft revision 1 is edited in
-  place.
+  (VER-2); metadata a reader may ignore arrives inside `extensions`.
 - <a id="man-6"></a>[MAN-6] The integer members this document defines (`format_version`, `draft_revision`, `rows`, `bytes`)
   are written as JSON numbers with no fraction, exponent or leading zeros, and lie between 0 and 2^63 − 1.
   Numbers inside `extensions` are ordinary JSON numbers and are not constrained. A reader MUST parse them exactly, without rounding, and refuse any other spelling

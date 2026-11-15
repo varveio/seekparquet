@@ -44,7 +44,7 @@ A `digest` level that finds no declared digest is `complete` and says so ([VAL-2
 Install the command:
 
 ```sh
-go install github.com/varveio/seekparquet/go/cmd/seekparquet@main
+go install github.com/varveio/seekparquet/go/cmd/seekparquet@v0.2.0
 ```
 
 Or run it from a checkout, as below: `go -C go run ./cmd/seekparquet`.
