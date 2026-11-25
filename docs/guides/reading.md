@@ -3,9 +3,9 @@
 Use this guide to read keys and projected columns from a local directory or a caller-supplied Source.
 [Concepts](../concepts.md) defines the data model; [counting](counting.md) covers row spans and aggregation.
 
-> Pending: WP-G Java examples wait for Java API alignment (`claude/java-api-alignment`).
-
-<!-- java: pending alignment -->
+The examples are Go. The [Java README](../../java/README.md) shows the same reads in Java, the
+[parity table](../reference/parity.md) maps every name, and a **Java** line under a task says where Java
+differs or what it lacks.
 
 Examples use `context`, `fmt`, `log`, and the import
 `seekparquet "github.com/varveio/seekparquet/go"`.
@@ -489,6 +489,12 @@ if err != nil {
 Not guaranteed: a fixed batch size, delivery of remaining rows after `Stop`, or rollback of callbacks
 already delivered before a read error. See [`Batch`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Batch) and [`Dataset.Scan`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Scan).
 
+**Java:** `Dataset.scan(query, visitor)` hands `Batch`es to a `BatchVisitor`, which returns `false` to stop
+and may throw a checked exception of its own type. `BatchColumn`'s typed getters throw
+`IllegalStateException` on an absent column, a null row or another type, where Go's `ColumnView` returns zero
+or unspecified bits: test `isPresent`, `isNull` and `type` first. Using a batch after its visit throws.
+Java batches have no 4,096-row cap for an absent projected column.
+
 ## Plan and admit a read
 
 Use `Plan.Count` and `Plan.ProjectedBytes` to apply an application admission policy before scanning projected values.
@@ -536,6 +542,10 @@ Planning itself can perform I/O and decode boundary key pages ([`Dataset.Plan`](
 Not guaranteed: total wire bytes, decoded heap usage, or exact counts for unchecked parts.
 These estimates do not replace resource limits.
 For `PlanRows`, `InputRowSpans`, `SelectRows`, and value-only `ScanValues`, see [counting](counting.md).
+
+**Java:** `Dataset.plan(selections, columns)` returns a `Plan` whose `count()` and `projectedBytes()` are
+`Estimate(value, exact)`. Java takes a projected key column's values from the key pages and counts no bytes
+for it, and counts a column projected twice once, so its estimates can differ from Go's for the same plan.
 
 ## Split work across goroutines
 
@@ -591,6 +601,9 @@ Consume results by shard index if you need dataset order across concurrent scans
 Not guaranteed: the requested shard count or equal shard sizes. Key groups remain whole at shard boundaries;
 splitting repeated keys can read boundary pages ([`Plan.Split`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Plan.Split)).
 
+**Java:** `Plan.split(n, options)` divides a plan the same way; scan the shards on your own threads (the
+library starts none).
+
 ## Describe columns
 
 Call `Columns` for the part whose schema you need, including its `Logical` annotations.
@@ -618,6 +631,10 @@ for _, column := range columns {
 // key BYTE_ARRAY REQUIRED STRING key
 ```
 <!-- /snippet -->
+
+**Java:** `Dataset.columns(part)` returns `Column` records with the physical type, type length, an optional
+`LogicalType` (a legacy converted type normalized into one), repetition and whether the column is the key.
+A column whose time unit Java does not know has no logical type.
 
 Physical compatibility across checked parts does not compare logical annotations
 ([`Dataset.Columns`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Columns), [COL-5](../../spec/format-1.md#col-5)).

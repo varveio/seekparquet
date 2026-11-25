@@ -3,31 +3,23 @@
 **A sorted-key profile for Apache Parquet.**
 
 <!-- generated: status -->
-> **Pre-release.** Format 1 is a draft: draft revision 1, stored on disk as `format_version` 0 so that a draft file is never mistaken for a final one. The conformance suite is at revision `0.1.0-draft.5`. The Go module and the Java reader have no release of this API yet: this documentation describes `main`, which may change before the first release. See [compatibility](docs/reference/compatibility.md) for what is stable.
+> **Pre-release.** Format 1 is a draft: draft revision 1, stored on disk as `format_version` 0 so that a draft file is never mistaken for a final one. The conformance suite is at revision `0.1.0-draft.5`. The Go module has version 0 releases ([changelog](go/CHANGELOG.md)); the Java reader has none. This documentation describes `main`, which may be ahead of the latest release. See [compatibility](docs/reference/compatibility.md) for what is stable.
 <!-- /generated -->
 
-A SeekParquet dataset is a set of ordinary Parquet files sorted by one byte-string key column that the
-manifest names, split into key-disjoint parts, and committed by a `manifest.json` that lists the parts in key
-order with their exact key bounds. Every part also carries a Parquet page index on its key column.
+A SeekParquet dataset is a set of ordinary Parquet files sorted by one byte-string key column, split into
+key-disjoint parts, and committed by a `manifest.json` that lists the parts in key order with their exact key
+bounds. Every part carries a Parquet page index on its key column.
 
-Any Parquet reader (DuckDB, Spark, pyarrow, Trino) reads the files as an ordinary table. A reader that knows
-the profile can also, with no query engine and no catalog:
+Any Parquet engine (DuckDB, Spark, pyarrow, Trino) reads the files as a table. A reader that knows the profile
+also, with no query engine or catalog, looks up a key, reads a range or a prefix, lists a prefix with a
+delimiter S3 style, counts and sums by prefix, and resumes any of these from a cursor. It reads the manifest,
+the footers and page indexes of the parts it touches, and the pages that can hold the rows; broad reads can
+still scan the dataset. A local directory implementation ships; an object store is an implementation you write.
 
-- find the first row at or after a key, read a key range, or read a prefix;
-- list a prefix with a delimiter, S3 style, rolling keys up into common prefixes and skipping the pages of
-  keys under them;
-- page through results and resume exactly where a page ended.
+## Read, list and count
 
-Selective reads use manifest bounds, part footers and page indexes to avoid unrelated data. The pages and
-requests needed depend on the query, file geometry, bounds and projected columns; broad reads can scan the
-dataset. A local directory implementation ships; an object store is an implementation you write.
-
-## What it looks like
-
-Read the first three keys under a prefix, then list the prefix's subfolders two per page. The dataset is a
-fixture of the conformance suite.
-
-**Go**
+The main use. Open a dataset, read the first keys under a prefix, then list its subfolders two per page. The
+dataset is a fixture of the conformance suite.
 
 <!-- snippet: go/example_docs_test.go#Example_readme -->
 ```go
@@ -73,36 +65,39 @@ for page := 1; ; page++ {
 ```
 <!-- /snippet -->
 
-**Java**
+- Run it in five minutes: [quickstart](docs/quickstart.md).
+- Go: [README](go/README.md) and the [reading guide](docs/guides/reading.md). For counts and sums by prefix,
+  [counting](docs/guides/counting.md).
+- Java: the [Java README](java/README.md) has the same example and states what the Java reader lacks.
+- From an object store: [storage](docs/guides/storage-sources.md) and [remote I/O](docs/guides/remote-io.md).
 
-<!-- snippet: java/seekparquet/src/test/java/io/varve/seekparquet/docs/DocSnippetsTest.java#readme -->
-```java
-try (Dataset dataset = Dataset.open(dir)) {
-    // The first three keys under a prefix.
-    Query query = Query.builder(Span.prefix(Bytes.utf8("logs/2026/01/"))).limit(3).build();
-    for (Row row : dataset.rows(query)) {
-        out.println("row " + row.key().toStringUtf8());
-    }
+## Produce a dataset
 
-    // Common prefixes under logs/2026/, two per page, resuming from a cursor.
-    ListQuery list = ListQuery.builder((byte) '/').prefix(Bytes.utf8("logs/2026/")).limit(2).build();
-    for (int page = 1; ; page++) {
-        List<ListEntry> entries = dataset.list(list);
-        if (entries.isEmpty()) {
-            break;
-        }
-        for (ListEntry e : entries) {
-            out.println("page " + page + ": " + e.bytes().toStringUtf8());
-        }
-        list = list.next(entries.getLast());
-    }
-}
+Sort rows by key, write parts with the profile's metadata, then publish the manifest last. Go's `write` and
+`local` packages enforce the profile; other languages follow the recipe, for example with pyarrow.
+
+- [Producing datasets](docs/guides/producing.md): the recipe, the Go writer, geometry and a pyarrow recipe.
+
+## Check a dataset or an implementation
+
+Validate a dataset at the specification's four levels with the Go command, from the repository root (`-C go`
+runs inside the Go module, so the path is relative to `go/`):
+
+```sh
+go -C go run ./cmd/seekparquet validate ../conformance/datasets/multipart
 ```
-<!-- /snippet -->
 
-Both print the same lines. To run the Go version yourself, follow the [five-minute quickstart](docs/quickstart.md).
+Qualify an implementation with the language-neutral conformance suite and its adapter protocol:
 
-## What it guarantees that plain Parquet does not
+```sh
+python3 conformance/harness/run.py --adapter "go -C go run ./internal/cmd/conformance"
+```
+
+- [Validating datasets](docs/guides/validating.md): levels, exit status, the report.
+- [Conformance suite](conformance/README.md): targets, fixtures, writing an adapter.
+- [Troubleshooting](docs/guides/troubleshooting.md): every refusal, unsupported and limit code.
+
+## What it adds to Parquet
 
 | Parquet offers | SeekParquet requires |
 |---|---|
@@ -111,72 +106,31 @@ Both print the same lines. To run the Go version yourself, follow the [five-minu
 | nothing across files | key-disjoint parts, in order, committed by a manifest with exact bounds, row counts and sizes |
 | no query semantics | range, prefix and delimited-listing semantics, pagination, and named refusal codes when a dataset does not meet the profile |
 
-These are format requirements, not checks all performed on open. Readers check the manifest on open, parts
-on first touch and key pages as they decode them; see [what is checked, and when](docs/concepts.md#what-is-checked-and-when).
+SeekParquet is for immutable, listing-shaped snapshots: inventories, and derived or cross-store listings that
+carry extra columns. It does not update or delete in place, and it is neither a query engine nor a table
+format. [Workload fit](docs/background/workload-fit.md) says when to use something else, and
+[related work](docs/related-work.md) compares it with alternatives.
 
-## When not to use it
+## Specification and implementations
 
-SeekParquet is for immutable, listing-shaped snapshots: point-in-time inventories, and derived or
-cross-store listings that carry extra columns. It is not for updating or deleting in place, and it is neither
-a query engine nor a table format. Composite keys need a producer-side, order-preserving encoding into the
-one key column.
-
-- For a live listing of a store, use the store's own LIST.
-- For analytics and broad scans, plain sorted Parquet in your engine may be enough.
-- For local lookups with frequent updates, use SQLite or a key-value store.
-- For rich predicates and evolving tables, use Iceberg, Delta or an external Parquet index.
-
-[Related work](docs/related-work.md) compares SeekParquet with engines that store sorted Parquet internally,
-external indexes over Parquet, and table formats.
-
-## Read next
-
-| You want to | Read |
-|---|---|
-| understand the model | [concepts](docs/concepts.md), [related work](docs/related-work.md) |
-| read a dataset | [quickstart](docs/quickstart.md), then the [Go](go/README.md) or [Java](java/README.md) README |
-| write a dataset | [producing](docs/guides/producing.md), [validating](docs/guides/validating.md) |
-| fix an error | [troubleshooting](docs/guides/troubleshooting.md) |
-| implement SeekParquet in another language | [specification](spec/format-1.md), [implementer's guide](spec/IMPLEMENTING.md), [conformance suite](conformance/README.md) |
-| know what is stable | [compatibility](docs/reference/compatibility.md) |
-
-Every page is listed in the [documentation index](docs/README.md).
-
-## Implementations
+- [Specification](spec/format-1.md), the only normative text, with the [implementer's guide](spec/IMPLEMENTING.md)
+  and [proposals](spec/proposals/).
+- [Concepts](docs/concepts.md): the model in plain terms, and every page in the [documentation index](docs/README.md).
 
 | | Go | Java |
 |---|---|---|
 | Module | `github.com/varveio/seekparquet/go` | `io.varve:seekparquet`, built from source |
 | Requires | Go 1.26 or later | JDK 21 or later |
-| Reads: ranges, prefixes, lookups, delimited listings, projection, verify | yes | yes |
-| Writes datasets (`write`, `local`) | yes | no |
-| Validates at the four levels of §8 (`seekparquet validate`) | yes | no |
-| Passes the conformance suite | reader and all four validator targets | reader target |
-| Parquet library | parquet-go | Apache parquet-java ([qualification](java/QUALIFICATION.md)) |
-
-Go and Java names for the same concept are in the [parity table](docs/reference/parity.md). Implementations in
-other languages are welcome; please open an issue first.
-
-## Repository
-
-| Path | What it holds |
-|---|---|
-| [`spec/`](spec/) | the specification, the manifest JSON Schema, the refusal codes, examples and proposals |
-| [`conformance/`](conformance/) | the language-neutral conformance suite: fixtures, cases, the adapter protocol and harness |
-| [`go/`](go/) | the Go reader, writer and validator |
-| [`java/`](java/) | the Java reader |
-| [`docs/`](docs/) | concepts, guides and reference |
-
-## Used by
+| Reads, lists, plans, verifies | yes | yes |
+| Counts and aggregates by row position, browse pages | yes | no |
+| Writes and validates | yes | no |
+| Conformance | `reader` and the four validator targets | `reader` |
 
 [swath](https://github.com/varveio/swath), a parallel object-store and filesystem lister, writes its listings
-as sorted Parquet datasets. SeekParquet grew out of that format, and swath is moving to write SeekParquet.
+as sorted Parquet; SeekParquet grew out of that format.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Specification changes go through [proposals](spec/proposals/).
-Security reports: [SECURITY.md](SECURITY.md). Contact: oss@varve.io.
-
-## License
-
-Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+See [CONTRIBUTING.md](CONTRIBUTING.md); specification changes go through [proposals](spec/proposals/).
+Security reports: [SECURITY.md](SECURITY.md). Contact: oss@varve.io. Licensed under the Apache License 2.0
+([LICENSE](LICENSE), [NOTICE](NOTICE)).

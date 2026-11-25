@@ -7,14 +7,15 @@
 # comment) is exempt, for quoting the term itself. The full table is in
 # docs/dev/docs.md, which quotes the denied terms and so is not in scope.
 #
-# Pages enter the scope as they are rewritten; wave 2 adds the reading and
-# operating guides and the language READMEs.
+# Pages enter the scope as they are rewritten.
 
 scope: README.md
 scope: docs/README.md
 scope: docs/concepts.md
 scope: docs/guides/
 scope: docs/reference/compatibility.md
+scope: go/README.md
+scope: java/README.md
 scope: spec/IMPLEMENTING.md
 scope: conformance/README.md
 scope: conformance/MAINTAINING.md

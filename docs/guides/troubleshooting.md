@@ -81,9 +81,14 @@ try (Dataset dataset = Dataset.open(dir)) {
 In Go, `RefusalCodeOf(err)` returns the code of a refusal and `""` for anything else. `errors.Is(err,
 seekparquet.ErrLimitExceeded)` matches every limit error. In Java, every failure the data, a limit or storage
 causes is a `SeekParquetException`, a sealed class whose four subclasses are the four kinds above.
+A refusal carries its location where the reader has it: Go `RefusalError.Part`, `RowGroup`, `Row` and `Key`;
+Java `part()`, `rowGroup()` (the physical row group in the part's footer), `row()` (within that row group) and
+`key()`, each empty when unknown. Only the code is a contract; the message is for people. Java invalid
+requests (`IllegalArgumentException`) and nulls (`NullPointerException`) are thrown before anything is read.
 
 A refusal or unsupported outcome from a part's first-touch checks is retained while the dataset is open: every
-later request that touches the part ends the same way ([CHECK-1](../../spec/format-1.md#check-1)). A failure in
+later request that touches the part ends the same way ([CHECK-1](../../spec/format-1.md#check-1)). Storage
+failures, limits and cancellation are not kept: the next request checks the part again. A failure in
 page data ends that request; another request that avoids the faulty data may succeed
 ([CHECK-2](../../spec/format-1.md#check-2)).
 

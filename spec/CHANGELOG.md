@@ -1,6 +1,9 @@
 # Specification changelog
 
-Unreleased draft revision 1 is edited in place; no format has been released.
+Format 1 is a draft. Draft revision 1 was released on 2026-11-15 by `go/v0.2.0`, the first implementation
+release that writes its files ([VER-2](format-1.md#ver-2)); from then on, a change to which files are valid,
+what a query returns or the required refusal classifications needs a new draft revision. No specification
+tag has been cut.
 
 ## Protocol documents
 
@@ -9,9 +12,13 @@ Unreleased draft revision 1 is edited in place; no format has been released.
   `conformance/vectors/`. The `spc1` encoding is stable: version 1 is fixed; a different encoding gets a
   new prefix. It affects no valid file and no query result, and needs no draft revision.
 
-## Draft revision 1 (unreleased)
+## Draft revision 1 (released 2026-11-15)
 
-First public draft of format 1. Files carry `format_version` 0, `draft_revision` 1.
+First public draft of format 1. Files carry `format_version` 0, `draft_revision` 1. First released by
+`go/v0.2.0`, which writes it and passes conformance revision `0.1.0-draft.5` (VER-2).
+
+An editorial change at release: MAN-3 drops its last sentence ("Unreleased draft revision 1 is edited in
+place."), which VER-2 already states. No rule changes.
 
 - MAN-8 requires the exact key column name and a uniqueness boolean in the manifest.
 - STAMP-1/STAMP-2 require matching, exactly-once key column and canonical uniqueness stamps.
@@ -45,8 +52,8 @@ First public draft of format 1. Files carry `format_version` 0, `draft_revision`
   CHECK-5/RG-7 distinguish undecodable indexed headers and index disagreement from intrinsic header
   corruption, with explicit precedence. CHECK-1 requires recognized leaf annotation restrictions at first
   touch, including unprojected leaves, with COL-3 fallback for unknown alternatives. These explicit validity
-  and classification rules use the Parquet revision pinned in 0001. Unreleased draft revision 1 is edited
-  in place (VER-2), with no version bump. Proposal 0001 is accepted: Go, Java and the Python tools implement
+  and classification rules use the Parquet revision pinned in 0001. Draft revision 1, then unreleased, was
+  edited in place (VER-2), with no version bump. Proposal 0001 is accepted: Go, Java and the Python tools implement
   it, and the shared suite pins it.
 
 - §3.3, §3.4, MAN-3, EXT-1 to EXT-5: each part MAY carry an `extensions` object, with the same schema as the

@@ -3,10 +3,8 @@
 Reuse a `Dataset` for an immutable snapshot, and size the process for the parts it touches.
 The [limits reference](../reference/limits.md) owns defaults; the
 [statistics reference](../reference/read-stats.md) owns counter definitions.
-
-> Pending: WP-J Java examples wait for Java API alignment (`claude/java-api-alignment`).
-
-<!-- java: pending alignment -->
+Examples are in Go; each section ends with how the Java reader differs, and the
+[parity table](../reference/parity.md) maps the names.
 
 ## Keep a dataset open for a snapshot
 
@@ -27,6 +25,10 @@ An `OpenDir` dataset holds one file descriptor per retained part and its root.
 `Verify` touches all parts. A broad scan or verification can exhaust descriptors even when each part is small
 ([part ownership](../../go/reader.go), [local files](../../go/dir.go)).
 Size for the largest touched-part set; opening a fresh dataset for the same broad operation does not reduce that set.
+No limit refuses such a pass early, and nothing is evicted: this is a known limitation.
+
+**Java:** the same holds. `storage.LocalStorage` keeps a file channel per touched part, and on POSIX systems a
+directory handle too. There is no counterpart of `PageIndexCacheMemory`: Java keeps no raw page index bytes.
 
 ## Choose resource limits
 
@@ -79,6 +81,19 @@ A zero cache budget does not disable retention. Small positive values constrain 
 A `LimitError` reports reader policy or capacity, rather than a format refusal.
 See [troubleshooting](troubleshooting.md) before raising a limit.
 
+Treat a remote or third-party dataset as untrusted input. Every size a file declares (manifest, footer, page
+index, page header, page, value count) is checked against `Limits` before anything is allocated for it, and
+Thrift structures are walked with a bounded decoder, nesting included, before they are decoded. Every page
+the reader decodes is one it located itself, through a checked OffsetIndex entry or by walking page headers.
+A page must decompress to exactly its declared size, and the value counts its encodings declare are checked
+against its header before decoders allocate. A panic inside parquet-go on a hostile footer or page is
+reported as `invalid_footer` or `invalid_parquet` as a last line of defense. Dataset row positions are signed
+64-bit, so opening fails with a `LimitError` (`LimitDatasetRows`) when the manifest's row counts sum past
+2^63-1; this fixed capacity does not make the manifest invalid.
+
+**Java:** limits are built with `Limits.builder()`; a negative setting is `IllegalArgumentException` when
+built, not at open. The same bounded decoding and fixed capacities apply.
+
 ## Account for per-operation memory
 
 Use `Limits.PageMemory` as a per-page estimate, then allow for scratch, windows, results, and concurrency.
@@ -102,6 +117,25 @@ Bound admitted concurrency and owning result sizes in your application too.
 
 Not guaranteed: a process memory ceiling from any single `Limits` field, or lower wire traffic from a smaller reader cache.
 Storage caching and request execution have their own accounting.
+
+Buffer reuse is per call. `Dataset.Scan` and `Plan.Scan` decode key pages into one buffer set of their own,
+each page overwriting the one before once the callbacks borrowing it have returned; every other read (`Rows`,
+`Get`, `List`, routing and planning probes, `Verify`, the list index) decodes each key page into storage of its
+own. Projected value pages reuse buffers within each call, across row groups, and the call keeps each
+projection slot's largest buffers until it returns. Page header buffers can hold up to 16 MiB, bounded by
+`MetadataMemory`. No scratch is shared between calls.
+
+**Java:** the limits have Go's defaults, but Java estimates decoding memory its own way, so the two readers
+need not refuse the same pages. Java's `pageMemory` counts a slot per value by representation (boolean 1,
+int 4, long 8, byte array 24 bytes), a null flag per row for an optional column, the bytes of a byte-array
+arena, and 80 bytes per entry plus its bytes twice for a byte-array dictionary; at the default, a byte-array
+dictionary near both `pageValues` and `pageBytes` can exceed it. `metadataMemory` is charged as the Thrift
+decoder reads, before each allocation: 96 bytes per structure (48 for an OffsetIndex and its page locations),
+32 per unknown enum value recorded, 16 per list element (32 per map entry), 48 plus the length of each binary,
+and 48 plus twice the encoded length of each string. Each projected column slot can keep up to about
+4 × `pageBytes` of byte buffers per request (decompressed page, V2 levels, a delta arena and dictionary
+output), each at its high-water capacity until the request ends; at the default 64 MiB that is about 256 MiB
+per column. `offsetIndexMemory` charges 32 bytes per kept page and 64 per kept chunk, as Go does.
 
 ## Verify before serving reads
 
@@ -158,8 +192,20 @@ A nonempty successful build is reused by later calls. Compare `Options` and `Opt
 Listings still use their ordinary checks and fall back when an index entry cannot answer safely.
 Export `ListIndexSkips` alongside `ListIndexDelimiter`, `ListIndexMissingGroup`, `ListIndexDensePage`, and `ListIndexUnsafeRun` to explain declines.
 
+`MaxBytes` bounds the retained index, not the build's peak memory. Allow roughly
+`Workers` × 2 × `MaxBytes` for candidate buffers and compaction, plus the retained index, one page's boundary
+expansion per worker, transient page indexes, decoding buffers and part footers under the ordinary limits.
+Oversized single keys or pages can exceed that estimate. Build-only page indexes and first keys are transient
+and never consume `Limits.IndexMemory`. With an index built, `/` listings do not read ahead, including in a
+row group the index declines; other delimiters read ahead as usual. If the default `MaxChangesPerPage` marks
+every page dense, all skips may decline: check the decline counters before raising the cap or the budget.
+
 Not guaranteed: an index for every row group, a decode-free listing, or reduced latency for your workload.
-Benchmark build cost and steady-state listings separately.
+Benchmark build cost and steady-state listings separately ([benchmark recipes](../dev/benchmarks.md#list-index)).
+
+**Java:** `Dataset.buildListIndex(ListIndexOptions, Cancellation)` builds the same index with the same
+defaults and byte accounting. It returns its `ListIndexStats` and delivers no `ReadStats`; a failed build
+reports nothing.
 
 ## Coordinate concurrency, cancellation, and close
 
@@ -172,6 +218,14 @@ See [`ContextBinder`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Conte
 
 On shutdown, stop admitting work, close the dataset, then release your Source.
 See [`Dataset.Close`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Close) for shutdown semantics and [`Dataset.Scan`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Scan) for callback restrictions.
+
+**Java:** `Dataset` is safe for concurrent requests from many threads; footers and checked page indexes are
+shared and immutable once loaded, and concurrent first touches of a part wait for one check. Queries,
+results, `Bytes`, `Manifest` and `Value`s are immutable; query builders are not thread-safe. Cancellation is
+an explicit `Cancellation`, passed in `ReadOptions` and to every storage read, plus thread interruption;
+either ends the request with `CancellationException`. `Dataset.close()` cancels the requests in progress,
+waits for them to return, then closes the part sources; closing from inside a request's own visitor fails
+with `IllegalStateException`.
 
 ## Monitor reader work and storage work separately
 

@@ -5,368 +5,96 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
-- Changed listing read-ahead to size a prediction by the entries its pages yield: a key page whose
-  bounds are both rows of their own counts for a quarter of its rows, any other page for one entry.
-  A listing that does not roll up previously read ahead one key page for every entry it could still
-  return, up to 4 MiB of key pages for each page of the listing. Results are unchanged.
+## v0.2.0 (2026-11-15)
 
-- Changed listing read-ahead over a non-local `Source` to follow a delimited listing's skips across
-  row groups. It predicts one key page per common prefix from the key page indexes at hand, reads
-  ahead the key page indexes of the row groups it has yet to open, and routes a forward seek by those
-  indexes without decoding a row group's first key page where their bounds prove the seek lands no
-  later than routing would; such a seek decodes no key page the routed seek would not. Predictions
-  skip pages the request has already read, and read the bytes between two predicted pages of a part,
-  in one row group or across two, when they are at most 4 KiB, so that a listing skipping folders of
-  a few pages each makes one request, not one a page. After a row they predict from the page's last
-  entry, not always the next page. Previously it read pages in file order after every row-group
-  boundary and every page it had not predicted, and could read nearly every key page under the listed
-  prefix. `ReadAheadReads` and the unused counters now also count key page indexes read ahead.
-  Results are unchanged; `OpenDir`'s default policy and listings served by a list index read as
-  before. No format change.
+Changes since `go/v0.1.0`. Implements format 1, draft revision 1 (on disk `format_version` 0,
+`draft_revision` 1). Passes conformance revision `0.1.0-draft.5`, targets `reader`, `validator-structural`,
+`validator-profile`, `validator-full` and `validator-digest`, with the optional `verify` and `planning`
+capabilities. No format change. The first release that writes files of draft revision 1, so that revision is
+no longer edited in place ([VER-2](../spec/format-1.md#ver-2)).
 
-  Over a whole request, key pages decoded and source reads can differ from a request routed
-  throughout in either direction, with no bound claimed: routing's probes leave first keys, and open
-  parts, that later seeks and pages use. A listing continued from a cursor can therefore do on its
-  second page work its first page skipped; in the two shapes of issue 82 the work over the pages is
-  the same as before or less. It is not so for every listing: summed over each sequence of pages of
-  a matrix of listing shapes, the totals are lower than before, no sequence decodes more key pages,
-  and some use more requests or rounds (a root listing of eight row groups a part and folders of
-  640 objects: 10 requests in 4 rounds against 4 in 4). In the tests' randomized comparison forward
-  routing does less in total (5,927 key pages and 8,388 reads against 6,014 and 8,434; with
-  dictionary keys read in batches, 4,569 and 10,423 against 4,649 and 10,508); in 1,000-seed runs a
-  few dozen of the 60,000 requests read more, by at most 6 ranges (98 against 92).
+### Breaking
 
-- Fixed `Plan.Split` to keep equal selected keys across a gap in one shard.
-  A valid repeated-key `PlanRows` plan could previously be refused with `key_order`.
-  Splitting disjoint plans may now seek additional key pages.
+- The read API is redesigned, with no deprecated aliases:
+  - `Range`, `KeyRange` and `PrefixRange` become `Span` (with `KeySpan` and `PrefixSpan`), `Selection` (a
+    span and a row cursor) and `Query` (a selection, an `int64` `Limit` and `Columns`).
+  - `Dataset.Range` becomes `Dataset.Rows`; `List` becomes `ListQuery`, `Entry` `ListEntry`, `Options`
+    `OpenOptions`.
+  - Every read takes a `*ReadStats` argument, reset on entry and filled on every exit; pass nil to discard.
+  - `Value` is an opaque type with typed accessors, `Kind`, `IsNull`, `Absent` and `Clone`; an absent value is
+    not null. No parquet-go type remains in the read API.
+  - `Code` and `CodeOf` become `RefusalCode` and `RefusalCodeOf`; `UnsupportedError.Code` is an
+    `UnsupportedCode`. Limit failures are `*LimitError` (limit name, value, maximum), wrapping
+    `ErrLimitExceeded`.
+- A negative `Limits` field is `ErrInvalidRequest` at open instead of taking the default.
+- Opening reads and checks the manifest only. A part is opened and checked the first time a read touches it
+  ([CHECK-1](../spec/format-1.md#check-1)), so a part's refusal comes from that read, and the part stays
+  refused. A custom `Source` must stay usable until `Close`.
+- `Options.VerifyOnOpen` is removed: call `Dataset.Verify` after opening.
 
-- Added `Plan.ScanParallel`, porting swath's queued shard scheduler and key-boundary checks.
-  Callbacks run in order within shards and concurrently across shards; `Stop` joins workers successfully.
-- Added `Dataset.Aggregate` and `AggregateRows`, named `Reduction` operations, exactness statuses,
-  compressed value budgets, explicit `CheckKeys`, and a projected `BatchFilter`.
-  Integer sums accumulate in 128 bits before checking the final signed or unsigned 64-bit result.
-  Maxima support integers, timestamps in their declared units, and byte strings.
-  Null and absent counters are separate; aggregation callback errors, including `Stop`, return no results.
-- Added `Dataset.Page` with `PageQuery`, `PageEntry`, and `Page`, composing limit-plus-one listings
-  with reductions for complete returned prefixes. Clipped or unknown boundaries remain unknown.
-  These execution and aggregation APIs are Go only pending the Java mirror. No format change.
+### Added
 
-- Removed the physical request API: `IOObserver`, `IOReporter`, `IORequestKind`,
-  `IOMetadata`, `IORange`, `IOWholeObject`, `IORequest`, `IOResult`,
-  `WithIOObserver`, and `IOObserverFromContext` (including their reporting methods).
-  Physical execution and observation belong to the caller's storage layer.
-- Removed `ReadStats.PhysicalRequests`, `PhysicalBytes`, `PhysicalRetries`,
-  `PhysicalFailures`, `PlannedRanges`, `PlannedRequests`, `PlannedOverReadBytes`,
-  `ByteCacheHitBytes`, `UnreportedIOCalls`, and `PeakPhysicalRequests`.
-  Removed the unreleased open-statistics field from `OpenOptions`.
-  Logical and format counters in `ReadStats`, and `Add`, remain.
-- Removed `CacheMode`, `CacheDefault`, `CacheBypass`, `WithCacheMode`, and
-  `CacheModeFromContext`. The end-to-end behavior change is that `Dataset.Scan`, `Plan.Scan`
-  and `BuildListIndex` no longer request a source-cache bypass. A caller whose storage caches bytes
-  chooses bypass in its storage, for example through its own context value. `Plan.ScanValues`
-  continues to follow the storage layer's cache policy. Reader metadata retention remains independent.
-- Removed `ReadPolicy.Concurrency`. Independent reads retain an internal limit;
-  the Source bounds physical request concurrency. No compatibility shims are provided.
-- Documented supported Go writing: package `write` produces one part at a time from sorted rows
-  and enforces the profile. `local.WriteDir` writes a complete new dataset, `local.Commit` publishes
-  a manifest for installed parts, and `MarshalManifest` returns manifest bytes for custom storage.
-  Cursor token version 1 is stable.
+- Reads: `Dataset.Get` for one key group, bounded by `Limits.GetRows`; `Dataset.Scan` with borrowed `Batch`es
+  and `ColumnView`s, and `Stop`; `ListEntry.Exact`, the row stored at a common prefix's own key (LIST-8);
+  `Dataset.Columns`, a part's typed columns (`Column` with `Kind`, `Repetition` and `Logical`).
+- Planning: `Dataset.Plan` and `Plan` (`Count`, `ProjectedBytes`, `Columns`, `Scan`, `Split`), and
+  `Plan.ScanParallel`, a queued scan of shards on several goroutines.
+- Row positions: `RowPosition`, `RowSpan`, `ListEntry.Rows`, `Dataset.PlanRows`, `Plan.InputRowSpans`,
+  `Plan.SelectRows`, `Plan.ScanValues` and `ValueBatch`, to count listed spans without storage reads and read
+  values by position.
+- Aggregation: `Dataset.Aggregate` and `AggregateRows` with `Reduction`s (`CountRows`, `Sum`, `Max`,
+  `CountNulls`, `CountAbsent`), exactness statuses, value budgets and a `BatchFilter`; `Dataset.Page`, a
+  listing page with aggregates for each complete common prefix.
+- Cursor tokens: `Cursor.Encode`, `ParseCursor` and `MaxCursorToken` implement the stable
+  [cursor token, version 1](../spec/cursor-token-1.md); `RowCursor` and `PrefixCursor` build cursors.
+- `Dataset.Verify` checks every part, row-group first key page and part end now (CHECK-3).
+- `Dataset.BuildListIndex`, an optional bounded index for `/` listings (`ListIndexOptions`,
+  `ListIndexStats`).
+- Remote storage: the optional `ManifestReader`, `SizedSource` and `RangeReader` capabilities (with
+  `BatchError`, `MaxReadRanges`, `MaxReadBatchBytes`), `ErrObjectChanged`, `ErrObjectTooLarge`,
+  `SizeMismatchError` and `Metadata.ManifestIdentity`; `OpenOptions.Read`, a `ReadPolicy` with
+  `MetadataPrefetchBytes` and `DisableSpeculation`. A size mismatch is refused `part_mismatch`, a missing
+  object `missing_part`; a broken pin stays an environment error.
+- `ListQuery.ReadAhead`: over a non-local Source, a listing predicts and reads ahead the key pages and key
+  page indexes it needs next, across row groups, and routes forward seeks by those indexes. Zero selects
+  adaptive prediction; zero-policy `OpenDir` reads on demand. Results are the same with or without it.
+- `ReadStats` counts key and value pages decoded, keys, row groups, index loads, seeks, prefix skips, list
+  index skips and declines, logical source reads and bytes, read-ahead, batching and metadata reuse.
+- Limits: `PageMemory`, `OffsetIndexMemory`, `PageIndexCacheMemory` and `GetRows`; the fixed capacities
+  `LimitManifestNesting` (512) and `LimitDatasetRows` (2^63-1).
+- Writing: package `write` (`NewPart`, `PartWriter` with `WriteRows`, `WritePage` and `Seal`) enforces the
+  profile; package `local` (`WriteDir`, `PublishPart`, `Commit`) publishes durably in a local directory.
+- Manifests: `Manifest`, `ParseManifest`, `MarshalManifest` and `PartInfo.Extensions`; `InspectFooter` and
+  `InspectKeyPages`; the constants `Format`, `FormatVersion`, `DraftRevision`, `ManifestName` and the stamp
+  keys.
+- Validation at the four levels of §8: `Validate`, `ValidateDir`, `ValidateOptions`, `Level` and `Report`,
+  `CodeDigestMismatch`, and the command `seekparquet validate [--level LEVEL] [--json] DIR`.
 
-- Added the row-position API: `RowPosition`, `RowSpan`, `ListEntry.Rows`,
-  `Dataset.PlanRows`, `Plan.InputRowSpans`, `Plan.SelectRows`, `ValueBatch`, and
-  `Plan.ScanValues`. Listings expose candidate-row boundaries without additional I/O;
-  boundaries not established remain unknown, never empty or zero rows. A common prefix
-  at the result limit or clipped by `End` can lack an end; cursor-clipped starts identify
-  the first remaining candidate row. Resolve unknowns with `Dataset.Plan` over the
-  corresponding key selection, preserving listing restrictions; this may read storage.
-  Column-free row planning and contained selection perform no I/O. Even with known
-  positions, counts are inexact if any contributing part was unchecked at plan construction.
-  There is no promise of an exact zero-request count for every listing entry.
-  Value-only scans execute row positions without implicit
-  key decoding. Source caching follows the storage layer's policy. Counts and projected bytes report
-  their exactness. No format change.
-- Renamed `Plan.RowSpans` to `Plan.InputRowSpans` (pending Java name
-  `inputRowSpans`) to identify original inputs, including overlaps and empties,
-  rather than the normalized union. This is a breaking change to an API
-  not yet in a release; callers rename the method. Positions remain inspectable
-  after close, and `SelectRows` remains allowed; scans and `Split` require the open Dataset.
-- Scans, listings, and projected reads fetch bounded windows through `RangeReader`
-  when available, with scalar `ReadAt` fallback. Windows hold up to 64 MiB of fetched,
-  undecoded bytes per operation, not per dataset. Listing read-ahead is adaptive for a
-  remote Source when `ListQuery.ReadAhead` is zero; zero-policy `OpenDir` stays on demand.
-  Window scheduling honors `Limits.PageBytes` before fetching page extents. Panics in
-  Source `ReadAt` and `ReadRanges` surface as environment errors containing the recovered value.
+### Changed
 
-- A manifest nested deeper than 512 JSON objects and arrays (the manifest object counting 1), in
-  extensions or anywhere else, is a `*LimitError` for the new `LimitManifestNesting` (wrapping
-  `ErrLimitExceeded`), as in the Java reader, from `ParseManifest`, opening and validation: the syntax check
-  no longer recurses without bound, which a deeply nested manifest within `Limits.ManifestBytes` could
-  exhaust the stack with. Depth 512 is read.
-- `PartInfo.Extensions`: a part's `extensions` object (spec §3.4, EXT-1 to EXT-5), kept exactly as written by
-  `ParseManifest` and `Dataset.Metadata`, and written by `MarshalManifest` (and so `local.Commit`) after the
-  part's `sha256`, compacted, and left out when empty, as the top-level `Extensions` is. A part's `extensions`
-  that is not an object, or has an empty namespace name, is `invalid_manifest`. The reader ignores
-  extensions (EXT-3). The reader already checked both magics (CHECK-1) and decoded LZ4_RAW, now in the ENC-1
-  baseline; BROTLI stays supported.
+- A part's first touch reads its end in one tail read (2 MiB; 64 KiB through `OpenDir`), with a 4-byte read
+  of its head only when the part is larger, and keeps the page-index bytes it holds. A page or dictionary that
+  an OffsetIndex locates is read in one request of exactly its extent, and a projected chunk's checked
+  OffsetIndex is kept for later requests.
 
-- **Breaking: the read API is redesigned** before any stability promise (no deprecated aliases):
-  - Requests: `Range`, `KeyRange` and `PrefixRange` are replaced by `Span` (`KeySpan`, exactly
-    `[key, key+0x00)`, and `PrefixSpan`), `Selection` (a span and a row cursor) and `Query` (a selection,
-    an `int64` `Limit` and `Columns`). `List` is renamed `ListQuery`, `Entry` `ListEntry`, `Options`
-    `OpenOptions`. `RowCursor` and `PrefixCursor` build cursors.
-  - Reads: `Dataset.Range` becomes `Rows` (owning rows, positive limit, no rows on error; it still finds
-    every key before reading a value page); `Dataset.RangeBatches` becomes `Scan`, where a zero `Limit`
-    scans to the end of the span (a library streaming extension; the specification's range and the
-    conformance cases are unchanged); `PlanRanges` becomes `Plan` over `[]Selection`, and `RangePlan`
-    becomes `Plan`, whose `Scan` takes the batch callback (`ScanBatches` and the row-callback `Scan` are
-    removed). New `Dataset.Get` returns one key's whole group, bounded by the new `Limits.GetRows`
-    (default 1,000): a larger group fails, before any value page is read, with no rows.
-  - Statistics: every read takes one nullable `*ReadStats` argument, reset at entry and filled on every
-    exit, including failed planning and splitting; request `Stats` fields and `RangePlan.Stats` are
-    removed. `Split` reports its reads through its argument rather than per shard. `ReadStats.Add` sums.
-  - Values: `Value` is an opaque type with typed accessors, `Kind`, `IsNull`, `Absent`, `Clone` and
-    constructors; absent and null are now disjoint (`IsNull` is false for an absent value).
-    `Batch.Column` returns a zero-copy `ColumnView`; a projected column a part lacks takes no storage, and a
-    batch projecting one holds at most 4,096 rows. `Column` describes types with `Kind`, `Repetition`
-    and `Logical` (parameters and converted-type normalization kept). No parquet-go type remains in the
-    read API; package `write` still takes a parquet-go schema.
-  - Errors: `Code` and `CodeOf` are renamed `RefusalCode` and `RefusalCodeOf`; `UnsupportedError.Code`
-    is an `UnsupportedCode`. Limit failures are `*LimitError` (limit name, value, maximum) wrapping
-    `ErrLimitExceeded`. A negative field of `Limits` is `ErrInvalidRequest` at open instead of taking
-    the default. A part's cached refusal is returned to each read as a copy of its own.
-  - Fixed: a nil callback to a planned scan, and `Split` with `n` below 1, are `ErrInvalidRequest`. A
-    callback returning `Stop` ends either scan with a nil error. `Batch.Columns` and `Plan.Columns`
-    return copies of the projection.
-  - `Cursor.Encode` and `ParseCursor` carry a cursor as a version 1 cursor token
-    ([spec/cursor-token-1.md](../spec/cursor-token-1.md)), with shared golden vectors.
+### Fixed
 
-- Optional storage capabilities for remote sources, each with a fallback to `Open` and `ReadAt`:
-  `ManifestReader` (one bounded whole-manifest read on the ordinary path; `Metadata.ManifestIdentity`),
-  `SizedSource` (part opens with the manifest's size, proven by the first read, for parts of 12 bytes or more),
-  `RangeReader` with `ReadRange`, `BatchError`, `MaxReadRanges` and `MaxReadBatchBytes`, and `ErrObjectChanged`,
-  `ErrObjectTooLarge` and `SizeMismatchError`. A size mismatch is refused `part_mismatch` and a missing object
-  `missing_part` wherever they surface; a broken pin (`ErrObjectChanged`) stays an environment error, also on the
-  manifest; a short read, or a read that returned every byte with an error that says more than `io.EOF`, is the
-  environment's error, never a refusal, keeping a size mismatch or broken pin it carries. Physical reporting: `IOReporter`, `IOObserver` (`WithIOObserver`, `IOObserverFromContext`) with
-  `IORequest`, `IORequestKind` and `IOResult`, counted in new `ReadStats` fields (`SourceBatches`,
-  `ScalarFallbackReads`, `Physical*`, `Planned*`, `ByteCacheHitBytes`, `MetadataHitBytes`, `RequestMemoHitBytes`,
-  `UnreportedIOCalls`, `PeakPhysicalRequests`; `Add` takes the larger peak); every operation observes
-  the requests of each receiver that reports, Source or file,
-  from its first call. Cache control: `CacheMode` with `WithCacheMode` and `CacheModeFromContext`;
-  `Dataset.Scan`, `Plan.Scan` and `BuildListIndex` ask for `CacheBypass`. `OpenOptions.Read` is a `ReadPolicy`:
-  `Concurrency` (default 64) bounds an operation's outstanding ranges, read-ahead included;
-  `MetadataPrefetchBytes`; `DisableSpeculation`, which also turns off `ListQuery.ReadAhead`.
-- **Breaking:** `Dataset.Verify` takes a `*ReadStats`, reset on entry and filled on every exit.
-- A part's first check reads its end in one `ReadPolicy.MetadataPrefetchBytes` window (default 2 MiB), with its
-  4-byte head, and keeps the page-index bytes it holds within the new `Limits.PageIndexCacheMemory` (default
-  128 MiB, least recently used parts evicted, never a failure; footers and decoded indexes are outside it): later
-  ColumnIndex and OffsetIndex loads of the part read nothing, or only the missing beginning of an index that
-  starts before the window. A key ColumnIndex and OffsetIndex not retained are read together. Within a request,
-  complete key-page extents admitted to a bounded request memo are reused. `Verify` checks up to
-  `ReadPolicy.Concurrency` parts at once, reading each part's first key pages and last key page together, its
-  head merged into the first, and commits each check and its verdict in manifest order, so it reports what a
-  serial check reports; checked first keys and last pages are not checked again. It fetches at most
-  `ReadPolicy.Concurrency` parts ahead of the part it checks, so the part ends it holds stay bounded, and a page it
-  fetched is used only once the part's check adopts the handle it was read from. `ReadPolicy.Concurrency` bounds
-  every range an operation has in flight: scalar reads, batches, read-ahead and list-index workers. `OpenDir` with
-  a zero `ReadPolicy` reads as before these capabilities: a 64 KiB window, each part's ranges one at a time, no
-  retained index bytes and no memo (`Verify` still checks several parts at once).
-
-- `ListQuery.ReadAhead` (default 0, off; at most 64): a listing predicts from the checked key page index of the
-  row group it is in the key pages it will decode next (after each common prefix, the first page whose
-  maximum reaches the prefix's successor) and reads up to that many of them concurrently, holding at most
-  1 MiB per slot of pages read ahead and not yet used (`ReadAhead: 64` can hold 64 MiB per request). The page
-  read path takes those bytes instead of reading them and checks them as before; entries and every other count are unchanged. `ReadStats` gains
-  `ReadAheadReads`, `ReadAheadUnused` and `ReadAheadUnusedBytes` (the reads also count in `SourceReads` and
-  `SourceBytes`); a page predicted wrongly is read and transferred for nothing and held until the scan passes
-  it or the key scan ends. With a 5 ms wait per read, a cold 100-folder listing (4,000 keys per folder, 1,024-row
-  pages) takes 106 ms with `ReadAhead: 8` instead of 570 ms, for the same 105 reads. The read-ahead does not
-  cross row groups or parts, is not used by `Rows` or batch scans, and is off for every `/` listing while a
-  list index is built, including for a row group the index declines. The reads ahead end when the key scan
-  ends, before values are projected.
-
-- A part's footer is read in fewer reads: one speculative read of the part's last 64 KiB (bounded by
-  `Limits.FooterBytes`, the whole part when smaller) holds the trailer and, when it fits, the footer, with
-  a 4-byte read of the head magic only for a part larger than the window and one more read only for a
-  footer larger than it. The footer and the head magic are no longer read a second time when parquet-go
-  opens the checked footer. A footer took four reads; it now takes one (part up to 64 KiB), two, or three
-  (footer over 64 KiB). `SourceBytes` grows by up to 64 KiB per part opened; the window is freed once the footer is checked, and an open part
-  retains only its footer, trailer and head magic, as before. Every check and refusal is
-  unchanged. `InspectFooter` and `InspectKeyPages` still read only the head magic and the footer (and the
-  key page indexes), now once instead of twice.
-
-- `Plan.Scan` and `Dataset.Scan` reuse one set of key page buffers
-  per call (read, decompressed and decoded bytes, offsets, dictionary indexes), as projected value pages
-  already did: each key page overwrites the one before after the callbacks borrowing it have returned.
-  Key pages are decoded into bytes and offsets (or a dictionary's, with the page's indexes) instead of a
-  `parquet.Value` per key, by every key page walker (batches, `Rows`, `List`, routing, planning, `Split`,
-  `Verify`, the list index); validation and a projected key column still use the value decoder. On a 4,000,000-row listing of 101 to 106-byte keys (1,024-row
-  ZSTD pages, DELTA_BYTE_ARRAY keys) a whole `Plan.Scan` allocates about 3 bytes per row instead of
-  197. `Batch.Key` is borrowed until the callback returns, as before; `Batch.Row`, `Batch.Cursor`,
-  `Rows`, `List` and every other key walker keep owning or never-reused keys. `Limits.PageMemory` still
-  estimates a key page at 24 bytes per value, more than it now holds.
-
-- Fixed (#44): a page its OffsetIndex locates with other rows than its header declares is refused for
-  breaking RG-3 even when the header declares more values than `Limits.PageValues`; it was reported as a
-  limit (`ErrLimitExceeded`), as if the data might be valid. A header that agrees with its OffsetIndex entry
-  is still held to the limit. Java already answered this way.
-- `Limits.PageMemory` bounds the memory decoding one page holds (issue #46), data and dictionary pages,
-  key pages included: estimated from the page's header before anything is allocated for its values (24
-  bytes per value for its `parquet.Value`, twice that for an optional column, plus its decoded bytes, at
-  most `PageBytes`), it fails a page over it with an error wrapping `ErrLimitExceeded`. Its default is the
-  most `PageValues` and `PageBytes` allow (832 MiB at their defaults), so no page they admit is newly
-  refused; lower it to bound decoding memory. Concurrent calls add up.
-- Fixed (differential testing against the Java reader): a page of a type other than BOOLEAN labelled RLE
-  made parquet-go decode its payload as runs of bit width 0 and allocate tens of GiB, killing the process; it
-  is `invalid_parquet` before anything is decoded. A PLAIN BYTE_ARRAY value overrunning its page could be
-  completed with the bytes after it (the next page's header, read with this one), or make parquet-go panic
-  where a planned scan or full validation reads a dictionary, which killed the process: every length is
-  checked against its page first, page payloads are sliced with their capacity ending at the page, and a
-  dictionary is decoded under the same recover as a page.
-- Fixed: a repeated run of an RLE/bit-packed stream (levels, dictionary indexes, Booleans) whose value does
-  not fit its bit width was read (a Boolean 2 as false); a definition level above 1 was counted as that many
-  values; a DATA_PAGE_V2 page's repetition-level bytes, a REQUIRED column's definition-level bytes and a
-  `num_nulls` that disagrees with the levels were not checked; a column chunk without an OffsetIndex could
-  hold a page of no rows, or pages past its row group's end; a DELTA_LENGTH_BYTE_ARRAY or DELTA_BYTE_ARRAY
-  page's lengths need not cover exactly the bytes after them (parquet-go's amd64 decoder then returned the
-  wrong values); a DELTA_BINARY_PACKED miniblock above 32 bits in an INT32 stream reached a size estimate
-  and failed as a limit. Each is now `invalid_parquet`, as in Java. A column chunk whose metadata names
-  another path or physical type than its schema leaf is `invalid_footer`.
-- Fixed: a dictionary-encoded page with no non-null value and no index bytes is read as all nulls, as Java
-  and PyArrow read it; a `sorting_columns` entry after the first that names no column is ignored (RG-1), and
-  row-group ordinals that differ from the row groups' positions are ignored (they serve encryption): both
-  were `invalid_footer`. parquet-go is given the footer without them.
-- Added `Dataset.Scan(ctx, q, stats, func(*Batch) error)`: a limited range read as borrowed
-  `Batch`es, with no plan. It returns the rows, keys, values and cursors `Rows` returns and reads
-  what it reads (equal `ReadStats` for a successful, fully consumed request against the same cache
-  state; a request ended by an error, a callback stop or cancellation can differ), opening projected chunks and dictionaries only as the rows reach
-  them, and stops at `Limit` without advancing to the next row. A nil callback is
-  `ErrInvalidRequest`; callback errors, cancellation, Close and borrowing follow `Plan.Scan`.
-  `Plan.Scan` now runs on the same internal batch walker, unchanged in behaviour.
-  No format change.
-- A Dataset keeps the checked page locations of each projected column chunk's OffsetIndex once a
-  request has loaded them, so later requests do not read and decode them again (Java keeps
-  them too, under its own `maxOffsetIndexMemoryBytes`). The new `Limits.OffsetIndexMemory` (default 256 MiB, apart from `IndexMemory`) bounds what is
-  kept; past it requests load the locations they need without keeping them, never an error. An
-  OffsetIndex that fails to read or check is never kept and is refused on every request.
-  `ReadStats.SourceReads` and `SourceBytes` leave out an index a request found kept.
-- Added `Plan.Scan(ctx, stats, func(*Batch) error)` for borrowed column scans.
-  `Batch` exposes `Len`, `Key`, `Offset`, and `Column`; `Row` and `Cursor` make owning copies.
-  The batch object and all borrowed slices/bytes are read-only and valid only until the callback
-  returns. Batches stay within a row group, every key/projected page, and a selected span;
-  maximal size is not promised. Duplicate projections, projected keys, absent columns,
-  repeated-key offsets and chunks without value OffsetIndexes retain their semantics.
-  `Scan` now adapts batches into owning rows. It delivers completed batches before a later
-  error, including a corrupt projected page in the middle of a key page or a failing next key
-  page, instead of withholding the whole preceding key-page buffer. Cancellation stops delivery
-  between batches; cancelling within a Scan callback allows the current batch's remaining rows
-  to be delivered. Both APIs hold the Dataset open during callbacks;
-  callbacks must not call Close or wait for a goroutine that does. No format change.
-- Tightened the owning scan allocation budget and added per-slot allocation gates that reject
-  losing even one warmed PLAIN page buffer. Removed the redundant value-slice clear when opening
-  a column; decoding already clears the previous page and its stale tail before reuse.
-
-- `Dataset.BuildListIndex` explicitly builds an optional, bounded directory-run index for `/` listings.
-  Compact exact anchors, binary run searches and first-key group routing avoid a key-page decode per
-  wide prefix. Dense intervals decline safely; fully checked flat groups retain no index data.
-  Both languages use the same conservative byte accounting. Build-only page indexes and first keys
-  never fill the ordinary reader's index-memory cache; ordinary probes and synthetic materialization
-  retain their usual caches. Transient loads count in read statistics. Refusals and unsupported
-  codecs/encodings omit groups (both sides of bad boundaries); storage failures, resource limits
-  and cancellation discard the attempt and permit retry.
-  Publication is atomic. Empty outcomes reuse the most recent options; nonempty outcomes expose their
-  effective options and whether any groups are indexed. Statistics count skips, declines and build work; empty indexes do not count declines.
-  Slash-ended cursors alone use directory-run certification; all other valid cursors keep ordinary
-  seeking. Synthetic transitions preserve logical position and current-group projection caches.
-  Listings check cancellation before returning, including the no-index path. No format change.
-- Fixed: a page whose PLAIN or BYTE_STREAM_SPLIT payload held more values than its header declares (or a
-  dictionary page more than its count) was decoded as its declared prefix, so full validation counted only
-  those and could certify the page (CHECK-5). It is now `invalid_parquet`, in reads and in validation; a
-  PLAIN Boolean page may still pad its final byte.
-- Fixed: an RLE/bit-packed stream of dictionary indexes or definition levels could hold more values than
-  the page through a repeated run, or a bit-packed run beyond its final group's padding, read as its first
-  values; it is now `invalid_parquet`, as in Java. A FIXED_LEN_BYTE_ARRAY page decoding to bytes that are
-  not a whole number of values (DELTA_BYTE_ARRAY) is too.
-- Fixed: a page header carrying a CRC of zero was not checked, parquet-go's header not telling it from
-  none; every CRC a header carries is now checked, in reads and in validation, as in Java.
-- Fixed: a request started while a `Close` waited for the requests in progress waited behind it, so a
-  request started inside a `Scan` callback (or one the callback waits for) never returned, nor did the
-  `Close`. A request started once `Close` has begun now fails with `ErrClosed` at once.
-- Fixed: `write.PartWriter.WriteRows` panicked on a row beginning with a continuation value (repetition
-  level above 0) whose column index is unset; it fails with `ErrProfile`.
-- Fixed: `Plan.Split` with unique keys reads nothing, and so returned shards for a cancelled context or
-  a closing dataset; it now observes its context on entry and through its loops, an empty plan's included.
-  Building many shards no
-  longer rescans the whole plan for each (O(G²) for G row groups split G ways).
-- Documented: `PartOptions.Codec` compresses the columns whose schema nodes set no compression of their own;
-  a node's compression takes precedence, as in parquet-go. `Plan.Scan`'s `fn` must not close the
-  Dataset. `Limits.PageBytes` is not a bound on the memory of decoding a page: `PageValues` bounds its
-  `parquet.Value` slices. A touched part keeps its file and footer until `Close`, unbounded by any limit
-  (a known limitation: no cap, no eviction).
-- The conformance adapter claims the optional `planning` capability: it answers `plan` (Plan, then
-  Scan, Count and ProjectedBytes) for the conformance suite's planning cases.
-- `Plan.Split(ctx, n, stats)` divides a selection plan into at most `n` shards along row-group boundaries,
-  never inside a group of equal keys, for a caller to scan concurrently: the shards' scans together yield the
-  plan's rows, each once, and their `Count` and `ProjectedBytes` add up to the plan's. Boundaries balance the
-  projected bytes when exact, else the rows. Unique keys split without reading; repeated keys decode the two
-  key pages around each boundary inside a part. No goroutines in the package and no format change: splitting
-  is a Go convenience, not part of the specification or the conformance protocol.
-- `ListEntry.Exact`: a common prefix entry carries its exact row (spec LIST-8), the first candidate row of the
-  request that rolls up to the prefix when that row's key is the prefix itself, with its offset and projected
-  values; nil otherwise. A listing pairs a prefix with the row stored at its exact key (an S3-style folder
-  object) without a second request. It costs the value pages of that row only; a listing without such rows
-  reads what it read before, and the group shortcut still skips the groups under a prefix. The conformance
-  adapter reports it as the prefix entry's `exact` member.
-- `Dataset.Columns(ctx, i)` returns part `i`'s top-level columns as `[]Column` (name, physical type and
-  `FIXED_LEN_BYTE_ARRAY` length, logical type with a legacy converted type normalized into it,
-  repetition, nested or not, key or not) from the footer the dataset checked and holds for the part,
-  checking the part as a first read would if none has, so a caller never reopens a part to learn its
-  types. `Footer.Schema` carries the same from `InspectFooter`. No format change.
-- Selection planning: `Dataset.Plan(ctx, selections, columns, stats)` returns a `Plan` for every row of a set
-  of ranges. `Count()` is its row count, from the key pages at the ends, row-group row counts and OffsetIndex
-  row positions, and reports whether it is exact (every part holding a row checked). `ProjectedBytes()` is the
-  compressed bytes `Scan` will request for the projected columns, shared pages and dictionaries once, and
-  reports whether it is exact (every projected chunk has an OffsetIndex). `Scan(ctx, stats, fn)` yields the
-  rows in dataset order. A plan is bound to its `Dataset`. No format change.
-- A page that an OffsetIndex locates is read in one request of exactly its extent instead of a 4 KiB header
-  window and a second read for a larger payload, and so is a value chunk's dictionary page, as the extent
-  before the chunk's first data page. `Rows` and `List` still read a dictionary only for a page that uses
-  it; a plan's `Scan` reads it before the chunk's first page, as `ProjectedBytes` counts it.
-
-- `PartWriter.WritePage` writes a page column by column from the caller's own values, without copying
-  them and checking only the keys (KEY-2, KEY-3): with swath's binding it writes swath's bytes at its old
-  writer's speed (`BenchmarkSwathWriter`). `WriteRows` still copies, for callers that reuse their rows.
-- Lazy open (spec CHECK-1 as now written): `OpenDataset` and `OpenDir` read and check the manifest only,
-  and open no part. A part is opened and checked (size, footer, stamps, row count, key column, RG-1, and
-  COL-5 against the parts already checked) the first time a read routes to it; a refusal surfaces from
-  that `Rows` or `List` with the same codes as before, and the part stays refused. `OpenDir` keeps the
-  directory open until `Close`; a custom `Source` must stay usable until `Close`.
-- `Dataset.Verify` checks every part now, then every row group's first key page and each part's last
-  (CHECK-3). It replaces `Options.VerifyOnOpen`, which is removed: call `Verify` after opening.
-- `ReadStats.PartsOpened` counts the parts a request was the first to touch; their footer reads are in
-  `SourceReads` and `SourceBytes`.
-- The structural validation level checks every part explicitly, as `Verify` does without key pages.
-- Every read takes a `*ReadStats` that the reader fills with the request's exact
-  counts: key and value pages decoded, keys decoded, row groups opened, key page index loads, page-index
-  seeks, prefix resumes, row groups skipped whole, and `Source` reads and requested bytes.
-- `Format`, `FormatVersion`, `DraftRevision`, `ManifestName` and the five stamp keys are exported.
-- `Manifest`, `ParseManifest` (the strict parser opening uses) and `MarshalManifest` (canonical JSON in
-  the member order of the spec's examples, checked by the same parser).
-- `InspectFooter` and `InspectKeyPages` read one part's footer and key page index, checked as a read
-  checks them, without reading a data page.
-- Package `write`: a streaming part writer that enforces the profile (key column, key order, page indexes
-  with exact bounds on every column, `sorting_columns`, stamps, column orders) and returns the part's
-  rows, size, exact bounds and SHA-256.
-- Package `local`: `PublishPart` and `Commit`, durable root-confined publication (swath's protocol: sync,
-  rename, sync the directory), refused where directories cannot be synced (Windows) unless the caller
-  accepts a visible but unproven commit; `WriteDir` writes sorted rows as a new dataset in a directory it
-  creates, its parent and root synced before any part is published.
-- Validation at the specification's four levels: `Validate` over a `Source`, `ValidateDir` over a local
-  directory, with `ValidateOptions{Level, Limits}` and a `Report` of each level's result, refusal code and
-  location, or the reason it is incomplete. Profile and full validation walk every column chunk page by
-  page from its start and compare the indexes with the pages found. `CodeDigestMismatch` is new.
-- Command `cmd/seekparquet`: `seekparquet validate [--level LEVEL] [--json] DIR`.
-- The conformance adapter claims the four validator targets.
+- Malformed pages that were read wrongly, or crashed the process, are `invalid_parquet`: a non-Boolean page
+  labelled RLE; a PLAIN `BYTE_ARRAY` value overrunning its page; an RLE or bit-packed run whose value does not
+  fit its width, or that holds more values than the page; a definition level above 1; unchecked V2
+  repetition-level bytes, `REQUIRED` definition-level bytes or `num_nulls`; a chunk without an OffsetIndex
+  holding a page of no rows or past its row group; delta lengths that do not cover exactly their bytes; a
+  `DELTA_BINARY_PACKED` miniblock above 32 bits in an INT32 stream; a payload holding more values than its
+  header declares; a `FIXED_LEN_BYTE_ARRAY` page that is not a whole number of values. A column chunk whose
+  metadata names another path or type than its schema leaf is `invalid_footer`.
+- Every CRC a page header carries is checked, a zero CRC included.
+- A page whose OffsetIndex entry disagrees with its header's rows is refused for RG-3, not reported as a limit.
+- Valid files that were refused are read: a dictionary-encoded page of only nulls with no index bytes; a
+  `sorting_columns` entry after the first that names no column; row-group ordinals that differ from the row
+  groups' positions.
+- A manifest nested deeper than 512 is a limit, not unbounded recursion.
+- A request started while `Close` waits fails with `ErrClosed` instead of waiting behind it, which could hang
+  a request made inside a callback.
 
 ## v0.1.0 (2026-11-08)
 
