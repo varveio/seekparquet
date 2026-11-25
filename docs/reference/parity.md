@@ -162,6 +162,10 @@ A dash means the language has no counterpart. Names are checked against the code
 | Value budget exceeded | `AggregateBudgetExceeded` | — | Go only; not in Java yet. |
 | Unpriced value extents | `AggregateUnpriced` | — | Go only; not in Java yet. |
 | Sum overflow | `AggregateOverflow` | — | Go only; not in Java yet. |
+| Fold established row spans with a caller's accumulator | `FoldRows` | — | Go only; not in Java yet. |
+| Caller's reduction of rows | `Fold` | — | Go only; not in Java yet. |
+| Fold options | `FoldOptions` | — | Go only; not in Java yet. |
+| Fold result | `FoldResult` | — | Go only; not in Java yet. |
 | Listing page with prefix aggregates | `Dataset.Page` | — | Go only; not in Java yet. |
 | Page request | `PageQuery` | — | Go only; not in Java yet. |
 | Page entry | `PageEntry` | — | Go only; not in Java yet. |

@@ -5,6 +5,12 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+### Added
+
+- `FoldRows` reduces established row spans with a caller's accumulator, a `Fold` of `Columns`, `New`, `Add`
+  and `Merge`, with `FoldOptions` and one `FoldResult` per span. Spans, value budgets, key checks and statuses
+  are those of `Dataset.AggregateRows`. Each worker folds into its own accumulators, merged after the scan.
+
 ## v0.2.0 (2026-11-15)
 
 Changes since `go/v0.1.0`. Implements format 1, draft revision 1 (on disk `format_version` 0,
