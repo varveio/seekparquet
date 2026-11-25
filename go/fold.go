@@ -88,9 +88,11 @@ type FoldResult[T any] struct {
 // read has checked is AggregateUnknown.
 //
 // The first failing Add, or a failing read, cancels the other workers, so
-// an Add that would fail later may never run. When several fail, FoldRows
-// returns one of their errors, and Stop only when no Add returned another
-// error and ctx has not ended.
+// an Add that would fail later may never run. FoldRows then returns, in
+// this order: the first error other than Stop that was recorded, from an
+// Add or from a read; the error of ctx, if ctx ended; Stop. A read's
+// error that matches context.Canceled once the workers are cancelled is
+// not recorded.
 func FoldRows[T any](ctx context.Context, d *Dataset, spans []RowSpan, f Fold[T], opt FoldOptions, st *ReadStats) (out []FoldResult[T], err error) {
 	st, spare := takeStats(st)
 	defer dropStats(spare)
