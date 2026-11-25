@@ -5,6 +5,7 @@ package seekparquet
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"math"
 	"math/bits"
@@ -251,115 +252,182 @@ func aggregateResults(n, m int) [][]AggregateResult {
 }
 
 func (d *Dataset) aggregateRows(ctx context.Context, spans []RowSpan, reductions []Reduction, opt AggregateOptions, columns []string, slots []int, st *ReadStats) ([][]AggregateResult, error) {
+	w := rowWork{
+		columns:   columns,
+		values:    len(columns) > 0 || opt.Filter != nil,
+		budget:    opt.ValueBudgetBytes,
+		workers:   opt.Workers,
+		checkKeys: opt.CheckKeys,
+		checkExact: func(p *Plan) error {
+			_, err := d.reductionTypes(p, reductions)
+			return err
+		},
+	}
+	a, err := d.admitRows(ctx, spans, w, st)
+	if err != nil {
+		return nil, err
+	}
+
 	out := aggregateResults(len(spans), len(reductions))
-	// Like swath aggregate: free counts use one no-column PlanRows per input.
-	var candidates []int
+	for i, status := range a.status {
+		if status == AggregateUnknown {
+			continue
+		}
+		for j, r := range reductions {
+			switch {
+			case a.counts[i] == 0:
+				v := Int64Value(0)
+				if r.Op == Max {
+					v = Value{}
+				}
+				out[i][j] = AggregateResult{v, AggregateExact}
+			case r.Op == CountRows && opt.Filter == nil:
+				out[i][j] = AggregateResult{Int64Value(a.counts[i]), AggregateExact}
+			case status != AggregateExact:
+				out[i][j] = AggregateResult{Status: status}
+			}
+		}
+	}
+
+	if len(a.selected) > 0 {
+		sums, err := d.reduceRows(ctx, a.plan, reductions, opt, slots, st)
+		if err != nil {
+			return nil, err
+		}
+		for k, i := range a.selected {
+			for j := range reductions {
+				out[i][j] = sums[k][j]
+			}
+		}
+	}
+	if err := d.checkRefusedKeys(ctx, spans, a, w, st); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// rowWork is the work a reduction of row spans asks of their admission.
+type rowWork struct {
+	// columns is the projection the work reads.
+	columns []string
+	// values is set when the selected rows must be scanned, columns or
+	// not. Clear, the work is unfiltered counting, which scans only to
+	// check keys.
+	values bool
+	// budget is the value budget: zero permits no value I/O, -1 is
+	// unlimited. It applies only to values work with columns.
+	budget int64
+	// workers bounds the key-checking scan of checkRefusedKeys.
+	workers int
+	// checkKeys requests that every selected key is checked.
+	checkKeys bool
+	// checkExact, when set, checks the column-free plan of each span
+	// whose row count is exact, before any value work.
+	checkExact func(*Plan) error
+}
+
+// rowAdmission is the outcome of admitting row spans' work: the span
+// admission AggregateRows and FoldRows share.
+type rowAdmission struct {
+	// status is each span's admission. AggregateUnknown: its row count
+	// is not exact and keys are not checked, so it has no work.
+	// AggregateExact: it is empty, its work is admitted, or it needs no
+	// scan. AggregateBudgetExceeded or AggregateUnpriced: the value
+	// budget refused its work.
+	status []AggregateStatus
+	// counts is each span's planned row count (Plan.Count).
+	counts []int64
+	// candidates are the spans holding rows whose status is not
+	// AggregateUnknown, in ascending order of their starts.
+	candidates []int
+	// selected are the candidates whose rows plan scans, in the order of
+	// plan's inputs.
+	selected []int
+	// plan selects the rows of selected with the work's columns; it is
+	// nil or selects no rows when selected is empty.
+	plan *Plan
+}
+
+// admitRows plans each span alone, without columns, to learn its count
+// and whether it is exact, and then admits the work of the spans that
+// hold rows. Values work with columns and a finite budget is admitted by
+// budgetValues; otherwise every candidate is admitted, except that
+// counting without checking keys needs no scan and admits none.
+func (d *Dataset) admitRows(ctx context.Context, spans []RowSpan, w rowWork, st *ReadStats) (*rowAdmission, error) {
+	a := &rowAdmission{status: make([]AggregateStatus, len(spans)), counts: make([]int64, len(spans))}
 	for i, sp := range spans {
 		p, err := d.PlanRows(ctx, []RowSpan{sp}, nil, nil)
 		if err != nil {
 			return nil, err
 		}
 		n, exact := p.Count()
-		if !exact && !opt.CheckKeys {
+		a.counts[i] = n
+		if !exact && !w.checkKeys {
 			continue
 		}
-		if exact {
-			if _, err := d.reductionTypes(p, reductions); err != nil {
+		if exact && w.checkExact != nil {
+			if err := w.checkExact(p); err != nil {
 				return nil, err
 			}
 		}
-		for j, r := range reductions {
-			if r.Op == CountRows && opt.Filter == nil {
-				out[i][j] = AggregateResult{Int64Value(n), AggregateExact}
-			}
-		}
-		if n == 0 {
-			for j, r := range reductions {
-				v := Int64Value(0)
-				if r.Op == Max {
-					v = Value{}
-				}
-				out[i][j] = AggregateResult{v, AggregateExact}
-			}
-		} else {
-			candidates = append(candidates, i)
+		a.status[i] = AggregateExact
+		if n != 0 {
+			a.candidates = append(a.candidates, i)
 		}
 	}
-	slices.SortStableFunc(candidates, func(a, b int) int {
-		if spans[a].Start.ordinal < spans[b].Start.ordinal {
-			return -1
-		}
-		if spans[a].Start.ordinal > spans[b].Start.ordinal {
-			return 1
-		}
-		return 0
+	slices.SortStableFunc(a.candidates, func(x, y int) int {
+		return cmp.Compare(spans[x].Start.ordinal, spans[y].Start.ordinal)
 	})
-	// No value work is necessary for an unfiltered CountRows-only request.
-	needValues := len(columns) > 0 || opt.Filter != nil
-	if !needValues && !opt.CheckKeys {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		return out, nil
+
+	if !w.values && !w.checkKeys {
+		return a, nil
 	}
-	selected := candidates
-	var plan *Plan
-	var err error
-	if needValues && len(columns) > 0 && opt.ValueBudgetBytes >= 0 {
-		var status []AggregateStatus
-		plan, selected, status, err = d.budgetValues(ctx, spans, candidates, columns, opt.ValueBudgetBytes, st)
+	if w.values && len(w.columns) > 0 && w.budget >= 0 {
+		plan, selected, status, err := d.budgetValues(ctx, spans, a.candidates, w.columns, w.budget, st)
 		if err != nil {
 			return nil, err
 		}
-		for _, i := range candidates {
-			for j, r := range reductions {
-				if r.Op != CountRows || opt.Filter != nil {
-					out[i][j] = AggregateResult{Status: status[i]}
-				}
-			}
+		for _, i := range a.candidates {
+			a.status[i] = status[i]
 		}
-	} else {
-		rows := make([]RowSpan, len(candidates))
-		for k, i := range candidates {
-			rows[k] = spans[i]
-		}
-		var planned ReadStats
-		plan, err = d.PlanRows(ctx, rows, columns, &planned)
-		st.Add(planned)
-		if err != nil {
-			return nil, err
-		}
+		a.plan, a.selected = plan, selected
+		return a, nil
 	}
-	if len(selected) > 0 {
-		sums, err := d.reduceRows(ctx, plan, reductions, opt, slots, st)
-		if err != nil {
-			return nil, err
-		}
-		for k, i := range selected {
-			for j := range reductions {
-				out[i][j] = sums[k][j]
-			}
-		}
+
+	rows := make([]RowSpan, len(a.candidates))
+	for k, i := range a.candidates {
+		rows[k] = spans[i]
 	}
-	if opt.CheckKeys && len(selected) != len(candidates) {
-		// Budget refusal must not remove the requested key-validation obligation.
-		var planned ReadStats
-		p, err := d.PlanRows(ctx, spans, nil, &planned)
-		st.Add(planned)
-		if err != nil {
-			return nil, err
-		}
-		var scanned ReadStats
-		err = p.ScanParallel(ctx, opt.Workers, &scanned, func(*Batch) error { return nil })
-		st.Add(scanned)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if err := ctx.Err(); err != nil {
+	var planned ReadStats
+	plan, err := d.PlanRows(ctx, rows, w.columns, &planned)
+	st.Add(planned)
+	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	a.plan, a.selected = plan, a.candidates
+	return a, nil
+}
+
+// checkRefusedKeys scans the keys of every span when w checks keys and
+// the budget refused a candidate's value work: refusing the values does
+// not remove the obligation to check the keys.
+func (d *Dataset) checkRefusedKeys(ctx context.Context, spans []RowSpan, a *rowAdmission, w rowWork, st *ReadStats) error {
+	if !w.checkKeys || len(a.selected) == len(a.candidates) {
+		return nil
+	}
+	var planned ReadStats
+	p, err := d.PlanRows(ctx, spans, nil, &planned)
+	st.Add(planned)
+	if err != nil {
+		return err
+	}
+	var scanned ReadStats
+	err = p.ScanParallel(ctx, w.workers, &scanned, func(*Batch) error { return nil })
+	st.Add(scanned)
+	return err
 }
 
 // budgetValues is swath budgetSums: discover candidates part by part, abandon
@@ -605,12 +673,7 @@ func (d *Dataset) reduceRows(ctx context.Context, p *Plan, reductions []Reductio
 	if err != nil {
 		return nil, err
 	}
-	var cuts []int64
-	for _, sp := range p.inputs {
-		cuts = append(cuts, sp.start, sp.end)
-	}
-	slices.Sort(cuts)
-	cuts = slices.Compact(cuts)
+	cuts := p.inputCuts()
 	m := len(reductions)
 	segments := make([]reductionSum, len(cuts)*m)
 	var mu sync.Mutex
@@ -691,6 +754,18 @@ func (d *Dataset) reduceRows(ctx context.Context, p *Plan, reductions []Reductio
 		}
 	}
 	return out, nil
+}
+
+// inputCuts returns the distinct starts and ends of the plan's inputs, in
+// ascending order. Consecutive cuts bound a segment: rows that lie in the
+// same inputs.
+func (plan *Plan) inputCuts() []int64 {
+	cuts := make([]int64, 0, 2*len(plan.inputs))
+	for _, in := range plan.inputs {
+		cuts = append(cuts, in.start, in.end)
+	}
+	slices.Sort(cuts)
+	return slices.Compact(cuts)
 }
 
 func applyAggregateFilter(b *ValueBatch, f *BatchFilter, slots []int, keep []bool, projected *ValueBatch) ([]bool, error) {

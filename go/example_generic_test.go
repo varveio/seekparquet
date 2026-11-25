@@ -130,3 +130,57 @@ func ExampleDataset_Page() {
 	// logs/2026/02/: 40 rows
 	// logs/2026/03/: 30 rows
 }
+
+func ExampleFoldRows() {
+	ctx := context.Background()
+	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer d.Close()
+	plan, err := d.Plan(ctx, []seekparquet.Selection{
+		{Span: seekparquet.PrefixSpan([]byte("logs/2026/"))},
+		{Span: seekparquet.PrefixSpan([]byte("logs/2026/02/"))},
+	}, nil, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Sum size by the value of another column. Each worker folds into maps
+	// of its own, so Add takes no lock. Merge copies: from may be merged
+	// into both overlapping results.
+	sumBy := seekparquet.Fold[map[string]int64]{
+		Columns: []string{"size", "storage_class"},
+		New:     func() map[string]int64 { return map[string]int64{} },
+		Add: func(acc *map[string]int64, rows *seekparquet.ValueBatch) error {
+			sizes, labels := rows.Column(0), rows.Column(1)
+			if sizes.Kind() != seekparquet.KindInt64 || labels.Present() && labels.Kind() != seekparquet.KindByteArray {
+				return fmt.Errorf("unexpected column types")
+			}
+			for i := range rows.Len() {
+				label := "(null)"
+				if labels.Present() && !labels.IsNull(i) {
+					label = string(labels.Bytes(i))
+				}
+				(*acc)[label] += sizes.Int64(i)
+			}
+			return nil
+		},
+		Merge: func(into, from *map[string]int64) {
+			for label, size := range *from {
+				(*into)[label] += size
+			}
+		},
+	}
+	results, err := seekparquet.FoldRows(ctx, d, plan.InputRowSpans(), sumBy,
+		seekparquet.FoldOptions{ValueBudgetBytes: -1, Workers: 2, CheckKeys: true}, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, r := range results {
+		fmt.Println(r.Status == seekparquet.AggregateExact, r.Value)
+	}
+	// Output:
+	// true map[(null):25240398209 GLACIER:31427457570 STANDARD:46326142539]
+	// true map[(null):9347359785 GLACIER:13075496879 STANDARD:20856533254]
+}
