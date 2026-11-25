@@ -29,8 +29,10 @@ type Fold[T any] struct {
 	// and the result of a span with no rows. Nil means the zero T.
 	New func() T
 	// Add folds rows into acc. rows is a run of consecutive rows that lie
-	// in the same input spans. It is borrowed until Add returns. An error,
-	// Stop included, fails the fold and is returned with no results.
+	// in the same spans among those whose value work was admitted; it can
+	// cross a boundary of a span that is refused or unknown. It is
+	// borrowed until Add returns. An error, Stop included, fails the fold
+	// and is returned with no results.
 	Add func(acc *T, rows *ValueBatch) error
 	// Merge folds from into into. It must not modify from, and must copy
 	// any mutable state it takes from it: from may be merged into several
@@ -84,6 +86,12 @@ type FoldResult[T any] struct {
 // AggregateRows: a span refused by the budget is not exact even where it
 // overlaps an admitted one, and without CheckKeys a span over a part no
 // read has checked is AggregateUnknown.
+//
+// The first failing Add, or a failing read, cancels the other workers, so
+// an Add that would fail later may never run. FoldRows then returns the
+// first error other than Stop that an Add or a read returned; failing
+// that, the error of ctx if it ended; and Stop only when nothing else
+// failed.
 func FoldRows[T any](ctx context.Context, d *Dataset, spans []RowSpan, f Fold[T], opt FoldOptions, st *ReadStats) (out []FoldResult[T], err error) {
 	st, spare := takeStats(st)
 	defer dropStats(spare)
@@ -144,10 +152,11 @@ func FoldRows[T any](ctx context.Context, d *Dataset, spans []RowSpan, f Fold[T]
 }
 
 // foldPlan folds the rows of p into one T per input of p, in input order.
-// Each worker folds the rows it scans into its own accumulator of each
-// segment between p's input cuts; once every worker has returned, the
-// workers' accumulators of a segment are merged into its first, and each
-// input merges the segments it holds.
+// p's inputs are the admitted spans alone, so its cuts bound segments of
+// rows that lie in the same admitted spans. Each worker folds the rows it
+// scans into its own accumulator of each segment. Once every worker has
+// returned, the workers' accumulators of a segment are merged into its
+// first, and each input merges the segments it holds.
 func foldPlan[T any](ctx context.Context, p *Plan, f *Fold[T], opt FoldOptions, st *ReadStats) ([]T, error) {
 	cuts := p.inputCuts()
 	var mu sync.Mutex
@@ -190,7 +199,8 @@ func foldPlan[T any](ctx context.Context, p *Plan, f *Fold[T], opt FoldOptions, 
 }
 
 // foldWorker is one scan worker of a fold: the accumulator of each
-// segment it has met, and the run of a batch it hands Add.
+// segment of admitted spans it has met, and the run of a batch it hands
+// Add.
 type foldWorker[T any] struct {
 	f         *Fold[T]
 	checkKeys bool
@@ -244,8 +254,8 @@ func (w *foldWorker[T]) scan(ctx context.Context, shard *Plan, st *ReadStats, ke
 	return err
 }
 
-// fold hands Add the rows of b, one run per segment they lie in. A batch
-// inside one segment is handed over whole.
+// fold hands Add the rows of b, one run per segment of admitted spans
+// they lie in. A batch inside one segment is handed over whole.
 func (w *foldWorker[T]) fold(b *ValueBatch) error {
 	k, found := slices.BinarySearch(w.cuts, b.start)
 	if !found {

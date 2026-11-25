@@ -4,9 +4,13 @@
 package seekparquet
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/varveio/seekparquet/go/internal/testutil"
@@ -96,18 +100,38 @@ func sizeFold(spans []RowSpan, columns ...string) Fold[sizeTotals] {
 	}
 }
 
-// sameSpans returns an error unless the first and last rows of b lie in
+// sameSpans returns an error when a boundary of a nonempty span of spans
+// lies strictly inside b's run of rows, so that its rows do not all lie in
 // the same spans.
 func sameSpans(spans []RowSpan, b *ValueBatch) error {
 	first := b.start
-	last := b.start + int64(b.Len()) - 1
+	end := b.start + int64(b.Len())
 	for i, sp := range spans {
-		in := func(o int64) bool { return sp.Start.ordinal <= o && o < sp.End.ordinal }
-		if in(first) != in(last) {
-			return fmt.Errorf("a run of rows [%d, %d] crosses a boundary of span %d", first, last, i)
+		if sp.Start.ordinal == sp.End.ordinal {
+			continue
+		}
+		for _, cut := range []int64{sp.Start.ordinal, sp.End.ordinal} {
+			if first < cut && cut < end {
+				return fmt.Errorf("a run of rows [%d, %d) crosses a boundary of span %d", first, end, i)
+			}
 		}
 	}
 	return nil
+}
+
+func TestFoldSameSpans(t *testing.T) {
+	d := verified(t, foldFixture(t), OpenOptions{})
+	inner := []RowSpan{d.r.rowSpan(120, 130)}
+	for _, tc := range []struct {
+		start int64
+		n     int
+		ok    bool
+	}{{119, 17, false}, {125, 10, false}, {110, 11, false}, {120, 10, true}, {130, 5, true}, {100, 20, true}} {
+		err := sameSpans(inner, &ValueBatch{start: tc.start, n: tc.n})
+		if (err == nil) != tc.ok {
+			t.Fatalf("run [%d, %d): %v", tc.start, tc.start+int64(tc.n), err)
+		}
+	}
 }
 
 func TestFoldRowsMatchesAggregateRows(t *testing.T) {
@@ -132,6 +156,42 @@ func TestFoldRowsMatchesAggregateRows(t *testing.T) {
 				start, end := spans[i].Start.ordinal, spans[i].End.ordinal
 				if r.Value.rows != end-start {
 					t.Fatalf("span %d: %d rows, want %d", i, r.Value.rows, end-start)
+				}
+			}
+		}
+	}
+}
+
+func TestFoldRowsHandsEachRowOnce(t *testing.T) {
+	d := verified(t, foldFixture(t), OpenOptions{})
+	// Without the whole span, the union leaves rows [1, 17) and [34, 50) out.
+	spans := foldSpans(d)[1:]
+	for _, check := range []bool{false, true} {
+		for _, workers := range []int{1, 4} {
+			var mu sync.Mutex
+			seen := make([]int, 600)
+			fold := sizeFold(spans, "size")
+			add := fold.Add
+			fold.Add = func(acc *sizeTotals, rows *ValueBatch) error {
+				mu.Lock()
+				for i := range rows.Len() {
+					seen[rows.start+int64(i)]++
+				}
+				mu.Unlock()
+				return add(acc, rows)
+			}
+			_, err := FoldRows(ctx, d, spans, fold, FoldOptions{ValueBudgetBytes: -1, Workers: workers, CheckKeys: check}, nil)
+			must(t, err)
+
+			for o, n := range seen {
+				want := 0
+				for _, sp := range spans {
+					if sp.Start.ordinal <= int64(o) && int64(o) < sp.End.ordinal {
+						want = 1
+					}
+				}
+				if n != want {
+					t.Fatalf("check=%v workers=%d: Add saw row %d %d times, want %d", check, workers, o, n, want)
 				}
 			}
 		}
@@ -171,6 +231,9 @@ func TestFoldRowsMergeCopies(t *testing.T) {
 	for _, workers := range []int{1, 3} {
 		got, err := FoldRows(ctx, d, spans, byName, FoldOptions{ValueBudgetBytes: -1, Workers: workers}, nil)
 		must(t, err)
+		if len(got) != len(spans) {
+			t.Fatalf("workers=%d: %d results for %d spans", workers, len(got), len(spans))
+		}
 		for i, r := range got {
 			start, end := spans[i].Start.ordinal, spans[i].End.ordinal
 			var want map[string]int
@@ -187,6 +250,13 @@ func TestFoldRowsMergeCopies(t *testing.T) {
 			if r.Status != AggregateExact || !reflect.DeepEqual(r.Value, want) {
 				t.Fatalf("workers=%d span %d [%d, %d): %+v, want %v", workers, i, start, end, r, want)
 			}
+		}
+
+		// Spans 1 and 3 are duplicates: their results own separate maps.
+		before := maps.Clone(got[3].Value)
+		got[1].Value["changed"]++
+		if !reflect.DeepEqual(got[3].Value, before) {
+			t.Fatalf("workers=%d: changing one duplicate's result changed the other's", workers)
 		}
 	}
 }
@@ -206,7 +276,14 @@ func TestFoldRowsBudgetMatchesAggregateRows(t *testing.T) {
 			opt := AggregateOptions{ValueBudgetBytes: budget, Workers: 2, CheckKeys: check}
 			want, err := d.AggregateRows(ctx, spans, []Reduction{{Op: Sum, Column: "size"}}, opt, nil)
 			must(t, err)
-			got, err := FoldRows(ctx, d, spans, sizeFold(spans, "size"), FoldOptions{ValueBudgetBytes: budget, Workers: 2, CheckKeys: check}, nil)
+			// A run may cross a boundary of a refused span, not of an admitted one.
+			var admitted []RowSpan
+			for i, r := range want {
+				if r[0].Status == AggregateExact {
+					admitted = append(admitted, spans[i])
+				}
+			}
+			got, err := FoldRows(ctx, d, spans, sizeFold(admitted, "size"), FoldOptions{ValueBudgetBytes: budget, Workers: 2, CheckKeys: check}, nil)
 			must(t, err)
 			refused := 0
 			for i, r := range got {
@@ -232,7 +309,7 @@ func TestFoldRowsBudgetMatchesAggregateRows(t *testing.T) {
 	}
 	// A refused span stays refused where an admitted one overlaps it.
 	nested := []RowSpan{spans[0], spans[2]}
-	got, err := FoldRows(ctx, d, nested, sizeFold(nested, "size"), FoldOptions{ValueBudgetBytes: small}, nil)
+	got, err := FoldRows(ctx, d, nested, sizeFold(nested[1:], "size"), FoldOptions{ValueBudgetBytes: small}, nil)
 	must(t, err)
 	if got[0].Status != AggregateBudgetExceeded || got[1].Status != AggregateExact || got[1].Value.rows != 10 {
 		t.Fatalf("%+v", got)
@@ -331,5 +408,75 @@ func TestFoldRowsErrorsAndInvalid(t *testing.T) {
 	}
 	if out, err := FoldRows(ctx, d, []RowSpan{{}}, sizeFold(nil), FoldOptions{}, nil); out != nil || !errors.Is(err, ErrInvalidRequest) {
 		t.Fatal(out, err)
+	}
+}
+
+func TestFoldRowsErrorPrecedence(t *testing.T) {
+	d := verified(t, foldFixture(t), OpenOptions{})
+	spans := []RowSpan{d.r.rowSpan(0, 600)}
+	failed := errors.New("add failed")
+	for _, check := range []bool{false, true} {
+		opt := FoldOptions{ValueBudgetBytes: -1, Workers: 2, CheckKeys: check}
+
+		// The first Add waits for an Add of the other worker, so one worker
+		// returns Stop and the other an error, however they are scheduled.
+		var calls atomic.Int32
+		other := make(chan struct{})
+		fold := sizeFold(nil, "size")
+		fold.Add = func(*sizeTotals, *ValueBatch) error {
+			switch calls.Add(1) {
+			case 1:
+				<-other
+				return Stop
+			case 2:
+				close(other)
+				return failed
+			}
+			return nil
+		}
+		out, err := FoldRows(ctx, d, spans, fold, opt, nil)
+		if out != nil || err != failed {
+			t.Fatalf("check=%v: Stop and an error: %+v, %v", check, out, err)
+		}
+
+		// The caller's context ends before Add returns Stop.
+		c, cancel := context.WithCancel(ctx)
+		fold.Add = func(*sizeTotals, *ValueBatch) error {
+			cancel()
+			return Stop
+		}
+		out, err = FoldRows(c, d, spans, fold, opt, nil)
+		if out != nil || !errors.Is(err, context.Canceled) {
+			t.Fatalf("check=%v: Stop and cancellation: %+v, %v", check, out, err)
+		}
+	}
+}
+
+// Budget refusal must not skip checking the refused spans' keys.
+func TestFoldRowsBudgetRefusalChecksKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		parts []testutil.Part
+		edit  func(map[string]any)
+		code  RefusalCode
+	}{
+		{"part-count", []testutil.Part{{Rows: testutil.Rows("a")}, {Rows: testutil.Rows("b")}, {Rows: testutil.Rows("c")}}, func(m map[string]any) { testutil.ManifestPart(m, 1)["rows"] = 100 }, CodePartMismatch},
+		{"shard-order", []testutil.Part{{Rows: testutil.Rows("a", "b", "c", "z", "d", "e", "f", "zz"), GroupRows: 4}}, nil, CodeKeyOrder},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := write(t, testutil.Dataset{Parts: tc.parts})
+			if tc.edit != nil {
+				must(t, testutil.EditManifest(dir, tc.edit))
+			}
+			d := open(t, dir, OpenOptions{})
+			p, err := d.Plan(ctx, []Selection{{}}, nil, nil)
+			must(t, err)
+
+			spans := p.InputRowSpans()
+			out, err := FoldRows(ctx, d, spans, sizeFold(nil, "size"), FoldOptions{ValueBudgetBytes: 0, CheckKeys: true, Workers: 2}, nil)
+			if out != nil || RefusalCodeOf(err) != tc.code {
+				t.Fatalf("got %+v, %v; want %s and no results", out, err, tc.code)
+			}
+		})
 	}
 }
