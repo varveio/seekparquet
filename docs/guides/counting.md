@@ -180,7 +180,7 @@ for _, r := range results {
 A [`Fold`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Fold) declares its columns and three functions.
 `New` makes an empty accumulator, `Add` folds a borrowed run of rows into one, and `Merge` folds one accumulator into another.
 The reduction must be associative and commutative.
-Each run lies in the same input spans, so `Add` needs no ordinal arithmetic.
+Each run lies in the same spans among those whose value work was admitted, so `Add` needs no ordinal arithmetic; it can cross a boundary of a span the budget refused.
 Each worker keeps its own accumulators, so `Add` takes no lock.
 `Merge` runs on the calling goroutine after the scan.
 It must copy what it takes, because one accumulator can reach several overlapping results.

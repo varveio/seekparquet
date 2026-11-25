@@ -89,9 +89,9 @@ type FoldResult[T any] struct {
 //
 // The first failing Add, or a failing read, cancels the other workers, so
 // an Add that would fail later may never run. FoldRows then returns the
-// first error other than Stop that an Add or a read returned; failing
-// that, the error of ctx if it ended; and Stop only when nothing else
-// failed.
+// first error other than Stop that an Add returned, or that a read met
+// for a reason other than that cancellation; failing that, the error of
+// ctx if it ended; and Stop only when nothing else failed.
 func FoldRows[T any](ctx context.Context, d *Dataset, spans []RowSpan, f Fold[T], opt FoldOptions, st *ReadStats) (out []FoldResult[T], err error) {
 	st, spare := takeStats(st)
 	defer dropStats(spare)
