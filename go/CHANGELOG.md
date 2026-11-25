@@ -5,6 +5,14 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+### Changed
+
+- A scan decompresses zstd pages with a decoder of its own scratch, one per projected column, instead of
+  one decoder shared by the process, whose every decode passed through a single channel. Scans of more than
+  about four workers no longer queue on it: on a dataset of 57.9M rows in 184 row groups, 18 workers scan
+  three value columns in 0.37 s instead of 0.65 s, and `Aggregate` with `CheckKeys` takes 0.67 s instead
+  of 0.85 s. One to four workers are unchanged. A read without scratch keeps the shared decoder.
+
 ## v0.2.0 (2026-11-15)
 
 Changes since `go/v0.1.0`. Implements format 1, draft revision 1 (on disk `format_version` 0,

@@ -18,17 +18,28 @@ import (
 	"github.com/pierrec/lz4/v4"
 )
 
-// zstdDecoder decodes whole zstd buffers, never into more than the
-// capacity of the buffer it is given (WithDecodeAllCapLimit).
+// zstdDecoder is the decoder of a page read without scratch. It decodes
+// whole zstd buffers, never into more than the capacity of the buffer it is
+// given (WithDecodeAllCapLimit). Every decode passes through its one channel
+// of states, so a scan's pages take the decoder of their scratch instead.
 var zstdDecoder = sync.OnceValues(func() (*zstd.Decoder, error) {
-	return zstd.NewReader(nil, zstd.WithDecoderConcurrency(0), zstd.WithDecodeAllCapLimit(true))
+	return newZstdDecoder(0)
 })
 
-// codecScratch is request-local. The shared Zstd decoder already pools its state.
+// newZstdDecoder returns a decoder of whole buffers holding states for
+// concurrency decodes at once, GOMAXPROCS when zero. It is used for
+// DecodeAll alone, which starts no goroutine, so it needs no Close.
+func newZstdDecoder(concurrency int) (*zstd.Decoder, error) {
+	return zstd.NewReader(nil, zstd.WithDecoderConcurrency(concurrency), zstd.WithDecodeAllCapLimit(true))
+}
+
+// codecScratch is request-local, and so is each decoder it holds: parallel
+// scans of zstd pages share none.
 type codecScratch struct {
 	source bytes.Reader
 	gzip   *gzip.Reader
 	brotli *brotli.Reader
+	zstd   *zstd.Decoder
 	more   [1]byte
 }
 
@@ -86,7 +97,7 @@ func (s *codecScratch) decompress(codec format.CompressionCodec, src []byte, siz
 		}
 		return out, nil
 	case format.Zstd:
-		dec, err := zstdDecoder()
+		dec, err := s.zstdDecoder()
 		if err != nil {
 			return nil, err
 		}
@@ -126,6 +137,22 @@ func (s *codecScratch) decompress(codec format.CompressionCodec, src []byte, siz
 		return s.readExactly(s.brotli, dst)
 	}
 	return nil, fmt.Errorf("codec %s", codec)
+}
+
+// zstdDecoder returns the scratch's own decoder, made on first use, or the
+// shared one for a read without scratch.
+func (s *codecScratch) zstdDecoder() (*zstd.Decoder, error) {
+	if s == nil {
+		return zstdDecoder()
+	}
+	if s.zstd == nil {
+		dec, err := newZstdDecoder(1)
+		if err != nil {
+			return nil, err
+		}
+		s.zstd = dec
+	}
+	return s.zstd, nil
 }
 
 // readExactly reads exactly size bytes from r, which must then end.
