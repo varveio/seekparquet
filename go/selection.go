@@ -165,9 +165,10 @@ func (plan *Plan) Count() (n int64, exact bool) { return plan.rows, plan.exact }
 // the projected columns: for each column chunk the rows span, the extents
 // its OffsetIndex gives the pages holding them and, when the chunk has a
 // dictionary page, the dictionary's, each counted once however many
-// ranges share it. Footers, page indexes and key pages are not
-// counted. It does not say how many storage requests read them: windowing
-// or coalescing may join or split extents. exact is false when a projected
+// ranges share it. Footers, page indexes and implicit key reads are
+// excluded; an explicitly projected key column is counted. It does not
+// say how many storage requests read them: windowing or coalescing may
+// join or split extents. exact is false when a projected
 // chunk has no OffsetIndex (COL-4), whose pages are found by walking their
 // headers, and n omits it.
 func (plan *Plan) ProjectedBytes() (n int64, exact bool) { return plan.bytes, !plan.partial }

@@ -45,11 +45,14 @@ versioning; while it is v0, minor versions may change the API.
   - `FoldOptions.ValueBudgetBytes` is the value budget of `AggregateOptions`, except that zero is unlimited
     and a negative budget is `ErrInvalidRequest`: replace -1 with 0, and skip a fold that may do no value I/O.
   - `Column.Logical` reports `LogicalUnrecognized` for an annotation the reader cannot describe, where it
-    reported `LogicalNone`, as if unannotated. The `LogicalKind` values after `LogicalNone` move up by one to
-    make room for it.
+    reported `LogicalNone`, as if unannotated.
+  - A negative worker count given to `Plan.ScanParallel` is `ErrInvalidRequest` before any I/O, instead of
+    selecting one worker, and so is a negative `FoldOptions.Workers`, where `AggregateOptions.Workers` selected
+    one. Zero selects one worker in both.
   - `Validate`, `ValidateDir` and `ParseManifest` refuse a negative `Limits` field with `ErrInvalidRequest`
     before any read, as opening a dataset does, instead of taking its default. An unknown validation level is
-    `ErrInvalidRequest` too.
+    `ErrInvalidRequest` too. `ValidateDir` checks its options before it opens the directory, so a refused
+    option is reported even for a directory that cannot be opened.
   - `local.WriteDir` refuses a negative `DatasetOptions.PartBytes` instead of taking the default.
 
 ### Added
@@ -61,6 +64,7 @@ versioning; while it is v0, minor versions may change the API.
 - `LogicalUnrecognized` is the `Column.Logical` kind of an annotation the reader cannot describe: a logical
   type it does not know, a TIME or TIMESTAMP of a unit it does not know, or a converted type with no logical
   type (INTERVAL, or one it does not know). Such a column is still read by its physical type.
+- `FoldStatus.String` returns a status's name, such as "exact" or "budget_exceeded".
 
 ### Changed
 

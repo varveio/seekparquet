@@ -158,15 +158,20 @@ func (r *ValidationReport) Result() ValidationResult {
 }
 
 // ValidateDir validates the dataset in the local directory at path, read
-// through an os.Root of it as OpenDir reads it. An error is returned only
-// when the directory cannot be opened, or as Validate returns one.
+// through an os.Root of it as OpenDir reads it. It checks opt before it
+// opens the directory. An error is returned only when the directory cannot
+// be opened, or as Validate returns one.
 func ValidateDir(ctx context.Context, path string, opt ValidateOptions) (*ValidationReport, error) {
+	levels, err := opt.levels()
+	if err != nil {
+		return nil, err
+	}
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = root.Close() }()
-	return Validate(ctx, dirSource{root}, opt)
+	return runValidation(ctx, dirSource{root}, opt.Limits.withDefaults(), levels)
 }
 
 // Validate validates the dataset at src up to opt.Level (§8). It never
@@ -181,24 +186,35 @@ func ValidateDir(ctx context.Context, path string, opt ValidateOptions) (*Valida
 // ErrInvalidRequest and returned before any I/O, or when ctx ends; the
 // report then holds the levels that finished.
 func Validate(ctx context.Context, src Source, opt ValidateOptions) (*ValidationReport, error) {
+	levels, err := opt.levels()
+	if err != nil {
+		return nil, err
+	}
+	return runValidation(ctx, src, opt.Limits.withDefaults(), levels)
+}
+
+// levels checks opt and returns the levels it asks for, in the order they
+// run. Its error wraps ErrInvalidRequest.
+func (opt ValidateOptions) levels() ([]ValidationLevel, error) {
 	if err := opt.Limits.check(); err != nil {
 		return nil, err
 	}
-	opt.Limits = opt.Limits.withDefaults()
-	var levels []ValidationLevel
 	switch opt.Level {
 	case LevelStructural:
-		levels = []ValidationLevel{LevelStructural}
+		return []ValidationLevel{LevelStructural}, nil
 	case LevelProfile:
-		levels = []ValidationLevel{LevelStructural, LevelProfile}
+		return []ValidationLevel{LevelStructural, LevelProfile}, nil
 	case LevelFull, "":
-		levels = []ValidationLevel{LevelStructural, LevelProfile, LevelFull}
+		return []ValidationLevel{LevelStructural, LevelProfile, LevelFull}, nil
 	case LevelDigest:
-		levels = []ValidationLevel{LevelDigest}
-	default:
-		return nil, invalidRequest("unknown validation level %q", opt.Level)
+		return []ValidationLevel{LevelDigest}, nil
 	}
-	v := &validator{ctx: ctx, src: src, limits: opt.Limits}
+	return nil, invalidRequest("unknown validation level %q", opt.Level)
+}
+
+// runValidation runs levels over src with limits, which carry their defaults.
+func runValidation(ctx context.Context, src Source, limits Limits, levels []ValidationLevel) (*ValidationReport, error) {
+	v := &validator{ctx: ctx, src: src, limits: limits}
 	defer v.close()
 	report := &ValidationReport{}
 	var previous *LevelReport

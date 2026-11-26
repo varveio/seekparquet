@@ -6,6 +6,7 @@ package seekparquet
 import (
 	"context"
 	"slices"
+	"strconv"
 	"sync"
 
 	"github.com/parquet-go/parquet-go"
@@ -66,6 +67,21 @@ const (
 	FoldUnpriced
 )
 
+// String returns the status's name, such as "exact" or "budget_exceeded".
+func (s FoldStatus) String() string {
+	switch s {
+	case FoldUnknown:
+		return "unknown"
+	case FoldExact:
+		return "exact"
+	case FoldBudgetExceeded:
+		return "budget_exceeded"
+	case FoldUnpriced:
+		return "unpriced"
+	}
+	return "FoldStatus(" + strconv.Itoa(int(s)) + ")"
+}
+
 // FoldOptions controls a fold.
 type FoldOptions struct {
 	// ValueBudgetBytes bounds the compressed page and dictionary extents
@@ -78,8 +94,8 @@ type FoldOptions struct {
 	// not charged, and a fold with no columns is not budgeted. Zero is
 	// unlimited; a negative budget is ErrInvalidRequest.
 	ValueBudgetBytes int64
-	// Workers bounds the concurrent scans and Add calls; zero or less
-	// means one worker.
+	// Workers bounds the concurrent scans and Add calls. Zero selects one
+	// worker; a negative count is ErrInvalidRequest.
 	Workers int
 	// CheckKeys requests that every selected key is checked, including
 	// the order across shards, also in spans the budget refused. Without
@@ -106,13 +122,13 @@ type FoldResult[T any] struct {
 // with no rows is an exact empty T, with no call to Add.
 //
 // Every span must have known boundaries from d and must not end before it
-// starts, as PlanRows requires. An invalid span, a nil Add or Merge, or a
-// negative ValueBudgetBytes is ErrInvalidRequest, before any I/O. Each
-// span's count is planned without I/O; the spans whose count is exact, or
-// all of them with CheckKeys, then have their value work admitted under
-// the budget (FoldOptions), and the admitted spans' rows are scanned
-// together, each row once. A span refused by the budget is not exact even
-// where it overlaps an admitted one.
+// starts, as PlanRows requires. An invalid span, a nil Add or Merge, a
+// negative ValueBudgetBytes or a negative Workers is ErrInvalidRequest,
+// before any I/O. Each span's count is planned without I/O; the spans
+// whose count is exact, or all of them with CheckKeys, then have their
+// value work admitted under the budget (FoldOptions), and the admitted
+// spans' rows are scanned together, each row once. A span refused by the
+// budget is not exact even where it overlaps an admitted one.
 //
 // st is reset and filled on every exit, including failure, with the work
 // of planning, scanning and checking keys. Any error returns no results.
@@ -130,6 +146,9 @@ func FoldRows[T any](ctx context.Context, d *Dataset, spans []RowSpan, f Fold[T]
 	}
 	if opt.ValueBudgetBytes < 0 {
 		return nil, invalidRequest("a value budget must not be negative")
+	}
+	if opt.Workers < 0 {
+		return nil, invalidRequest("a worker count must not be negative")
 	}
 	op, err := d.r.begin(ctx)
 	if err != nil {

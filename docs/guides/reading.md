@@ -784,7 +784,7 @@ fmt.Println("rows:", rows.Load())
 ```
 <!-- /snippet -->
 
-**Java:** not available; the parallel scheduler mirror is planned.
+**Java:** not available; scan the shards of `Plan.split` on your own threads.
 
 Callbacks follow key order within a shard; callbacks from different shards are unordered.
 The worker count bounds active scans and callbacks.

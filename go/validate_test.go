@@ -407,6 +407,9 @@ func TestNegativeLimitsRefused(t *testing.T) {
 	dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
 	raw, err := os.ReadFile(filepath.Join(dir, ManifestName))
 	must(t, err)
+	// ValidateDir checks its options before it opens the directory: the
+	// refusal, not the file-system error, for a directory that does not exist.
+	missing := filepath.Join(t.TempDir(), "missing")
 	fields := reflect.TypeFor[Limits]()
 	for i := range fields.NumField() {
 		name := fields.Field(i).Name
@@ -429,6 +432,8 @@ func TestNegativeLimitsRefused(t *testing.T) {
 			}
 			_, err = ValidateDir(ctx, dir, ValidateOptions{Level: LevelDigest, Limits: lim})
 			refused("ValidateDir", err)
+			_, err = ValidateDir(ctx, missing, ValidateOptions{Limits: lim})
+			refused("ValidateDir of a missing directory", err)
 			_, err = ParseManifest(raw, lim)
 			refused("ParseManifest", err)
 			if n := src.reads.Load(); n != 0 {
@@ -439,6 +444,9 @@ func TestNegativeLimitsRefused(t *testing.T) {
 	src := &accessSource{Source: dirOf(t, dir)}
 	if report, err := Validate(ctx, src, ValidateOptions{Level: "other"}); !errors.Is(err, ErrInvalidRequest) || report != nil || src.reads.Load() != 0 {
 		t.Fatalf("unknown level: %v, %v, %d reads", report, err, src.reads.Load())
+	}
+	if report, err := ValidateDir(ctx, missing, ValidateOptions{Level: "other"}); !errors.Is(err, ErrInvalidRequest) || report != nil {
+		t.Fatalf("unknown level, missing directory: %v, %v", report, err)
 	}
 	if _, err := ParseManifest(raw, Limits{}); err != nil {
 		t.Fatalf("zero limits: %v", err)

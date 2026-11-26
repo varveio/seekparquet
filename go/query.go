@@ -210,10 +210,11 @@ type ListEntry struct {
 	// Rows. A boundary it cannot establish is the zero RowPosition.
 	// The positions are owned values, independent of result byte slices.
 	//
-	// A common prefix's End can be unknown when the listing stops at Limit
-	// on it, and when End falls inside the prefix's keys. Its Start identifies
-	// the first remaining candidate row, including when a row or prefix
-	// cursor clips the start inside a common prefix or row group.
+	// A common prefix's End is unknown when End falls inside the prefix's
+	// keys, and can be unknown when the listing stops at Limit on it. Its
+	// Start identifies the first remaining candidate row, including when a
+	// row or prefix cursor clips the start inside a common prefix or row
+	// group.
 	// Unknown does not mean empty or zero rows. Check both Ordinals before
 	// PlanRows; otherwise use Dataset.Plan with the corresponding key
 	// selection (preserving End and cursor restrictions), which may read

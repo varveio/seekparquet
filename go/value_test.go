@@ -324,6 +324,48 @@ func TestLogicalRoundTrip(t *testing.T) {
 	}
 }
 
+// TestLogicalKindValues: each LogicalKind keeps its number and its Parquet
+// name, so a kind added later goes after the last; a number past the last
+// prints as a number.
+func TestLogicalKindValues(t *testing.T) {
+	kinds := []struct {
+		kind  LogicalKind
+		value int
+		name  string
+	}{
+		{LogicalNone, 0, "NONE"},
+		{LogicalString, 1, "STRING"},
+		{LogicalMap, 2, "MAP"},
+		{LogicalList, 3, "LIST"},
+		{LogicalEnum, 4, "ENUM"},
+		{LogicalDecimal, 5, "DECIMAL"},
+		{LogicalDate, 6, "DATE"},
+		{LogicalTime, 7, "TIME"},
+		{LogicalTimestamp, 8, "TIMESTAMP"},
+		{LogicalInt, 9, "INT"},
+		{LogicalNull, 10, "NULL"},
+		{LogicalJSON, 11, "JSON"},
+		{LogicalBSON, 12, "BSON"},
+		{LogicalUUID, 13, "UUID"},
+		{LogicalFloat16, 14, "FLOAT16"},
+		{LogicalVariant, 15, "VARIANT"},
+		{LogicalGeometry, 16, "GEOMETRY"},
+		{LogicalGeography, 17, "GEOGRAPHY"},
+		{LogicalUnrecognized, 18, "UNRECOGNIZED"},
+	}
+	for _, k := range kinds {
+		if int(k.kind) != k.value || k.kind.String() != k.name {
+			t.Errorf("%s is %d, want %s %d", k.kind, int(k.kind), k.name, k.value)
+		}
+	}
+	if len(logicalNames) != len(kinds) {
+		t.Errorf("%d names, want %d", len(logicalNames), len(kinds))
+	}
+	if got := LogicalKind(len(kinds)).String(); got != "LogicalKind(19)" {
+		t.Errorf("past the last: %q", got)
+	}
+}
+
 // TestColumnsConvertedTypeExact: each legacy converted type normalizes to
 // the exact Logical, parameters included, and a column's own types map
 // one-for-one from the footer's physical type and repetition.

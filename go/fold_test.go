@@ -411,6 +411,51 @@ func TestFoldRowsValueBudgetZeroAndNegative(t *testing.T) {
 	}
 }
 
+// TestFoldStatusString: each status prints its name, and a value past the
+// last prints as a number.
+func TestFoldStatusString(t *testing.T) {
+	for s, want := range map[FoldStatus]string{
+		FoldUnknown:        "unknown",
+		FoldExact:          "exact",
+		FoldBudgetExceeded: "budget_exceeded",
+		FoldUnpriced:       "unpriced",
+		FoldUnpriced + 1:   "FoldStatus(4)",
+	} {
+		if got := s.String(); got != want {
+			t.Errorf("%d: %q, want %q", uint8(s), got, want)
+		}
+	}
+}
+
+// TestFoldRowsWorkersZeroAndNegative: zero workers folds on one worker; a
+// negative count is ErrInvalidRequest before any I/O, with the statistics
+// reset and no callback run.
+func TestFoldRowsWorkersZeroAndNegative(t *testing.T) {
+	dir := foldFixture(t)
+	d := verified(t, dir, OpenOptions{})
+	spans := foldSpans(d)
+	got, err := FoldRows(ctx, d, spans, sizeFold(spans, "size"), FoldOptions{Workers: 0, CheckKeys: true}, nil)
+	must(t, err)
+	for i, r := range got {
+		if w := foldWant(spans[i].Start.ordinal, spans[i].End.ordinal); r.Status != FoldExact || r.Value != w {
+			t.Fatalf("zero workers, span %d: %+v, want %+v", i, r, w)
+		}
+	}
+	cold := open(t, dir, OpenOptions{})
+	for _, workers := range []int{-1, math.MinInt} {
+		st := ReadStats{SourceReads: 9}
+		calls := 0
+		fold := sizeFold(nil, "size")
+		fold.New = func() sizeTotals { calls++; return sizeTotals{} }
+		fold.Add = func(*sizeTotals, *ValueBatch) error { calls++; return nil }
+		fold.Merge = func(*sizeTotals, *sizeTotals) { calls++ }
+		out, err := FoldRows(ctx, cold, []RowSpan{cold.r.rowSpan(0, 600)}, fold, FoldOptions{Workers: workers, CheckKeys: true}, &st)
+		if out != nil || !errors.Is(err, ErrInvalidRequest) || calls != 0 || st != (ReadStats{}) {
+			t.Fatalf("%d workers: %+v, %v, %d calls, %+v", workers, out, err, calls, st)
+		}
+	}
+}
+
 func TestFoldRowsColumns(t *testing.T) {
 	d := verified(t, foldFixture(t), OpenOptions{})
 	spans := foldSpans(d)

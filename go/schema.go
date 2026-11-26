@@ -36,15 +36,10 @@ func (r Repetition) String() string {
 // zero LogicalKind, is none.
 type LogicalKind uint8
 
-// The logical annotations: LogicalNone and LogicalUnrecognized, then those
-// of Parquet's LogicalTypes.md.
+// The logical annotations: LogicalNone, those of Parquet's
+// LogicalTypes.md, then LogicalUnrecognized.
 const (
 	LogicalNone LogicalKind = iota
-	// LogicalUnrecognized is an annotation this reader cannot describe: a
-	// logical type it does not know, a TIME or TIMESTAMP of a unit it does
-	// not know, or a converted type with no logical type (INTERVAL, or one
-	// it does not know). The column is read by its physical type.
-	LogicalUnrecognized
 	LogicalString
 	LogicalMap
 	LogicalList
@@ -62,6 +57,11 @@ const (
 	LogicalVariant
 	LogicalGeometry
 	LogicalGeography
+	// LogicalUnrecognized is an annotation this reader cannot describe: a
+	// logical type it does not know, a TIME or TIMESTAMP of a unit it does
+	// not know, or a converted type with no logical type (INTERVAL, or one
+	// it does not know). The column is read by its physical type.
+	LogicalUnrecognized
 )
 
 // String returns the annotation's Parquet name, such as "TIMESTAMP".
@@ -72,8 +72,8 @@ func (k LogicalKind) String() string {
 	return "LogicalKind(" + strconv.Itoa(int(k)) + ")"
 }
 
-var logicalNames = [...]string{"NONE", "UNRECOGNIZED", "STRING", "MAP", "LIST", "ENUM", "DECIMAL", "DATE", "TIME", "TIMESTAMP",
-	"INT", "NULL", "JSON", "BSON", "UUID", "FLOAT16", "VARIANT", "GEOMETRY", "GEOGRAPHY"}
+var logicalNames = [...]string{"NONE", "STRING", "MAP", "LIST", "ENUM", "DECIMAL", "DATE", "TIME", "TIMESTAMP",
+	"INT", "NULL", "JSON", "BSON", "UUID", "FLOAT16", "VARIANT", "GEOMETRY", "GEOGRAPHY", "UNRECOGNIZED"}
 
 // TimeUnit is the unit of a TIME or TIMESTAMP annotation.
 type TimeUnit uint8

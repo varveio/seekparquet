@@ -152,6 +152,21 @@ func TestScanParallelStopErrorsStats(t *testing.T) {
 	}
 }
 
+// TestScanParallelNegativeWorkers: a negative worker count is
+// ErrInvalidRequest before the plan is split, with the statistics reset
+// and no callback run. The keys repeat, so splitting would read key pages.
+func TestScanParallelNegativeWorkers(t *testing.T) {
+	_, p := parallelFixture(t, 1200, 30, true)
+	for _, workers := range []int{-1, math.MinInt} {
+		st := ReadStats{SourceReads: 9}
+		var calls atomic.Int64
+		err := p.ScanParallel(ctx, workers, &st, func(*Batch) error { calls.Add(1); return nil })
+		if !errors.Is(err, ErrInvalidRequest) || calls.Load() != 0 || st != (ReadStats{}) {
+			t.Fatalf("%d workers: %v, %d calls, %+v", workers, err, calls.Load(), st)
+		}
+	}
+}
+
 // Ported from swath TestShardBoundaryOrder and TestTotalsShardErrors. Each
 // individual shard is ordered; corruption appears only across its boundary.
 func TestScanParallelBoundaryCorruption(t *testing.T) {
