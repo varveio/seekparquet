@@ -15,7 +15,7 @@ plus writing, validation, counting by row position and folds.
 ## Install
 
 ```sh
-go get github.com/varveio/seekparquet/go@v0.2.0
+go get github.com/varveio/seekparquet/go@v0.3.0
 ```
 
 This README describes `main`, which may be ahead of the latest release; the [changelog](CHANGELOG.md) lists
