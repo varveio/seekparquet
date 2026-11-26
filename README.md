@@ -16,6 +16,8 @@ delimiter S3 style, resumes any of these from a cursor, and counts the rows unde
 their values. The Go reader also folds those rows' columns with your own function. A reader reads the
 manifest, the footers and page indexes of the parts it touches, and the pages that can hold the rows; broad
 reads can still scan the dataset. A local directory implementation ships; an object store is an implementation you write.
+[swath](https://github.com/varveio/swath) publishes one for S3, GCS and Azure Blob
+([storage](docs/guides/storage-sources.md#use-a-published-object-store-source)).
 
 ## Read, list and count
 

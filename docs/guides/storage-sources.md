@@ -14,6 +14,20 @@ flowchart TD
     E --> O[Immutable object versions]
 ```
 
+## Use a published object-store Source
+
+You may not need to write one. [swath](https://github.com/varveio/swath)'s `objfile` module, a separate Go
+module with its own releases, has a `Source` for S3, GCS and Azure Blob:
+[`spsource.New`](https://pkg.go.dev/github.com/varveio/swath/objfile/spsource#New) over a store that
+[`remote.Open`](https://pkg.go.dev/github.com/varveio/swath/objfile/remote#Open) opens from an `s3://`, `gs://`
+or `az://` URL. It implements every optional capability on this page: sized opens, a whole-manifest read,
+range batches and context binding. Over `objfile.Pin` it pins one object version per handle, and it maps a
+changed object to `ErrObjectChanged`. Its [README](https://github.com/varveio/swath/blob/main/objfile/README.md#open-a-seekparquet-dataset)
+shows the call. `objfile` v0.4.0 builds with this module's v0.3.0. It links the three providers' SDKs, which
+this module does not.
+
+The rest of this page is for a store it does not cover, or a policy of your own.
+
 ## Implement the minimum contract
 
 Implement [`Source`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Source) and return files implementing [`SourceFile`](https://pkg.go.dev/github.com/varveio/seekparquet/go#SourceFile).
