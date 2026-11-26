@@ -335,7 +335,7 @@ Fixed; it cannot be raised. Split the dataset.
 
 | Error | Meaning | What to do |
 |---|---|---|
-| Go `ErrInvalidRequest`, Java `IllegalArgumentException` | the request is malformed: a result limit that is not positive, a malformed cursor or cursor token, a prefix cursor in a range read ([QUERY-1](../../spec/format-1.md#query-1)); or a negative `Limits` setting, which Go rejects when the dataset is opened and Java when `Limits.Builder.build()` runs | fix the request; nothing was read |
+| Go `ErrInvalidRequest`, Java `IllegalArgumentException` | the request is malformed: a result limit that is not positive, a malformed cursor or cursor token, a prefix cursor in a range read ([QUERY-1](../../spec/format-1.md#query-1)); or a negative `Limits` setting, which Go rejects when it opens a dataset, validates or parses a manifest, and Java when `Limits.Builder.build()` runs; or a negative Go `FoldOptions.ValueBudgetBytes` | fix the request; nothing was read |
 | Go `ErrClosed`, Java `IllegalStateException` | the dataset was already closed | do not use a dataset after `Close` |
 | Go `ErrClosed` (wrapping the read's error), Java `CancellationException` | `Close` was called while the read ran, and ended it | close only after the reads you need have returned |
 | Java `IllegalStateException` from `close()` | `close()` was called from inside one of the dataset's own requests on the same thread, such as a scan visitor; nothing changed | end the request, then close |
@@ -357,9 +357,10 @@ dataset keeps a part open, with its checked footer, for every part it has touche
 touches every part. Through Go `OpenDir`, each open part holds one file descriptor. Size the process's
 file-descriptor limit and memory for the most parts one dataset touches.
 
-**When to stop paging.** The examples continue until an empty page, which is a safe termination rule: the
-format allows a page with fewer entries than the result limit. The current Go and Java readers fill a
-successful page to the result limit unless the query is exhausted.
+**When to stop paging.** Stopping on an empty page is always safe: the format allows a page with fewer entries
+than the result limit. The current Go and Java readers fill a successful page to the result limit unless the
+query is exhausted, so a listing of one entry more than the page ends the results when that entry is missing
+([pagination](pagination.md#page-a-listing)).
 
 **A listing returns a common prefix that sorts before my cursor.** That is correct: a common prefix appears
 whenever a candidate row after the cursor rolls up to it ([LIST-5](../../spec/format-1.md#list-5)). It then

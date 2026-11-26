@@ -7,7 +7,7 @@
         {"concept": "Open a local directory", "go": "OpenDir", "java": "Dataset.open"},
         {"concept": "Open through custom storage", "go": "OpenDataset", "java": "Dataset.open", "note": "Java takes a storage.DatasetStorage."},
         {"concept": "Open options", "go": "OpenOptions", "java": "OpenOptions"},
-        {"concept": "Logical read policy", "go": "ReadPolicy", "java": null, "note": "Go sets OpenOptions.Read for tail reads and speculation. Storage owns physical request execution, caching and observation."},
+        {"concept": "Logical read policy", "go": "ReadPolicy", "java": null, "note": "Go only; set it as OpenOptions.Read, for tail reads and speculation. Storage owns physical request execution, caching and observation."},
         {"concept": "Resource limits", "go": "Limits", "java": "Limits", "note": "Java builds them with Limits.builder(). See the limits reference."},
         {"concept": "Retained raw page-index cache budget", "go": "Limits.PageIndexCacheMemory", "java": null, "note": "Go only; excludes footers and decoded indexes and does not bound overall metadata."},
         {"concept": "Check every part now", "go": "Dataset.Verify", "java": "Dataset.verify", "note": "Go: Verify(ctx, stats), with a *ReadStats or nil. Java: verify(ReadOptions)."},
@@ -41,12 +41,12 @@
         {"concept": "List", "go": "Dataset.List", "java": "Dataset.list"},
         {"concept": "A listing entry", "go": "ListEntry", "java": "ListEntry", "note": "Java's ListEntry is sealed: RowEntry or CommonPrefix."},
         {"concept": "Listing read-ahead", "go": "ListQuery.ReadAhead", "java": "ListQuery.readAhead", "note": "Go: zero selects adaptive prediction over a non-local Source, across row groups, with key page indexes read ahead and forward seeks routed by them. Java: a fixed number of key pages, 0 (off) by default, within the current row group."},
-        {"concept": "Candidate rows of a listing entry", "go": "ListEntry.Rows", "java": "ListEntry.rows", "java_pending": "the planned Java row-position API, absent from Java today"},
-        {"concept": "Dataset-bound row boundary", "go": "RowPosition", "java": "RowPosition", "java_pending": "the planned Java row-position API, absent from Java today"},
-        {"concept": "Row boundary ordinal", "go": "RowPosition.Ordinal", "java": "RowPosition.ordinal", "java_pending": "the planned Java row-position API, absent from Java today"},
-        {"concept": "Interval of dataset rows", "go": "RowSpan", "java": "RowSpan", "java_pending": "the planned Java row-position API, absent from Java today"},
-        {"concept": "Inclusive row boundary", "go": "RowSpan.Start", "java": "RowSpan.start", "java_pending": "the planned Java row-position API, absent from Java today"},
-        {"concept": "Exclusive row boundary", "go": "RowSpan.End", "java": "RowSpan.end", "java_pending": "the planned Java row-position API, absent from Java today"}
+        {"concept": "Candidate rows of a listing entry", "go": "ListEntry.Rows", "java": null, "note": "Go only."},
+        {"concept": "Dataset-bound row boundary", "go": "RowPosition", "java": null, "note": "Go only."},
+        {"concept": "Row boundary ordinal", "go": "RowPosition.Ordinal", "java": null, "note": "Go only."},
+        {"concept": "Interval of dataset rows", "go": "RowSpan", "java": null, "note": "Go only."},
+        {"concept": "Inclusive row boundary", "go": "RowSpan.Start", "java": null, "note": "Go only."},
+        {"concept": "Exclusive row boundary", "go": "RowSpan.End", "java": null, "note": "Go only."}
       ]
     },
     {
@@ -70,12 +70,12 @@
         {"concept": "Accounted compressed bytes of projected columns", "go": "Plan.ProjectedBytes", "java": "Plan.projectedBytes", "note": "Excludes footers, page indexes and key pages. Chunks without OffsetIndexes are omitted and make the estimate inexact; it is not total scan I/O or an upper bound."},
         {"concept": "Split a plan into shards", "go": "Plan.Split", "java": "Plan.split"},
         {"concept": "Scan a plan", "go": "Plan.Scan", "java": "Plan.scan"},
-        {"concept": "Plan a union of row intervals", "go": "Dataset.PlanRows", "java": "Dataset.planRows", "java_pending": "the planned Java row-position API, absent from Java today"},
-        {"concept": "Input row intervals before union normalization", "go": "Plan.InputRowSpans", "java": "Plan.inputRowSpans", "java_pending": "the planned Java row-position API, absent from Java today"},
-        {"concept": "Borrowed projected values", "go": "ValueBatch", "java": "ValueBatch", "java_pending": "the planned Java row-position API, absent from Java today"},
-        {"concept": "Rows in a value batch", "go": "ValueBatch.Len", "java": "ValueBatch.len", "java_pending": "the planned Java row-position API, absent from Java today"},
-        {"concept": "First row of a value batch", "go": "ValueBatch.Start", "java": "ValueBatch.start", "java_pending": "the planned Java row-position API, absent from Java today"},
-        {"concept": "Projected column of a value batch", "go": "ValueBatch.Column", "java": "ValueBatch.column", "java_pending": "the planned Java row-position API, absent from Java today"}
+        {"concept": "Plan a union of row intervals", "go": "Dataset.PlanRows", "java": null, "note": "Go only."},
+        {"concept": "Input row intervals before union normalization", "go": "Plan.InputRowSpans", "java": null, "note": "Go only."},
+        {"concept": "Borrowed projected values", "go": "ValueBatch", "java": null, "note": "Go only."},
+        {"concept": "Rows in a value batch", "go": "ValueBatch.Len", "java": null, "note": "Go only."},
+        {"concept": "First row of a value batch", "go": "ValueBatch.Start", "java": null, "note": "Go only."},
+        {"concept": "Projected column of a value batch", "go": "ValueBatch.Column", "java": null, "note": "Go only."}
       ]
     },
     {
@@ -95,7 +95,7 @@
         {"concept": "Cancellation", "go": "std:context.Context", "java": "Cancellation"},
         {"concept": "Storage of a dataset root", "go": "Source", "java": "storage.DatasetStorage"},
         {"concept": "An opened file", "go": "SourceFile", "java": "storage.PartSource"},
-        {"concept": "Bind reads to a context", "go": "ContextBinder", "java": null, "note": "Java passes a Cancellation to every storage call."},
+        {"concept": "Bind reads to a context", "go": "ContextBinder", "java": null, "note": "Go only; Java passes a Cancellation to every storage call."},
         {"concept": "Read the manifest whole", "go": "ManifestReader", "java": "storage.DatasetStorage.readManifest", "note": "Optional in Go; Java storage always reads the manifest whole."},
         {"concept": "Open a part with its manifest size", "go": "SizedSource", "java": "storage.DatasetStorage.openPart", "note": "Optional in Go; Java always passes the manifest's size as a hint."},
         {"concept": "Read several ranges in one call", "go": "RangeReader", "java": null, "note": "Go only; Java reads each range with PartSource.read."},
@@ -134,18 +134,18 @@
       ]
     },
     {
-      "title": "Generic execution and aggregation (Go only)",
+      "title": "Folds and queued scans (Go only)",
       "rows": [
-        {"concept": "Scan a plan with queued workers", "go": "Plan.ScanParallel", "java": null, "note": "Go only; not in Java yet."},
-        {"concept": "Fold established row spans with a caller's accumulator", "go": "FoldRows", "java": null, "note": "Go only; not in Java yet."},
-        {"concept": "Caller's reduction of rows", "go": "Fold", "java": null, "note": "Go only; not in Java yet."},
-        {"concept": "Fold options", "go": "FoldOptions", "java": null, "note": "Go only; not in Java yet."},
-        {"concept": "Fold result", "go": "FoldResult", "java": null, "note": "Go only; not in Java yet."},
-        {"concept": "Fold completeness", "go": "FoldStatus", "java": null, "note": "Go only; not in Java yet."},
-        {"concept": "Unknown fold", "go": "FoldUnknown", "java": null, "note": "Go only; not in Java yet."},
-        {"concept": "Exact fold", "go": "FoldExact", "java": null, "note": "Go only; not in Java yet."},
-        {"concept": "Value budget exceeded", "go": "FoldBudgetExceeded", "java": null, "note": "Go only; not in Java yet."},
-        {"concept": "Unpriced value extents", "go": "FoldUnpriced", "java": null, "note": "Go only; not in Java yet."}
+        {"concept": "Scan a plan with queued workers", "go": "Plan.ScanParallel", "java": null},
+        {"concept": "Fold established row spans with a caller's accumulator", "go": "FoldRows", "java": null},
+        {"concept": "Caller's reduction of rows", "go": "Fold", "java": null},
+        {"concept": "Fold options", "go": "FoldOptions", "java": null},
+        {"concept": "Fold result", "go": "FoldResult", "java": null},
+        {"concept": "Fold completeness", "go": "FoldStatus", "java": null},
+        {"concept": "Unknown fold", "go": "FoldUnknown", "java": null},
+        {"concept": "Exact fold", "go": "FoldExact", "java": null},
+        {"concept": "Value budget exceeded", "go": "FoldBudgetExceeded", "java": null},
+        {"concept": "Unpriced value extents", "go": "FoldUnpriced", "java": null}
       ]
     }
   ]

@@ -76,7 +76,8 @@ for _, profile := range profiles {
 | Remote untrusted | Accepted manifest, footer, page, and decoded-page sizes; maximum parts and admitted concurrent operations |
 | Memory tight | Smaller decoded pages and index retention; small positive cache budgets trade reuse for reads |
 
-Zero fields select defaults; a negative field is an invalid request at open ([`Limits`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Limits)).
+Zero fields select defaults. A negative field is an invalid request, before any read, when opening, validating or
+parsing a manifest ([`Limits`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Limits)).
 A zero cache budget does not disable retention. Small positive values constrain admission.
 A `LimitError` reports reader policy or capacity, rather than a format refusal.
 See [troubleshooting](troubleshooting.md) before raising a limit.

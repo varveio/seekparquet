@@ -2,7 +2,7 @@
 
 The Go module reads, writes and validates [SeekParquet](../README.md) datasets: sorted Parquet parts committed
 by a `manifest.json`. It is the complete implementation: everything the [Java reader](../java/README.md) does,
-plus writing, validation, row-position counting and aggregation.
+plus writing, validation, counting by row position and folds.
 
 | | |
 |---|---|
@@ -74,11 +74,12 @@ The same `Dataset` also serves lookups (`Get`), borrowed batch scans (`Scan`), p
 counts and byte estimates (`Plan`, `Split`, `ScanParallel`) and an optional list index for wide listings
 (`BuildListIndex`). The [reading guide](../docs/guides/reading.md) shows each one.
 
-## Count and aggregate
+## Count and fold
 
-Fold the rows of key selections with your own accumulator. Each result says whether it is exact.
+Count the rows under each common prefix of a listing. A count reads no values: the listing's row spans and
+the parts' checked row counts give it.
 
-<!-- snippet: go/example_generic_test.go#ExampleFold -->
+<!-- snippet: go/example_docs_test.go#Example_countPrefixes -->
 ```go
 ctx := context.Background()
 d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
@@ -86,58 +87,40 @@ if err != nil {
 	log.Fatal(err)
 }
 defer d.Close()
-plan, err := d.Plan(ctx, []seekparquet.Selection{
-	{Span: seekparquet.PrefixSpan([]byte("logs/2026/01/"))},
-	{Span: seekparquet.PrefixSpan([]byte("logs/2026/02/"))},
-}, nil, nil)
-if err != nil {
-	log.Fatal(err)
-}
 
-// Count rows, and sum and count the nulls of an INT64 column.
-type totals struct{ rows, size, nulls int64 }
-fold := seekparquet.Fold[totals]{
-	Columns: []string{"size"},
-	Add: func(acc *totals, rows *seekparquet.ValueBatch) error {
-		sizes := rows.Column(0)
-		if !sizes.Present() || sizes.Kind() != seekparquet.KindInt64 {
-			return fmt.Errorf("size must be an INT64 column")
-		}
-		acc.rows += int64(rows.Len())
-		for i := range rows.Len() {
-			if sizes.IsNull(i) {
-				acc.nulls++
-			} else {
-				acc.size += sizes.Int64(i)
-			}
-		}
-		return nil
-	},
-	Merge: func(into, from *totals) {
-		into.rows += from.rows
-		into.size += from.size
-		into.nulls += from.nulls
-	},
-}
-results, err := seekparquet.FoldRows(ctx, d, plan.InputRowSpans(), fold,
-	seekparquet.FoldOptions{ValueBudgetBytes: 4 << 20, CheckKeys: true}, nil)
+// This fixture has three entries. Let List traverse beyond each prefix
+// so that it establishes both row boundaries.
+entries, err := d.List(ctx, seekparquet.ListQuery{
+	Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 4,
+}, nil)
 if err != nil {
 	log.Fatal(err)
 }
-for _, r := range results {
-	if r.Status == seekparquet.FoldExact {
-		fmt.Printf("rows=%d size=%d nulls=%d\n", r.Value.rows, r.Value.size, r.Value.nulls)
+var counts seekparquet.ReadStats
+for _, entry := range entries {
+	_, startKnown := entry.Rows.Start.Ordinal()
+	_, endKnown := entry.Rows.End.Ordinal()
+	if !startKnown || !endKnown {
+		log.Fatal("use a key-range plan for an unknown boundary")
 	}
+	p, err := d.PlanRows(ctx, []seekparquet.RowSpan{entry.Rows}, nil, &counts)
+	if err != nil {
+		log.Fatal(err)
+	}
+	n, exact := p.Count()
+	fmt.Printf("%s: %d rows, exact=%t, reads=%d\n", entry.Bytes(), n, exact, counts.SourceReads)
 }
 // Output:
-// rows=30 size=31543127898 nulls=0
-// rows=40 size=43279389918 nulls=0
+// logs/2026/01/: 30 rows, exact=true, reads=0
+// logs/2026/02/: 40 rows, exact=true, reads=0
+// logs/2026/03/: 30 rows, exact=true, reads=0
 ```
 <!-- /snippet -->
 
-For counts over listed row spans without storage reads (`PlanRows`) and folds, see
-[counting and aggregating](../docs/guides/counting.md); for pages that count their common prefixes, see
-[pagination](../docs/guides/pagination.md#count-the-common-prefixes-of-a-page).
+To reduce column values, give `FoldRows` the row spans and a `Fold` of your own; it folds each span
+separately and reads the columns the fold names. The [counting guide](../docs/guides/counting.md) shows
+both, with budgets and key checks, and [pagination](../docs/guides/pagination.md#count-and-fold-the-prefixes-of-a-page)
+the prefixes of a page.
 
 ## Produce a dataset
 
@@ -179,7 +162,7 @@ The adapter claims the `reader` target and the four validator targets, so one ru
 
 | Package | What it is |
 |---|---|
-| `seekparquet` | open (`OpenDir`, `OpenDataset`), read, list, plan, aggregate, verify and validate; manifests, cursors, errors, limits and read statistics |
+| `seekparquet` | open (`OpenDir`, `OpenDataset`), read, list, plan, count, fold, verify and validate; manifests, cursors, errors, limits and read statistics |
 | `write` | `NewPart` and `PartWriter`: one part, streamed from sorted rows, enforcing the profile |
 | `local` | `WriteDir`, `PublishPart` and `Commit`: durable publication in a local directory |
 | `cmd/seekparquet` | the `seekparquet validate` command |
@@ -194,7 +177,7 @@ Every exported symbol is documented in the package documentation; `go doc` shows
 | the data model, what is checked when, the four kinds of error | [concepts](../docs/concepts.md) |
 | ranges, prefixes, lookups, listings, projection, scans, plans, shards | [reading](../docs/guides/reading.md) |
 | cursors, cursor tokens and service envelopes | [pagination](../docs/guides/pagination.md) |
-| row positions, counts and aggregates | [counting](../docs/guides/counting.md) |
+| row positions, counts and folds | [counting](../docs/guides/counting.md) |
 | limits, memory, open parts, verify, the list index, concurrency | [operating](../docs/guides/operating.md) |
 | reading from an object store: `Source` and its optional capabilities | [storage Sources](../docs/guides/storage-sources.md) |
 | what a read costs, read-ahead, tuning and measuring | [remote I/O](../docs/guides/remote-io.md) |

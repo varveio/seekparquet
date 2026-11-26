@@ -189,10 +189,10 @@ class DocumentationContracts(unittest.TestCase):
 
     def test_input_row_spans_parity_name(self):
         parity = self.read('docs/data/parity.json')
-        self.assertIn('"go": "Plan.InputRowSpans", "java": "Plan.inputRowSpans"', parity)
+        self.assertIn('"go": "Plan.InputRowSpans", "java": null', parity)
 
     def test_listing_comments_describe_generic_keys(self):
-        source = self.read('go/query.go').split('// ListQuery is', 1)[1].split('// IsPrefix reports', 1)[0]
+        source = self.read('go/query.go').split('// ListQuery is', 1)[1].split('// Bytes returns the entry', 1)[0]
         self.assertNotIn('S3', source)
         self.assertNotIn('folder object', source)
 

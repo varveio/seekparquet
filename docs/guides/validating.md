@@ -125,7 +125,7 @@ interface the reader uses.
 ctx := context.Background()
 report, err := seekparquet.ValidateDir(ctx, "../conformance/datasets/multipart", seekparquet.ValidateOptions{Level: seekparquet.LevelFull})
 if err != nil {
-	log.Fatal(err) // the directory cannot be opened, or ctx ended
+	log.Fatal(err) // the directory cannot be opened, the request is invalid, or ctx ended
 }
 for _, level := range report.Levels {
 	fmt.Println(level.Level, level.Result)

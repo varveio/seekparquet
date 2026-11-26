@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -114,20 +115,37 @@ func Example_paginate() {
 		log.Fatal(err)
 	}
 	defer d.Close()
-	q := seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 2}
-	for {
+
+	// page lists one entry more than size: that entry tells whether
+	// another page follows. It returns the cursor of the next page, nil
+	// after the last.
+	page := func(q seekparquet.ListQuery, size int) ([]seekparquet.ListEntry, *seekparquet.Cursor, error) {
+		if size < 1 || size == math.MaxInt {
+			return nil, nil, fmt.Errorf("page size %d is out of range", size)
+		}
+		q.Limit = size + 1
 		entries, err := d.List(ctx, q, nil)
+		if err != nil || len(entries) <= size {
+			return entries, nil, err
+		}
+		entries = entries[:size]
+		return entries, entries[size-1].Cursor(), nil
+	}
+
+	q := seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/'}
+	for n := 1; ; n++ {
+		entries, next, err := page(q, 2)
 		if err != nil {
 			log.Fatal(err)
 		}
-		if len(entries) == 0 {
+		for _, entry := range entries {
+			fmt.Printf("page %d: %s\n", n, entry.Bytes())
+		}
+		if next == nil {
 			break
 		}
-		for _, entry := range entries {
-			fmt.Println(string(entry.Bytes()))
-		}
 		// Carry the token through your service response and next request.
-		token, err := entries[len(entries)-1].Cursor().Encode()
+		token, err := next.Encode()
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -137,9 +155,52 @@ func Example_paginate() {
 		}
 	}
 	// Output:
-	// logs/2026/01/
-	// logs/2026/02/
-	// logs/2026/03/
+	// page 1: logs/2026/01/
+	// page 1: logs/2026/02/
+	// page 2: logs/2026/03/
+}
+
+func ExampleListEntry_clipped() {
+	ctx := context.Background()
+	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer d.Close()
+	if err := d.Verify(ctx, nil); err != nil {
+		log.Fatal(err)
+	}
+	// logs/2026/02/ holds 40 rows. A cursor inside it starts its rows
+	// after the cursor; an End inside it leaves their end unknown.
+	for _, q := range []seekparquet.ListQuery{
+		{Cursor: seekparquet.RowCursor([]byte("logs/2026/02/f009.gz"), 0)},
+		{End: []byte("logs/2026/02/f010.gz")},
+	} {
+		q.Prefix, q.Delimiter, q.Limit = []byte("logs/2026/"), '/', 10
+		entries, err := d.List(ctx, q, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, entry := range entries {
+			_, startKnown := entry.Rows.Start.Ordinal()
+			_, endKnown := entry.Rows.End.Ordinal()
+			if !startKnown || !endKnown {
+				fmt.Printf("%s: rows not established\n", entry.Bytes())
+				continue
+			}
+			p, err := d.PlanRows(ctx, []seekparquet.RowSpan{entry.Rows}, nil, nil)
+			if err != nil {
+				log.Fatal(err)
+			}
+			n, _ := p.Count()
+			fmt.Printf("%s: %d rows\n", entry.Bytes(), n)
+		}
+	}
+	// Output:
+	// logs/2026/02/: 30 rows
+	// logs/2026/03/: 30 rows
+	// logs/2026/01/: 30 rows
+	// logs/2026/02/: rows not established
 }
 
 func ExampleValue_absent() {

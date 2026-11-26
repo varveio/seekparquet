@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
+	"slices"
 	"sync/atomic"
 
 	seekparquet "github.com/varveio/seekparquet/go"
@@ -19,6 +21,23 @@ func ExampleFold() {
 		log.Fatal(err)
 	}
 	defer d.Close()
+
+	// A fold sees physical values, whatever their annotation. Check that
+	// every part stores size as a plain or signed INT64 before summing it.
+	for part := range d.Metadata().Parts {
+		columns, err := d.Columns(ctx, part, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+		i := slices.IndexFunc(columns, func(c seekparquet.Column) bool { return c.Name == "size" })
+		if i < 0 || columns[i].Type != seekparquet.KindInt64 {
+			log.Fatalf("part %d: size is not an INT64 column", part)
+		}
+		if l := columns[i].Logical; l.Kind != seekparquet.LogicalNone && (l.Kind != seekparquet.LogicalInt || !l.Signed) {
+			log.Fatalf("part %d: size is annotated %s", part, l)
+		}
+	}
+
 	plan, err := d.Plan(ctx, []seekparquet.Selection{
 		{Span: seekparquet.PrefixSpan([]byte("logs/2026/01/"))},
 		{Span: seekparquet.PrefixSpan([]byte("logs/2026/02/"))},
@@ -27,29 +46,37 @@ func ExampleFold() {
 		log.Fatal(err)
 	}
 
-	// Count rows, and sum and count the nulls of an INT64 column.
-	type totals struct{ rows, size, nulls int64 }
+	// Count rows, and sum and count the nulls of size. Merge cannot fail,
+	// so an overflow is carried in the accumulator.
+	type totals struct {
+		rows, size, nulls int64
+		overflow          bool
+	}
+	addSize := func(t *totals, n int64) {
+		if n > 0 && t.size > math.MaxInt64-n || n < 0 && t.size < math.MinInt64-n {
+			t.overflow = true
+		}
+		t.size += n
+	}
 	fold := seekparquet.Fold[totals]{
 		Columns: []string{"size"},
 		Add: func(acc *totals, rows *seekparquet.ValueBatch) error {
 			sizes := rows.Column(0)
-			if !sizes.Present() || sizes.Kind() != seekparquet.KindInt64 {
-				return fmt.Errorf("size must be an INT64 column")
-			}
 			acc.rows += int64(rows.Len())
 			for i := range rows.Len() {
 				if sizes.IsNull(i) {
 					acc.nulls++
 				} else {
-					acc.size += sizes.Int64(i)
+					addSize(acc, sizes.Int64(i))
 				}
 			}
 			return nil
 		},
 		Merge: func(into, from *totals) {
 			into.rows += from.rows
-			into.size += from.size
 			into.nulls += from.nulls
+			into.overflow = into.overflow || from.overflow
+			addSize(into, from.size)
 		},
 	}
 	results, err := seekparquet.FoldRows(ctx, d, plan.InputRowSpans(), fold,
@@ -58,13 +85,48 @@ func ExampleFold() {
 		log.Fatal(err)
 	}
 	for _, r := range results {
-		if r.Status == seekparquet.FoldExact {
+		switch {
+		case r.Status != seekparquet.FoldExact:
+			fmt.Println("not exact")
+		case r.Value.overflow:
+			fmt.Println("size overflows int64")
+		default:
 			fmt.Printf("rows=%d size=%d nulls=%d\n", r.Value.rows, r.Value.size, r.Value.nulls)
 		}
 	}
 	// Output:
 	// rows=30 size=31543127898 nulls=0
 	// rows=40 size=43279389918 nulls=0
+}
+
+func ExampleFoldOptions_checkKeys() {
+	ctx := context.Background()
+	// A fixture whose keys decrease inside one page.
+	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/invalid/key-order-within-page", seekparquet.OpenOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer d.Close()
+	plan, err := d.Plan(ctx, []seekparquet.Selection{{}}, nil, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// The count comes from checked row counts: it decodes no key.
+	n, exact := plan.Count()
+	fmt.Printf("count: %d, exact=%t\n", n, exact)
+
+	// A fold with no columns and CheckKeys counts the rows and checks
+	// every key it selects.
+	count := seekparquet.Fold[int64]{
+		Add:   func(acc *int64, rows *seekparquet.ValueBatch) error { *acc += int64(rows.Len()); return nil },
+		Merge: func(into, from *int64) { *into += *from },
+	}
+	_, err = seekparquet.FoldRows(ctx, d, plan.InputRowSpans(), count, seekparquet.FoldOptions{CheckKeys: true}, nil)
+	fmt.Println("checked count:", seekparquet.RefusalCodeOf(err))
+	// Output:
+	// count: 12, exact=true
+	// checked count: key_order
 }
 
 func ExamplePlan_ScanParallel() {

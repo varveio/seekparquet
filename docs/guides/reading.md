@@ -1,7 +1,7 @@
 # Read a dataset
 
 Use this guide to read keys and projected columns from a local directory or a caller-supplied Source.
-[Concepts](../concepts.md) defines the data model; [counting](counting.md) covers row spans and aggregation.
+[Concepts](../concepts.md) defines the data model; [counting](counting.md) covers counts and folds over row spans.
 
 The examples are Go. The [Java README](../../java/README.md) shows the same reads in Java, the
 [parity table](../reference/parity.md) maps every name, and a **Java** line under a task says where Java
@@ -284,7 +284,7 @@ even if other keys under it are at or above `End` ([LIST-7](../../spec/format-1.
 
 ## Paginate a listing
 
-Continue from the last entry's `Cursor()` and stop on an empty page.
+List one entry more than the page size, keep the page, and continue from the last kept entry's `Cursor()`.
 
 **Go**
 
@@ -296,20 +296,37 @@ if err != nil {
 	log.Fatal(err)
 }
 defer d.Close()
-q := seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 2}
-for {
+
+// page lists one entry more than size: that entry tells whether
+// another page follows. It returns the cursor of the next page, nil
+// after the last.
+page := func(q seekparquet.ListQuery, size int) ([]seekparquet.ListEntry, *seekparquet.Cursor, error) {
+	if size < 1 || size == math.MaxInt {
+		return nil, nil, fmt.Errorf("page size %d is out of range", size)
+	}
+	q.Limit = size + 1
 	entries, err := d.List(ctx, q, nil)
+	if err != nil || len(entries) <= size {
+		return entries, nil, err
+	}
+	entries = entries[:size]
+	return entries, entries[size-1].Cursor(), nil
+}
+
+q := seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/'}
+for n := 1; ; n++ {
+	entries, next, err := page(q, 2)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if len(entries) == 0 {
+	for _, entry := range entries {
+		fmt.Printf("page %d: %s\n", n, entry.Bytes())
+	}
+	if next == nil {
 		break
 	}
-	for _, entry := range entries {
-		fmt.Println(string(entry.Bytes()))
-	}
 	// Carry the token through your service response and next request.
-	token, err := entries[len(entries)-1].Cursor().Encode()
+	token, err := next.Encode()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -319,14 +336,14 @@ for {
 	}
 }
 // Output:
-// logs/2026/01/
-// logs/2026/02/
-// logs/2026/03/
+// page 1: logs/2026/01/
+// page 1: logs/2026/02/
+// page 2: logs/2026/03/
 ```
 <!-- /snippet -->
 
-A short page is not the general termination rule. See [pagination](pagination.md) for row cursors,
-prefix cursors, tokens, and binding a token to a snapshot.
+See [pagination](pagination.md) for what the extra entry tells you, row and prefix cursors, tokens, and
+binding a token to a snapshot.
 
 ## Project columns
 
@@ -634,15 +651,17 @@ for _, column := range columns {
 
 **Java:** `Dataset.columns(part)` returns `Column` records with the physical type, type length, an optional
 `LogicalType` (a legacy converted type normalized into one), repetition and whether the column is the key.
-A column whose time unit Java does not know has no logical type.
+A column whose time unit Java does not know has no logical type, where Go reports `LogicalUnrecognized`.
 
 Physical compatibility across checked parts does not compare logical annotations
 ([`Dataset.Columns`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Columns), [COL-5](../../spec/format-1.md#col-5)).
 Inspect each part if your application depends on those annotations or on a column being present everywhere.
 
-Physical schema compatibility does not prove semantic consistency.
-Before stable adoption, decide whether producer `schema_id` governs logical meaning or stronger annotation checks are needed,
-while preserving the physical-value API ([COL-1](../../spec/format-1.md#col-1)).
+A column's meaning is the producer's, identified by the manifest's `schema_id`
+([COL-1](../../spec/format-1.md#col-1)). Reads return its physical values whatever its annotation, and an
+annotation the reader cannot describe is `LogicalUnrecognized`. Refuse a column whose annotation your
+application does not handle, as the [counting guide](counting.md#fold-the-values-of-selected-rows) does before
+it sums one.
 
 ## Measure a read
 

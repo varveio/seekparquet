@@ -5,9 +5,9 @@ Keep the same query and immutable dataset when carrying a cursor between pages
 The examples are Go; in Java, `Query.next(row)` and `ListQuery.next(entry)` build the next page's request,
 `Cursor.encode()` and `Cursor.parse(token)` carry it as text, and each reader reads the other's tokens.
 
-## Resume from the last result
+## Page a listing
 
-Use the final row's or listing entry's `Cursor()`; repeat the query until it returns an empty page.
+List one entry more than the page size, keep the page, and continue from the cursor of the last entry you keep.
 
 **Go**
 
@@ -19,20 +19,37 @@ if err != nil {
 	log.Fatal(err)
 }
 defer d.Close()
-q := seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 2}
-for {
+
+// page lists one entry more than size: that entry tells whether
+// another page follows. It returns the cursor of the next page, nil
+// after the last.
+page := func(q seekparquet.ListQuery, size int) ([]seekparquet.ListEntry, *seekparquet.Cursor, error) {
+	if size < 1 || size == math.MaxInt {
+		return nil, nil, fmt.Errorf("page size %d is out of range", size)
+	}
+	q.Limit = size + 1
 	entries, err := d.List(ctx, q, nil)
+	if err != nil || len(entries) <= size {
+		return entries, nil, err
+	}
+	entries = entries[:size]
+	return entries, entries[size-1].Cursor(), nil
+}
+
+q := seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/'}
+for n := 1; ; n++ {
+	entries, next, err := page(q, 2)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if len(entries) == 0 {
+	for _, entry := range entries {
+		fmt.Printf("page %d: %s\n", n, entry.Bytes())
+	}
+	if next == nil {
 		break
 	}
-	for _, entry := range entries {
-		fmt.Println(string(entry.Bytes()))
-	}
 	// Carry the token through your service response and next request.
-	token, err := entries[len(entries)-1].Cursor().Encode()
+	token, err := next.Encode()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -42,22 +59,40 @@ for {
 	}
 }
 // Output:
-// logs/2026/01/
-// logs/2026/02/
-// logs/2026/03/
+// page 1: logs/2026/01/
+// page 1: logs/2026/02/
+// page 2: logs/2026/03/
 ```
 <!-- /snippet -->
 
-A row cursor identifies a key and its zero-based offset in the key group.
-Span bounds select whole key groups, but a result limit can end a page inside one
-([RANGE-1](../../spec/format-1.md#range-1), [PAGE-1](../../spec/format-1.md#page-1)).
-See [paging a large key group](reading.md#look-up-a-key) for the row loop.
-A prefix cursor skips the subtree represented by the common prefix, including its exact row
-([LIST-6](../../spec/format-1.md#list-6)). Prefix cursors apply to listings; range reads require row cursors.
-Use `ListEntry.Cursor()` rather than constructing a row cursor from `Exact` when advancing past a common prefix.
+**Java:** the same, with `limit(size + 1)` and `ListQuery.next(entry)` on the last entry kept.
 
-Not guaranteed: a short page means the query is exhausted, or a cursor checks which dataset produced it.
-The cursor contract applies to the same query and dataset ([`Cursor`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Cursor)).
+The entry beyond the page tells you that another page follows. The Go reader fills a listing to its `Limit`
+unless the candidates run out, so a listing of `Limit` entries or fewer is the last page, with no empty page
+after it. The format allows a shorter listing ([LIST-4](../../spec/format-1.md#list-4)); a reader of this
+repository returns one only at the end.
+
+Listing one entry more also establishes the end of the last common prefix you keep, so every common prefix of
+the page has known rows to [count or fold](#count-and-fold-the-prefixes-of-a-page).
+
+`ListQuery.Limit` is an `int`. Refuse a page size of `math.MaxInt` before you add one, as the example does.
+
+Continue from the kept entry's `Cursor()`: a row cursor after a row, a prefix cursor after a common prefix. A
+prefix cursor skips the subtree represented by the common prefix, including its exact row
+([LIST-6](../../spec/format-1.md#list-6)). Use `ListEntry.Cursor()` rather than building a row cursor from
+`Exact` when you continue after a common prefix. The pages, joined, equal the listing read in one call
+([PAGE-2](../../spec/format-1.md#page-2)).
+
+## Row cursors
+
+A range read pages the same way: a `Query.Limit` one above the page size, and the `Cursor()` of the last row
+you keep. A row cursor identifies a key and its zero-based offset in the key group. Span bounds select whole
+key groups, but a result limit can end a page inside one ([RANGE-1](../../spec/format-1.md#range-1),
+[PAGE-1](../../spec/format-1.md#page-1)). See [paging a large key group](reading.md#look-up-a-key) for the row
+loop. Prefix cursors apply to listings; a range read takes row cursors only.
+
+Not guaranteed: a cursor checks which dataset or query produced it. The cursor contract applies to the same
+query and dataset ([`Cursor`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Cursor)).
 
 ## Encode and parse tokens
 
@@ -140,13 +175,14 @@ It is interpreted against that dataset's keys; results can differ or be empty
 ([PAGE-1](../../spec/format-1.md#page-1), [`Cursor`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Cursor)).
 Reject mismatched envelopes in your service before asking the reader to resume.
 
-## Count the common prefixes of a page
+## Count and fold the prefixes of a page
 
-List one entry beyond the page with [`Dataset.List`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.List), then count each common prefix it keeps with [`Dataset.PlanRows`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.PlanRows).
+Check that a common prefix's row span is the whole prefix before you present its count or fold as the prefix's
+total.
 
 **Go**
 
-<!-- snippet: go/example_generic_test.go#ExampleDataset_List_pages -->
+<!-- snippet: go/example_reading_test.go#ExampleListEntry_clipped -->
 ```go
 ctx := context.Background()
 d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
@@ -157,27 +193,24 @@ defer d.Close()
 if err := d.Verify(ctx, nil); err != nil {
 	log.Fatal(err)
 }
-// Pages of two entries. Each listing asks for one entry more, to learn
-// whether another page follows and to establish the rows of the last
-// common prefix it keeps.
-const pageSize = 2
-q := seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: pageSize + 1}
-for {
+// logs/2026/02/ holds 40 rows. A cursor inside it starts its rows
+// after the cursor; an End inside it leaves their end unknown.
+for _, q := range []seekparquet.ListQuery{
+	{Cursor: seekparquet.RowCursor([]byte("logs/2026/02/f009.gz"), 0)},
+	{End: []byte("logs/2026/02/f010.gz")},
+} {
+	q.Prefix, q.Delimiter, q.Limit = []byte("logs/2026/"), '/', 10
 	entries, err := d.List(ctx, q, nil)
 	if err != nil {
 		log.Fatal(err)
-	}
-	more := len(entries) > pageSize
-	if more {
-		entries = entries[:pageSize]
 	}
 	for _, entry := range entries {
 		_, startKnown := entry.Rows.Start.Ordinal()
 		_, endKnown := entry.Rows.End.Ordinal()
 		if !startKnown || !endKnown {
-			log.Fatal("use a key-range plan for an unknown boundary")
+			fmt.Printf("%s: rows not established\n", entry.Bytes())
+			continue
 		}
-		// Counting known rows reads nothing.
 		p, err := d.PlanRows(ctx, []seekparquet.RowSpan{entry.Rows}, nil, nil)
 		if err != nil {
 			log.Fatal(err)
@@ -185,22 +218,28 @@ for {
 		n, _ := p.Count()
 		fmt.Printf("%s: %d rows\n", entry.Bytes(), n)
 	}
-	if !more {
-		break
-	}
-	q.Cursor = entries[len(entries)-1].Cursor()
 }
 // Output:
-// logs/2026/01/: 30 rows
-// logs/2026/02/: 40 rows
+// logs/2026/02/: 30 rows
 // logs/2026/03/: 30 rows
+// logs/2026/01/: 30 rows
+// logs/2026/02/: rows not established
 ```
 <!-- /snippet -->
 
 **Java:** not available.
 
-The entry beyond the page shows whether another page follows; the cursor of the last kept entry continues the listing.
-Listing past the last kept common prefix, when an entry follows it, also establishes the end of its rows.
-A count without storage reads needs both boundaries known.
-`End` inside a prefix leaves its end unknown, and a cursor inside a prefix starts its rows at the first remaining candidate.
-See [resolve unknown rows](counting.md#resolve-unknown-rows) for the fallback, and [`FoldRows`](counting.md#count-and-sum-selections) for other totals.
+`List` reports the rows of a common prefix as it finds them: `ListEntry.Rows` covers the prefix's candidate
+rows in this listing, not the whole prefix
+([`ListEntry`](https://pkg.go.dev/github.com/varveio/seekparquet/go#ListEntry)).
+
+- A `Cursor` inside the prefix starts `Rows` at the first candidate after it. Both boundaries can be known, and
+  a count of them is the count of the remaining rows only. When the cursor follows every row stored at the
+  prefix's own key, `Exact` is nil.
+- An `End` inside the prefix leaves `Rows.End` unknown, and `PlanRows` refuses the span.
+
+The pages of one listing do not cut a common prefix: each continues after a whole entry, and every kept prefix
+has the rows the listing read in one call reports. A cut comes from an `End` below the prefix's byte
+successor, or from a cursor the listing did not return. Show such a prefix's count as the rows listed, or plan
+`PrefixSpan(entry.CommonPrefix)` for its total ([resolve unknown rows](counting.md#resolve-unknown-rows)). Fold
+the rows of whole prefixes with [`FoldRows`](counting.md#fold-the-rows-of-a-listing).

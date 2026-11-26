@@ -52,7 +52,7 @@ representative performance benchmark**. No files are written by this example.
 - Read [remote I/O](guides/remote-io.md) and [writer geometry](guides/producing.md#choose-geometry) before choosing part, row-group and page
   sizes. This tiny example demonstrates semantics, not cold remote performance.
 - Read the [reading guide](guides/reading.md) for ranges, lookups, projected values,
-  repeated keys and errors, and [counting](guides/counting.md) for counts and sums by prefix.
+  repeated keys and errors, and [counting](guides/counting.md) for counts and folds by prefix.
   Run the quickstart's regression test with `go -C go test ./examples/quickstart` from the
   repository root.
 - Java users can start with the [Java build and usage guide](../java/README.md).

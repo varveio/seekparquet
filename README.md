@@ -12,9 +12,10 @@ bounds. Every part carries a Parquet page index on its key column.
 
 Any Parquet engine (DuckDB, Spark, pyarrow, Trino) reads the files as a table. A reader that knows the profile
 also, with no query engine or catalog, looks up a key, reads a range or a prefix, lists a prefix with a
-delimiter S3 style, counts and sums by prefix, and resumes any of these from a cursor. It reads the manifest,
-the footers and page indexes of the parts it touches, and the pages that can hold the rows; broad reads can
-still scan the dataset. A local directory implementation ships; an object store is an implementation you write.
+delimiter S3 style, resumes any of these from a cursor, and counts the rows under a prefix without reading
+their values. The Go reader also folds those rows' columns with your own function. A reader reads the
+manifest, the footers and page indexes of the parts it touches, and the pages that can hold the rows; broad
+reads can still scan the dataset. A local directory implementation ships; an object store is an implementation you write.
 
 ## Read, list and count
 
@@ -66,7 +67,7 @@ for page := 1; ; page++ {
 <!-- /snippet -->
 
 - Run it in five minutes: [quickstart](docs/quickstart.md).
-- Go: [README](go/README.md) and the [reading guide](docs/guides/reading.md). For counts and sums by prefix,
+- Go: [README](go/README.md) and the [reading guide](docs/guides/reading.md). For counts and folds by prefix,
   [counting](docs/guides/counting.md).
 - Java: the [Java README](java/README.md) has the same example and states what the Java reader lacks.
 - From an object store: [storage](docs/guides/storage-sources.md) and [remote I/O](docs/guides/remote-io.md).
@@ -122,7 +123,7 @@ format. [Workload fit](docs/background/workload-fit.md) says when to use somethi
 | Module | `github.com/varveio/seekparquet/go` | `io.varve:seekparquet`, built from source |
 | Requires | Go 1.26 or later | JDK 21 or later |
 | Reads, lists, plans, verifies | yes | yes |
-| Counts and aggregates by row position, browse pages | yes | no |
+| Counts and folds by row position | yes | no |
 | Writes and validates | yes | no |
 | Conformance | `reader` and the four validator targets | `reader` |
 

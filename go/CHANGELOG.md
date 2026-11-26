@@ -7,64 +7,73 @@ versioning; while it is v0, minor versions may change the API.
 
 ### Breaking
 
-- The named reductions are removed: `Dataset.Aggregate`, `Dataset.AggregateRows`, `Reduction`, `AggregateOp`
-  (`CountRows`, `Sum`, `Max`, `CountNulls`, `CountAbsent`), `AggregateOptions`, `AggregateResult`,
-  `BatchFilter` and `AggregateOverflow`. Reduce rows with `FoldRows` and a `Fold` instead, filtering and
-  widening in `Add`. For key selections, call `Dataset.Plan`, then fold `Plan.InputRowSpans`. For a count
-  with no value reads, call `Dataset.PlanRows` on one span with no columns, then `Plan.Count`.
-- `AggregateStatus` becomes `FoldStatus`, with `FoldUnknown` (the zero value), `FoldExact`,
-  `FoldBudgetExceeded` and `FoldUnpriced`.
-- `FoldOptions.ValueBudgetBytes` is the value budget of `AggregateOptions`, except that zero is unlimited and
-  a negative budget is `ErrInvalidRequest`: replace -1 with 0, and skip a fold that may do no value I/O.
-- `Dataset.Page`, `Page`, `PageQuery` and `PageEntry` are removed. List a page with `Dataset.List` and a
-  `Limit` one above the page size, keep the page, and continue with the `Cursor` of the last kept entry; an
-  entry beyond the page means another follows. Count its common prefixes with `Dataset.PlanRows` and
-  `Plan.Count`, or fold them with `FoldRows`.
-- `Plan.SelectRows` and `Plan.ScanValues` are unexported. Read values by row position with `FoldRows`, or
-  with `Plan.Scan` of a plan from `Dataset.PlanRows`.
-- `ListEntry.IsPrefix` is removed: test `CommonPrefix != nil`.
-- The schema constants name their type: `Required`, `Optional` and `Repeated` become `RepetitionRequired`,
-  `RepetitionOptional` and `RepetitionRepeated`; `Millis`, `Micros` and `Nanos` become `TimeUnitMillis`,
-  `TimeUnitMicros` and `TimeUnitNanos`. Their strings are unchanged.
-- `LogicalUnknown`, Parquet's NULL annotation, becomes `LogicalNull`; its string stays "NULL". The
-  `LogicalKind` values after `LogicalNone` move up by one to make room for `LogicalUnrecognized`.
-- `Dataset.Columns(ctx, part)` becomes `Dataset.Columns(ctx, part, st)`: `st` is reset on entry and receives
-  the reads of the part's check when `Columns` is the first to touch the part, as every other read does; pass
-  nil to discard.
-- The validation types name what they are: `Result` becomes `ValidationResult`, and its constants `Complete`,
-  `Failed` and `Incomplete` become `ResultComplete`, `ResultFailed` and `ResultIncomplete`; `Report` becomes
-  `ValidationReport`, `Level` `ValidationLevel` (its constants keep their names) and `Checked`
-  `ValidationCounts` (the field `LevelReport.Checked` keeps its name). Their strings, and so the output of
-  the `seekparquet` command and of the conformance adapter, are unchanged.
-- `LimitOffsetIndexMemory` is removed: `OffsetIndexMemory` is a cache budget, which no `*LimitError` names.
-- `write.PartWriter.Size` becomes `write.PartWriter.EstimatedSize`.
+- Removed, with what replaces them:
+  - The named reductions: `Dataset.Aggregate`, `Dataset.AggregateRows`, `Reduction`, `AggregateOp`
+    (`CountRows`, `Sum`, `Max`, `CountNulls`, `CountAbsent`), `AggregateOptions`, `AggregateResult` and
+    `BatchFilter`. Reduce rows with `FoldRows` and a `Fold` of your own, filtering and widening in `Add`; the
+    arithmetic, its overflow and the check of each column's annotation are the caller's. For key selections,
+    call `Dataset.Plan`, then fold `Plan.InputRowSpans`. For a count with no value reads, call
+    `Dataset.PlanRows` on one span with no columns, then `Plan.Count`; for a key-checked count, fold with no
+    columns and `CheckKeys`.
+  - `Dataset.Page`, `Page`, `PageQuery` and `PageEntry`. List a page with `Dataset.List` and a `Limit` one
+    above the page size, keep the page, and continue with the `Cursor` of the last kept entry; an entry beyond
+    the page means another follows. Count its common prefixes with `Dataset.PlanRows` and `Plan.Count`, or fold
+    them with `FoldRows`, after checking that the query's `Cursor` and `End` do not cut into them.
+  - `Plan.SelectRows` and `Plan.ScanValues`, now unexported. Read values by row position with `FoldRows`, or
+    with `Plan.Scan` of a plan from `Dataset.PlanRows`.
+  - `ListEntry.IsPrefix`: test `CommonPrefix != nil`.
+  - `LimitOffsetIndexMemory`, with no replacement: `OffsetIndexMemory` is a cache budget, which no
+    `*LimitError` names.
+- Renamed, old to new:
+  - `AggregateStatus` to `FoldStatus`: `AggregateUnknown` (the zero value), `AggregateExact`,
+    `AggregateBudgetExceeded` and `AggregateUnpriced` to `FoldUnknown`, `FoldExact`, `FoldBudgetExceeded` and
+    `FoldUnpriced`. `AggregateOverflow` has no counterpart.
+  - `Required`, `Optional` and `Repeated` to `RepetitionRequired`, `RepetitionOptional` and
+    `RepetitionRepeated`; `Millis`, `Micros` and `Nanos` to `TimeUnitMillis`, `TimeUnitMicros` and
+    `TimeUnitNanos`. Their strings are unchanged.
+  - `LogicalUnknown`, Parquet's NULL annotation, to `LogicalNull`; its string stays "NULL".
+  - `Result` to `ValidationResult`, and its constants `Complete`, `Failed` and `Incomplete` to
+    `ResultComplete`, `ResultFailed` and `ResultIncomplete`; `Report` to `ValidationReport`; `Level` to
+    `ValidationLevel`, whose constants keep their names; `Checked` to `ValidationCounts`, while the field
+    `LevelReport.Checked` keeps its name. Their strings, and so the output of the `seekparquet` command and
+    of the conformance adapter, are unchanged.
+  - `write.PartWriter.Size` to `write.PartWriter.EstimatedSize`.
+- Changed signatures: `Dataset.Columns(ctx, part)` becomes `Dataset.Columns(ctx, part, st)`. `st` is reset on
+  entry and receives the reads of the part's check when `Columns` is the first to touch the part, as every
+  other read does; pass nil to discard.
+- Changed meanings:
+  - `FoldOptions.ValueBudgetBytes` is the value budget of `AggregateOptions`, except that zero is unlimited
+    and a negative budget is `ErrInvalidRequest`: replace -1 with 0, and skip a fold that may do no value I/O.
+  - `Column.Logical` reports `LogicalUnrecognized` for an annotation the reader cannot describe, where it
+    reported `LogicalNone`, as if unannotated. The `LogicalKind` values after `LogicalNone` move up by one to
+    make room for it.
+  - `Validate`, `ValidateDir` and `ParseManifest` refuse a negative `Limits` field with `ErrInvalidRequest`
+    before any read, as opening a dataset does, instead of taking its default. An unknown validation level is
+    `ErrInvalidRequest` too.
+  - `local.WriteDir` refuses a negative `DatasetOptions.PartBytes` instead of taking the default.
 
 ### Added
-
-- `LogicalUnrecognized` is the `Column.Logical` kind of an annotation the reader cannot describe: a logical
-  type it does not know, a TIME or TIMESTAMP of a unit it does not know, or a converted type with no logical
-  type (INTERVAL, or one it does not know). Such a column was reported with `LogicalNone`, as if
-  unannotated; it is still read by its physical type.
 
 - `FoldRows` reduces established row spans with a caller's accumulator, a `Fold` of `Columns`, `New`, `Add`
   and `Merge`, with `FoldOptions` and one `FoldResult` per span. A value budget admits each span's value work
   whole, and `CheckKeys` checks every selected key. Each worker folds into its own accumulators, merged after
   the scan.
+- `LogicalUnrecognized` is the `Column.Logical` kind of an annotation the reader cannot describe: a logical
+  type it does not know, a TIME or TIMESTAMP of a unit it does not know, or a converted type with no logical
+  type (INTERVAL, or one it does not know). Such a column is still read by its physical type.
 
 ### Changed
 
-- `Validate`, `ValidateDir` and `ParseManifest` refuse a negative `Limits` field with `ErrInvalidRequest`
-  before any read, as opening a dataset does, instead of taking its default. An unknown validation level is
-  `ErrInvalidRequest` too.
-- `local.WriteDir` refuses a negative `DatasetOptions.PartBytes` instead of taking the default.
 - `Dataset.BuildListIndex` waits for a build in progress on a channel with its context instead of polling
   every 10 ms.
 - A scan decompresses zstd data pages with a decoder of its own scratch (one per projected column, and one
   for a batch scan's key walk) instead of one decoder shared by the process, whose every decode passed
   through a single channel. Dictionary pages and other reads without scratch keep the shared decoder.
   Scans of more than about four workers no longer queue on it: on a dataset of 57.9M rows in 184 row
-  groups, 18 workers scan three value columns in 0.37 s instead of 0.65 s, and `Aggregate` with
-  `CheckKeys` takes 0.67 s instead of 0.85 s. One to four workers are unchanged.
+  groups, 18 workers scan three value columns in 0.37 s instead of 0.65 s. On the same dataset and workers,
+  a key-checked reduction takes 0.67 s instead of 0.85 s: it was measured with `Aggregate` and `CheckKeys`,
+  removed in this release, whose scan of keys and values is the one `FoldRows` with `CheckKeys` uses. One to
+  four workers are unchanged.
 
 ## v0.2.0 (2026-11-15)
 

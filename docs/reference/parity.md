@@ -12,7 +12,7 @@ A dash means the language has no counterpart. Names are checked against the code
 | Open a local directory | `OpenDir` | `Dataset.open` |  |
 | Open through custom storage | `OpenDataset` | `Dataset.open` | Java takes a storage.DatasetStorage. |
 | Open options | `OpenOptions` | `OpenOptions` |  |
-| Logical read policy | `ReadPolicy` | — | Go sets OpenOptions.Read for tail reads and speculation. Storage owns physical request execution, caching and observation. |
+| Logical read policy | `ReadPolicy` | — | Go only; set it as OpenOptions.Read, for tail reads and speculation. Storage owns physical request execution, caching and observation. |
 | Resource limits | `Limits` | `Limits` | Java builds them with Limits.builder(). See the limits reference. |
 | Retained raw page-index cache budget | `Limits.PageIndexCacheMemory` | — | Go only; excludes footers and decoded indexes and does not bound overall metadata. |
 | Check every part now | `Dataset.Verify` | `Dataset.verify` | Go: Verify(ctx, stats), with a *ReadStats or nil. Java: verify(ReadOptions). |
@@ -46,12 +46,12 @@ A dash means the language has no counterpart. Names are checked against the code
 | List | `Dataset.List` | `Dataset.list` |  |
 | A listing entry | `ListEntry` | `ListEntry` | Java's ListEntry is sealed: RowEntry or CommonPrefix. |
 | Listing read-ahead | `ListQuery.ReadAhead` | `ListQuery.readAhead` | Go: zero selects adaptive prediction over a non-local Source, across row groups, with key page indexes read ahead and forward seeks routed by them. Java: a fixed number of key pages, 0 (off) by default, within the current row group. |
-| Candidate rows of a listing entry | `ListEntry.Rows` | `ListEntry.rows` | Java pending on the planned Java row-position API, absent from Java today. |
-| Dataset-bound row boundary | `RowPosition` | `RowPosition` | Java pending on the planned Java row-position API, absent from Java today. |
-| Row boundary ordinal | `RowPosition.Ordinal` | `RowPosition.ordinal` | Java pending on the planned Java row-position API, absent from Java today. |
-| Interval of dataset rows | `RowSpan` | `RowSpan` | Java pending on the planned Java row-position API, absent from Java today. |
-| Inclusive row boundary | `RowSpan.Start` | `RowSpan.start` | Java pending on the planned Java row-position API, absent from Java today. |
-| Exclusive row boundary | `RowSpan.End` | `RowSpan.end` | Java pending on the planned Java row-position API, absent from Java today. |
+| Candidate rows of a listing entry | `ListEntry.Rows` | — | Go only. |
+| Dataset-bound row boundary | `RowPosition` | — | Go only. |
+| Row boundary ordinal | `RowPosition.Ordinal` | — | Go only. |
+| Interval of dataset rows | `RowSpan` | — | Go only. |
+| Inclusive row boundary | `RowSpan.Start` | — | Go only. |
+| Exclusive row boundary | `RowSpan.End` | — | Go only. |
 
 ## Cursors
 
@@ -75,12 +75,12 @@ A dash means the language has no counterpart. Names are checked against the code
 | Accounted compressed bytes of projected columns | `Plan.ProjectedBytes` | `Plan.projectedBytes` | Excludes footers, page indexes and key pages. Chunks without OffsetIndexes are omitted and make the estimate inexact; it is not total scan I/O or an upper bound. |
 | Split a plan into shards | `Plan.Split` | `Plan.split` |  |
 | Scan a plan | `Plan.Scan` | `Plan.scan` |  |
-| Plan a union of row intervals | `Dataset.PlanRows` | `Dataset.planRows` | Java pending on the planned Java row-position API, absent from Java today. |
-| Input row intervals before union normalization | `Plan.InputRowSpans` | `Plan.inputRowSpans` | Java pending on the planned Java row-position API, absent from Java today. |
-| Borrowed projected values | `ValueBatch` | `ValueBatch` | Java pending on the planned Java row-position API, absent from Java today. |
-| Rows in a value batch | `ValueBatch.Len` | `ValueBatch.len` | Java pending on the planned Java row-position API, absent from Java today. |
-| First row of a value batch | `ValueBatch.Start` | `ValueBatch.start` | Java pending on the planned Java row-position API, absent from Java today. |
-| Projected column of a value batch | `ValueBatch.Column` | `ValueBatch.column` | Java pending on the planned Java row-position API, absent from Java today. |
+| Plan a union of row intervals | `Dataset.PlanRows` | — | Go only. |
+| Input row intervals before union normalization | `Plan.InputRowSpans` | — | Go only. |
+| Borrowed projected values | `ValueBatch` | — | Go only. |
+| Rows in a value batch | `ValueBatch.Len` | — | Go only. |
+| First row of a value batch | `ValueBatch.Start` | — | Go only. |
+| Projected column of a value batch | `ValueBatch.Column` | — | Go only. |
 
 ## List index
 
@@ -100,7 +100,7 @@ A dash means the language has no counterpart. Names are checked against the code
 | Cancellation | `context.Context` | `Cancellation` |  |
 | Storage of a dataset root | `Source` | `storage.DatasetStorage` |  |
 | An opened file | `SourceFile` | `storage.PartSource` |  |
-| Bind reads to a context | `ContextBinder` | — | Java passes a Cancellation to every storage call. |
+| Bind reads to a context | `ContextBinder` | — | Go only; Java passes a Cancellation to every storage call. |
 | Read the manifest whole | `ManifestReader` | `storage.DatasetStorage.readManifest` | Optional in Go; Java storage always reads the manifest whole. |
 | Open a part with its manifest size | `SizedSource` | `storage.DatasetStorage.openPart` | Optional in Go; Java always passes the manifest's size as a hint. |
 | Read several ranges in one call | `RangeReader` | — | Go only; Java reads each range with PartSource.read. |
@@ -137,17 +137,17 @@ A dash means the language has no counterpart. Names are checked against the code
 | Inspect a part's footer | `InspectFooter` | — |  |
 | Inspect a part's key pages | `InspectKeyPages` | — |  |
 
-## Generic execution and aggregation (Go only)
+## Folds and queued scans (Go only)
 
 | Concept | Go | Java | Note |
 |---|---|---|---|
-| Scan a plan with queued workers | `Plan.ScanParallel` | — | Go only; not in Java yet. |
-| Fold established row spans with a caller's accumulator | `FoldRows` | — | Go only; not in Java yet. |
-| Caller's reduction of rows | `Fold` | — | Go only; not in Java yet. |
-| Fold options | `FoldOptions` | — | Go only; not in Java yet. |
-| Fold result | `FoldResult` | — | Go only; not in Java yet. |
-| Fold completeness | `FoldStatus` | — | Go only; not in Java yet. |
-| Unknown fold | `FoldUnknown` | — | Go only; not in Java yet. |
-| Exact fold | `FoldExact` | — | Go only; not in Java yet. |
-| Value budget exceeded | `FoldBudgetExceeded` | — | Go only; not in Java yet. |
-| Unpriced value extents | `FoldUnpriced` | — | Go only; not in Java yet. |
+| Scan a plan with queued workers | `Plan.ScanParallel` | — |  |
+| Fold established row spans with a caller's accumulator | `FoldRows` | — |  |
+| Caller's reduction of rows | `Fold` | — |  |
+| Fold options | `FoldOptions` | — |  |
+| Fold result | `FoldResult` | — |  |
+| Fold completeness | `FoldStatus` | — |  |
+| Unknown fold | `FoldUnknown` | — |  |
+| Exact fold | `FoldExact` | — |  |
+| Value budget exceeded | `FoldBudgetExceeded` | — |  |
+| Unpriced value extents | `FoldUnpriced` | — |  |

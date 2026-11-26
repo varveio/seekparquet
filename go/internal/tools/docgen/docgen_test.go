@@ -420,6 +420,8 @@ func TestEvalJava(t *testing.T) {
 // facts, and an explicit Java checkout must check the pending names too.
 func TestPendingJavaParityRows(t *testing.T) {
 	root := mutableTree(t)
+	edit(t, root, "docs/data/parity.json", `"go": "ListEntry.Rows", "java": null, "note": "Go only."`,
+		`"go": "ListEntry.Rows", "java": "ListEntry.rows", "java_pending": "a test branch"`)
 	if got := checkErr(t, root); got != "" {
 		t.Fatal(got)
 	}
@@ -437,7 +439,10 @@ func TestPendingJavaParityRows(t *testing.T) {
 }
 
 func TestInputRowSpansParity(t *testing.T) {
-	g, err := newGenerator(mutableTree(t), "")
+	root := mutableTree(t)
+	edit(t, root, "docs/data/parity.json", `"go": "ListEntry.Rows", "java": null, "note": "Go only."`,
+		`"go": "ListEntry.Rows", "java": "ListEntry.rows", "java_pending": "a test branch"`)
+	g, err := newGenerator(root, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +453,10 @@ func TestInputRowSpansParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(page, "| Input row intervals before union normalization | `Plan.InputRowSpans` | `Plan.inputRowSpans` | Java pending") {
-		t.Error("parity reference must use InputRowSpans and its pending Java counterpart")
+	if !strings.Contains(page, "| Input row intervals before union normalization | `Plan.InputRowSpans` | — | Go only. |") {
+		t.Error("parity reference must use InputRowSpans, with no Java counterpart")
+	}
+	if !strings.Contains(page, "| Candidate rows of a listing entry | `ListEntry.Rows` | `ListEntry.rows` | Java pending on a test branch. |") {
+		t.Error("parity reference must render a pending Java counterpart")
 	}
 }

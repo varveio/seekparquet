@@ -60,8 +60,8 @@ func Example_readme() {
 	// page 2: logs/2026/03/
 }
 
-// Count known listing spans without storage reads, then sum a column per span.
-func Example_countAndAggregatePrefix() {
+// Count the rows of each common prefix of a listing without storage reads.
+func Example_countPrefixes() {
 	ctx := context.Background()
 	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
 	if err != nil {
@@ -77,7 +77,6 @@ func Example_countAndAggregatePrefix() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	var spans []seekparquet.RowSpan
 	var counts seekparquet.ReadStats
 	for _, entry := range entries {
 		_, startKnown := entry.Rows.Start.Ordinal()
@@ -91,11 +90,35 @@ func Example_countAndAggregatePrefix() {
 		}
 		n, exact := p.Count()
 		fmt.Printf("%s: %d rows, exact=%t, reads=%d\n", entry.Bytes(), n, exact, counts.SourceReads)
+	}
+	// Output:
+	// logs/2026/01/: 30 rows, exact=true, reads=0
+	// logs/2026/02/: 40 rows, exact=true, reads=0
+	// logs/2026/03/: 30 rows, exact=true, reads=0
+}
+
+// Fold a column over the rows of listed common prefixes, by position.
+func Example_foldPrefixes() {
+	ctx := context.Background()
+	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer d.Close()
+	entries, err := d.List(ctx, seekparquet.ListQuery{
+		Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 3,
+	}, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// The third entry establishes the end of the second.
+	var spans []seekparquet.RowSpan
+	for _, entry := range entries[:2] {
 		spans = append(spans, entry.Rows)
 	}
 
-	// Sum size over the first two entries. Each run of rows Add receives
-	// lies in the same spans, so Add needs no ordinal arithmetic.
+	// Sum size. Each run of rows Add receives lies in the same spans, so
+	// Add needs no ordinal arithmetic.
 	sum := seekparquet.Fold[int64]{
 		Columns: []string{"size"},
 		Add: func(acc *int64, rows *seekparquet.ValueBatch) error {
@@ -113,23 +136,21 @@ func Example_countAndAggregatePrefix() {
 		Merge: func(into, from *int64) { *into += *from },
 	}
 	var scan seekparquet.ReadStats
-	results, err := seekparquet.FoldRows(ctx, d, spans[:2], sum, seekparquet.FoldOptions{}, &scan)
+	results, err := seekparquet.FoldRows(ctx, d, spans, sum, seekparquet.FoldOptions{}, &scan)
 	if err != nil {
 		log.Fatal(err)
 	}
-	sums := make([]int64, len(results))
 	for i, r := range results {
 		if r.Status != seekparquet.FoldExact {
 			log.Fatal("the span covers a part no read has checked")
 		}
-		sums[i] = r.Value
+		fmt.Printf("%s: size %d\n", entries[i].Bytes(), r.Value)
 	}
-	fmt.Printf("size sums per input: %v; key pages decoded: %d\n", sums, scan.KeyPagesDecoded)
+	fmt.Println("key pages decoded:", scan.KeyPagesDecoded)
 	// Output:
-	// logs/2026/01/: 30 rows, exact=true, reads=0
-	// logs/2026/02/: 40 rows, exact=true, reads=0
-	// logs/2026/03/: 30 rows, exact=true, reads=0
-	// size sums per input: [31543127898 43279389918]; key pages decoded: 0
+	// logs/2026/01/: size 31543127898
+	// logs/2026/02/: size 43279389918
+	// key pages decoded: 0
 }
 
 // Resolve an unknown listing boundary with a key-range plan.
@@ -174,7 +195,7 @@ func ExampleValidateDir() {
 	ctx := context.Background()
 	report, err := seekparquet.ValidateDir(ctx, "../conformance/datasets/multipart", seekparquet.ValidateOptions{Level: seekparquet.LevelFull})
 	if err != nil {
-		log.Fatal(err) // the directory cannot be opened, or ctx ended
+		log.Fatal(err) // the directory cannot be opened, the request is invalid, or ctx ended
 	}
 	for _, level := range report.Levels {
 		fmt.Println(level.Level, level.Result)
