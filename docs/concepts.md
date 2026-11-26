@@ -121,12 +121,12 @@ to `End` exclusive; unlike the key-based `Span`, its zero value is invalid input
 
 A listing gives each entry its candidate rows as a row span (`ListEntry.Rows`), with the boundaries its
 traversal established without extra reads. A cursor or end bound inside a common prefix leaves only part of the
-prefix in its span. A boundary can be unknown, for example a common prefix's end when the listing stops at its
-result limit; unknown never means empty or zero. Known spans plan and count without storage reads
-(`Dataset.PlanRows`, `Plan.Count`), and a fold (`FoldRows`) reduces the projected columns at those positions
-with the caller's function, without decoding keys unless asked to check them. The
-[counting guide](guides/counting.md) shows the workflow, the fallback for unknown boundaries, and what each
-step reads.
+prefix in its span. A boundary can be unknown, for example the end of a common prefix the listing did not
+pass before its result limit; unknown never means empty or zero. A count of known spans reads nothing
+(`Dataset.PlanRows` with no columns, then `Plan.Count`). A fold (`FoldRows`) reduces the projected columns at
+those positions with the caller's function; unless asked to check keys, it decodes no key page it was not asked
+to project. The [counting guide](guides/counting.md) shows the workflow, the fallback for unknown boundaries,
+and what each step reads.
 
 ## Pagination
 

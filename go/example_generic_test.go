@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
+	"math/big"
 	"slices"
 	"sync/atomic"
 
@@ -46,28 +46,24 @@ func ExampleFold() {
 		log.Fatal(err)
 	}
 
-	// Count rows, and sum and count the nulls of size. Merge cannot fail,
-	// so an overflow is carried in the accumulator.
+	// Count rows, and sum and count the nulls of size. The sum is exact
+	// however FoldRows groups the rows, so check its range on the result.
 	type totals struct {
-		rows, size, nulls int64
-		overflow          bool
-	}
-	addSize := func(t *totals, n int64) {
-		if n > 0 && t.size > math.MaxInt64-n || n < 0 && t.size < math.MinInt64-n {
-			t.overflow = true
-		}
-		t.size += n
+		rows, nulls int64
+		size        *big.Int
 	}
 	fold := seekparquet.Fold[totals]{
 		Columns: []string{"size"},
+		New:     func() totals { return totals{size: new(big.Int)} },
 		Add: func(acc *totals, rows *seekparquet.ValueBatch) error {
 			sizes := rows.Column(0)
 			acc.rows += int64(rows.Len())
+			var n big.Int
 			for i := range rows.Len() {
 				if sizes.IsNull(i) {
 					acc.nulls++
 				} else {
-					addSize(acc, sizes.Int64(i))
+					acc.size.Add(acc.size, n.SetInt64(sizes.Int64(i)))
 				}
 			}
 			return nil
@@ -75,8 +71,7 @@ func ExampleFold() {
 		Merge: func(into, from *totals) {
 			into.rows += from.rows
 			into.nulls += from.nulls
-			into.overflow = into.overflow || from.overflow
-			addSize(into, from.size)
+			into.size.Add(into.size, from.size)
 		},
 	}
 	results, err := seekparquet.FoldRows(ctx, d, plan.InputRowSpans(), fold,
@@ -88,7 +83,7 @@ func ExampleFold() {
 		switch {
 		case r.Status != seekparquet.FoldExact:
 			fmt.Println("not exact")
-		case r.Value.overflow:
+		case !r.Value.size.IsInt64():
 			fmt.Println("size overflows int64")
 		default:
 			fmt.Printf("rows=%d size=%d nulls=%d\n", r.Value.rows, r.Value.size, r.Value.nulls)

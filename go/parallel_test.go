@@ -153,8 +153,8 @@ func TestScanParallelStopErrorsStats(t *testing.T) {
 }
 
 // TestScanParallelNegativeWorkers: a negative worker count is
-// ErrInvalidRequest before the plan is split, with the statistics reset
-// and no callback run. The keys repeat, so splitting would read key pages.
+// ErrInvalidRequest, with no callback run and the statistics reset, so
+// they record no storage read.
 func TestScanParallelNegativeWorkers(t *testing.T) {
 	_, p := parallelFixture(t, 1200, 30, true)
 	for _, workers := range []int{-1, math.MinInt} {

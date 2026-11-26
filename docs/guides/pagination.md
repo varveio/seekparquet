@@ -68,12 +68,13 @@ for n := 1; ; n++ {
 **Java:** the same, with `limit(size + 1)` and `ListQuery.next(entry)` on the last entry kept.
 
 The entry beyond the page tells you that another page follows. The Go reader fills a listing to its `Limit`
-unless the candidates run out, so a listing of `Limit` entries or fewer is the last page, with no empty page
-after it. The format allows a shorter listing ([LIST-4](../../spec/format-1.md#list-4)); a reader of this
+unless the candidates run out, so a listing of the page size or fewer entries is the last page, with no empty
+page after it. The format allows a shorter listing ([LIST-4](../../spec/format-1.md#list-4)); a reader of this
 repository returns one only at the end.
 
-Listing one entry more also establishes the end of the last common prefix you keep, so every common prefix of
-the page has known rows to [count or fold](#count-and-fold-the-prefixes-of-a-page).
+Listing one entry more also establishes the end of the last common prefix you keep, unless the query's `End`
+cuts into it. Check a common prefix's `Rows` boundaries before you
+[count or fold](#count-and-fold-the-prefixes-of-a-page) its rows.
 
 `ListQuery.Limit` is an `int`. Refuse a page size of `math.MaxInt` before you add one, as the example does.
 

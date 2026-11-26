@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"math/big"
 	"math/rand/v2"
 	"reflect"
 	"slices"
@@ -271,6 +272,42 @@ func TestFoldRowsMergeCopies(t *testing.T) {
 		got[1].Value["changed"]++
 		if !reflect.DeepEqual(got[3].Value, before) {
 			t.Fatalf("workers=%d: changing one duplicate's result changed the other's", workers)
+		}
+	}
+}
+
+// TestFoldRowsGroupingOverflow: how a span's rows are grouped into
+// accumulators depends on the spans folded with it, so ExampleFold sums
+// size exactly and checks the range of the result. Sizes MaxInt64, 1 and
+// -1 sum to MaxInt64; a partial sum of the first two overflows int64, and
+// folding the span of the last two keeps them out of one accumulator.
+func TestFoldRowsGroupingOverflow(t *testing.T) {
+	d := verified(t, write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: []testutil.Row{
+		{Key: []byte("a"), Size: ptr(int64(math.MaxInt64))},
+		{Key: []byte("b"), Size: ptr(int64(1))},
+		{Key: []byte("c"), Size: ptr(int64(-1))},
+	}}}}), OpenOptions{})
+	// ExampleFold's arithmetic of size.
+	type totals struct{ size *big.Int }
+	sum := Fold[totals]{
+		Columns: []string{"size"},
+		New:     func() totals { return totals{size: new(big.Int)} },
+		Add: func(acc *totals, rows *ValueBatch) error {
+			sizes := rows.Column(0)
+			var n big.Int
+			for i := range rows.Len() {
+				acc.size.Add(acc.size, n.SetInt64(sizes.Int64(i)))
+			}
+			return nil
+		},
+		Merge: func(into, from *totals) { into.size.Add(into.size, from.size) },
+	}
+	all, last := d.r.rowSpan(0, 3), d.r.rowSpan(1, 3)
+	for _, spans := range [][]RowSpan{{all}, {all, last}} {
+		out, err := FoldRows(ctx, d, spans, sum, FoldOptions{}, nil)
+		must(t, err)
+		if r := out[0]; r.Status != FoldExact || !r.Value.size.IsInt64() || r.Value.size.Int64() != math.MaxInt64 {
+			t.Fatalf("%d spans: %v %v, want exact %d", len(spans), r.Status, r.Value.size, int64(math.MaxInt64))
 		}
 	}
 }

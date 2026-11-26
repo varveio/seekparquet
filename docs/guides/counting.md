@@ -70,9 +70,9 @@ span's ends, so it does not check their order; [check keys](#check-keys) shows a
 
 A boundary of a row span can be unknown, and unknown never means empty or zero:
 
-- A common prefix's end is unknown when the listing stops at its result limit on that prefix, or when the
-  listing's `End` falls inside it. Listing one entry beyond the prefix establishes its end; here a result
-  limit of four passes all three prefixes.
+- A listing that reaches its result limit on a common prefix can leave the prefix's end unknown. Listing
+  past the prefix establishes its end, unless the listing's `End` cuts into the prefix; here a result limit
+  of four passes all three prefixes.
 - `PlanRows` refuses an unknown boundary as an invalid request. [Resolve it](#resolve-unknown-rows) with a
   key-range plan.
 - A listing's `Cursor` or `End` can cut into a common prefix. Its span then holds only the rows that listing
@@ -174,28 +174,24 @@ if err != nil {
 	log.Fatal(err)
 }
 
-// Count rows, and sum and count the nulls of size. Merge cannot fail,
-// so an overflow is carried in the accumulator.
+// Count rows, and sum and count the nulls of size. The sum is exact
+// however FoldRows groups the rows, so check its range on the result.
 type totals struct {
-	rows, size, nulls int64
-	overflow          bool
-}
-addSize := func(t *totals, n int64) {
-	if n > 0 && t.size > math.MaxInt64-n || n < 0 && t.size < math.MinInt64-n {
-		t.overflow = true
-	}
-	t.size += n
+	rows, nulls int64
+	size        *big.Int
 }
 fold := seekparquet.Fold[totals]{
 	Columns: []string{"size"},
+	New:     func() totals { return totals{size: new(big.Int)} },
 	Add: func(acc *totals, rows *seekparquet.ValueBatch) error {
 		sizes := rows.Column(0)
 		acc.rows += int64(rows.Len())
+		var n big.Int
 		for i := range rows.Len() {
 			if sizes.IsNull(i) {
 				acc.nulls++
 			} else {
-				addSize(acc, sizes.Int64(i))
+				acc.size.Add(acc.size, n.SetInt64(sizes.Int64(i)))
 			}
 		}
 		return nil
@@ -203,8 +199,7 @@ fold := seekparquet.Fold[totals]{
 	Merge: func(into, from *totals) {
 		into.rows += from.rows
 		into.nulls += from.nulls
-		into.overflow = into.overflow || from.overflow
-		addSize(into, from.size)
+		into.size.Add(into.size, from.size)
 	},
 }
 results, err := seekparquet.FoldRows(ctx, d, plan.InputRowSpans(), fold,
@@ -216,7 +211,7 @@ for _, r := range results {
 	switch {
 	case r.Status != seekparquet.FoldExact:
 		fmt.Println("not exact")
-	case r.Value.overflow:
+	case !r.Value.size.IsInt64():
 		fmt.Println("size overflows int64")
 	default:
 		fmt.Printf("rows=%d size=%d nulls=%d\n", r.Value.rows, r.Value.size, r.Value.nulls)
@@ -233,8 +228,8 @@ for _, r := range results {
 A `Fold` names its `Columns` and three functions:
 
 - `New` returns an empty accumulator; nil means the zero value.
-- `Add` folds a borrowed run of rows into an accumulator. Every run lies in the same spans, so `Add` needs no
-  ordinal arithmetic. It filters by skipping rows.
+- `Add` folds a borrowed run of rows into an accumulator. Every run lies in the same admitted spans, so
+  `Add` needs no ordinal arithmetic. It filters by skipping rows.
 - `Merge` folds one accumulator into another, on the calling goroutine after the scan.
 
 The reduction must be associative and commutative. Each worker folds into accumulators of its own, so `Add`
@@ -249,8 +244,9 @@ The arithmetic is yours:
 - Check each part's annotations with [`Dataset.Columns`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Columns).
   Parts agree on physical types ([COL-5](../../spec/format-1.md#col-5)), not on annotations. An annotation
   the reader cannot describe is `LogicalUnrecognized`.
-- Guard against overflow. `Merge` returns no error, so carry an overflow in the accumulator, as the example
-  does.
+- Guard against overflow without breaking associativity. A flag set when a partial sum overflows depends on
+  how `FoldRows` groups the rows. Keep the sum exact, as the example does with a `big.Int`, and check its
+  range on the result.
 
 ## Fold the rows of a listing
 
@@ -317,10 +313,11 @@ fmt.Println("key pages decoded:", scan.KeyPagesDecoded)
 
 **Java:** not available.
 
-Without `CheckKeys`, a fold trusts the positions: it decodes no key page and reads the projected columns
-only. The parts and pages it reads get their usual checks, and a projected key column is read as a value
-column. A span that covers a part no read has checked is `FoldUnknown`, and none of its values is read.
-The listing checks the parts it reads; `Verify` or `CheckKeys` checks the rest.
+Without `CheckKeys`, a fold trusts the positions: it reads the projected columns only, and decodes key pages
+only when the key column is one of them, as a value column. The parts and pages it reads get their usual
+checks. A span that covers a part no read has checked is `FoldUnknown` and admits no work of its own; rows it
+shares with an admitted span are still read for that span. The listing checks the parts it reads; `Verify`
+or `CheckKeys` checks the rest.
 
 ## Value budgets and statuses
 
@@ -401,9 +398,9 @@ prefix's `size` at **1 physical request, 1 round, 6,153 bytes**, for both its sc
 complete prefixes than fit admits exactly nine. These describe that test's fixture, not arbitrary prefixes.
 
 `ProjectedBytes()` counts unique compressed projected page and dictionary extents, once each for the selected
-union. It excludes footers, indexes and key reads, and is not a transfer estimate or a request count. A chunk
-without an OffsetIndex makes it inexact: check the boolean. Byte caching is the storage layer's, for
-`FoldRows` and `Plan.Scan` alike.
+union. It excludes footers, page indexes and the key reads a scan makes for its own keys; a projected key
+column counts like any other. It is not a transfer estimate or a request count. A chunk without an OffsetIndex
+makes it inexact: check the boolean. Byte caching is the storage layer's, for `FoldRows` and `Plan.Scan` alike.
 
 ## Respect the dataset lifetime
 

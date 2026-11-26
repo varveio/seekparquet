@@ -67,7 +67,7 @@
         {"concept": "Plan a read of selections", "go": "Dataset.Plan", "java": "Dataset.plan"},
         {"concept": "A plan", "go": "Plan", "java": "Plan"},
         {"concept": "Rows a plan selects", "go": "Plan.Count", "java": "Plan.count", "note": "Java returns an Estimate(value, exact); Go returns the two values."},
-        {"concept": "Accounted compressed bytes of projected columns", "go": "Plan.ProjectedBytes", "java": "Plan.projectedBytes", "note": "Excludes footers, page indexes and key pages. Chunks without OffsetIndexes are omitted and make the estimate inexact; it is not total scan I/O or an upper bound."},
+        {"concept": "Accounted compressed bytes of projected columns", "go": "Plan.ProjectedBytes", "java": "Plan.projectedBytes", "note": "Excludes footers, page indexes and the key pages a scan reads for its keys. Go counts a projected key column; Java does not, since it takes the key's values from those pages. Chunks without OffsetIndexes are omitted and make the estimate inexact; it is not total scan I/O or an upper bound."},
         {"concept": "Split a plan into shards", "go": "Plan.Split", "java": "Plan.split"},
         {"concept": "Scan a plan", "go": "Plan.Scan", "java": "Plan.scan"},
         {"concept": "Plan a union of row intervals", "go": "Dataset.PlanRows", "java": null, "note": "Go only."},

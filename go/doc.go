@@ -54,8 +54,9 @@
 // borrowed [ValueBatch] values of physical type: the arithmetic, and the
 // check of each column's annotation ([Dataset.Columns]), are the caller's.
 // Each result has a [FoldStatus]. Without [FoldOptions.CheckKeys] a fold
-// decodes no key page, and a span over a part no read has checked is
-// [FoldUnknown]. See the [counting guide] for complete examples.
+// decodes no key page unless it projects the key column, and a span over
+// a part no read has checked is [FoldUnknown]. See the [counting guide]
+// for complete examples.
 //
 // # Equal keys and pagination
 //

@@ -434,6 +434,10 @@ func TestPendingJavaParityRows(t *testing.T) {
 	}
 	edit(t, root, "docs/data/parity.json", `"go": "Plan.InputRowSpans"`, `"go": "Plan.NoSuchMethod"`)
 	if got := checkErr(t, root); !strings.Contains(got, "Go has no Plan.NoSuchMethod") {
+		t.Fatalf("ordinary row bypassed Go check: %s", got)
+	}
+	edit(t, root, "docs/data/parity.json", `"go": "ListEntry.Rows", "java": "ListEntry.rows"`, `"go": "ListEntry.NoSuchRows", "java": "ListEntry.rows"`)
+	if got := checkErr(t, root); !strings.Contains(got, "Go has no ListEntry.NoSuchRows") {
 		t.Fatalf("pending row bypassed Go check: %s", got)
 	}
 }

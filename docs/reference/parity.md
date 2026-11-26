@@ -72,7 +72,7 @@ A dash means the language has no counterpart. Names are checked against the code
 | Plan a read of selections | `Dataset.Plan` | `Dataset.plan` |  |
 | A plan | `Plan` | `Plan` |  |
 | Rows a plan selects | `Plan.Count` | `Plan.count` | Java returns an Estimate(value, exact); Go returns the two values. |
-| Accounted compressed bytes of projected columns | `Plan.ProjectedBytes` | `Plan.projectedBytes` | Excludes footers, page indexes and key pages. Chunks without OffsetIndexes are omitted and make the estimate inexact; it is not total scan I/O or an upper bound. |
+| Accounted compressed bytes of projected columns | `Plan.ProjectedBytes` | `Plan.projectedBytes` | Excludes footers, page indexes and the key pages a scan reads for its keys. Go counts a projected key column; Java does not, since it takes the key's values from those pages. Chunks without OffsetIndexes are omitted and make the estimate inexact; it is not total scan I/O or an upper bound. |
 | Split a plan into shards | `Plan.Split` | `Plan.split` |  |
 | Scan a plan | `Plan.Scan` | `Plan.scan` |  |
 | Plan a union of row intervals | `Dataset.PlanRows` | — | Go only. |
