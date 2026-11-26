@@ -5,6 +5,14 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+## v0.3.0 (2026-11-27)
+
+Changes since `go/v0.2.0`. Implements format 1, draft revision 1 (on disk `format_version` 0,
+`draft_revision` 1). Passes conformance revision `0.1.0-draft.5`, targets `reader`, `validator-structural`,
+`validator-profile`, `validator-full` and `validator-digest`, with the optional `verify` and `planning`
+capabilities. No format change. The API changes are breaking: the section below is the migration, in the
+order to apply it.
+
 ### Breaking
 
 - Removed, with what replaces them:

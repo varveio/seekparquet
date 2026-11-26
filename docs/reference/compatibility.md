@@ -29,7 +29,7 @@ change is announced. The current versions are in [spec/status.json](../../spec/s
 Depend on a release:
 
 ```sh
-go get github.com/varveio/seekparquet/go@v0.2.0
+go get github.com/varveio/seekparquet/go@v0.3.0
 ```
 
 Read the [changelog](../../go/CHANGELOG.md) before moving to a later minor version: it lists every break.
