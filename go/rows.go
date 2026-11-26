@@ -13,10 +13,10 @@ import (
 // It identifies the row following the boundary, or the end of the dataset.
 //
 // Positions are produced by the reader, may be copied, and remain inspectable
-// after Dataset.Close. In-memory selection with Plan.SelectRows also remains
-// allowed; planning with Dataset.PlanRows and executing scans require the open
-// Dataset. Positions are not portable between Dataset handles, even handles
-// opened on the same source. The zero value is unknown.
+// after Dataset.Close; planning with Dataset.PlanRows and executing scans
+// require the open Dataset. Positions are not portable between Dataset
+// handles, even handles opened on the same source. The zero value is
+// unknown.
 type RowPosition struct {
 	// ds is the Dataset's reader.id, zero for an unknown position.
 	ds      uint64
@@ -151,7 +151,7 @@ func (plan *Plan) InputRowSpans() []RowSpan {
 	return out
 }
 
-// SelectRows returns a plan for the union of spans using p's projection.
+// selectRows returns a plan for the union of spans using p's projection.
 // Every span must have known positions from p's Dataset and be wholly
 // contained in p's selected rows; otherwise it returns ErrInvalidRequest.
 //
@@ -161,9 +161,9 @@ func (plan *Plan) InputRowSpans() []RowSpan {
 //
 // The page locations p shares are those the Dataset keeps within
 // Limits.OffsetIndexMemory. Other locations are unavailable, making
-// ProjectedBytes inexact. SelectRows also works after Dataset.Close;
+// ProjectedBytes inexact. selectRows also works after Dataset.Close;
 // scanning the returned plan then fails with ErrClosed.
-func (plan *Plan) SelectRows(spans []RowSpan) (*Plan, error) {
+func (plan *Plan) selectRows(spans []RowSpan) (*Plan, error) {
 	r := plan.r
 	inputs, err := r.rowRanges(spans)
 	if err != nil {

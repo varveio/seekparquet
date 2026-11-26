@@ -122,8 +122,8 @@ to `End` exclusive; unlike the key-based `Span`, its zero value is invalid input
 A listing gives each entry its candidate rows as a row span (`ListEntry.Rows`), with the boundaries its
 traversal established without extra reads. A boundary can be unknown, for example a common prefix's end when
 the listing stops at its result limit; unknown never means empty or zero. Known spans plan and count without
-storage reads (`Dataset.PlanRows`, `Plan.Count`), and a **value-only scan** (`Plan.ScanValues`) reads projected
-columns at those positions without decoding keys. The [counting guide](guides/counting.md) shows the workflow,
+storage reads (`Dataset.PlanRows`, `Plan.Count`), and a fold (`FoldRows`) reads projected columns at those
+positions without decoding keys unless asked to check them. The [counting guide](guides/counting.md) shows the workflow,
 the fallback for unknown boundaries, and what each step reads.
 
 ## Pagination

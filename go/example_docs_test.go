@@ -60,7 +60,7 @@ func Example_readme() {
 	// page 2: logs/2026/03/
 }
 
-// Count known listing spans without storage reads, then aggregate per input span.
+// Count known listing spans without storage reads, then sum a column per span.
 func Example_countAndAggregatePrefix() {
 	ctx := context.Background()
 	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
@@ -94,44 +94,35 @@ func Example_countAndAggregatePrefix() {
 		spans = append(spans, entry.Rows)
 	}
 
-	// Load projection metadata once for the listed rows, then select the
-	// first two entries without I/O. InputRowSpans preserves the input order.
-	all, err := d.PlanRows(ctx, spans, []string{"size"}, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	inputs := all.InputRowSpans()[:2]
-	selected, err := all.SelectRows(inputs)
-	if err != nil {
-		log.Fatal(err)
-	}
-	sums := make([]int64, len(inputs))
-	var scan seekparquet.ReadStats
-	err = selected.ScanValues(ctx, &scan, func(b *seekparquet.ValueBatch) error {
-		column := b.Column(0)
-		if !column.Present() || column.Kind() != seekparquet.KindInt64 {
-			return fmt.Errorf("size must be an INT64 column")
-		}
-		start, _ := b.Start().Ordinal()
-		for i := range b.Len() {
-			if column.IsNull(i) {
-				continue
+	// Sum size over the first two entries. Each run of rows Add receives
+	// lies in the same spans, so Add needs no ordinal arithmetic.
+	sum := seekparquet.Fold[int64]{
+		Columns: []string{"size"},
+		Add: func(acc *int64, rows *seekparquet.ValueBatch) error {
+			column := rows.Column(0)
+			if !column.Present() || column.Kind() != seekparquet.KindInt64 {
+				return fmt.Errorf("size must be an INT64 column")
 			}
-			// Union normalization may join adjacent inputs into one batch.
-			// Distribute each row by ordinal, including to overlapping inputs.
-			ordinal := start + int64(i)
-			for j, span := range inputs {
-				lo, _ := span.Start.Ordinal()
-				hi, _ := span.End.Ordinal()
-				if lo <= ordinal && ordinal < hi {
-					sums[j] += column.Int64(i)
+			for i := range rows.Len() {
+				if !column.IsNull(i) {
+					*acc += column.Int64(i)
 				}
 			}
-		}
-		return nil
-	})
+			return nil
+		},
+		Merge: func(into, from *int64) { *into += *from },
+	}
+	var scan seekparquet.ReadStats
+	results, err := seekparquet.FoldRows(ctx, d, spans[:2], sum, seekparquet.FoldOptions{}, &scan)
 	if err != nil {
 		log.Fatal(err)
+	}
+	sums := make([]int64, len(results))
+	for i, r := range results {
+		if r.Status != seekparquet.FoldExact {
+			log.Fatal("the span covers a part no read has checked")
+		}
+		sums[i] = r.Value
 	}
 	fmt.Printf("size sums per input: %v; key pages decoded: %d\n", sums, scan.KeyPagesDecoded)
 	// Output:

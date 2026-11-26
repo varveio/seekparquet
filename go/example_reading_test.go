@@ -98,7 +98,7 @@ func ExampleListEntry_exact() {
 		log.Fatal(err)
 	}
 	for _, entry := range entries {
-		if entry.IsPrefix() && entry.Exact != nil {
+		if entry.CommonPrefix != nil && entry.Exact != nil {
 			fmt.Printf("prefix %s, exact row %s\n", entry.CommonPrefix, entry.Exact.Key)
 		}
 	}

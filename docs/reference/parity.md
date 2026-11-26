@@ -77,8 +77,6 @@ A dash means the language has no counterpart. Names are checked against the code
 | Scan a plan | `Plan.Scan` | `Plan.scan` |  |
 | Plan a union of row intervals | `Dataset.PlanRows` | `Dataset.planRows` | Java pending on the planned Java row-position API, absent from Java today. |
 | Input row intervals before union normalization | `Plan.InputRowSpans` | `Plan.inputRowSpans` | Java pending on the planned Java row-position API, absent from Java today. |
-| Select contained rows without I/O | `Plan.SelectRows` | `Plan.selectRows` | Java pending on the planned Java row-position API, absent from Java today. |
-| Scan projected values by row position | `Plan.ScanValues` | `Plan.scanValues` | Java pending on the planned Java row-position API, absent from Java today. |
 | Borrowed projected values | `ValueBatch` | `ValueBatch` | Java pending on the planned Java row-position API, absent from Java today. |
 | Rows in a value batch | `ValueBatch.Len` | `ValueBatch.len` | Java pending on the planned Java row-position API, absent from Java today. |
 | First row of a value batch | `ValueBatch.Start` | `ValueBatch.start` | Java pending on the planned Java row-position API, absent from Java today. |
@@ -144,29 +142,12 @@ A dash means the language has no counterpart. Names are checked against the code
 | Concept | Go | Java | Note |
 |---|---|---|---|
 | Scan a plan with queued workers | `Plan.ScanParallel` | — | Go only; not in Java yet. |
-| Aggregate key selections | `Dataset.Aggregate` | — | Go only; not in Java yet. |
-| Aggregate established row spans | `Dataset.AggregateRows` | — | Go only; not in Java yet. |
-| Named reduction | `Reduction` | — | Go only; not in Java yet. |
-| Reduction operation | `AggregateOp` | — | Go only; not in Java yet. |
-| Count rows | `CountRows` | — | Go only; not in Java yet. |
-| Sum integers | `Sum` | — | Go only; not in Java yet. |
-| Maximum value | `Max` | — | Go only; not in Java yet. |
-| Count present nulls | `CountNulls` | — | Go only; not in Java yet. |
-| Count absent columns | `CountAbsent` | — | Go only; not in Java yet. |
-| Aggregation options | `AggregateOptions` | — | Go only; not in Java yet. |
-| Borrowed batch predicate | `BatchFilter` | — | Go only; not in Java yet. |
-| Aggregation result | `AggregateResult` | — | Go only; not in Java yet. |
-| Aggregation completeness | `AggregateStatus` | — | Go only; not in Java yet. |
-| Unknown aggregate | `AggregateUnknown` | — | Go only; not in Java yet. |
-| Exact aggregate | `AggregateExact` | — | Go only; not in Java yet. |
-| Value budget exceeded | `AggregateBudgetExceeded` | — | Go only; not in Java yet. |
-| Unpriced value extents | `AggregateUnpriced` | — | Go only; not in Java yet. |
-| Sum overflow | `AggregateOverflow` | — | Go only; not in Java yet. |
 | Fold established row spans with a caller's accumulator | `FoldRows` | — | Go only; not in Java yet. |
 | Caller's reduction of rows | `Fold` | — | Go only; not in Java yet. |
 | Fold options | `FoldOptions` | — | Go only; not in Java yet. |
 | Fold result | `FoldResult` | — | Go only; not in Java yet. |
-| Listing page with prefix aggregates | `Dataset.Page` | — | Go only; not in Java yet. |
-| Page request | `PageQuery` | — | Go only; not in Java yet. |
-| Page entry | `PageEntry` | — | Go only; not in Java yet. |
-| Page result | `Page` | — | Go only; not in Java yet. |
+| Fold completeness | `FoldStatus` | — | Go only; not in Java yet. |
+| Unknown fold | `FoldUnknown` | — | Go only; not in Java yet. |
+| Exact fold | `FoldExact` | — | Go only; not in Java yet. |
+| Value budget exceeded | `FoldBudgetExceeded` | — | Go only; not in Java yet. |
+| Unpriced value extents | `FoldUnpriced` | — | Go only; not in Java yet. |

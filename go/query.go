@@ -222,9 +222,6 @@ type ListEntry struct {
 	Rows RowSpan
 }
 
-// IsPrefix reports whether the entry is a common prefix.
-func (e ListEntry) IsPrefix() bool { return e.Row == nil }
-
 // Bytes returns the entry's bytes, by which entries are ordered: the
 // common prefix, or the row's key. To continue a listing, use Cursor.
 func (e ListEntry) Bytes() []byte {

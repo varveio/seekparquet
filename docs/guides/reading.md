@@ -211,7 +211,7 @@ for {
 
 ## List with a delimiter
 
-Pass a byte delimiter to `List`; inspect `IsPrefix` to distinguish common prefixes from row entries.
+Pass a byte delimiter to `List`; check `CommonPrefix` to distinguish common prefixes from row entries.
 
 **Go**
 
@@ -235,7 +235,7 @@ for page := 1; ; page++ {
 		break
 	}
 	for _, e := range entries {
-		if e.IsPrefix() {
+		if e.CommonPrefix != nil {
 			fmt.Printf("page %d: prefix %s\n", page, e.CommonPrefix)
 		} else {
 			fmt.Printf("page %d: row %s\n", page, e.Row.Key)
@@ -267,7 +267,7 @@ if err != nil {
 	log.Fatal(err)
 }
 for _, entry := range entries {
-	if entry.IsPrefix() && entry.Exact != nil {
+	if entry.CommonPrefix != nil && entry.Exact != nil {
 		fmt.Printf("prefix %s, exact row %s\n", entry.CommonPrefix, entry.Exact.Key)
 	}
 }
@@ -541,7 +541,7 @@ Planning itself can perform I/O and decode boundary key pages ([`Dataset.Plan`](
 
 Not guaranteed: total wire bytes, decoded heap usage, or exact counts for unchecked parts.
 These estimates do not replace resource limits.
-For `PlanRows`, `InputRowSpans`, `SelectRows`, and value-only `ScanValues`, see [counting](counting.md).
+For `PlanRows`, `InputRowSpans` and `FoldRows`, see [counting](counting.md).
 
 **Java:** `Dataset.plan(selections, columns)` returns a `Plan` whose `count()` and `projectedBytes()` are
 `Estimate(value, exact)`. Java takes a projected key column's values from the key pages and counts no bytes

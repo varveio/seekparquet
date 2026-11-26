@@ -123,9 +123,8 @@ below says so, Java reports an unsupported feature or a limit for a file Go read
 | Writing: `write`, `local`, `MarshalManifest` | absent; Java reads only. `Manifest.parse` parses a manifest |
 | Validation at the four levels (`Validate`, `ValidateDir`, `seekparquet validate`) | absent |
 | Footer and key-page inspection (`InspectFooter`, `InspectKeyPages`) | absent |
-| Row positions: `ListEntry.Rows`, `RowPosition`, `RowSpan`, `PlanRows`, `InputRowSpans`, `SelectRows`, `ScanValues`, `ValueBatch` | absent |
-| Aggregation: `Aggregate`, `AggregateRows`, `Reduction`, `BatchFilter` | absent |
-| Browse pages with per-prefix aggregates: `Page` | absent |
+| Row positions: `ListEntry.Rows`, `RowPosition`, `RowSpan`, `PlanRows`, `InputRowSpans`, `ValueBatch` | absent |
+| Folds of row spans: `FoldRows`, `Fold` | absent |
 | Queued parallel scan: `Plan.ScanParallel` | absent; scan `Plan.split` shards on your own threads |
 | Adaptive listing read-ahead (zero `ReadAhead` over a non-local Source), prediction across row groups, read-ahead of key page indexes, gap reads | absent; `ListQuery.Builder.readAhead(n)` is a fixed count, default 0 (off), within one row group ([remote I/O](../docs/guides/remote-io.md#the-java-readers-access-path)) |
 | Forward routing of listing seeks by read-ahead key page indexes | absent; every seek is routed by first keys |

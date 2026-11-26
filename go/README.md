@@ -76,9 +76,9 @@ counts and byte estimates (`Plan`, `Split`, `ScanParallel`) and an optional list
 
 ## Count and aggregate
 
-Reduce named columns over key selections. Each result says whether it is exact.
+Fold the rows of key selections with your own accumulator. Each result says whether it is exact.
 
-<!-- snippet: go/example_generic_test.go#ExampleDataset_Aggregate -->
+<!-- snippet: go/example_generic_test.go#ExampleFold -->
 ```go
 ctx := context.Background()
 d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
@@ -86,23 +86,47 @@ if err != nil {
 	log.Fatal(err)
 }
 defer d.Close()
-if err := d.Verify(ctx, nil); err != nil {
-	log.Fatal(err)
-}
-results, err := d.Aggregate(ctx, []seekparquet.Selection{
+plan, err := d.Plan(ctx, []seekparquet.Selection{
 	{Span: seekparquet.PrefixSpan([]byte("logs/2026/01/"))},
 	{Span: seekparquet.PrefixSpan([]byte("logs/2026/02/"))},
-}, []seekparquet.Reduction{
-	{Op: seekparquet.CountRows},
-	{Op: seekparquet.Sum, Column: "size"},
-	{Op: seekparquet.CountNulls, Column: "size"},
-}, seekparquet.AggregateOptions{ValueBudgetBytes: 4 << 20}, nil)
+}, nil, nil)
+if err != nil {
+	log.Fatal(err)
+}
+
+// Count rows, and sum and count the nulls of an INT64 column.
+type totals struct{ rows, size, nulls int64 }
+fold := seekparquet.Fold[totals]{
+	Columns: []string{"size"},
+	Add: func(acc *totals, rows *seekparquet.ValueBatch) error {
+		sizes := rows.Column(0)
+		if !sizes.Present() || sizes.Kind() != seekparquet.KindInt64 {
+			return fmt.Errorf("size must be an INT64 column")
+		}
+		acc.rows += int64(rows.Len())
+		for i := range rows.Len() {
+			if sizes.IsNull(i) {
+				acc.nulls++
+			} else {
+				acc.size += sizes.Int64(i)
+			}
+		}
+		return nil
+	},
+	Merge: func(into, from *totals) {
+		into.rows += from.rows
+		into.size += from.size
+		into.nulls += from.nulls
+	},
+}
+results, err := seekparquet.FoldRows(ctx, d, plan.InputRowSpans(), fold,
+	seekparquet.FoldOptions{ValueBudgetBytes: 4 << 20, CheckKeys: true}, nil)
 if err != nil {
 	log.Fatal(err)
 }
 for _, r := range results {
-	if r[0].Status == seekparquet.AggregateExact && r[1].Status == seekparquet.AggregateExact {
-		fmt.Printf("rows=%d size=%d nulls=%d\n", r[0].Value.Int64(), r[1].Value.Int64(), r[2].Value.Int64())
+	if r.Status == seekparquet.FoldExact {
+		fmt.Printf("rows=%d size=%d nulls=%d\n", r.Value.rows, r.Value.size, r.Value.nulls)
 	}
 }
 // Output:
@@ -111,9 +135,9 @@ for _, r := range results {
 ```
 <!-- /snippet -->
 
-For browse pages with per-prefix totals (`Page`), counts over listed row spans without storage reads
-(`PlanRows`, `ScanValues`) and filters, see [counting and aggregating](../docs/guides/counting.md) and
-[pagination](../docs/guides/pagination.md#include-complete-prefix-aggregates).
+For counts over listed row spans without storage reads (`PlanRows`) and folds, see
+[counting and aggregating](../docs/guides/counting.md); for pages that count their common prefixes, see
+[pagination](../docs/guides/pagination.md#count-the-common-prefixes-of-a-page).
 
 ## Produce a dataset
 

@@ -140,13 +140,13 @@ It is interpreted against that dataset's keys; results can differ or be empty
 ([PAGE-1](../../spec/format-1.md#page-1), [`Cursor`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Cursor)).
 Reject mismatched envelopes in your service before asking the reader to resume.
 
-## Include complete-prefix aggregates
+## Count the common prefixes of a page
 
-Use [`Dataset.Page`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.Page) to combine listing and named reductions over returned common prefixes.
+List one entry beyond the page with [`Dataset.List`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.List), then count each common prefix it keeps with [`Dataset.PlanRows`](https://pkg.go.dev/github.com/varveio/seekparquet/go#Dataset.PlanRows).
 
 **Go**
 
-<!-- snippet: go/example_generic_test.go#ExampleDataset_Page -->
+<!-- snippet: go/example_generic_test.go#ExampleDataset_List_pages -->
 ```go
 ctx := context.Background()
 d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
@@ -157,22 +157,38 @@ defer d.Close()
 if err := d.Verify(ctx, nil); err != nil {
 	log.Fatal(err)
 }
-q := seekparquet.PageQuery{
-	ListQuery:  seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 2},
-	Reductions: []seekparquet.Reduction{{Op: seekparquet.CountRows}},
-}
+// Pages of two entries. Each listing asks for one entry more, to learn
+// whether another page follows and to establish the rows of the last
+// common prefix it keeps.
+const pageSize = 2
+q := seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: pageSize + 1}
 for {
-	page, err := d.Page(ctx, q, nil)
+	entries, err := d.List(ctx, q, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, entry := range page.Entries {
-		fmt.Printf("%s: %d rows\n", entry.Bytes(), entry.Aggregates[0].Value.Int64())
+	more := len(entries) > pageSize
+	if more {
+		entries = entries[:pageSize]
 	}
-	if page.Next == nil {
+	for _, entry := range entries {
+		_, startKnown := entry.Rows.Start.Ordinal()
+		_, endKnown := entry.Rows.End.Ordinal()
+		if !startKnown || !endKnown {
+			log.Fatal("use a key-range plan for an unknown boundary")
+		}
+		// Counting known rows reads nothing.
+		p, err := d.PlanRows(ctx, []seekparquet.RowSpan{entry.Rows}, nil, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+		n, _ := p.Count()
+		fmt.Printf("%s: %d rows\n", entry.Bytes(), n)
+	}
+	if !more {
 		break
 	}
-	q.Cursor = page.Next
+	q.Cursor = entries[len(entries)-1].Cursor()
 }
 // Output:
 // logs/2026/01/: 30 rows
@@ -181,12 +197,10 @@ for {
 ```
 <!-- /snippet -->
 
-**Java:** not available; the page composition mirror is planned.
+**Java:** not available.
 
-`Page` lists one entry beyond the result limit and sets `Next` only when another page follows.
-Ordinary row entries have nil `Aggregates`; common prefixes follow `PageQuery.Reductions` order.
-`Exact` retains the exact row paired by `List`.
-The reductions describe the complete prefix, including that exact row.
-Unknown boundaries, `End` inside a prefix, and cursors clipping its start leave reductions unknown.
-`Page` performs no fallback seeks to complete them.
-Use `AggregateRows` explicitly when you want totals over clipped candidate rows.
+The entry beyond the page shows whether another page follows; the cursor of the last kept entry continues the listing.
+Listing past the last kept common prefix, when an entry follows it, also establishes the end of its rows.
+A count without storage reads needs both boundaries known.
+`End` inside a prefix leaves its end unknown, and a cursor inside a prefix starts its rows at the first remaining candidate.
+See [resolve unknown rows](counting.md#resolve-unknown-rows) for the fallback, and [`FoldRows`](counting.md#count-and-sum-selections) for other totals.

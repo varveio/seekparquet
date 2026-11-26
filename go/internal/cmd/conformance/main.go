@@ -372,7 +372,7 @@ func (a *adapter) listOp(ctx context.Context, req map[string]json.RawMessage) re
 	}
 	entries := make([]any, 0, len(got))
 	for _, e := range got {
-		if e.IsPrefix() {
+		if e.CommonPrefix != nil {
 			entry := map[string]any{"kind": "prefix", "key_base64": base64.StdEncoding.EncodeToString(e.CommonPrefix)}
 			if e.Exact != nil {
 				row, err := rowEntry(e.Exact)

@@ -5,11 +5,31 @@ versioning; while it is v0, minor versions may change the API.
 
 ## Unreleased
 
+### Breaking
+
+- The named reductions are removed: `Dataset.Aggregate`, `Dataset.AggregateRows`, `Reduction`, `AggregateOp`
+  (`CountRows`, `Sum`, `Max`, `CountNulls`, `CountAbsent`), `AggregateOptions`, `AggregateResult`,
+  `BatchFilter` and `AggregateOverflow`. Reduce rows with `FoldRows` and a `Fold` instead, filtering and
+  widening in `Add`. For key selections, call `Dataset.Plan`, then fold `Plan.InputRowSpans`. For a count
+  with no value reads, call `Dataset.PlanRows` on one span with no columns, then `Plan.Count`.
+- `AggregateStatus` becomes `FoldStatus`, with `FoldUnknown` (the zero value), `FoldExact`,
+  `FoldBudgetExceeded` and `FoldUnpriced`.
+- `FoldOptions.ValueBudgetBytes` is the value budget of `AggregateOptions`, except that zero is unlimited and
+  a negative budget is `ErrInvalidRequest`: replace -1 with 0, and skip a fold that may do no value I/O.
+- `Dataset.Page`, `Page`, `PageQuery` and `PageEntry` are removed. List a page with `Dataset.List` and a
+  `Limit` one above the page size, keep the page, and continue with the `Cursor` of the last kept entry; an
+  entry beyond the page means another follows. Count its common prefixes with `Dataset.PlanRows` and
+  `Plan.Count`, or fold them with `FoldRows`.
+- `Plan.SelectRows` and `Plan.ScanValues` are unexported. Read values by row position with `FoldRows`, or
+  with `Plan.Scan` of a plan from `Dataset.PlanRows`.
+- `ListEntry.IsPrefix` is removed: test `CommonPrefix != nil`.
+
 ### Added
 
 - `FoldRows` reduces established row spans with a caller's accumulator, a `Fold` of `Columns`, `New`, `Add`
-  and `Merge`, with `FoldOptions` and one `FoldResult` per span. Spans, value budgets, key checks and statuses
-  are those of `Dataset.AggregateRows`. Each worker folds into its own accumulators, merged after the scan.
+  and `Merge`, with `FoldOptions` and one `FoldResult` per span. A value budget admits each span's value work
+  whole, and `CheckKeys` checks every selected key. Each worker folds into its own accumulators, merged after
+  the scan.
 
 ### Changed
 

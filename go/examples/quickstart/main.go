@@ -55,7 +55,7 @@ func run(ctx context.Context, dir string, out io.Writer) error {
 		}
 		for _, entry := range entries {
 			kind, key := "prefix", entry.CommonPrefix
-			if !entry.IsPrefix() {
+			if entry.CommonPrefix == nil {
 				kind, key = "row", entry.Row.Key
 			}
 			if _, err := fmt.Fprintf(out, "page %d: %s %s\n", page, kind, key); err != nil {

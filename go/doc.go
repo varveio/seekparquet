@@ -46,10 +46,11 @@
 // dataset, including known [ListEntry.Rows] boundaries. Without columns it
 // does no storage I/O; its count can still be provisional for unchecked
 // parts. [Plan.InputRowSpans] preserves input descriptions before union
-// normalization. [Plan.SelectRows] selects contained spans without I/O.
-// [Plan.ScanValues] visits borrowed [ValueBatch] values without implicit key
-// decoding or equal-key offsets. Unknown boundaries require resolution
-// through Dataset.Plan. See the [counting guide] for complete examples.
+// normalization. [FoldRows] reduces spans with a caller's [Fold], which
+// receives borrowed [ValueBatch] values; without CheckKeys it reads them
+// without implicit key decoding or equal-key offsets. Unknown boundaries
+// require resolution through Dataset.Plan. See the [counting guide] for
+// complete examples.
 //
 // # Equal keys and pagination
 //

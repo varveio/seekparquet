@@ -41,7 +41,7 @@ func TestScanValuesLargeUnindexedWindows(t *testing.T) {
 		src.batches = nil
 		n := 0
 		if mode == 0 {
-			err = p.ScanValues(ctx, nil, func(b *ValueBatch) error {
+			err = p.scanValues(ctx, nil, func(b *ValueBatch) error {
 				for i := range b.Len() {
 					if string(b.Column(0).Bytes(i)) != rows[n+i].Blob {
 						t.Fatal("wrong value")
@@ -82,7 +82,7 @@ func TestScanValuesDictionaryPageLimitBytes(t *testing.T) {
 		must(t, err)
 		var st ReadStats
 		if mode == 0 {
-			err = p.ScanValues(ctx, &st, func(*ValueBatch) error { t.Fatal("decoded oversized dictionary"); return nil })
+			err = p.scanValues(ctx, &st, func(*ValueBatch) error { t.Fatal("decoded oversized dictionary"); return nil })
 		} else {
 			err = p.Scan(ctx, &st, func(*Batch) error { t.Fatal("decoded oversized dictionary"); return nil })
 		}
@@ -129,14 +129,14 @@ func TestScanValuesWindowedDifferential(t *testing.T) {
 					}
 					p, err := d.PlanRows(ctx, []RowSpan{d.r.rowSpan(0, d.r.rows)}, batchOracleColumns, nil)
 					must(t, err)
-					must(t, p.ScanValues(ctx, nil, func(*ValueBatch) error { return Stop }))
+					must(t, p.scanValues(ctx, nil, func(*ValueBatch) error { return Stop }))
 					cctx, cancel := context.WithCancel(ctx)
 					defer cancel()
-					if err := p.ScanValues(cctx, nil, func(*ValueBatch) error { cancel(); return nil }); !errors.Is(err, context.Canceled) {
+					if err := p.scanValues(cctx, nil, func(*ValueBatch) error { cancel(); return nil }); !errors.Is(err, context.Canceled) {
 						t.Fatal(err)
 					}
 					must(t, d.Close())
-					if err := p.ScanValues(ctx, nil, func(*ValueBatch) error { return nil }); !errors.Is(err, ErrClosed) {
+					if err := p.scanValues(ctx, nil, func(*ValueBatch) error { return nil }); !errors.Is(err, ErrClosed) {
 						t.Fatal(err)
 					}
 				})

@@ -311,7 +311,7 @@ func candidateRows(keys [][]byte, q seekparquet.ListQuery, e seekparquet.ListEnt
 			continue
 		}
 		var match bool
-		if e.IsPrefix() {
+		if e.CommonPrefix != nil {
 			rest := k[len(q.Prefix):]
 			j := bytes.IndexByte(rest, q.Delimiter)
 			match = j >= 0 && bytes.Equal(k[:len(q.Prefix)+j+1], e.CommonPrefix)
@@ -377,13 +377,13 @@ func TestPlanRowsInvalid(t *testing.T) {
 		}
 		plan, err := d.PlanRows(ctx, []seekparquet.RowSpan{good}, nil, nil)
 		must(t, err)
-		if _, err := plan.SelectRows([]seekparquet.RowSpan{alien[0].Rows}); !errors.Is(err, seekparquet.ErrInvalidRequest) {
+		if _, err := seekparquet.SelectRows(plan, []seekparquet.RowSpan{alien[0].Rows}); !errors.Is(err, seekparquet.ErrInvalidRequest) {
 			t.Errorf("select alien rows: %v", err)
 		}
-		if _, err := plan.SelectRows([]seekparquet.RowSpan{ents[1].Rows}); !errors.Is(err, seekparquet.ErrInvalidRequest) {
+		if _, err := seekparquet.SelectRows(plan, []seekparquet.RowSpan{ents[1].Rows}); !errors.Is(err, seekparquet.ErrInvalidRequest) {
 			t.Errorf("select rows outside the plan: %v", err)
 		}
-		if err := plan.ScanValues(ctx, nil, nil); !errors.Is(err, seekparquet.ErrInvalidRequest) {
+		if err := seekparquet.ScanValues(ctx, plan, nil, nil); !errors.Is(err, seekparquet.ErrInvalidRequest) {
 			t.Errorf("nil callback: %v", err)
 		}
 		empty, err := d.PlanRows(ctx, nil, nil, nil)
@@ -455,7 +455,7 @@ func TestScanValuesReadsNoKeyPage(t *testing.T) {
 				must(t, err)
 				var rows int64
 				var st seekparquet.ReadStats
-				must(t, p.ScanValues(ctx, &st, func(b *seekparquet.ValueBatch) error {
+				must(t, seekparquet.ScanValues(ctx, p, &st, func(b *seekparquet.ValueBatch) error {
 					rows += int64(b.Len())
 					return nil
 				}))
@@ -496,7 +496,7 @@ func TestScanValuesSourceCache(t *testing.T) {
 						var st seekparquet.ReadStats
 						var rows int64
 						if valuesOnly {
-							must(t, p.ScanValues(ctx, &st, func(b *seekparquet.ValueBatch) error {
+							must(t, seekparquet.ScanValues(ctx, p, &st, func(b *seekparquet.ValueBatch) error {
 								rows += int64(b.Len())
 								return nil
 							}))
@@ -551,7 +551,7 @@ func TestScanValuesWindows(t *testing.T) {
 						op := src.Begin("scan")
 						var rows, sum int64
 						if mode == 0 {
-							must(t, p.ScanValues(ctx, &stats[mode], func(b *seekparquet.ValueBatch) error {
+							must(t, seekparquet.ScanValues(ctx, p, &stats[mode], func(b *seekparquet.ValueBatch) error {
 								rows += int64(b.Len())
 								for i := range b.Len() {
 									sum += b.Column(0).Int64(i)
@@ -617,7 +617,7 @@ func TestScanValuesIndexedPageLimitBytes(t *testing.T) {
 						must(t, err)
 						op := src.Begin("page-limit")
 						if mode == 0 {
-							err = p.ScanValues(ctx, nil, func(*seekparquet.ValueBatch) error { t.Fatal("decoded oversized page"); return nil })
+							err = seekparquet.ScanValues(ctx, p, nil, func(*seekparquet.ValueBatch) error { t.Fatal("decoded oversized page"); return nil })
 						} else {
 							err = p.Scan(ctx, nil, func(*seekparquet.Batch) error { t.Fatal("decoded oversized page"); return nil })
 						}

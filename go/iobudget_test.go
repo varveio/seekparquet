@@ -440,7 +440,7 @@ func ioScenarios(fx *ioFixture) []ioScenario {
 		must(e.t, err)
 		var prefix seekparquet.ListEntry
 		for _, ent := range ents {
-			if ent.IsPrefix() {
+			if ent.CommonPrefix != nil {
 				prefix = ent
 			}
 		}
@@ -454,7 +454,7 @@ func ioScenarios(fx *ioFixture) []ioScenario {
 				return errResult(err)
 			}
 			var sum, rows int64
-			err = p.ScanValues(ctx, nil, func(b *seekparquet.ValueBatch) error {
+			err = seekparquet.ScanValues(ctx, p, nil, func(b *seekparquet.ValueBatch) error {
 				col := b.Column(0)
 				for i := range b.Len() {
 					sum += col.Int64(i)
@@ -472,7 +472,7 @@ func ioScenarios(fx *ioFixture) []ioScenario {
 		must(e.t, err)
 		e.step("sum-all/scan", func() string {
 			var sum, rows int64
-			err := p.ScanValues(ctx, nil, func(b *seekparquet.ValueBatch) error {
+			err := seekparquet.ScanValues(ctx, p, nil, func(b *seekparquet.ValueBatch) error {
 				for i := range b.Len() {
 					sum += b.Column(0).Int64(i)
 				}
@@ -548,7 +548,7 @@ func listText(ents []seekparquet.ListEntry, err error) (string, error) {
 	var b strings.Builder
 	for _, e := range ents {
 		switch {
-		case e.IsPrefix():
+		case e.CommonPrefix != nil:
 			fmt.Fprintf(&b, "prefix %q", e.CommonPrefix)
 			if e.Exact != nil {
 				b.WriteString(" exact ")
@@ -781,8 +781,8 @@ func TestReadBudgets(t *testing.T) {
 // ioBrowseBudgets is measured on ioBrowse through capableStore and
 // noSpeculationStore, which count each range a request (fakestore merges
 // none): a browser's page of acct-0500/, as swath serves one (its
-// TestRequestBudgetsLarge), with the listing's columns, a sum and a count
-// of each prefix, cold on a fresh handle.
+// TestRequestBudgetsLarge), with the listing's columns and a count of each
+// prefix, cold on a fresh handle.
 var ioBrowseBudgets = []ioBudget{
 	{"browse-page/cold", ioMetrics{136, 11, 4950031, 0, 48}, ioTarget{137, 12}, atTarget},
 }
@@ -833,13 +833,16 @@ func TestReadBudgetsBrowsePage(t *testing.T) {
 	ctx := context.Background()
 	scenario := ioScenario{"browse-page", func(e *ioEnv) {
 		d := e.open()
-		q := seekparquet.PageQuery{ListQuery: seekparquet.ListQuery{Prefix: fx.listPrefix, Delimiter: '/', Limit: 1000, Columns: ioColumns},
-			Reductions: []seekparquet.Reduction{{Op: seekparquet.Sum, Column: "size"}, {Op: seekparquet.CountRows}}}
+		q := seekparquet.ListQuery{Prefix: fx.listPrefix, Delimiter: '/', Limit: 1000, Columns: ioColumns}
 		e.step("browse-page/cold", func() string {
-			page, err := d.Page(ctx, q, nil)
+			entries, _, err := seekparquet.ListPage(ctx, d, q, nil)
+			if err != nil {
+				return errResult(err)
+			}
+			counts, err := seekparquet.PrefixCounts(ctx, d, entries)
 			var b strings.Builder
-			for _, ent := range page.Entries {
-				fmt.Fprintf(&b, "%q %v\n", ent.Bytes(), ent.Aggregates)
+			for i, ent := range entries {
+				fmt.Fprintf(&b, "%q %d\n", ent.Bytes(), counts[i])
 			}
 			return withErr(b.String(), err)
 		})

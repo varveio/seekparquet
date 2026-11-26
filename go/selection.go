@@ -24,12 +24,11 @@ import (
 // metadata proves (or the row positions PlanRows is given), the row
 // counts of the row groups, from footers a part check verified (CHECK-1),
 // and the OffsetIndex row positions. Scan decodes every row and checks
-// every key page it reads; ScanValues reads key values only when explicitly
-// projected.
+// every key page it reads.
 //
 // A plan with columns shares the checked page locations the Dataset keeps
-// within Limits.OffsetIndexMemory, read-only, to price SelectRows. Other
-// locations are used transiently to price the original plan, then dropped.
+// within Limits.OffsetIndexMemory, read-only. Other locations are used
+// transiently to price the plan, then dropped.
 type Plan struct {
 	r       *reader
 	columns []string
@@ -46,7 +45,7 @@ type Plan struct {
 	partial bool
 	// groups are the projected bytes counted in each row group holding a
 	// row of the plan, in dataset order, with the page locations that
-	// priced them (SelectRows).
+	// priced them (selectRows).
 	groups []groupBytes
 }
 
@@ -162,16 +161,15 @@ func (d *Dataset) Plan(ctx context.Context, selections []Selection, columns []st
 // row count, and exact is false.
 func (plan *Plan) Count() (n int64, exact bool) { return plan.rows, plan.exact }
 
-// ProjectedBytes returns the unique compressed extents Scan and ScanValues
-// require of the projected columns: for each column chunk the rows span,
-// the extents its OffsetIndex gives the pages holding them and, when the
-// chunk has a dictionary page, the dictionary's, each counted once however
-// many ranges share it. Footers, page indexes and key pages are not
+// ProjectedBytes returns the unique compressed extents Scan requires of
+// the projected columns: for each column chunk the rows span, the extents
+// its OffsetIndex gives the pages holding them and, when the chunk has a
+// dictionary page, the dictionary's, each counted once however many
+// ranges share it. Footers, page indexes and key pages are not
 // counted. It does not say how many storage requests read them: windowing
 // or coalescing may join or split extents. exact is false when a projected
 // chunk has no OffsetIndex (COL-4), whose pages are found by walking their
-// headers, and n omits it; or, for a plan of SelectRows, when the chunk's
-// page locations were not kept.
+// headers, and n omits it.
 func (plan *Plan) ProjectedBytes() (n int64, exact bool) { return plan.bytes, !plan.partial }
 
 // Columns returns the plan's projected column names, in order, as a copy
@@ -327,9 +325,9 @@ func (r *reader) cut(key []byte, inclusive bool) (ordinal int64, ok bool) {
 
 // planColumns checks every part holding a row of the plan and prices the
 // projected bytes (groupBytes.price), keeping each group's page locations
-// for SelectRows: those the Dataset keeps (Limits.OffsetIndexMemory) are
+// for selectRows: those the Dataset keeps (Limits.OffsetIndexMemory) are
 // shared read-only; those it does not are dropped, their chunk then priced
-// as partial by SelectRows.
+// as partial by selectRows.
 func (plan *Plan) planColumns(ctx context.Context, st *ReadStats) error {
 	r := plan.r
 	plan.bytes, plan.partial = 0, false

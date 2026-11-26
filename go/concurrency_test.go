@@ -67,7 +67,7 @@ func TestConcurrentColdIndexes(t *testing.T) {
 						}
 						var out []string
 						for _, e := range entries {
-							if e.IsPrefix() {
+							if e.CommonPrefix != nil {
 								out = append(out, "p:"+string(e.CommonPrefix))
 							} else {
 								out = append(out, fmt.Sprint(*e.Row))
