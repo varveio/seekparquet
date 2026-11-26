@@ -578,3 +578,80 @@ func TestListIndexRegressionLifecycle(t *testing.T) {
 		})
 	}
 }
+
+// TestListIndexBuildLockWait: a build waits for the build lock while
+// another holds it. Cancelled while it waits, it returns its context's
+// error and the holder carries on; once the holder releases the lock, it
+// proceeds and returns the holder's index; Close ends it with ErrClosed.
+func TestListIndexBuildLockWait(t *testing.T) {
+	type outcome struct {
+		stats ListIndexStats
+		err   error
+	}
+	for _, action := range []string{"cancel", "release", "close"} {
+		t.Run(action, func(t *testing.T) {
+			dir := write(t, parts(testutil.Part{GroupRows: 4}, []string{"a/0", "a/1", "b/0", "b/1"}))
+			d := open(t, dir, OpenOptions{})
+			must(t, d.r.checkParts(ctx, new(ReadStats)))
+			p := d.r.parts[0]
+			original := p.file
+			gate := &listBuildGate{ReaderAt: original, entered: make(chan struct{}), release: make(chan struct{})}
+			p.file = gate
+			defer func() { p.file = original }()
+			marked, stopFirst := context.WithCancel(context.WithValue(ctx, listBuildMarker{}, true))
+			defer stopFirst()
+			first := make(chan outcome, 1)
+			go func() { st, e := d.BuildListIndex(marked, ListIndexOptions{}); first <- outcome{st, e} }()
+			awaitListTest(t, gate.entered) // the first build holds the lock
+
+			waiting := make(chan struct{}, 1)
+			testListBuildWait = func() { waiting <- struct{}{} }
+			defer func() { testListBuildWait = nil }()
+			waiter, stopSecond := context.WithCancel(ctx)
+			defer stopSecond()
+			second := make(chan outcome, 1)
+			go func() {
+				st, e := d.BuildListIndex(waiter, ListIndexOptions{MaxBytes: 1})
+				second <- outcome{st, e}
+			}()
+			awaitListTest(t, waiting) // the second build waits for the lock
+
+			switch action {
+			case "cancel":
+				stopSecond()
+				if out := awaitListTest(t, second); !errors.Is(out.err, context.Canceled) || out.stats != (ListIndexStats{}) {
+					t.Fatalf("cancelled waiter: %+v", out)
+				}
+				close(gate.release)
+				out := awaitListTest(t, first)
+				must(t, out.err)
+				if !out.stats.HasIndex || out.stats.OptionsMismatch {
+					t.Fatalf("holder: %+v", out.stats)
+				}
+			case "release":
+				close(gate.release)
+				held := awaitListTest(t, first)
+				must(t, held.err)
+				out := awaitListTest(t, second)
+				must(t, out.err)
+				if !out.stats.OptionsMismatch {
+					t.Fatal("the waiter did not reuse the holder's index")
+				}
+				out.stats.OptionsMismatch = false
+				if out.stats != held.stats {
+					t.Fatalf("waiter %+v, holder %+v", out.stats, held.stats)
+				}
+			case "close":
+				closed := make(chan error, 1)
+				go func() { closed <- d.Close() }()
+				if out := awaitListTest(t, second); !errors.Is(out.err, ErrClosed) {
+					t.Fatalf("waiter: %+v", out)
+				}
+				if out := awaitListTest(t, first); !errors.Is(out.err, ErrClosed) || out.stats.Bytes != 0 {
+					t.Fatalf("holder: %+v", out)
+				}
+				must(t, awaitListTest(t, closed))
+			}
+		})
+	}
+}

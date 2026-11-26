@@ -33,7 +33,7 @@ func TestValidateCorpus(t *testing.T) {
 		t.Run("valid/"+e.Name(), func(t *testing.T) {
 			report, err := ValidateDir(ctx, filepath.Join(corpus, "datasets", e.Name()), ValidateOptions{})
 			must(t, err)
-			if report.Result() != Complete {
+			if report.Result() != ResultComplete {
 				t.Fatalf("got %s", describeReport(report))
 			}
 		})
@@ -45,11 +45,11 @@ func TestValidateCorpus(t *testing.T) {
 	must(t, err)
 	var faults struct {
 		Faults []struct {
-			ID              string   `json:"id"`
-			Dataset         string   `json:"dataset"`
-			ValidationLevel Level    `json:"validation_level"`
-			Outcome         string   `json:"outcome"`
-			Codes           []string `json:"codes"`
+			ID              string          `json:"id"`
+			Dataset         string          `json:"dataset"`
+			ValidationLevel ValidationLevel `json:"validation_level"`
+			Outcome         string          `json:"outcome"`
+			Codes           []string        `json:"codes"`
 			Secondary       []struct {
 				Code string `json:"code"`
 			} `json:"secondary_faults"`
@@ -70,14 +70,14 @@ func TestValidateCorpus(t *testing.T) {
 			for _, lr := range report.Levels {
 				var unsupported *UnsupportedError
 				if lr.Level == f.ValidationLevel && f.Outcome == "unsupported" {
-					if lr.Result != Incomplete || !errors.As(lr.Err, &unsupported) || string(unsupported.Code) != codes[0] {
+					if lr.Result != ResultIncomplete || !errors.As(lr.Err, &unsupported) || string(unsupported.Code) != codes[0] {
 						t.Fatalf("want %s incomplete with %v, got %s", f.ValidationLevel, codes, describeReport(report))
 					}
 				} else if lr.Level == f.ValidationLevel {
-					if lr.Result != Failed || !slices.Contains(codes, string(lr.Failure.Code)) {
+					if lr.Result != ResultFailed || !slices.Contains(codes, string(lr.Failure.Code)) {
 						t.Fatalf("want %s failed with %v, got %s", f.ValidationLevel, codes, describeReport(report))
 					}
-				} else if lr.Result != Complete {
+				} else if lr.Result != ResultComplete {
 					t.Fatalf("want every level below %s complete, got %s", f.ValidationLevel, describeReport(report))
 				}
 			}
@@ -86,7 +86,7 @@ func TestValidateCorpus(t *testing.T) {
 }
 
 // describeReport spells a report for failure messages.
-func describeReport(r *Report) string {
+func describeReport(r *ValidationReport) string {
 	out := ""
 	for _, lr := range r.Levels {
 		out += string(lr.Level) + "=" + string(lr.Result)

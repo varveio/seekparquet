@@ -446,7 +446,7 @@ func (d *Dataset) Verify(ctx context.Context, st *ReadStats) (err error) {
 	return finish(ctx, rctx, d.r.verify(rctx, st))
 }
 
-// Columns returns the top-level columns of part i, an index into
+// Columns returns the top-level columns of part, an index into
 // Metadata().Parts, in schema order, from the footer the dataset checked
 // and holds for that part: if no read has checked the part yet, Columns
 // checks it as the first read to touch it would (CHECK-1), so the answer
@@ -455,17 +455,22 @@ func (d *Dataset) Verify(ctx context.Context, st *ReadStats) (err error) {
 // nesting equal in every checked part that has it; a part may lack a
 // column (COL-2), and logical annotations are not compared, so a caller
 // that needs a column in every part asks for each part, after Verify or
-// not. An index outside the parts is ErrInvalidRequest.
-func (d *Dataset) Columns(ctx context.Context, i int) ([]Column, error) {
-	if i < 0 || i >= len(d.r.parts) {
-		return nil, invalidRequest("part %d of %d", i, len(d.r.parts))
+// not. An index outside the parts is ErrInvalidRequest. st, when not nil,
+// is reset on entry and receives the read statistics, including on error:
+// the check's reads when Columns is the first to touch the part, none
+// after.
+func (d *Dataset) Columns(ctx context.Context, part int, st *ReadStats) ([]Column, error) {
+	st, spare := takeStats(st)
+	defer dropStats(spare)
+	if part < 0 || part >= len(d.r.parts) {
+		return nil, invalidRequest("part %d of %d", part, len(d.r.parts))
 	}
 	rctx, err := d.r.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rctx.end(nil)
-	p, err := d.r.part(rctx, i, new(ReadStats))
+	defer rctx.end(st)
+	p, err := d.r.part(rctx, part, st)
 	if err != nil {
 		return nil, finish(ctx, rctx, err)
 	}

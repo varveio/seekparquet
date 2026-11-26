@@ -193,8 +193,8 @@ func TestCheckCatchesDrift(t *testing.T) {
 		{"go code in an unread form", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch RefusalCode = \"digest_\" + \"mismatch\"", "not a string literal"},
 		{"go conversion in an unread form", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch = RefusalCode(\"digest_\" + \"mismatch\")", "not a string literal"},
 		{"go inferred typed expression", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch RefusalCode = \"digest_mismatch\"\n CodeNewOne = CodeDigestMismatch + \"_new\"", "CodeNewOne has a code type"},
-		{"documented limit without a LimitName", "go/limits.go", "LimitGetRows           LimitName = \"GetRows\"", "", "no LimitName LimitGetRows"},
-		{"cache with an incorrect LimitName", "go/limits.go", "LimitOffsetIndexMemory LimitName = \"OffsetIndexMemory\"", "LimitOffsetIndexMemory LimitName = \"Other\"", "no LimitName LimitOffsetIndexMemory"},
+		{"documented limit without a LimitName", "go/limits.go", "LimitGetRows        LimitName = \"GetRows\"", "", "no LimitName LimitGetRows"},
+		{"cache with an incorrect LimitName", "go/limits.go", "LimitGetRows        LimitName = \"GetRows\"", "LimitGetRows        LimitName = \"GetRows\"\n\tLimitOffsetIndexMemory LimitName = \"Other\"", "no LimitName LimitOffsetIndexMemory"},
 		{"Go-only cache marked as a limit", "docs/data/limits.json", "\"PageIndexCacheMemory\", \"java\": null, \"kind\": \"cache\"", "\"PageIndexCacheMemory\", \"java\": null, \"kind\": \"limit\"", "no LimitName LimitPageIndexCacheMemory"},
 		{"Go-only cache given a Java counterpart", "docs/data/limits.json", "\"PageIndexCacheMemory\", \"java\": null", "\"PageIndexCacheMemory\", \"java\": \"pageIndexCacheMemory\"", "no public constant DEFAULT_PAGE_INDEX_CACHE_MEMORY"},
 		{"Go-only counter given a Java counterpart", "docs/data/read-stats.json", "\"SourceBatches\", \"java\": null", "\"SourceBatches\", \"java\": \"sourceBatches\"", "no component sourceBatches"},
@@ -247,10 +247,14 @@ func TestReaderIOOperationReferences(t *testing.T) {
 	for _, want := range []string{
 		"Dataset.Verify(ctx, stats)",
 		"pass nil to discard statistics",
+		"`Dataset.Columns`", "`FoldRows`", "`Plan.ScanParallel`",
 	} {
 		if !strings.Contains(stats, want) {
 			t.Errorf("statistics reference is missing %q", want)
 		}
+	}
+	if strings.Contains(stats, "BuildListIndex") {
+		t.Error("statistics reference names BuildListIndex, which takes no *ReadStats")
 	}
 	parity, err := g.renderParity()
 	if err != nil {

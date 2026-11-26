@@ -60,7 +60,7 @@ func fullyValid(t testing.TB, dir string) {
 	t.Helper()
 	report, err := ValidateDir(ctx, dir, ValidateOptions{Level: LevelFull})
 	must(t, err)
-	if report.Result() != Complete {
+	if report.Result() != ResultComplete {
 		t.Fatalf("the fixture is not valid: %+v", report.Levels)
 	}
 }

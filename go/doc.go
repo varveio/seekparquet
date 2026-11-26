@@ -28,9 +28,9 @@
 //
 // [Dataset.Verify] checks all parts and selected boundary key pages
 // (CHECK-3); it does not check every row or part digests. [Validate] and
-// [ValidateDir] produce a [Report] at structural, profile, full, or digest
-// levels. Unsupported features, resource limits, and storage failures leave
-// a level incomplete, rather than declaring data invalid. See the
+// [ValidateDir] produce a [ValidationReport] at structural, profile, full,
+// or digest levels. Unsupported features, resource limits, and storage
+// failures leave a level incomplete, rather than declaring data invalid. See the
 // [validation guide] for level selection and the command-line tool.
 //
 // # Planned selections

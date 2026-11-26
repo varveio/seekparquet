@@ -101,7 +101,7 @@ type PartWriter struct {
 	flat  bool           // no leaf column repeats: one value per row in each
 
 	pageRows, groupRows int64
-	baseline            int64 // w.Size() when the row group began
+	baseline            int64 // w.EstimatedSize() when the row group began
 	rows                int64
 	minKey, lastKey     []byte
 	err                 error // the first error, returned by every later call
@@ -544,10 +544,10 @@ func (w *PartWriter) flushGroup() error {
 	return nil
 }
 
-// Size is the part's size so far: the bytes written, plus parquet-go's
-// estimate of the open row group, before compression. The page being
-// filled and the footer are not counted.
-func (w *PartWriter) Size() int64 { return w.w.Size() }
+// EstimatedSize is an estimate of the part's size so far: the bytes
+// written, plus parquet-go's estimate of the open row group, before
+// compression. The page being filled and the footer are not counted.
+func (w *PartWriter) EstimatedSize() int64 { return w.w.Size() }
 
 // Seal ends the part: it encodes the last page and row group, writes the
 // footer, syncs and closes the file, and returns the part's rows, size,

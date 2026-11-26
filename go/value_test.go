@@ -317,7 +317,7 @@ func TestLogicalRoundTrip(t *testing.T) {
 	if (Logical{}).String() != "NONE" || (Logical{}).format() != nil || logicalOf(nil) != (Logical{}) {
 		t.Error("no annotation")
 	}
-	for r, s := range map[Repetition]string{Required: "REQUIRED", Optional: "OPTIONAL", Repeated: "REPEATED"} {
+	for r, s := range map[Repetition]string{RepetitionRequired: "REQUIRED", RepetitionOptional: "OPTIONAL", RepetitionRepeated: "REPEATED"} {
 		if r.String() != s || Repetition(r) != Repetition(format.FieldRepetitionType(r)) {
 			t.Errorf("%d: %q", r, r.String())
 		}
@@ -334,12 +334,12 @@ func TestColumnsConvertedTypeExact(t *testing.T) {
 		want      Logical
 	}{
 		{format.ByteArray, deprecated.UTF8, Logical{Kind: LogicalString}},
-		{format.Int32, deprecated.TimeMillis, Logical{Kind: LogicalTime, Unit: Millis, AdjustedToUTC: true}},
-		{format.Int64, deprecated.TimestampMicros, Logical{Kind: LogicalTimestamp, Unit: Micros, AdjustedToUTC: true}},
+		{format.Int32, deprecated.TimeMillis, Logical{Kind: LogicalTime, Unit: TimeUnitMillis, AdjustedToUTC: true}},
+		{format.Int64, deprecated.TimestampMicros, Logical{Kind: LogicalTimestamp, Unit: TimeUnitMicros, AdjustedToUTC: true}},
 		{format.Int32, deprecated.Uint16, Logical{Kind: LogicalInt, BitWidth: 16}},
 		{format.Int64, deprecated.Int64, Logical{Kind: LogicalInt, BitWidth: 64, Signed: true}},
 		{format.FixedLenByteArray, deprecated.Decimal, Logical{Kind: LogicalDecimal, Precision: 18, Scale: 4}},
-		{format.FixedLenByteArray, deprecated.Interval, Logical{}},
+		{format.FixedLenByteArray, deprecated.Interval, Logical{Kind: LogicalUnrecognized}},
 	}
 	for _, c := range cases {
 		se := format.SchemaElement{Name: "v", Type: thrift.New(c.typ), RepetitionType: thrift.New(format.Repeated),
@@ -348,7 +348,7 @@ func TestColumnsConvertedTypeExact(t *testing.T) {
 			se.TypeLength = thrift.New[int32](12)
 		}
 		col := columnOf(&se, "v")
-		if col.Logical != c.want || col.Type.String() != c.typ.String() || col.Repetition != Repeated || !col.Key {
+		if col.Logical != c.want || col.Type.String() != c.typ.String() || col.Repetition != RepetitionRepeated || !col.Key {
 			t.Errorf("converted %d: %+v, want %+v", c.converted, col, c.want)
 		}
 		if c.typ == format.FixedLenByteArray && col.Length != 12 {
@@ -356,7 +356,7 @@ func TestColumnsConvertedTypeExact(t *testing.T) {
 		}
 	}
 	group := format.SchemaElement{Name: "g", NumChildren: thrift.New[int32](1), RepetitionType: thrift.New(format.Optional)}
-	if col := columnOf(&group, "key"); !col.Group || col.Type != KindNone || col.Repetition != Optional || col.String() != "g group OPTIONAL" {
+	if col := columnOf(&group, "key"); !col.Group || col.Type != KindNone || col.Repetition != RepetitionOptional || col.String() != "g group OPTIONAL" {
 		t.Errorf("group: %+v %q", col, col.String())
 	}
 }

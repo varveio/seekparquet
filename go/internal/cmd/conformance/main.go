@@ -154,12 +154,12 @@ func validateOp(ctx context.Context, req map[string]json.RawMessage) response {
 	if err := field(req, "level", &level); err != nil {
 		return invalid(err)
 	}
-	switch seekparquet.Level(level) {
+	switch seekparquet.ValidationLevel(level) {
 	case seekparquet.LevelStructural, seekparquet.LevelProfile, seekparquet.LevelFull, seekparquet.LevelDigest:
 	default:
 		return invalid(fmt.Errorf("unknown level %q", level))
 	}
-	report, err := seekparquet.ValidateDir(ctx, path, seekparquet.ValidateOptions{Level: seekparquet.Level(level)})
+	report, err := seekparquet.ValidateDir(ctx, path, seekparquet.ValidateOptions{Level: seekparquet.ValidationLevel(level)})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "conformance:", err)
 		return response{"status": "error", "message": err.Error()}
@@ -168,10 +168,10 @@ func validateOp(ctx context.Context, req map[string]json.RawMessage) response {
 	for _, lr := range report.Levels {
 		out := map[string]any{"result": string(lr.Result)}
 		switch lr.Result {
-		case seekparquet.Failed:
+		case seekparquet.ResultFailed:
 			out["code"] = string(lr.Failure.Code)
 			out["message"] = lr.Failure.Error()
-		case seekparquet.Incomplete:
+		case seekparquet.ResultIncomplete:
 			out["reason"] = lr.Reason
 			var u *seekparquet.UnsupportedError
 			if errors.As(lr.Err, &u) {

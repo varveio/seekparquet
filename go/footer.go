@@ -693,26 +693,39 @@ func columnOf(se *format.SchemaElement, keyColumn string) Column {
 	if typ == format.FixedLenByteArray {
 		c.Length = se.TypeLength.V
 	}
-	if v := se.LogicalType.Value; v != nil {
-		switch lt := v.(type) {
-		case *format.TimeType:
-			if lt.Unit.Value == nil {
-				return c
-			}
-		case *format.TimestampType:
-			if lt.Unit.Value == nil {
-				return c
-			}
-		}
-		if _, unknown := v.(*unrecognizedLogicalType); !unknown {
-			c.Logical = logicalOf(v)
-			return c
-		}
-	}
-	if ct, ok := se.ConvertedType.Get(); ok {
-		c.Logical = convertedLogical(ct, se)
-	}
+	c.Logical = leafLogical(se)
 	return c
+}
+
+// leafLogical returns the annotation of a leaf: its logical type, or, when
+// it has none or one the reader does not know, its converted type as
+// convertedLogical maps it. An annotation that yields no Logical that way is
+// LogicalUnrecognized: a logical type the reader does not know, without a
+// converted type it maps; a TIME or TIMESTAMP of a unit it does not know,
+// whose converted type is not used; or a converted type with no logical
+// type.
+func leafLogical(se *format.SchemaElement) Logical {
+	var l Logical
+	switch lt := se.LogicalType.Value.(type) {
+	case nil, *unrecognizedLogicalType:
+		if ct, ok := se.ConvertedType.Get(); ok {
+			l = convertedLogical(ct, se)
+		}
+	case *format.TimeType:
+		if lt.Unit.Value != nil {
+			l = logicalOf(lt)
+		}
+	case *format.TimestampType:
+		if lt.Unit.Value != nil {
+			l = logicalOf(lt)
+		}
+	default:
+		l = logicalOf(lt)
+	}
+	if _, converted := se.ConvertedType.Get(); l.Kind == LogicalNone && (se.LogicalType.Value != nil || converted) {
+		l.Kind = LogicalUnrecognized
+	}
+	return l
 }
 
 // convertedLogical returns the logical type a leaf's legacy converted_type
@@ -732,13 +745,13 @@ func convertedLogical(ct deprecated.ConvertedType, se *format.SchemaElement) Log
 	case deprecated.Date:
 		return Logical{Kind: LogicalDate}
 	case deprecated.TimeMillis:
-		return Logical{Kind: LogicalTime, AdjustedToUTC: true, Unit: Millis}
+		return Logical{Kind: LogicalTime, AdjustedToUTC: true, Unit: TimeUnitMillis}
 	case deprecated.TimeMicros:
-		return Logical{Kind: LogicalTime, AdjustedToUTC: true, Unit: Micros}
+		return Logical{Kind: LogicalTime, AdjustedToUTC: true, Unit: TimeUnitMicros}
 	case deprecated.TimestampMillis:
-		return Logical{Kind: LogicalTimestamp, AdjustedToUTC: true, Unit: Millis}
+		return Logical{Kind: LogicalTimestamp, AdjustedToUTC: true, Unit: TimeUnitMillis}
 	case deprecated.TimestampMicros:
-		return Logical{Kind: LogicalTimestamp, AdjustedToUTC: true, Unit: Micros}
+		return Logical{Kind: LogicalTimestamp, AdjustedToUTC: true, Unit: TimeUnitMicros}
 	case deprecated.Int8, deprecated.Int16, deprecated.Int32, deprecated.Int64:
 		return Logical{Kind: LogicalInt, BitWidth: int8(8 << (ct - deprecated.Int8)), Signed: true}
 	case deprecated.Uint8, deprecated.Uint16, deprecated.Uint32, deprecated.Uint64:

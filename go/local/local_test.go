@@ -100,7 +100,7 @@ func checkDataset(t *testing.T, dir string, s samples.Sample) seekparquet.Metada
 	digest, err := seekparquet.ValidateDir(context.Background(), dir, seekparquet.ValidateOptions{Level: seekparquet.LevelDigest})
 	must(t, err)
 	for _, lr := range append(report.Levels, digest.Levels...) {
-		if lr.Result != seekparquet.Complete {
+		if lr.Result != seekparquet.ResultComplete {
 			t.Errorf("%s: validation %s: %+v", s.Name, lr.Level, lr)
 		}
 	}
@@ -214,6 +214,24 @@ func TestWriteDirRefuses(t *testing.T) {
 	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("the refused dataset was not removed: %v", err)
 	}
+}
+
+// TestWriteDirNegativePartBytes: a negative PartBytes is refused before
+// the destination is created; zero takes the default.
+func TestWriteDirNegativePartBytes(t *testing.T) {
+	s := sample("unique")
+	s.Options.PartBytes = -1
+	dir := filepath.Join(t.TempDir(), "d")
+	err := local.WriteDir(context.Background(), dir, s.Schema, s.Reader(), s.Options)
+	if err == nil || !strings.Contains(err.Error(), "negative part size") {
+		t.Fatalf("negative PartBytes: %v", err)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the refused destination exists: %v", err)
+	}
+	s.Options.PartBytes = 0
+	must(t, local.WriteDir(context.Background(), dir, s.Schema, s.Reader(), s.Options))
+	checkDataset(t, dir, s)
 }
 
 // cancelling cancels its context after reading rows rows.

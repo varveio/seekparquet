@@ -274,7 +274,7 @@ func ExampleDataset_Columns() {
 		log.Fatal(err)
 	}
 	defer d.Close()
-	columns, err := d.Columns(ctx, 0)
+	columns, err := d.Columns(ctx, 0, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

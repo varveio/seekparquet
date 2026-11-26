@@ -23,8 +23,28 @@ versioning; while it is v0, minor versions may change the API.
 - `Plan.SelectRows` and `Plan.ScanValues` are unexported. Read values by row position with `FoldRows`, or
   with `Plan.Scan` of a plan from `Dataset.PlanRows`.
 - `ListEntry.IsPrefix` is removed: test `CommonPrefix != nil`.
+- The schema constants name their type: `Required`, `Optional` and `Repeated` become `RepetitionRequired`,
+  `RepetitionOptional` and `RepetitionRepeated`; `Millis`, `Micros` and `Nanos` become `TimeUnitMillis`,
+  `TimeUnitMicros` and `TimeUnitNanos`. Their strings are unchanged.
+- `LogicalUnknown`, Parquet's NULL annotation, becomes `LogicalNull`; its string stays "NULL". The
+  `LogicalKind` values after `LogicalNone` move up by one to make room for `LogicalUnrecognized`.
+- `Dataset.Columns(ctx, part)` becomes `Dataset.Columns(ctx, part, st)`: `st` is reset on entry and receives
+  the reads of the part's check when `Columns` is the first to touch the part, as every other read does; pass
+  nil to discard.
+- The validation types name what they are: `Result` becomes `ValidationResult`, and its constants `Complete`,
+  `Failed` and `Incomplete` become `ResultComplete`, `ResultFailed` and `ResultIncomplete`; `Report` becomes
+  `ValidationReport`, `Level` `ValidationLevel` (its constants keep their names) and `Checked`
+  `ValidationCounts` (the field `LevelReport.Checked` keeps its name). Their strings, and so the output of
+  the `seekparquet` command and of the conformance adapter, are unchanged.
+- `LimitOffsetIndexMemory` is removed: `OffsetIndexMemory` is a cache budget, which no `*LimitError` names.
+- `write.PartWriter.Size` becomes `write.PartWriter.EstimatedSize`.
 
 ### Added
+
+- `LogicalUnrecognized` is the `Column.Logical` kind of an annotation the reader cannot describe: a logical
+  type it does not know, a TIME or TIMESTAMP of a unit it does not know, or a converted type with no logical
+  type (INTERVAL, or one it does not know). Such a column was reported with `LogicalNone`, as if
+  unannotated; it is still read by its physical type.
 
 - `FoldRows` reduces established row spans with a caller's accumulator, a `Fold` of `Columns`, `New`, `Add`
   and `Merge`, with `FoldOptions` and one `FoldResult` per span. A value budget admits each span's value work
@@ -33,6 +53,12 @@ versioning; while it is v0, minor versions may change the API.
 
 ### Changed
 
+- `Validate`, `ValidateDir` and `ParseManifest` refuse a negative `Limits` field with `ErrInvalidRequest`
+  before any read, as opening a dataset does, instead of taking its default. An unknown validation level is
+  `ErrInvalidRequest` too.
+- `local.WriteDir` refuses a negative `DatasetOptions.PartBytes` instead of taking the default.
+- `Dataset.BuildListIndex` waits for a build in progress on a channel with its context instead of polling
+  every 10 ms.
 - A scan decompresses zstd data pages with a decoder of its own scratch (one per projected column, and one
   for a batch scan's key walk) instead of one decoder shared by the process, whose every decode passed
   through a single channel. Dictionary pages and other reads without scratch keep the shared decoder.

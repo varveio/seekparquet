@@ -14,10 +14,10 @@ import (
 // wrapping ErrLimitExceeded: a policy of the caller, not a refusal of the
 // data, reported as a *LimitError. OffsetIndexMemory and
 // PageIndexCacheMemory are the exceptions: they bound caches, and exceeding
-// them never fails an operation. A zero field
-// takes its default; a negative field is an invalid request when the
-// dataset is opened. Within a page, the counts and
-// lengths its encodings declare are checked against the page header before
+// them never fails an operation. A zero field takes its default; a
+// negative field is an invalid request when the dataset is opened or
+// validated, or its manifest parsed. Within a page, the counts and lengths
+// its encodings declare are checked against the page header before
 // decoding, and a page that decompresses to more or fewer bytes than its
 // header declares is refused, so a small page cannot allocate beyond them.
 type Limits struct {
@@ -118,7 +118,7 @@ func (l *Limits) check() error {
 		{LimitManifestBytes, l.ManifestBytes}, {LimitParts, int64(l.Parts)}, {LimitFooterBytes, l.FooterBytes},
 		{LimitPageIndexBytes, l.PageIndexBytes}, {LimitMetadataMemory, l.MetadataMemory}, {LimitPageBytes, l.PageBytes},
 		{LimitPageValues, l.PageValues}, {LimitPageMemory, l.PageMemory}, {LimitIndexMemory, l.IndexMemory},
-		{LimitOffsetIndexMemory, l.OffsetIndexMemory}, {LimitGetRows, int64(l.GetRows)}, {"PageIndexCacheMemory", l.PageIndexCacheMemory},
+		{"OffsetIndexMemory", l.OffsetIndexMemory}, {LimitGetRows, int64(l.GetRows)}, {"PageIndexCacheMemory", l.PageIndexCacheMemory},
 	} {
 		if f.value < 0 {
 			return invalidRequest("Limits.%s is negative (%d)", f.name, f.value)
@@ -153,23 +153,22 @@ func (l Limits) withDefaults() Limits {
 	return l
 }
 
-// LimitName names the limit a *LimitError reports: a field of Limits,
-// LimitManifestNesting or LimitDatasetRows.
+// LimitName names the limit a *LimitError reports: a field of Limits other
+// than the cache budgets, LimitManifestNesting or LimitDatasetRows.
 type LimitName string
 
 // The limits.
 const (
-	LimitManifestBytes     LimitName = "ManifestBytes"
-	LimitParts             LimitName = "Parts"
-	LimitFooterBytes       LimitName = "FooterBytes"
-	LimitPageIndexBytes    LimitName = "PageIndexBytes"
-	LimitMetadataMemory    LimitName = "MetadataMemory"
-	LimitPageBytes         LimitName = "PageBytes"
-	LimitPageValues        LimitName = "PageValues"
-	LimitPageMemory        LimitName = "PageMemory"
-	LimitIndexMemory       LimitName = "IndexMemory"
-	LimitOffsetIndexMemory LimitName = "OffsetIndexMemory"
-	LimitGetRows           LimitName = "GetRows"
+	LimitManifestBytes  LimitName = "ManifestBytes"
+	LimitParts          LimitName = "Parts"
+	LimitFooterBytes    LimitName = "FooterBytes"
+	LimitPageIndexBytes LimitName = "PageIndexBytes"
+	LimitMetadataMemory LimitName = "MetadataMemory"
+	LimitPageBytes      LimitName = "PageBytes"
+	LimitPageValues     LimitName = "PageValues"
+	LimitPageMemory     LimitName = "PageMemory"
+	LimitIndexMemory    LimitName = "IndexMemory"
+	LimitGetRows        LimitName = "GetRows"
 	// LimitManifestNesting is the reader's fixed capacity of nested JSON
 	// objects and arrays in a manifest: 512, the manifest object itself
 	// counting 1, as in the Java reader. Extension values count too.

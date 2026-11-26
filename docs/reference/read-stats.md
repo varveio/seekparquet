@@ -2,7 +2,7 @@
 
 # Read statistics
 
-Go exposes ReadStats for Rows, Get, Scan, List, Dataset.Verify, Dataset.Plan, Plan.Split and Plan.Scan. Java supplies statistics through ReadOptions, including for verify and columns. In Go, pass a `*ReadStats` as the statistics argument: it is reset when the operation starts and filled as it runs, whether the operation succeeds or fails. `Dataset.Verify(ctx, stats)` takes the same statistics argument; pass nil to discard statistics.
+Go exposes ReadStats for `Dataset.Columns`, `Dataset.Get`, `Dataset.List`, `Dataset.Plan`, `Dataset.PlanRows`, `Dataset.Rows`, `Dataset.Scan`, `Dataset.Verify`, `FoldRows`, `Plan.Scan`, `Plan.ScanParallel` and `Plan.Split`. Java supplies statistics through ReadOptions, including for verify and columns. In Go, pass a `*ReadStats` as the statistics argument: it is reset when the operation starts and filled as it runs, whether the operation succeeds or fails. `Dataset.Verify(ctx, stats)` takes the same statistics argument; pass nil to discard statistics.
 In Java, pass a statistics consumer in `ReadOptions`; it receives a `ReadStats` record.
 
 The counts describe this reader's access path. They are diagnostics, not part of the format: another reader, or another version of this one, may do the same read with different counts.

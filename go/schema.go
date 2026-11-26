@@ -14,19 +14,19 @@ type Repetition int8
 
 // The repetitions.
 const (
-	Required Repetition = iota
-	Optional
-	Repeated
+	RepetitionRequired Repetition = iota
+	RepetitionOptional
+	RepetitionRepeated
 )
 
 // String returns the Parquet name of the repetition, such as "OPTIONAL".
 func (r Repetition) String() string {
 	switch r {
-	case Required:
+	case RepetitionRequired:
 		return "REQUIRED"
-	case Optional:
+	case RepetitionOptional:
 		return "OPTIONAL"
-	case Repeated:
+	case RepetitionRepeated:
 		return "REPEATED"
 	}
 	return "Repetition(" + strconv.Itoa(int(r)) + ")"
@@ -36,9 +36,15 @@ func (r Repetition) String() string {
 // zero LogicalKind, is none.
 type LogicalKind uint8
 
-// The logical annotations of Parquet's LogicalTypes.md.
+// The logical annotations: LogicalNone and LogicalUnrecognized, then those
+// of Parquet's LogicalTypes.md.
 const (
 	LogicalNone LogicalKind = iota
+	// LogicalUnrecognized is an annotation this reader cannot describe: a
+	// logical type it does not know, a TIME or TIMESTAMP of a unit it does
+	// not know, or a converted type with no logical type (INTERVAL, or one
+	// it does not know). The column is read by its physical type.
+	LogicalUnrecognized
 	LogicalString
 	LogicalMap
 	LogicalList
@@ -48,7 +54,7 @@ const (
 	LogicalTime
 	LogicalTimestamp
 	LogicalInt
-	LogicalUnknown // Parquet's NULL annotation: every value is null
+	LogicalNull // Parquet's NULL annotation: every value is null
 	LogicalJSON
 	LogicalBSON
 	LogicalUUID
@@ -66,7 +72,7 @@ func (k LogicalKind) String() string {
 	return "LogicalKind(" + strconv.Itoa(int(k)) + ")"
 }
 
-var logicalNames = [...]string{"NONE", "STRING", "MAP", "LIST", "ENUM", "DECIMAL", "DATE", "TIME", "TIMESTAMP",
+var logicalNames = [...]string{"NONE", "UNRECOGNIZED", "STRING", "MAP", "LIST", "ENUM", "DECIMAL", "DATE", "TIME", "TIMESTAMP",
 	"INT", "NULL", "JSON", "BSON", "UUID", "FLOAT16", "VARIANT", "GEOMETRY", "GEOGRAPHY"}
 
 // TimeUnit is the unit of a TIME or TIMESTAMP annotation.
@@ -76,9 +82,9 @@ type TimeUnit uint8
 // annotation.
 const (
 	TimeUnitNone TimeUnit = iota
-	Millis
-	Micros
-	Nanos
+	TimeUnitMillis
+	TimeUnitMicros
+	TimeUnitNanos
 )
 
 // String returns the unit's Parquet name, such as "MICROS", or "" for none.
@@ -86,11 +92,11 @@ func (u TimeUnit) String() string {
 	switch u {
 	case TimeUnitNone:
 		return ""
-	case Millis:
+	case TimeUnitMillis:
 		return "MILLIS"
-	case Micros:
+	case TimeUnitMicros:
 		return "MICROS"
-	case Nanos:
+	case TimeUnitNanos:
 		return "NANOS"
 	}
 	return "TimeUnit(" + strconv.Itoa(int(u)) + ")"
@@ -139,11 +145,11 @@ func logicalOf(lt format.LogicalTypeValue) Logical {
 	unit := func(u format.TimeUnit) TimeUnit {
 		switch u.Value.(type) {
 		case *format.MilliSeconds:
-			return Millis
+			return TimeUnitMillis
 		case *format.MicroSeconds:
-			return Micros
+			return TimeUnitMicros
 		case *format.NanoSeconds:
-			return Nanos
+			return TimeUnitNanos
 		}
 		return TimeUnitNone
 	}
@@ -167,7 +173,7 @@ func logicalOf(lt format.LogicalTypeValue) Logical {
 	case *format.IntType:
 		return Logical{Kind: LogicalInt, BitWidth: t.BitWidth, Signed: t.IsSigned}
 	case *format.NullType:
-		return Logical{Kind: LogicalUnknown}
+		return Logical{Kind: LogicalNull}
 	case *format.JsonType:
 		return Logical{Kind: LogicalJSON}
 	case *format.BsonType:
@@ -191,11 +197,11 @@ func logicalOf(lt format.LogicalTypeValue) Logical {
 func (l Logical) format() *format.LogicalType {
 	unit := func() format.TimeUnit {
 		switch l.Unit {
-		case Millis:
+		case TimeUnitMillis:
 			return format.TimeUnit{Value: &format.MilliSeconds{}}
-		case Micros:
+		case TimeUnitMicros:
 			return format.TimeUnit{Value: &format.MicroSeconds{}}
-		case Nanos:
+		case TimeUnitNanos:
 			return format.TimeUnit{Value: &format.NanoSeconds{}}
 		}
 		return format.TimeUnit{}
@@ -220,7 +226,7 @@ func (l Logical) format() *format.LogicalType {
 		v = &format.TimestampType{IsAdjustedToUTC: l.AdjustedToUTC, Unit: unit()}
 	case LogicalInt:
 		v = &format.IntType{BitWidth: l.BitWidth, IsSigned: l.Signed}
-	case LogicalUnknown:
+	case LogicalNull:
 		v = &format.NullType{}
 	case LogicalJSON:
 		v = &format.JsonType{}

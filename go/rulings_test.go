@@ -309,9 +309,9 @@ func TestRulingsPhysicalFallback(t *testing.T) {
 		rows, err = d.Rows(ctx, Query{Limit: 10, Columns: []string{"size"}}, nil)
 		if !empty {
 			must(t, err)
-			columns, err := d.Columns(ctx, 0)
+			columns, err := d.Columns(ctx, 0, nil)
 			must(t, err)
-			if columns[1].Logical != (Logical{}) {
+			if columns[1].Logical != (Logical{Kind: LogicalUnrecognized}) {
 				t.Fatalf("unknown unit Columns: %+v", columns[1].Logical)
 			}
 		}
@@ -365,7 +365,7 @@ func TestRulingsUnknownLogicalAnnotation(t *testing.T) {
 			if len(rows) != 2 {
 				t.Fatal("lost physical value rows")
 			}
-			columns, err := d.Columns(ctx, 0)
+			columns, err := d.Columns(ctx, 0, nil)
 			must(t, err)
 			if columns[1].Logical != (Logical{Kind: LogicalInt, BitWidth: 64, Signed: true}) {
 				t.Fatalf("legacy fallback: %+v", columns[1].Logical)
@@ -408,7 +408,7 @@ func TestRulingsStructuralIndexedHeaders(t *testing.T) {
 				copy(raw[off:], encoded)
 			}
 			must(t, os.WriteFile(path, raw, 0o644))
-			expectLevels(t, validate(t, dir, ValidateOptions{Level: LevelStructural, Limits: Limits{PageValues: 2}}), map[Level]string{LevelStructural: string(tc.code)})
+			expectLevels(t, validate(t, dir, ValidateOptions{Level: LevelStructural, Limits: Limits{PageValues: 2}}), map[ValidationLevel]string{LevelStructural: string(tc.code)})
 		})
 	}
 }
@@ -489,7 +489,7 @@ func TestRulingsGroupOnlyLogicalAnnotations(t *testing.T) {
 				if RefusalCodeOf(err) != CodeInvalidFooter {
 					t.Fatalf("got %v", err)
 				}
-				expectLevels(t, validate(t, dir, ValidateOptions{Level: LevelStructural}), map[Level]string{LevelStructural: "invalid_footer"})
+				expectLevels(t, validate(t, dir, ValidateOptions{Level: LevelStructural}), map[ValidationLevel]string{LevelStructural: "invalid_footer"})
 			})
 		}
 	}
@@ -534,9 +534,9 @@ func TestColumnsUnknownTimeUnit(t *testing.T) {
 				}
 				replaceFooter(t, dir, bytes.Replace(footer, known, unknown, 1))
 				d := open(t, dir, OpenOptions{})
-				columns, err := d.Columns(ctx, 0)
+				columns, err := d.Columns(ctx, 0, nil)
 				must(t, err)
-				if columns[1].Logical != (Logical{}) || columns[1].Type != KindInt64 {
+				if columns[1].Logical != (Logical{Kind: LogicalUnrecognized}) || columns[1].Type != KindInt64 {
 					t.Fatalf("unknown unit: %+v", columns[1])
 				}
 				rows, err := d.Rows(ctx, Query{Limit: 10, Columns: []string{"size"}}, nil)
@@ -564,7 +564,7 @@ func TestRulingsValidateUnknownLevelEncodings(t *testing.T) {
 				}
 			})
 			report := validate(t, dir, ValidateOptions{})
-			expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "incomplete"})
+			expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "incomplete"})
 			lr, _ := report.Level(LevelFull)
 			var u *UnsupportedError
 			if !errors.As(lr.Err, &u) || u.Code != UnsupportedEncoding {
