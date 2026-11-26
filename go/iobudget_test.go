@@ -22,8 +22,8 @@ import (
 	"github.com/varveio/seekparquet/go/internal/testutil/fakestore"
 )
 
-// The I/O budgets: every read operation a remote consumer makes, run on the
-// budget fixture through a fake store that serves it as objfile serves a
+// The I/O budgets: selected read operations, run on the budget fixture
+// through a fake store that serves it as objfile serves a
 // remote store today (one metadata request per open, one ranged request
 // per ReadAt, 10 ms a request plus 128 MiB/s, at most 64 in flight), on
 // the virtual clock of testing/synctest. Each operation's requests,
