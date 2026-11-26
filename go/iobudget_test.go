@@ -22,8 +22,7 @@ import (
 	"github.com/varveio/seekparquet/go/internal/testutil/fakestore"
 )
 
-// The I/O budgets: every read operation of the remote-read plan (§6 of
-// swath-notes 2026-11-11-seekparquet-remote-read-restore-plan), run on the
+// The I/O budgets: every read operation a remote consumer makes, run on the
 // budget fixture through a fake store that serves it as objfile serves a
 // remote store today (one metadata request per open, one ranged request
 // per ReadAt, 10 ms a request plus 128 MiB/s, at most 64 in flight), on
