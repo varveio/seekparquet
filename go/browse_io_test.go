@@ -311,7 +311,7 @@ func candidateRows(keys [][]byte, q seekparquet.ListQuery, e seekparquet.ListEnt
 			continue
 		}
 		var match bool
-		if e.IsPrefix() {
+		if e.CommonPrefix != nil {
 			rest := k[len(q.Prefix):]
 			j := bytes.IndexByte(rest, q.Delimiter)
 			match = j >= 0 && bytes.Equal(k[:len(q.Prefix)+j+1], e.CommonPrefix)
@@ -377,13 +377,13 @@ func TestPlanRowsInvalid(t *testing.T) {
 		}
 		plan, err := d.PlanRows(ctx, []seekparquet.RowSpan{good}, nil, nil)
 		must(t, err)
-		if _, err := plan.SelectRows([]seekparquet.RowSpan{alien[0].Rows}); !errors.Is(err, seekparquet.ErrInvalidRequest) {
+		if _, err := seekparquet.SelectRows(plan, []seekparquet.RowSpan{alien[0].Rows}); !errors.Is(err, seekparquet.ErrInvalidRequest) {
 			t.Errorf("select alien rows: %v", err)
 		}
-		if _, err := plan.SelectRows([]seekparquet.RowSpan{ents[1].Rows}); !errors.Is(err, seekparquet.ErrInvalidRequest) {
+		if _, err := seekparquet.SelectRows(plan, []seekparquet.RowSpan{ents[1].Rows}); !errors.Is(err, seekparquet.ErrInvalidRequest) {
 			t.Errorf("select rows outside the plan: %v", err)
 		}
-		if err := plan.ScanValues(ctx, nil, nil); !errors.Is(err, seekparquet.ErrInvalidRequest) {
+		if err := seekparquet.ScanValues(ctx, plan, nil, nil); !errors.Is(err, seekparquet.ErrInvalidRequest) {
 			t.Errorf("nil callback: %v", err)
 		}
 		empty, err := d.PlanRows(ctx, nil, nil, nil)
@@ -455,7 +455,7 @@ func TestScanValuesReadsNoKeyPage(t *testing.T) {
 				must(t, err)
 				var rows int64
 				var st seekparquet.ReadStats
-				must(t, p.ScanValues(ctx, &st, func(b *seekparquet.ValueBatch) error {
+				must(t, seekparquet.ScanValues(ctx, p, &st, func(b *seekparquet.ValueBatch) error {
 					rows += int64(b.Len())
 					return nil
 				}))
@@ -471,6 +471,104 @@ func TestScanValuesReadsNoKeyPage(t *testing.T) {
 					}
 				}
 			})
+		}
+	}
+}
+
+// keyChunkRead returns a request of rep that reads a byte of a key column
+// chunk of chunks, a whole-object read of a part included, or false.
+func keyChunkRead(rep fakestore.Report, chunks map[string][][2]int64) (fakestore.Request, [2]int64, bool) {
+	for _, q := range rep.Requests {
+		for _, c := range chunks[q.Object] {
+			if q.Kind == fakestore.Whole || q.Kind == fakestore.Range && q.Off < c[1] && c[0] < q.Off+q.Len {
+				return q, c, true
+			}
+		}
+	}
+	return fakestore.Request{}, [2]int64{}, false
+}
+
+// TestFoldRowsReadsNoKeyPage: a fold that projects value columns without
+// CheckKeys, with one worker or several, over spans that cross row groups
+// and parts, reads no byte of a key column chunk through every store, and
+// counts each span's rows. The same fold with CheckKeys, and a fold that
+// projects the key column, do read key chunk bytes.
+func TestFoldRowsReadsNoKeyPage(t *testing.T) {
+	seekparquet.NoTestReadAhead(t)
+	count := func(columns ...string) seekparquet.Fold[int64] {
+		return seekparquet.Fold[int64]{
+			Columns: columns,
+			Add: func(acc *int64, rows *seekparquet.ValueBatch) error {
+				*acc += int64(rows.Len())
+				return nil
+			},
+			Merge: func(into, from *int64) { *into += *from },
+		}
+	}
+	cases := []struct {
+		name      string
+		fold      seekparquet.Fold[int64]
+		opt       seekparquet.FoldOptions
+		readsKeys bool
+	}{
+		{"values/workers=1", count("size", "etag"), seekparquet.FoldOptions{Workers: 1}, false},
+		{"values/workers=4", count("size", "etag"), seekparquet.FoldOptions{Workers: 4}, false},
+		{"values/check-keys", count("size", "etag"), seekparquet.FoldOptions{Workers: 1, CheckKeys: true}, true},
+		{"values/check-keys/workers=4", count("size", "etag"), seekparquet.FoldOptions{Workers: 4, CheckKeys: true}, true},
+		{"key/workers=1", count("key", "size"), seekparquet.FoldOptions{Workers: 1}, true},
+		{"key/workers=4", count("key", "size"), seekparquet.FoldOptions{Workers: 4}, true},
+	}
+	for _, spec := range []ioFixtureSpec{ioTiny, ioTinyRepeated} {
+		fx := ioFixtureOf(t, spec)
+		chunks := keyChunks(t, fx)
+		for _, store := range ioStores {
+			for _, tc := range cases {
+				synctest.Test(t, func(t *testing.T) {
+					ctx := context.Background()
+					src := fakestore.New(fx.objects, ioOptions)
+					d, err := seekparquet.OpenDataset(ctx, store.wrap(src), store.opt)
+					must(t, err)
+					defer d.Close()
+					must(t, d.Verify(ctx, nil)) // every part checked, so no span is FoldUnknown
+					ents, err := d.List(ctx, seekparquet.ListQuery{Delimiter: '/', Limit: 5000}, nil)
+					must(t, err)
+					// Every other folder, so the spans have gaps; the middle half
+					// and the whole dataset, which cross every part and row group.
+					var spans []seekparquet.RowSpan
+					for i, e := range ents {
+						if i%2 == 0 {
+							spans = append(spans, e.Rows)
+						}
+					}
+					last := len(ents) - 1
+					spans = append(spans,
+						seekparquet.RowSpan{Start: ents[last/4].Rows.Start, End: ents[3*last/4].Rows.End},
+						seekparquet.RowSpan{Start: ents[0].Rows.Start, End: ents[last].Rows.End})
+					op := src.Begin("fold")
+					var st seekparquet.ReadStats
+					out, err := seekparquet.FoldRows(ctx, d, spans, tc.fold, tc.opt, &st)
+					rep := op.End()
+					must(t, err)
+					for i, r := range out {
+						lo, okLo := spans[i].Start.Ordinal()
+						hi, okHi := spans[i].End.Ordinal()
+						if !okLo || !okHi || r.Status != seekparquet.FoldExact || r.Value != hi-lo {
+							t.Fatalf("%s %s: span %d [%d, %d): %+v", store.name, tc.name, i, lo, hi, r)
+						}
+					}
+					if hi, _ := spans[len(spans)-1].End.Ordinal(); hi != int64(len(fx.keys)) || st.ValuePagesDecoded == 0 {
+						t.Fatalf("%s %s: the last span ends at %d of %d rows; %+v", store.name, tc.name, hi, len(fx.keys), st)
+					}
+					q, c, read := keyChunkRead(rep, chunks)
+					if read != tc.readsKeys {
+						t.Fatalf("%s %s: reads key chunk bytes %v, want %v (request %s %d+%d of %s, chunk %v); %+v",
+							store.name, tc.name, read, tc.readsKeys, q.Kind, q.Off, q.Len, q.Object, c, st)
+					}
+					if !tc.readsKeys && st.KeyPagesDecoded != 0 {
+						t.Fatalf("%s %s: %+v", store.name, tc.name, st)
+					}
+				})
+			}
 		}
 	}
 }
@@ -496,7 +594,7 @@ func TestScanValuesSourceCache(t *testing.T) {
 						var st seekparquet.ReadStats
 						var rows int64
 						if valuesOnly {
-							must(t, p.ScanValues(ctx, &st, func(b *seekparquet.ValueBatch) error {
+							must(t, seekparquet.ScanValues(ctx, p, &st, func(b *seekparquet.ValueBatch) error {
 								rows += int64(b.Len())
 								return nil
 							}))
@@ -551,7 +649,7 @@ func TestScanValuesWindows(t *testing.T) {
 						op := src.Begin("scan")
 						var rows, sum int64
 						if mode == 0 {
-							must(t, p.ScanValues(ctx, &stats[mode], func(b *seekparquet.ValueBatch) error {
+							must(t, seekparquet.ScanValues(ctx, p, &stats[mode], func(b *seekparquet.ValueBatch) error {
 								rows += int64(b.Len())
 								for i := range b.Len() {
 									sum += b.Column(0).Int64(i)
@@ -617,7 +715,7 @@ func TestScanValuesIndexedPageLimitBytes(t *testing.T) {
 						must(t, err)
 						op := src.Begin("page-limit")
 						if mode == 0 {
-							err = p.ScanValues(ctx, nil, func(*seekparquet.ValueBatch) error { t.Fatal("decoded oversized page"); return nil })
+							err = seekparquet.ScanValues(ctx, p, nil, func(*seekparquet.ValueBatch) error { t.Fatal("decoded oversized page"); return nil })
 						} else {
 							err = p.Scan(ctx, nil, func(*seekparquet.Batch) error { t.Fatal("decoded oversized page"); return nil })
 						}

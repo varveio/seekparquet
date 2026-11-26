@@ -152,6 +152,21 @@ func TestScanParallelStopErrorsStats(t *testing.T) {
 	}
 }
 
+// TestScanParallelNegativeWorkers: a negative worker count is
+// ErrInvalidRequest, with no callback run and the statistics reset, so
+// they record no storage read.
+func TestScanParallelNegativeWorkers(t *testing.T) {
+	_, p := parallelFixture(t, 1200, 30, true)
+	for _, workers := range []int{-1, math.MinInt} {
+		st := ReadStats{SourceReads: 9}
+		var calls atomic.Int64
+		err := p.ScanParallel(ctx, workers, &st, func(*Batch) error { calls.Add(1); return nil })
+		if !errors.Is(err, ErrInvalidRequest) || calls.Load() != 0 || st != (ReadStats{}) {
+			t.Fatalf("%d workers: %v, %d calls, %+v", workers, err, calls.Load(), st)
+		}
+	}
+}
+
 // Ported from swath TestShardBoundaryOrder and TestTotalsShardErrors. Each
 // individual shard is ordered; corruption appears only across its boundary.
 func TestScanParallelBoundaryCorruption(t *testing.T) {
@@ -169,9 +184,11 @@ func TestScanParallelBoundaryCorruption(t *testing.T) {
 			if RefusalCodeOf(err) != CodeKeyOrder || st.KeyPagesDecoded == 0 {
 				t.Fatalf("keys=%v workers=%d: %v (%+v)", keys, workers, err, st)
 			}
-			out, err := d.Aggregate(ctx, []Selection{{}, {Span: KeySpan([]byte("b"))}}, []Reduction{{Op: CountRows}, {Op: Sum, Column: "size"}}, AggregateOptions{ValueBudgetBytes: -1, Workers: workers, CheckKeys: true}, nil)
+			// The whole dataset and the row of key b.
+			spans := append(p.InputRowSpans(), d.r.rowSpan(1, 2))
+			out, err := FoldRows(ctx, d, spans, sizeFold(nil, "size"), FoldOptions{Workers: workers, CheckKeys: true}, nil)
 			if RefusalCodeOf(err) != CodeKeyOrder || out != nil {
-				t.Fatalf("aggregate workers=%d: %v %+v", workers, err, out)
+				t.Fatalf("fold workers=%d: %v %+v", workers, err, out)
 			}
 		}
 	}
@@ -297,10 +314,10 @@ func TestScanParallelDisjointRepeatedPositions(t *testing.T) {
 		if !slices.Equal(offsets, []int64{0, 1, 2}) {
 			t.Fatal(offsets)
 		}
-		out, err := d.AggregateRows(ctx, spans, []Reduction{{Op: CountRows}, {Op: Sum, Column: "size"}}, AggregateOptions{ValueBudgetBytes: -1, Workers: workers, CheckKeys: true}, nil)
+		out, err := FoldRows(ctx, d, spans, sizeFold(spans, "size"), FoldOptions{Workers: workers, CheckKeys: true}, nil)
 		must(t, err)
 		for i, n := range []int64{0, 2, 5} {
-			if out[i][0].Value.Int64() != 1 || out[i][1].Value.Int64() != n {
+			if out[i].Status != FoldExact || out[i].Value.rows != 1 || out[i].Value.sum != n {
 				t.Fatal(out)
 			}
 		}

@@ -59,7 +59,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return 2
 	}
-	switch seekparquet.Level(*level) {
+	switch seekparquet.ValidationLevel(*level) {
 	case seekparquet.LevelStructural, seekparquet.LevelProfile, seekparquet.LevelFull, seekparquet.LevelDigest:
 	default:
 		fmt.Fprintf(stderr, "seekparquet: unknown level %q\n%s\n", *level, usage)
@@ -70,7 +70,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	dir := flags.Arg(0)
-	report, err := seekparquet.ValidateDir(ctx, dir, seekparquet.ValidateOptions{Level: seekparquet.Level(*level)})
+	report, err := seekparquet.ValidateDir(ctx, dir, seekparquet.ValidateOptions{Level: seekparquet.ValidationLevel(*level)})
 	if err != nil {
 		fmt.Fprintln(stderr, "seekparquet:", err)
 		return 2
@@ -85,22 +85,22 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	switch report.Result() {
-	case seekparquet.Complete:
+	case seekparquet.ResultComplete:
 		return 0
-	case seekparquet.Failed:
+	case seekparquet.ResultFailed:
 		return 1
 	}
 	return 2
 }
 
 // writeText writes one line per level, then the result.
-func writeText(w io.Writer, dir string, report *seekparquet.Report) error {
+func writeText(w io.Writer, dir string, report *seekparquet.ValidationReport) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "dataset %s\n", dir)
 	for _, lr := range report.Levels {
 		fmt.Fprintf(&b, "%-10s  %-10s  ", lr.Level, lr.Result)
 		switch lr.Result {
-		case seekparquet.Failed:
+		case seekparquet.ResultFailed:
 			b.WriteString(string(lr.Failure.Code))
 			if at := location(lr); at != "" {
 				b.WriteString(" at " + at)
@@ -108,7 +108,7 @@ func writeText(w io.Writer, dir string, report *seekparquet.Report) error {
 			if lr.Failure.Detail != "" {
 				b.WriteString(": " + lr.Failure.Detail)
 			}
-		case seekparquet.Incomplete:
+		case seekparquet.ResultIncomplete:
 			b.WriteString(lr.Reason)
 			if at := location(lr); at != "" && lr.Err != nil {
 				b.WriteString(" (at " + at + ")")
@@ -178,7 +178,7 @@ type jsonLocation struct {
 }
 
 // writeJSON writes the report as one JSON object.
-func writeJSON(w io.Writer, dir string, report *seekparquet.Report) error {
+func writeJSON(w io.Writer, dir string, report *seekparquet.ValidationReport) error {
 	out := struct {
 		Dataset string      `json:"dataset"`
 		Result  string      `json:"result"`
@@ -191,7 +191,7 @@ func writeJSON(w io.Writer, dir string, report *seekparquet.Report) error {
 		if lr.Failure != nil {
 			l.Code, l.Detail = string(lr.Failure.Code), lr.Failure.Detail
 		}
-		if lr.Result != seekparquet.Complete && lr.At.Part != "" {
+		if lr.Result != seekparquet.ResultComplete && lr.At.Part != "" {
 			loc := &jsonLocation{Part: lr.At.Part, Column: lr.At.Column}
 			if lr.At.RowGroup >= 0 {
 				loc.RowGroup = &lr.At.RowGroup

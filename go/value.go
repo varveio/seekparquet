@@ -283,7 +283,7 @@ func (v Value) String() string {
 // ColumnView is the borrowed values of one projection slot of a Batch or
 // ValueBatch, in row order: a small value over the batch's decoded page,
 // made without allocating. Its values, bytes and the view itself are valid
-// only until the Scan or ScanValues callback that received the batch returns.
+// only until the Scan or Fold.Add callback that received the batch returns.
 // Copying a view does not retain values; use Value(i).Clone().
 //
 // A column the row's part lacks (COL-2) is not Present: every value of it is

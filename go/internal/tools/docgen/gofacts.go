@@ -29,6 +29,9 @@ type goPackage struct {
 	defaultExprs map[string]map[string]ast.Expr
 	funcs        map[string]*ast.FuncDecl
 	constExprs   map[string]ast.Expr
+	// statsOps are the exported functions and methods that take a
+	// *ReadStats, as "Name" and "Type.Method".
+	statsOps []string
 	// errs are declarations of documented constant types in a form the
 	// parser does not read; they fail the check rather than go unseen.
 	errs []error
@@ -115,6 +118,13 @@ func (p *goPackage) add(f *ast.File) {
 	for _, decl := range f.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
+			name := d.Name.Name
+			if d.Recv != nil {
+				name = receiverName(d.Recv.List[0].Type) + "." + name
+			}
+			if ast.IsExported(d.Name.Name) && ast.IsExported(strings.SplitN(name, ".", 2)[0]) && takesReadStats(d.Type) {
+				p.statsOps = append(p.statsOps, name)
+			}
 			if d.Recv == nil {
 				p.symbols[d.Name.Name] = true
 				p.funcs[d.Name.Name] = d
@@ -129,6 +139,18 @@ func (p *goPackage) add(f *ast.File) {
 			p.addGen(d)
 		}
 	}
+}
+
+// takesReadStats reports whether a function has a *ReadStats parameter.
+func takesReadStats(f *ast.FuncType) bool {
+	for _, param := range f.Params.List {
+		if star, ok := param.Type.(*ast.StarExpr); ok {
+			if id, ok := star.X.(*ast.Ident); ok && id.Name == "ReadStats" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func receiverName(e ast.Expr) string {

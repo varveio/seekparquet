@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -45,7 +46,7 @@ func manyPages(geometry testutil.Part) testutil.Dataset {
 }
 
 // validate validates dir at level, failing the test on an error.
-func validate(t *testing.T, dir string, opt ValidateOptions) *Report {
+func validate(t *testing.T, dir string, opt ValidateOptions) *ValidationReport {
 	t.Helper()
 	report, err := ValidateDir(ctx, dir, opt)
 	must(t, err)
@@ -53,7 +54,7 @@ func validate(t *testing.T, dir string, opt ValidateOptions) *Report {
 }
 
 // expectLevels checks each level's result, and the code of a failed one.
-func expectLevels(t *testing.T, report *Report, want map[Level]string) {
+func expectLevels(t *testing.T, report *ValidationReport, want map[ValidationLevel]string) {
 	t.Helper()
 	for level, w := range want {
 		lr, ok := report.Level(level)
@@ -61,13 +62,13 @@ func expectLevels(t *testing.T, report *Report, want map[Level]string) {
 			t.Fatalf("level %s was not attempted: %s", level, describeReport(report))
 		}
 		got := string(lr.Result)
-		if lr.Result == Failed {
+		if lr.Result == ResultFailed {
 			got = string(lr.Failure.Code)
 		}
 		if got != w {
 			t.Fatalf("level %s: got %s, want %s: %s", level, got, w, describeReport(report))
 		}
-		if lr.Result == Incomplete && lr.Reason == "" {
+		if lr.Result == ResultIncomplete && lr.Reason == "" {
 			t.Fatalf("level %s is incomplete without a reason", level)
 		}
 	}
@@ -85,7 +86,7 @@ func TestValidatePageVersionsAndCodecs(t *testing.T) {
 			t.Run(fmt.Sprintf("v%d/%s", version, name), func(t *testing.T) {
 				dir := write(t, manyPages(testutil.Part{DataPageVersion: version, Compression: codec}))
 				report := validate(t, dir, ValidateOptions{})
-				expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "complete"})
+				expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "complete"})
 				profile, _ := report.Level(LevelProfile)
 				full, _ := report.Level(LevelFull)
 				if profile.Checked.Rows != 600 || profile.Checked.RowGroups != 2 || profile.Checked.Pages < 4 {
@@ -161,7 +162,7 @@ func TestValidateOmittedPage(t *testing.T) {
 	dir := write(t, manyPages(testutil.Part{}))
 	rewriteIndexes(t, dir, 0, 0, omitPage(1))
 	report := validate(t, dir, ValidateOptions{})
-	expectLevels(t, report, map[Level]string{LevelStructural: "invalid_page_index", LevelProfile: "incomplete", LevelFull: "incomplete"})
+	expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "invalid_page_index", LevelProfile: "incomplete", LevelFull: "incomplete"})
 	if s, _ := report.Level(LevelStructural); s.At.Page != 0 || s.At.RowGroup != 0 || s.At.Column != "key" {
 		t.Fatalf("structural failed at %s", s.At)
 	}
@@ -178,7 +179,7 @@ func TestValidateOmittedPage(t *testing.T) {
 	dir = write(t, manyPages(testutil.Part{}))
 	rewriteIndexes(t, dir, 1, 1, omitPage(1))
 	report = validate(t, dir, ValidateOptions{})
-	expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "invalid_parquet"})
+	expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "invalid_parquet"})
 	if f, _ := report.Level(LevelFull); f.At.RowGroup != 1 || f.At.Column != "size" {
 		t.Fatalf("full failed at %s", f.At)
 	}
@@ -205,7 +206,7 @@ func TestValidateValuePageChecksum(t *testing.T) {
 		t.Fatalf("keys only: %d rows, %v", len(rows), err)
 	}
 	report := validate(t, dir, ValidateOptions{})
-	expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "invalid_parquet"})
+	expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "invalid_parquet"})
 	f, _ := report.Level(LevelFull)
 	if f.At.RowGroup != 1 || f.At.Column != "size" || f.At.Page != len(oi.PageLocations)-1 || !strings.Contains(f.Failure.Detail, "checksum") {
 		t.Fatalf("full failed at %s: %v", f.At, f.Failure)
@@ -216,7 +217,7 @@ func TestValidateValuePageChecksum(t *testing.T) {
 // decode leaves the level that needs it incomplete, never failed, and the
 // levels below keep their result.
 func TestValidateUnsupported(t *testing.T) {
-	isUnsupported := func(t *testing.T, report *Report, level Level) {
+	isUnsupported := func(t *testing.T, report *ValidationReport, level ValidationLevel) {
 		t.Helper()
 		lr, _ := report.Level(level)
 		var u *UnsupportedError
@@ -228,14 +229,14 @@ func TestValidateUnsupported(t *testing.T) {
 		dir := write(t, manyPages(testutil.Part{}))
 		rewrite(t, dir, 0, func(m *format.FileMetaData) { m.RowGroups[0].Columns[0].MetaData.Codec = format.LZO })
 		report := validate(t, dir, ValidateOptions{})
-		expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "incomplete", LevelFull: "incomplete"})
+		expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "complete", LevelProfile: "incomplete", LevelFull: "incomplete"})
 		isUnsupported(t, report, LevelProfile)
 	})
 	t.Run("LZO value column", func(t *testing.T) {
 		dir := write(t, manyPages(testutil.Part{}))
 		rewrite(t, dir, 0, func(m *format.FileMetaData) { m.RowGroups[1].Columns[2].MetaData.Codec = format.LZO })
 		report := validate(t, dir, ValidateOptions{})
-		expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "incomplete"})
+		expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "incomplete"})
 		isUnsupported(t, report, LevelFull)
 	})
 	t.Run("BIT_PACKED value page", func(t *testing.T) {
@@ -245,7 +246,7 @@ func TestValidateUnsupported(t *testing.T) {
 		off := meta.RowGroups[0].Columns[1].MetaData.DataPageOffset
 		editPageHeader(t, partFile(dir, 0), off, func(h *format.PageHeader) { h.DataPageHeader.V.Encoding = format.BitPacked })
 		report := validate(t, dir, ValidateOptions{})
-		expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "incomplete"})
+		expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "incomplete"})
 		isUnsupported(t, report, LevelFull)
 	})
 	t.Run("unsupported column, corrupt column", func(t *testing.T) {
@@ -260,7 +261,7 @@ func TestValidateUnsupported(t *testing.T) {
 		must(t, err)
 		raw[chunk.DataPageOffset+chunk.TotalCompressedSize-1] ^= 1
 		must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
-		expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelFull: "invalid_parquet"})
+		expectLevels(t, validate(t, dir, ValidateOptions{}), map[ValidationLevel]string{LevelFull: "invalid_parquet"})
 	})
 }
 
@@ -310,7 +311,7 @@ func TestValidateNested(t *testing.T) {
 		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
 			dir := nestedDataset(t, testutil.Part{DataPageVersion: version})
 			report := validate(t, dir, ValidateOptions{})
-			expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "complete"})
+			expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "complete", LevelProfile: "complete", LevelFull: "complete"})
 			if f, _ := report.Level(LevelFull); f.Checked.Chunks != 2*3 || f.Checked.Rows != 400 {
 				t.Fatalf("full checked %+v", f.Checked)
 			}
@@ -322,7 +323,7 @@ func TestValidateNested(t *testing.T) {
 			raw[chunk.DataPageOffset+chunk.TotalCompressedSize-1] ^= 1
 			must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
 			report = validate(t, dir, ValidateOptions{})
-			expectLevels(t, report, map[Level]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
+			expectLevels(t, report, map[ValidationLevel]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
 			if f, _ := report.Level(LevelFull); f.At.Column != "tags.list.element" || f.At.RowGroup != 1 {
 				t.Fatalf("full failed at %s", f.At)
 			}
@@ -333,10 +334,10 @@ func TestValidateNested(t *testing.T) {
 // TestValidateLimits: limits and hostile declared sizes leave a level
 // incomplete, or are refused as data before anything is allocated for them.
 func TestValidateLimits(t *testing.T) {
-	isLimit := func(t *testing.T, report *Report, level Level) {
+	isLimit := func(t *testing.T, report *ValidationReport, level ValidationLevel) {
 		t.Helper()
 		lr, _ := report.Level(level)
-		if lr.Result != Incomplete || !errors.Is(lr.Err, ErrLimitExceeded) || !strings.HasPrefix(lr.Reason, "limit") {
+		if lr.Result != ResultIncomplete || !errors.Is(lr.Err, ErrLimitExceeded) || !strings.HasPrefix(lr.Reason, "limit") {
 			t.Fatalf("level %s: %s", level, describeReport(report))
 		}
 	}
@@ -349,7 +350,7 @@ func TestValidateLimits(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			report := validate(t, dir, ValidateOptions{Limits: limits})
 			isLimit(t, report, LevelStructural)
-			expectLevels(t, report, map[Level]string{LevelProfile: "incomplete", LevelFull: "incomplete"})
+			expectLevels(t, report, map[ValidationLevel]string{LevelProfile: "incomplete", LevelFull: "incomplete"})
 		})
 	}
 	t.Run("page values", func(t *testing.T) {
@@ -364,14 +365,14 @@ func TestValidateLimits(t *testing.T) {
 		t.Run("hostile index length "+name, func(t *testing.T) {
 			dir := write(t, manyPages(testutil.Part{}))
 			rewrite(t, dir, 0, func(m *format.FileMetaData) { m.RowGroups[0].Columns[column].OffsetIndexLength = 1 << 30 })
-			var report *Report
+			var report *ValidationReport
 			if n := allocated(func() { report = validate(t, dir, ValidateOptions{Limits: Limits{PageIndexBytes: 2 << 30}}) }); n > 16<<20 {
 				t.Fatalf("allocated %d bytes", n)
 			}
 			if column == 0 {
-				expectLevels(t, report, map[Level]string{LevelStructural: "invalid_page_index"})
+				expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "invalid_page_index"})
 			} else {
-				expectLevels(t, report, map[Level]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
+				expectLevels(t, report, map[ValidationLevel]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
 			}
 		})
 	}
@@ -388,15 +389,69 @@ func TestValidateManifest(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			must(t, os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(raw), 0o644))
-			expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelStructural: "invalid_manifest", LevelProfile: "incomplete", LevelFull: "incomplete"})
-			expectLevels(t, validate(t, dir, ValidateOptions{Level: LevelDigest}), map[Level]string{LevelDigest: "invalid_manifest"})
+			expectLevels(t, validate(t, dir, ValidateOptions{}), map[ValidationLevel]string{LevelStructural: "invalid_manifest", LevelProfile: "incomplete", LevelFull: "incomplete"})
+			expectLevels(t, validate(t, dir, ValidateOptions{Level: LevelDigest}), map[ValidationLevel]string{LevelDigest: "invalid_manifest"})
 		})
 	}
 	dir := t.TempDir()
-	expectLevels(t, validate(t, dir, ValidateOptions{Level: LevelStructural}), map[Level]string{LevelStructural: "no_manifest"})
+	expectLevels(t, validate(t, dir, ValidateOptions{Level: LevelStructural}), map[ValidationLevel]string{LevelStructural: "no_manifest"})
 	if _, err := ValidateDir(ctx, dir, ValidateOptions{Level: "other"}); err == nil {
 		t.Fatal("an unknown level was accepted")
 	}
+}
+
+// TestNegativeLimitsRefused: a negative field of Limits is ErrInvalidRequest
+// naming the field, before any read, whether it is given to open a dataset,
+// to validate one or to parse a manifest; so is an unknown validation level.
+func TestNegativeLimitsRefused(t *testing.T) {
+	dir := write(t, parts(testutil.Part{}, []string{"a", "b"}))
+	raw, err := os.ReadFile(filepath.Join(dir, ManifestName))
+	must(t, err)
+	// ValidateDir checks its options before it opens the directory: the
+	// refusal, not the file-system error, for a directory that does not exist.
+	missing := filepath.Join(t.TempDir(), "missing")
+	fields := reflect.TypeFor[Limits]()
+	for i := range fields.NumField() {
+		name := fields.Field(i).Name
+		t.Run(name, func(t *testing.T) {
+			var lim Limits
+			reflect.ValueOf(&lim).Elem().Field(i).SetInt(-1)
+			refused := func(op string, err error) {
+				t.Helper()
+				if !errors.Is(err, ErrInvalidRequest) || !strings.Contains(err.Error(), "Limits."+name+" is negative") {
+					t.Errorf("%s: %v, want ErrInvalidRequest naming %s", op, err, name)
+				}
+			}
+			src := &accessSource{Source: dirOf(t, dir)}
+			_, err := OpenDataset(ctx, src, OpenOptions{Limits: lim})
+			refused("OpenDataset", err)
+			report, err := Validate(ctx, src, ValidateOptions{Limits: lim})
+			refused("Validate", err)
+			if report != nil {
+				t.Errorf("Validate reported %s", describeReport(report))
+			}
+			_, err = ValidateDir(ctx, dir, ValidateOptions{Level: LevelDigest, Limits: lim})
+			refused("ValidateDir", err)
+			_, err = ValidateDir(ctx, missing, ValidateOptions{Limits: lim})
+			refused("ValidateDir of a missing directory", err)
+			_, err = ParseManifest(raw, lim)
+			refused("ParseManifest", err)
+			if n := src.reads.Load(); n != 0 {
+				t.Errorf("%d reads before the refusal", n)
+			}
+		})
+	}
+	src := &accessSource{Source: dirOf(t, dir)}
+	if report, err := Validate(ctx, src, ValidateOptions{Level: "other"}); !errors.Is(err, ErrInvalidRequest) || report != nil || src.reads.Load() != 0 {
+		t.Fatalf("unknown level: %v, %v, %d reads", report, err, src.reads.Load())
+	}
+	if report, err := ValidateDir(ctx, missing, ValidateOptions{Level: "other"}); !errors.Is(err, ErrInvalidRequest) || report != nil {
+		t.Fatalf("unknown level, missing directory: %v, %v", report, err)
+	}
+	if _, err := ParseManifest(raw, Limits{}); err != nil {
+		t.Fatalf("zero limits: %v", err)
+	}
+	expectLevels(t, validate(t, dir, ValidateOptions{}), map[ValidationLevel]string{LevelFull: "complete"})
 }
 
 // TestValidateDigest: the digest level compares declared digests, completes
@@ -421,15 +476,15 @@ func TestValidateDigest(t *testing.T) {
 	}
 
 	dir := write(t, parts(testutil.Part{}, []string{"a", "b"}, []string{"c"}))
-	if lr := digest(t, dir); lr.Result != Complete || lr.Checked.Digests != 0 || !strings.Contains(lr.Reason, "nothing checked") {
+	if lr := digest(t, dir); lr.Result != ResultComplete || lr.Checked.Digests != 0 || !strings.Contains(lr.Reason, "nothing checked") {
 		t.Fatalf("no digests: %+v", lr)
 	}
 	setDigest(t, dir, sumOf(t, dir))
-	if lr := digest(t, dir); lr.Result != Complete || lr.Checked.Digests != 1 {
+	if lr := digest(t, dir); lr.Result != ResultComplete || lr.Checked.Digests != 1 {
 		t.Fatalf("matching digest: %+v", lr)
 	}
 	setDigest(t, dir, strings.Repeat("0", 64))
-	if lr := digest(t, dir); lr.Result != Failed || lr.Failure.Code != CodeDigestMismatch || lr.At.Part != testutil.PartPath(0) {
+	if lr := digest(t, dir); lr.Result != ResultFailed || lr.Failure.Code != CodeDigestMismatch || lr.At.Part != testutil.PartPath(0) {
 		t.Fatalf("mismatched digest: %+v", lr)
 	}
 
@@ -437,13 +492,13 @@ func TestValidateDigest(t *testing.T) {
 	must(t, os.WriteFile(partFile(dir, 0), []byte("not a parquet file"), 0o644))
 	must(t, testutil.SyncSizes(dir))
 	setDigest(t, dir, sumOf(t, dir))
-	if lr := digest(t, dir); lr.Result != Complete || lr.Checked.Digests != 1 {
+	if lr := digest(t, dir); lr.Result != ResultComplete || lr.Checked.Digests != 1 {
 		t.Fatalf("digest of a file that is not Parquet: %+v", lr)
 	}
-	expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelStructural: "invalid_footer"})
+	expectLevels(t, validate(t, dir, ValidateOptions{}), map[ValidationLevel]string{LevelStructural: "invalid_footer"})
 
 	must(t, os.Remove(partFile(dir, 0)))
-	if lr := digest(t, dir); lr.Result != Failed || lr.Failure.Code != CodeMissingPart {
+	if lr := digest(t, dir); lr.Result != ResultFailed || lr.Failure.Code != CodeMissingPart {
 		t.Fatalf("missing part: %+v", lr)
 	}
 }
@@ -461,7 +516,7 @@ func TestValidateWhatReadsSkip(t *testing.T) {
 			t.Fatalf("a read past the fault: %d rows, %v", len(rows), err)
 		}
 		report := validate(t, dir, ValidateOptions{Level: LevelProfile})
-		expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "key_order"})
+		expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "complete", LevelProfile: "key_order"})
 		if lr, _ := report.Level(LevelProfile); lr.Failure.Row != 101 || string(lr.Failure.Key) != keys[101] {
 			t.Fatalf("key_order at row %d key %q", lr.Failure.Row, lr.Failure.Key)
 		}
@@ -477,7 +532,7 @@ func TestValidateWhatReadsSkip(t *testing.T) {
 			t.Fatalf("a read past the fault: %d rows, %v", len(rows), err)
 		}
 		report := validate(t, dir, ValidateOptions{Level: LevelProfile})
-		expectLevels(t, report, map[Level]string{LevelStructural: "complete", LevelProfile: "invalid_page_index"})
+		expectLevels(t, report, map[ValidationLevel]string{LevelStructural: "complete", LevelProfile: "invalid_page_index"})
 		if lr, _ := report.Level(LevelProfile); lr.At.Page != 1 || lr.At.RowGroup != 0 {
 			t.Fatalf("invalid_page_index at %s", lr.At)
 		}
@@ -519,7 +574,7 @@ func TestValidateStorageAndContext(t *testing.T) {
 	report, err := Validate(ctx, failingSource{dirOf(t, dir)}, ValidateOptions{})
 	must(t, err)
 	lr, _ := report.Level(LevelStructural)
-	if lr.Result != Incomplete || !strings.HasPrefix(lr.Reason, "storage") || RefusalCodeOf(lr.Err) != "" {
+	if lr.Result != ResultIncomplete || !strings.HasPrefix(lr.Reason, "storage") || RefusalCodeOf(lr.Err) != "" {
 		t.Fatalf("storage failure: %s", describeReport(report))
 	}
 	cancelled, cancel := context.WithCancel(ctx)
@@ -575,7 +630,7 @@ func TestValidateLevelEncodings(t *testing.T) {
 				editPage(t, dir, chunkOf(t, dir, 0, c.column).DataPageOffset, func(h *format.PageHeader, _ []byte) {
 					h.DataPageHeader.V.DefinitionLevelEncoding = enc
 				})
-				expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelProfile: "complete", LevelFull: want})
+				expectLevels(t, validate(t, dir, ValidateOptions{}), map[ValidationLevel]string{LevelProfile: "complete", LevelFull: want})
 			})
 		}
 	}
@@ -606,7 +661,7 @@ func TestValidateDictionaryPage(t *testing.T) {
 	must(t, os.WriteFile(partFile(dir, 0), raw, 0o644))
 
 	report := validate(t, dir, ValidateOptions{})
-	expectLevels(t, report, map[Level]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
+	expectLevels(t, report, map[ValidationLevel]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
 	if f, _ := report.Level(LevelFull); f.At.Page != -1 || !strings.Contains(f.Failure.Detail, "checksum") {
 		t.Fatalf("full failed at %s: %v", f.At, f.Failure)
 	}
@@ -630,12 +685,12 @@ func TestValidatePageHeaders(t *testing.T) {
 	t.Run("nested V2 null count", func(t *testing.T) {
 		dir := nestedDataset(t, testutil.Part{DataPageVersion: 2})
 		editPage(t, dir, chunkOf(t, dir, 0, 2).DataPageOffset, func(h *format.PageHeader, _ []byte) { h.DataPageHeaderV2.V.NumNulls++ })
-		expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
+		expectLevels(t, validate(t, dir, ValidateOptions{}), map[ValidationLevel]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
 	})
 	t.Run("flat V2 null count", func(t *testing.T) {
 		dir := write(t, manyPages(testutil.Part{DataPageVersion: 2}))
 		editPage(t, dir, chunkOf(t, dir, 0, 1).DataPageOffset, func(h *format.PageHeader, _ []byte) { h.DataPageHeaderV2.V.NumNulls++ })
-		expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
+		expectLevels(t, validate(t, dir, ValidateOptions{}), map[ValidationLevel]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
 	})
 	t.Run("first repetition level", func(t *testing.T) {
 		dir := nestedDataset(t, testutil.Part{DataPageVersion: 1, Compression: parquet.Compression(&parquet.Uncompressed)})
@@ -652,7 +707,7 @@ func TestValidatePageHeaders(t *testing.T) {
 			group[0] = group[0]&^first | 1
 		})
 		report := validate(t, dir, ValidateOptions{})
-		expectLevels(t, report, map[Level]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
+		expectLevels(t, report, map[ValidationLevel]string{LevelProfile: "complete", LevelFull: "invalid_parquet"})
 		if f, _ := report.Level(LevelFull); !strings.Contains(f.Failure.Detail, "repetition level") {
 			t.Fatalf("full: %v", f.Failure)
 		}
@@ -664,7 +719,7 @@ func TestValidatePageHeaders(t *testing.T) {
 func TestValidateKeyValueCount(t *testing.T) {
 	dir := write(t, manyPages(testutil.Part{}))
 	rewrite(t, dir, 0, func(m *format.FileMetaData) { m.RowGroups[1].Columns[0].MetaData.NumValues++ })
-	expectLevels(t, validate(t, dir, ValidateOptions{}), map[Level]string{LevelStructural: "complete", LevelProfile: "invalid_parquet"})
+	expectLevels(t, validate(t, dir, ValidateOptions{}), map[ValidationLevel]string{LevelStructural: "complete", LevelProfile: "invalid_parquet"})
 }
 
 // TestValidateStructuralRowGroupLocation reports a part refused for its

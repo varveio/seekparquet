@@ -33,8 +33,9 @@ func scanShards(workers int) int {
 }
 
 // ScanParallel scans the plan with at most workers concurrent callbacks.
-// Workers <= 0 means one worker and one shard; otherwise up to eight queued
-// shards per worker balance the work. Batches follow dataset order inside
+// Zero selects one worker; a negative count is ErrInvalidRequest, before
+// any I/O. One worker scans one shard; more workers take up to eight
+// queued shards each to balance the work. Batches follow dataset order inside
 // each shard; callbacks across shards are unordered and must be concurrency safe.
 // Borrowing and Close restrictions are those of Plan.Scan. Equal-key groups
 // stay intact. A complete scan also checks the key order across shard boundaries.
@@ -48,6 +49,9 @@ func (plan *Plan) ScanParallel(ctx context.Context, workers int, st *ReadStats, 
 	defer dropStats(spare)
 	if fn == nil {
 		return invalidRequest("a nil batch callback")
+	}
+	if workers < 0 {
+		return invalidRequest("a worker count must not be negative")
 	}
 	err := plan.scanParallel(ctx, workers, st, true, func() shardScan {
 		return func(ctx context.Context, shard *Plan, st *ReadStats, keys *shardKeys) error {

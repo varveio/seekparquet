@@ -6,8 +6,10 @@ Start with the job you have; [concepts](concepts.md) defines the terms every pag
 
 - [Quickstart](quickstart.md): read a checked-in dataset with Go in five minutes.
 - [Reading](guides/reading.md): open, look up, read ranges and prefixes, list, project, scan, plan, and classify errors.
-- [Pagination](guides/pagination.md): row and prefix cursors, tokens, service envelopes, and browse pages.
-- [Counting and aggregating](guides/counting.md): reductions by prefix, counts over listed row spans, filters.
+- [Pagination](guides/pagination.md): pages of a listing, row and prefix cursors, tokens, service envelopes, and the
+  prefixes of a page.
+- [Counting and folding](guides/counting.md): counts over listed row spans and key selections, folds with your own
+  function, budgets and key checks.
 - [Operating](guides/operating.md): limits, memory, open parts, verification, the list index, and concurrency.
 - [Storage](guides/storage-sources.md): implement a Go `Source` or Java `DatasetStorage` for an object store.
 - [Remote I/O](guides/remote-io.md): what a read costs, read-ahead, tuning and measuring.

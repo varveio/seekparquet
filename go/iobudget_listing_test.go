@@ -93,16 +93,20 @@ func folderFixture(t *testing.T, per, groups int, enc string) *ioFixture {
 func pagesScenario(name, prefix string, limit, pages int) ioScenario {
 	return ioScenario{name, func(e *ioEnv) {
 		d := e.open()
-		q := seekparquet.PageQuery{ListQuery: seekparquet.ListQuery{Prefix: []byte(prefix), Delimiter: '/', Limit: limit},
-			Reductions: []seekparquet.Reduction{{Op: seekparquet.CountRows}}}
+		q := seekparquet.ListQuery{Prefix: []byte(prefix), Delimiter: '/', Limit: limit}
 		for i := range pages {
 			e.step(fmt.Sprintf("%s/page%d", name, i+1), func() string {
-				page, err := d.Page(context.Background(), q, nil)
-				var b strings.Builder
-				for _, ent := range page.Entries {
-					fmt.Fprintf(&b, "%q %v\n", ent.Bytes(), ent.Aggregates)
+				ctx := context.Background()
+				entries, next, err := seekparquet.ListPage(ctx, d, q, nil)
+				q.Cursor = next
+				if err != nil {
+					return errResult(err)
 				}
-				q.Cursor = page.Next
+				counts, err := seekparquet.PrefixCounts(ctx, d, entries)
+				var b strings.Builder
+				for i, ent := range entries {
+					fmt.Fprintf(&b, "%q %d\n", ent.Bytes(), counts[i])
+				}
 				return withErr(b.String(), err)
 			})
 		}

@@ -62,7 +62,9 @@ type reader struct {
 	columns   map[string]column
 
 	listIndex atomic.Pointer[listIndex]
-	listBuild sync.Mutex
+	// listBuild is held, by a send, while BuildListIndex builds or reuses
+	// the list index.
+	listBuild chan struct{}
 
 	// meta accounts for the parts' retained metadata, once a part's check
 	// first kept some (retainTail).
@@ -220,7 +222,7 @@ type fetchedInput struct {
 // openParts takes ownership of every file that implements io.Closer: when
 // it fails it closes them all, and on success reader.close closes them.
 func openParts(ctx context.Context, inputs []partInput, key Key, opt OpenOptions) (_ *reader, err error) {
-	r := &reader{concurrency: readConcurrency, id: readerIDs.Add(1), key: key, limits: opt.Limits.withDefaults(), policy: opt.Read.withDefaults(), bounded: true, columns: map[string]column{}}
+	r := &reader{concurrency: readConcurrency, id: readerIDs.Add(1), key: key, limits: opt.Limits.withDefaults(), policy: opt.Read.withDefaults(), bounded: true, columns: map[string]column{}, listBuild: make(chan struct{}, 1)}
 	r.closing, r.closeNow = context.WithCancelCause(context.Background())
 	defer func() {
 		if err != nil {

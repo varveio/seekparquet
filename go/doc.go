@@ -28,9 +28,9 @@
 //
 // [Dataset.Verify] checks all parts and selected boundary key pages
 // (CHECK-3); it does not check every row or part digests. [Validate] and
-// [ValidateDir] produce a [Report] at structural, profile, full, or digest
-// levels. Unsupported features, resource limits, and storage failures leave
-// a level incomplete, rather than declaring data invalid. See the
+// [ValidateDir] produce a [ValidationReport] at structural, profile, full,
+// or digest levels. Unsupported features, resource limits, and storage
+// failures leave a level incomplete, rather than declaring data invalid. See the
 // [validation guide] for level selection and the command-line tool.
 //
 // # Planned selections
@@ -44,19 +44,28 @@
 //
 // [Dataset.PlanRows] accepts known [RowSpan] boundaries produced by this
 // dataset, including known [ListEntry.Rows] boundaries. Without columns it
-// does no storage I/O; its count can still be provisional for unchecked
-// parts. [Plan.InputRowSpans] preserves input descriptions before union
-// normalization. [Plan.SelectRows] selects contained spans without I/O.
-// [Plan.ScanValues] visits borrowed [ValueBatch] values without implicit key
-// decoding or equal-key offsets. Unknown boundaries require resolution
-// through Dataset.Plan. See the [counting guide] for complete examples.
+// does no storage I/O, so planning one span and reading [Plan.Count]
+// counts its rows without reading values; the count can still be
+// provisional for unchecked parts, and it checks no key. Unknown
+// boundaries require resolution through Dataset.Plan, whose
+// [Plan.InputRowSpans] returns the resolved spans.
+//
+// [FoldRows] reduces each span with a caller's [Fold], which receives
+// borrowed [ValueBatch] values of physical type: the arithmetic, and the
+// check of each column's annotation ([Dataset.Columns]), are the caller's.
+// Each result has a [FoldStatus]. Without [FoldOptions.CheckKeys] a fold
+// decodes no key page unless it projects the key column, and a span over
+// a part no read has checked is [FoldUnknown]. See the [counting guide]
+// for complete examples.
 //
 // # Equal keys and pagination
 //
 // Equal keys form a key group in producer file order and stay within a
 // part (KEY-7, PART-4). Span bounds select whole key groups, while a result
-// limit can split one across pages. Set the query cursor from the last
-// [Row.Cursor] or [ListEntry.Cursor] and repeat until the page is empty.
+// limit can split one across pages. To page, ask for one result more than
+// the page holds: that result tells whether another page follows. Set the
+// query cursor from the [Row.Cursor] or [ListEntry.Cursor] of the last
+// result kept.
 // [Cursor.Encode] and [ParseCursor] carry row or prefix cursors as stable
 // version 1 tokens. Tokens bind neither query nor snapshot and provide no
 // authentication. See the [pagination guide] for service envelopes.

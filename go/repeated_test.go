@@ -98,7 +98,7 @@ func rowsString(rows []Row) []string {
 func listString(entries []ListEntry) []string {
 	out := make([]string, len(entries))
 	for i, e := range entries {
-		if e.IsPrefix() {
+		if e.CommonPrefix != nil {
 			out[i] = "p:" + string(e.CommonPrefix)
 			if x := e.Exact; x != nil {
 				out[i] += fmt.Sprintf("=%s/%d=%d", x.Key, x.Offset, x.Values[0].Int64())

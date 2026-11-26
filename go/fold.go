@@ -6,6 +6,7 @@ package seekparquet
 import (
 	"context"
 	"slices"
+	"strconv"
 	"sync"
 
 	"github.com/parquet-go/parquet-go"
@@ -49,44 +50,88 @@ func (f *Fold[T]) empty() T {
 	return f.New()
 }
 
-// FoldOptions controls a fold. Its fields are those of AggregateOptions,
-// with the same meanings: a zero ValueBudgetBytes permits no value I/O
-// and -1 is unlimited; Workers <= 0 means one worker.
+// FoldStatus describes whether a span's fold is complete.
+type FoldStatus uint8
+
+const (
+	// FoldUnknown means the span's rows are not established: it covers a
+	// part no read has checked, and keys are not checked.
+	FoldUnknown FoldStatus = iota
+	// FoldExact means Value is the reduction of every row of the span.
+	FoldExact
+	// FoldBudgetExceeded means the span's value work did not fit the value
+	// budget.
+	FoldBudgetExceeded
+	// FoldUnpriced means the compressed extents of the span's value work
+	// are not known, so the value budget could not admit it.
+	FoldUnpriced
+)
+
+// String returns the status's name, such as "exact" or "budget_exceeded".
+func (s FoldStatus) String() string {
+	switch s {
+	case FoldUnknown:
+		return "unknown"
+	case FoldExact:
+		return "exact"
+	case FoldBudgetExceeded:
+		return "budget_exceeded"
+	case FoldUnpriced:
+		return "unpriced"
+	}
+	return "FoldStatus(" + strconv.Itoa(int(s)) + ")"
+}
+
+// FoldOptions controls a fold.
 type FoldOptions struct {
-	// ValueBudgetBytes is the compressed page and dictionary extent budget
-	// of the projected columns.
+	// ValueBudgetBytes bounds the compressed page and dictionary extents
+	// of the projected columns that the fold reads, each counted once
+	// however many spans share it. Spans are considered in ascending order
+	// of their starts, and each is admitted whole when its value work fits
+	// with that of the spans admitted before it; a span that does not fit
+	// is FoldBudgetExceeded, or FoldUnpriced when its extents are not
+	// known. Planning metadata and the key pages read to check keys are
+	// not charged, and a fold with no columns is not budgeted. Zero is
+	// unlimited; a negative budget is ErrInvalidRequest.
 	ValueBudgetBytes int64
-	// Workers bounds the concurrent scans and Add calls.
+	// Workers bounds the concurrent scans and Add calls. Zero selects one
+	// worker; a negative count is ErrInvalidRequest.
 	Workers int
 	// CheckKeys requests that every selected key is checked, including
-	// the order across shards.
+	// the order across shards, also in spans the budget refused. Without
+	// it, a span over a part no read has checked is FoldUnknown, and an
+	// exact result does not certify the keys of its rows.
 	CheckKeys bool
 }
 
-// FoldResult is one span's reduction. Value is the complete reduction
-// when Status is AggregateExact, and the zero T otherwise. Status is
-// AggregateExact, AggregateUnknown, AggregateBudgetExceeded or
-// AggregateUnpriced, as AggregateRows reports them.
+// FoldResult is one span's reduction. Value is the complete reduction of
+// the span's rows when Status is FoldExact, and the zero T otherwise.
 type FoldResult[T any] struct {
-	// Value is the span's reduction when Status is AggregateExact.
+	// Value is the span's reduction when Status is FoldExact.
 	Value T
 	// Status describes completeness; an inexact result's Value is the
 	// zero T.
-	Status AggregateStatus
+	Status FoldStatus
 }
 
 // FoldRows reduces the rows of each established span with f, preserving
-// input order, overlaps and empties. On success each row of the spans
-// whose value work was admitted is handed to Add exactly once, and
-// reaches every admitted span that holds it through Merge. A fold with
-// no columns still hands Add its rows. A span with no rows is an exact
-// empty T, with no call to Add. A nil Add or Merge is ErrInvalidRequest.
+// input order, overlaps and empties: out has one result per span. On
+// success each row of the spans whose value work was admitted is handed
+// to Add exactly once, and reaches every admitted span that holds it
+// through Merge. A fold with no columns still hands Add its rows. A span
+// with no rows is an exact empty T, with no call to Add.
 //
-// Boundaries, budgets, key checking, statistics and errors are those of
-// AggregateRows: a span refused by the budget is not exact even where it
-// overlaps an admitted one, and without CheckKeys a span over a part no
-// read has checked is AggregateUnknown.
+// Every span must have known boundaries from d and must not end before it
+// starts, as PlanRows requires. An invalid span, a nil Add or Merge, a
+// negative ValueBudgetBytes or a negative Workers is ErrInvalidRequest,
+// before any I/O. Each span's count is planned without I/O; the spans
+// whose count is exact, or all of them with CheckKeys, then have their
+// value work admitted under the budget (FoldOptions), and the admitted
+// spans' rows are scanned together, each row once. A span refused by the
+// budget is not exact even where it overlaps an admitted one.
 //
+// st is reset and filled on every exit, including failure, with the work
+// of planning, scanning and checking keys. Any error returns no results.
 // The first failing Add, or a failing read, cancels the other workers, so
 // an Add that would fail later may never run. FoldRows then returns, in
 // this order: the first error other than Stop that was recorded, from an
@@ -99,8 +144,11 @@ func FoldRows[T any](ctx context.Context, d *Dataset, spans []RowSpan, f Fold[T]
 	if f.Add == nil || f.Merge == nil {
 		return nil, invalidRequest("a nil fold callback")
 	}
-	if opt.ValueBudgetBytes < -1 {
-		return nil, invalidRequest("a value budget must be -1 or nonnegative")
+	if opt.ValueBudgetBytes < 0 {
+		return nil, invalidRequest("a value budget must not be negative")
+	}
+	if opt.Workers < 0 {
+		return nil, invalidRequest("a worker count must not be negative")
 	}
 	op, err := d.r.begin(ctx)
 	if err != nil {
@@ -116,7 +164,6 @@ func FoldRows[T any](ctx context.Context, d *Dataset, spans []RowSpan, f Fold[T]
 
 	w := rowWork{
 		columns:   f.Columns,
-		values:    true,
 		budget:    opt.ValueBudgetBytes,
 		workers:   opt.Workers,
 		checkKeys: opt.CheckKeys,
@@ -129,7 +176,7 @@ func FoldRows[T any](ctx context.Context, d *Dataset, spans []RowSpan, f Fold[T]
 	out = make([]FoldResult[T], len(spans))
 	for i, status := range a.status {
 		out[i].Status = status
-		if status == AggregateExact && a.counts[i] == 0 {
+		if status == FoldExact && a.counts[i] == 0 {
 			out[i].Value = f.empty()
 		}
 	}
@@ -241,7 +288,7 @@ func (w *foldWorker[T]) scan(ctx context.Context, shard *Plan, st *ReadStats, ke
 			return failed
 		})
 	} else {
-		err = shard.ScanValues(ctx, st, func(b *ValueBatch) error {
+		err = shard.scanValues(ctx, st, func(b *ValueBatch) error {
 			failed = w.fold(b)
 			return failed
 		})
@@ -299,4 +346,16 @@ func (w *foldWorker[T]) clip(b *ValueBatch, lo, hi int) {
 			r.values[c] = values[lo:hi:hi]
 		}
 	}
+}
+
+// inputCuts returns the distinct starts and ends of the plan's inputs, in
+// ascending order. Consecutive cuts bound a segment: rows that lie in the
+// same inputs.
+func (plan *Plan) inputCuts() []int64 {
+	cuts := make([]int64, 0, 2*len(plan.inputs))
+	for _, in := range plan.inputs {
+		cuts = append(cuts, in.start, in.end)
+	}
+	slices.Sort(cuts)
+	return slices.Compact(cuts)
 }

@@ -70,6 +70,10 @@ type listIndex struct {
 	stats  ListIndexStats
 }
 
+// testListBuildWait, when set by a test, is called by BuildListIndex just
+// before it waits for the build lock.
+var testListBuildWait func()
+
 // BuildListIndex decodes every key page once to build a bounded, optional index
 // of directory runs for List with delimiter '/'. It does not run at open.
 // Complete groups are admitted in dataset order; the first over-budget group
@@ -104,16 +108,15 @@ func (d *Dataset) BuildListIndex(ctx context.Context, opt ListIndexOptions) (sta
 		return stats, err
 	}
 	defer rctx.end(nil)
-	for !r.listBuild.TryLock() {
-		timer := time.NewTimer(10 * time.Millisecond)
-		select {
-		case <-timer.C:
-		case <-rctx.Done():
-			timer.Stop()
-			return stats, finish(ctx, rctx, rctx.Err())
-		}
+	if testListBuildWait != nil {
+		testListBuildWait()
 	}
-	defer r.listBuild.Unlock()
+	select {
+	case r.listBuild <- struct{}{}:
+	case <-rctx.Done():
+		return stats, finish(ctx, rctx, rctx.Err())
+	}
+	defer func() { <-r.listBuild }()
 	if err := rctx.Err(); err != nil {
 		return stats, finish(ctx, rctx, err)
 	}

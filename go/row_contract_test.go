@@ -114,12 +114,12 @@ func TestRowPositionInspectionAfterClose(t *testing.T) {
 	if n, known := spans[0].End.Ordinal(); n != 30 || !known {
 		t.Fatalf("end after close: %d known %v", n, known)
 	}
-	sub, err := p.SelectRows(spans)
+	sub, err := p.selectRows(spans)
 	must(t, err)
 	if n, _ := sub.Count(); n != 30 {
 		t.Fatalf("selected count after close: %d", n)
 	}
-	if err := sub.ScanValues(ctx, nil, func(*ValueBatch) error { return nil }); !errors.Is(err, ErrClosed) {
+	if err := sub.scanValues(ctx, nil, func(*ValueBatch) error { return nil }); !errors.Is(err, ErrClosed) {
 		t.Fatalf("scan after close: %v", err)
 	}
 	// Split is not a pure in-memory transformation under the existing contract.
@@ -144,7 +144,7 @@ func TestValueBatchAggregationAcrossInputSpans(t *testing.T) {
 	crossed := false
 	var retained RowPosition
 	var cloned Value
-	must(t, p.ScanValues(ctx, nil, func(b *ValueBatch) error {
+	must(t, p.scanValues(ctx, nil, func(b *ValueBatch) error {
 		start, _ := b.Start().Ordinal()
 		if start < 2 && start+int64(b.Len()) > 2 {
 			crossed = true

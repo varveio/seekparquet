@@ -32,10 +32,10 @@ type DatasetOptions struct {
 	// the geometry (write.PartOptions). Key and SchemaID are required.
 	Part write.PartOptions
 	// PartBytes is the size at which a part ends, on the writer's estimate
-	// (write.PartWriter.Size): the part ends before the first row whose
-	// key differs from the last row's, so that a group of equal keys never
-	// crosses parts (PART-4) and a large group can exceed it. 0 is
-	// 128 MiB.
+	// (write.PartWriter.EstimatedSize): the part ends before the first row
+	// whose key differs from the last row's, so that a group of equal keys
+	// never crosses parts (PART-4) and a large group can exceed it. 0 is
+	// 128 MiB; a negative size is refused.
 	PartBytes int64
 	// Extensions is the manifest's extensions object (§3.4), nil for none.
 	Extensions json.RawMessage
@@ -58,10 +58,13 @@ type DatasetOptions struct {
 // including when ctx is cancelled, it removes dir; a failure after the
 // manifest became visible leaves the dataset in place.
 func WriteDir(ctx context.Context, dir string, schema *parquet.Schema, rows parquet.RowReader, opt DatasetOptions) (err error) {
+	if opt.PartBytes < 0 {
+		return fmt.Errorf("seekparquet/local: negative part size")
+	}
 	if !dirSyncSupported && !opt.AllowUnsynced {
 		return ErrDirSyncUnsupported
 	}
-	if opt.PartBytes <= 0 {
+	if opt.PartBytes == 0 {
 		opt.PartBytes = defaultPartBytes
 	}
 	leaf, ok := schema.Lookup(opt.Part.Key.Column)
@@ -195,7 +198,7 @@ func (d *dirWriter) add(rows []parquet.Row) error {
 	if err := d.write(rows[from:]); err != nil {
 		return err
 	}
-	if d.part != nil && d.part.Size() >= d.opt.PartBytes {
+	if d.part != nil && d.part.EstimatedSize() >= d.opt.PartBytes {
 		d.full = true
 	}
 	return nil

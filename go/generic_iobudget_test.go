@@ -15,7 +15,9 @@ import (
 
 // Additional rows only: existing ioBudgets and scenarios remain unchanged.
 // Mirrors swath internal/readbudget's counts-off/on and budgeted browse sums
-// on SeekParquet's own fixture. Each operation starts after the same listing.
+// on SeekParquet's own fixture. Each operation starts after the same listing:
+// counts plan the listed prefixes without columns, sums fold them, and a page
+// lists one entry beyond it and counts its prefixes.
 func TestReadBudgetsGeneric(t *testing.T) {
 	seekparquet.NoTestReadAhead(t)
 	for _, group := range []struct {
@@ -32,10 +34,8 @@ func TestReadBudgetsGeneric(t *testing.T) {
 		}},
 		// Mirror swath's largeGeo budget cut with this writer's fixture:
 		// 2,200 rows per prefix makes exactly nine fit within 64 KiB.
-		{"nine-sums", ioFixtureSpec{rows: 400_000, parts: 4, groups: 4, perFolder: 2200}, []string{"sum-budget", "sum-budget-counts", "filter-budget"}, []ioBudget{
+		{"nine-sums", ioFixtureSpec{rows: 400_000, parts: 4, groups: 4, perFolder: 2200}, []string{"sum-budget"}, []ioBudget{
 			{"sum-budget", ioMetrics{2, 1, 63454, 0, 2}, none, current},
-			{"sum-budget-counts", ioMetrics{2, 1, 63454, 0, 2}, none, current},
-			{"filter-budget", ioMetrics{2, 1, 63454, 0, 2}, none, current},
 		}},
 	} {
 		t.Run(group.name, func(t *testing.T) {
@@ -71,12 +71,34 @@ func TestReadBudgetsGeneric(t *testing.T) {
 						spans = spans[:9]
 					}
 					e.step(name, func() string {
+						sum := seekparquet.Fold[int64]{
+							Columns: []string{"size"},
+							Add: func(acc *int64, rows *seekparquet.ValueBatch) error {
+								sizes := rows.Column(0)
+								for i := range rows.Len() {
+									*acc += sizes.Int64(i)
+								}
+								return nil
+							},
+							Merge: func(into, from *int64) { *into += *from },
+						}
 						if name == "page" {
-							p, err := d.Page(ctx, seekparquet.PageQuery{ListQuery: seekparquet.ListQuery{Prefix: fx.listPrefix, Delimiter: '/', Limit: 10}, Reductions: []seekparquet.Reduction{{Op: seekparquet.CountRows}, {Op: seekparquet.Sum, Column: "size"}}, Aggregates: seekparquet.AggregateOptions{ValueBudgetBytes: 64 << 10}}, nil)
+							entries, next, err := seekparquet.ListPage(ctx, d, seekparquet.ListQuery{Prefix: fx.listPrefix, Delimiter: '/', Limit: 10}, nil)
 							if err != nil {
 								return errResult(err)
 							}
-							return fmt.Sprintf("%d entries next=%v", len(p.Entries), p.Next != nil)
+							counts, err := seekparquet.PrefixCounts(ctx, d, entries)
+							if err != nil {
+								return errResult(err)
+							}
+							var prefixes []seekparquet.RowSpan
+							for i, e := range entries {
+								if counts[i] >= 0 {
+									prefixes = append(prefixes, e.Rows)
+								}
+							}
+							out, err := seekparquet.FoldRows(ctx, d, prefixes, sum, seekparquet.FoldOptions{ValueBudgetBytes: 64 << 10}, nil)
+							return withErr(fmt.Sprintf("%d entries next=%v counts=%v sums=%v", len(entries), next != nil, counts, out), err)
 						}
 						if name == "parallel" {
 							p, err := d.PlanRows(ctx, spans, []string{"size"}, nil)
@@ -88,49 +110,37 @@ func TestReadBudgetsGeneric(t *testing.T) {
 							err = p.ScanParallel(ctx, 2, nil, func(b *seekparquet.Batch) error { n.Add(int64(b.Len())); return nil })
 							return withErr(fmt.Sprint(n.Load()), err)
 						}
-						reductions := []seekparquet.Reduction{{Op: seekparquet.Sum, Column: "size"}}
-						opt := seekparquet.AggregateOptions{ValueBudgetBytes: 64 << 10}
+						var text strings.Builder
 						if name == "counts" {
-							reductions = []seekparquet.Reduction{{Op: seekparquet.CountRows}}
-							opt.ValueBudgetBytes = 0
+							for _, sp := range spans {
+								p, err := d.PlanRows(ctx, []seekparquet.RowSpan{sp}, nil, nil)
+								if err != nil {
+									return errResult(err)
+								}
+								n, exact := p.Count()
+								if !exact {
+									e.t.Fatalf("%s: count %d is not exact", name, n)
+								}
+								fmt.Fprintf(&text, "%d ", n)
+							}
+							return text.String()
 						}
 						if name == "sum-one" {
 							spans = spans[len(spans)-1:]
 						}
-						if name == "sum-budget-counts" {
-							reductions = append(reductions, seekparquet.Reduction{Op: seekparquet.CountRows})
-						}
-						if name == "filter-budget" {
-							opt.Filter = &seekparquet.BatchFilter{Columns: []string{"size"}, Apply: func(b *seekparquet.ValueBatch, keep []bool) error {
-								for i := range keep {
-									keep[i] = b.Column(0).Int64(i)%2 == 0
-								}
-								return nil
-							}}
-						}
-						out, err := d.AggregateRows(ctx, spans, reductions, opt, nil)
+						out, err := seekparquet.FoldRows(ctx, d, spans, sum, seekparquet.FoldOptions{ValueBudgetBytes: 64 << 10}, nil)
 						if err != nil {
 							return errResult(err)
 						}
-						var text strings.Builder
 						summed := 0
-						for _, row := range out {
-							if row[0].Status == seekparquet.AggregateExact {
+						for _, r := range out {
+							switch {
+							case r.Status == seekparquet.FoldExact:
 								summed++
+							case !budgeted || r.Status != seekparquet.FoldBudgetExceeded:
+								e.t.Fatalf("%s: unexpected result %+v", name, r)
 							}
-							for j, r := range row {
-								want := seekparquet.AggregateExact
-								if budgeted && j == 0 && r.Status == seekparquet.AggregateBudgetExceeded {
-									want = seekparquet.AggregateBudgetExceeded
-								}
-								if r.Status != want {
-									e.t.Fatalf("%s: unexpected result %+v", name, r)
-								}
-								if budgeted && j > 0 && r.Value.Int64() != int64(group.spec.perFolder) {
-									e.t.Fatalf("%s: count %+v", name, r)
-								}
-								fmt.Fprintf(&text, "%d:%d ", r.Status, r.Value.Int64())
-							}
+							fmt.Fprintf(&text, "%d:%d ", r.Status, r.Value)
 						}
 						if budgeted && (summed != 9 || summed >= len(spans)) {
 							e.t.Fatalf("%s: %d of %d prefixes summed under 64 KiB; want exactly nine and not all", name, summed, len(spans))

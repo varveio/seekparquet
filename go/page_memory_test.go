@@ -176,7 +176,7 @@ func TestPageMemoryOnEveryPage(t *testing.T) {
 	// incomplete, not failed, when a page is over it.
 	report, err := ValidateDir(ctx, dir, ValidateOptions{Limits: Limits{PageMemory: memory["dictionary"] - 1}})
 	must(t, err)
-	if full, _ := report.Level(LevelFull); full.Result != Incomplete || !errors.Is(full.Err, ErrLimitExceeded) {
+	if full, _ := report.Level(LevelFull); full.Result != ResultIncomplete || !errors.Is(full.Err, ErrLimitExceeded) {
 		t.Fatalf("validation: %+v", full)
 	}
 }

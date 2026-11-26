@@ -125,7 +125,7 @@ interface the reader uses.
 ctx := context.Background()
 report, err := seekparquet.ValidateDir(ctx, "../conformance/datasets/multipart", seekparquet.ValidateOptions{Level: seekparquet.LevelFull})
 if err != nil {
-	log.Fatal(err) // the directory cannot be opened, or ctx ended
+	log.Fatal(err) // the directory cannot be opened, the request is invalid, or ctx ended
 }
 for _, level := range report.Levels {
 	fmt.Println(level.Level, level.Result)
@@ -142,8 +142,8 @@ fmt.Println("result:", report.Result())
 **Java:** not available.
 
 The returned error is not the validation result. It is non-nil only when the directory cannot be opened, the
-level is unknown, or the context ends. Read the result from the report: `Report.Result()` for the whole, and
-`Report.Levels` for each level's `Result`, `Failure` (a `*RefusalError` with its code and location), `Reason`
+level is unknown, a limit is negative, or the context ends. Read the result from the report:
+`ValidationReport.Result()` for the whole, and `ValidationReport.Levels` for each level's `Result`, `Failure` (a `*RefusalError` with its code and location), `Reason`
 and `Err` (the cause of an incomplete level).
 
 `ValidateOptions.Limits` applies the [specific input and decoding limits](../reference/limits.md) used by

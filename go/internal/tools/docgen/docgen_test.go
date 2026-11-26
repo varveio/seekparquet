@@ -193,8 +193,8 @@ func TestCheckCatchesDrift(t *testing.T) {
 		{"go code in an unread form", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch RefusalCode = \"digest_\" + \"mismatch\"", "not a string literal"},
 		{"go conversion in an unread form", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch = RefusalCode(\"digest_\" + \"mismatch\")", "not a string literal"},
 		{"go inferred typed expression", "go/errors.go", "CodeDigestMismatch        RefusalCode = \"digest_mismatch\"", "CodeDigestMismatch RefusalCode = \"digest_mismatch\"\n CodeNewOne = CodeDigestMismatch + \"_new\"", "CodeNewOne has a code type"},
-		{"documented limit without a LimitName", "go/limits.go", "LimitGetRows           LimitName = \"GetRows\"", "", "no LimitName LimitGetRows"},
-		{"cache with an incorrect LimitName", "go/limits.go", "LimitOffsetIndexMemory LimitName = \"OffsetIndexMemory\"", "LimitOffsetIndexMemory LimitName = \"Other\"", "no LimitName LimitOffsetIndexMemory"},
+		{"documented limit without a LimitName", "go/limits.go", "LimitGetRows        LimitName = \"GetRows\"", "", "no LimitName LimitGetRows"},
+		{"cache with an incorrect LimitName", "go/limits.go", "LimitGetRows        LimitName = \"GetRows\"", "LimitGetRows        LimitName = \"GetRows\"\n\tLimitOffsetIndexMemory LimitName = \"Other\"", "no LimitName LimitOffsetIndexMemory"},
 		{"Go-only cache marked as a limit", "docs/data/limits.json", "\"PageIndexCacheMemory\", \"java\": null, \"kind\": \"cache\"", "\"PageIndexCacheMemory\", \"java\": null, \"kind\": \"limit\"", "no LimitName LimitPageIndexCacheMemory"},
 		{"Go-only cache given a Java counterpart", "docs/data/limits.json", "\"PageIndexCacheMemory\", \"java\": null", "\"PageIndexCacheMemory\", \"java\": \"pageIndexCacheMemory\"", "no public constant DEFAULT_PAGE_INDEX_CACHE_MEMORY"},
 		{"Go-only counter given a Java counterpart", "docs/data/read-stats.json", "\"SourceBatches\", \"java\": null", "\"SourceBatches\", \"java\": \"sourceBatches\"", "no component sourceBatches"},
@@ -247,10 +247,14 @@ func TestReaderIOOperationReferences(t *testing.T) {
 	for _, want := range []string{
 		"Dataset.Verify(ctx, stats)",
 		"pass nil to discard statistics",
+		"`Dataset.Columns`", "`FoldRows`", "`Plan.ScanParallel`",
 	} {
 		if !strings.Contains(stats, want) {
 			t.Errorf("statistics reference is missing %q", want)
 		}
+	}
+	if strings.Contains(stats, "BuildListIndex") {
+		t.Error("statistics reference names BuildListIndex, which takes no *ReadStats")
 	}
 	parity, err := g.renderParity()
 	if err != nil {
@@ -416,6 +420,8 @@ func TestEvalJava(t *testing.T) {
 // facts, and an explicit Java checkout must check the pending names too.
 func TestPendingJavaParityRows(t *testing.T) {
 	root := mutableTree(t)
+	edit(t, root, "docs/data/parity.json", `"go": "ListEntry.Rows", "java": null, "note": "Go only."`,
+		`"go": "ListEntry.Rows", "java": "ListEntry.rows", "java_pending": "a test branch"`)
 	if got := checkErr(t, root); got != "" {
 		t.Fatal(got)
 	}
@@ -426,14 +432,21 @@ func TestPendingJavaParityRows(t *testing.T) {
 	if err := g.check(); err == nil || !strings.Contains(err.Error(), "no public ListEntry.rows") {
 		t.Fatalf("explicit Java check did not check pending rows: %v", err)
 	}
-	edit(t, root, "docs/data/parity.json", `"go": "Plan.ScanValues"`, `"go": "Plan.NoSuchMethod"`)
+	edit(t, root, "docs/data/parity.json", `"go": "Plan.InputRowSpans"`, `"go": "Plan.NoSuchMethod"`)
 	if got := checkErr(t, root); !strings.Contains(got, "Go has no Plan.NoSuchMethod") {
+		t.Fatalf("ordinary row bypassed Go check: %s", got)
+	}
+	edit(t, root, "docs/data/parity.json", `"go": "ListEntry.Rows", "java": "ListEntry.rows"`, `"go": "ListEntry.NoSuchRows", "java": "ListEntry.rows"`)
+	if got := checkErr(t, root); !strings.Contains(got, "Go has no ListEntry.NoSuchRows") {
 		t.Fatalf("pending row bypassed Go check: %s", got)
 	}
 }
 
 func TestInputRowSpansParity(t *testing.T) {
-	g, err := newGenerator(mutableTree(t), "")
+	root := mutableTree(t)
+	edit(t, root, "docs/data/parity.json", `"go": "ListEntry.Rows", "java": null, "note": "Go only."`,
+		`"go": "ListEntry.Rows", "java": "ListEntry.rows", "java_pending": "a test branch"`)
+	g, err := newGenerator(root, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -444,7 +457,10 @@ func TestInputRowSpansParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(page, "| Input row intervals before union normalization | `Plan.InputRowSpans` | `Plan.inputRowSpans` | Java pending") {
-		t.Error("parity reference must use InputRowSpans and its pending Java counterpart")
+	if !strings.Contains(page, "| Input row intervals before union normalization | `Plan.InputRowSpans` | — | Go only. |") {
+		t.Error("parity reference must use InputRowSpans, with no Java counterpart")
+	}
+	if !strings.Contains(page, "| Candidate rows of a listing entry | `ListEntry.Rows` | `ListEntry.rows` | Java pending on a test branch. |") {
+		t.Error("parity reference must render a pending Java counterpart")
 	}
 }

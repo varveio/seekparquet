@@ -12,8 +12,8 @@ import (
 	"strings"
 )
 
-// Level is a validation level of the specification (§8).
-type Level string
+// ValidationLevel is a validation level of the specification (§8).
+type ValidationLevel string
 
 // The validation levels. Structural, profile and full each require the
 // level before them; digest stands alone (VAL-1).
@@ -23,49 +23,50 @@ const (
 	// RG-4 for every non-empty row group: the key column's ColumnIndex and
 	// OffsetIndex, and the page header each OffsetIndex entry locates,
 	// reading page headers but not page data.
-	LevelStructural Level = "structural"
+	LevelStructural ValidationLevel = "structural"
 	// LevelProfile enumerates the pages of every key column chunk from the
 	// chunk's start, without its OffsetIndex, and requires the OffsetIndex
 	// to list exactly those pages (RG-3); decodes every key and checks
 	// KEY-2, KEY-3 and KEY-6 over every row and RG-5 for every page; and
 	// requires each part's first and last keys to equal its manifest bounds
 	// (PART-3, PART-4).
-	LevelProfile Level = "profile"
+	LevelProfile ValidationLevel = "profile"
 	// LevelFull enumerates and decodes every page of every other stored
 	// column the same way: each page decompresses, passes its CRC when its
 	// header carries one, decodes to exactly the values its header
 	// declares, and the chunk holds exactly the row group's rows;
 	// a column's OffsetIndex and ColumnIndex, when present, must describe
 	// exactly those pages.
-	LevelFull Level = "full"
+	LevelFull ValidationLevel = "full"
 	// LevelDigest compares the SHA-256 of every part that declares one with
 	// its manifest entry (PART-5), reading the parts as bytes, whether or
 	// not they open as Parquet.
-	LevelDigest Level = "digest"
+	LevelDigest ValidationLevel = "digest"
 )
 
-// Result is the outcome of one level (VAL-1).
-type Result string
+// ValidationResult is the outcome of one level (VAL-1).
+type ValidationResult string
 
 // The outcomes of a level.
 const (
-	// Complete: the level checked everything it covers and found no fault.
-	Complete Result = "complete"
-	// Failed: the dataset breaks the specification; the level's Failure
-	// carries the refusal code.
-	Failed Result = "failed"
-	// Incomplete: the level could not check everything, for a reason that
-	// is not a fault of the data (an unsupported feature, a limit, a
+	// ResultComplete: the level checked everything it covers and found no
+	// fault.
+	ResultComplete ValidationResult = "complete"
+	// ResultFailed: the dataset breaks the specification; the level's
+	// Failure carries the refusal code.
+	ResultFailed ValidationResult = "failed"
+	// ResultIncomplete: the level could not check everything, for a reason
+	// that is not a fault of the data (an unsupported feature, a limit, a
 	// storage error) or because its prerequisite did not complete. It says
 	// nothing about validity.
-	Incomplete Result = "incomplete"
+	ResultIncomplete ValidationResult = "incomplete"
 )
 
 // ValidateOptions configures Validate.
 type ValidateOptions struct {
 	// Level is the level to reach; "" is LevelFull. Structural, profile
 	// and full run the levels they require first; digest runs alone.
-	Level Level
+	Level ValidationLevel
 	// Limits bounds what the dataset can make the validator allocate, as
 	// it bounds a reader (OpenOptions.Limits). Exceeding one leaves the level
 	// incomplete; it is not a fault of the data. IndexMemory does not
@@ -84,9 +85,9 @@ type Location struct {
 	Page     int
 }
 
-// Checked counts what a level checked, up to its end or the point where
-// it stopped.
-type Checked struct {
+// ValidationCounts counts what a level checked, up to its end or the point
+// where it stopped.
+type ValidationCounts struct {
 	// Parts is the number of parts checked.
 	Parts int64
 	// RowGroups is the number of non-empty row groups checked.
@@ -106,14 +107,14 @@ type Checked struct {
 
 // LevelReport is the outcome of one level.
 type LevelReport struct {
-	Level  Level
-	Result Result
+	Level  ValidationLevel
+	Result ValidationResult
 	// Checked counts what the level checked.
-	Checked Checked
+	Checked ValidationCounts
 	// At locates a failure, or where an incomplete level stopped, when
 	// the level got that far.
 	At Location
-	// Failure is the refusal, with its Code, when Result is Failed.
+	// Failure is the refusal, with its Code, when Result is ResultFailed.
 	Failure *RefusalError
 	// Reason says, for people, why an incomplete level is incomplete, or
 	// that a complete digest level compared no digest (VAL-2).
@@ -124,14 +125,14 @@ type LevelReport struct {
 	Err error
 }
 
-// Report is the outcome of a validation: one LevelReport per level
-// attempted, in order.
-type Report struct {
+// ValidationReport is the outcome of a validation: one LevelReport per
+// level attempted, in order.
+type ValidationReport struct {
 	Levels []LevelReport
 }
 
 // Level returns the report of level l and whether it was attempted.
-func (r *Report) Level(l Level) (LevelReport, bool) {
+func (r *ValidationReport) Level(l ValidationLevel) (LevelReport, bool) {
 	for _, lr := range r.Levels {
 		if lr.Level == l {
 			return lr, true
@@ -140,32 +141,37 @@ func (r *Report) Level(l Level) (LevelReport, bool) {
 	return LevelReport{}, false
 }
 
-// Result returns Failed when any level failed, else Incomplete when any
-// level is incomplete, else Complete: the dataset is valid at the level
+// Result returns ResultFailed when any level failed, else ResultIncomplete
+// when any level is incomplete, else ResultComplete: the dataset is valid at the level
 // requested.
-func (r *Report) Result() Result {
-	out := Complete
+func (r *ValidationReport) Result() ValidationResult {
+	out := ResultComplete
 	for _, lr := range r.Levels {
 		switch lr.Result {
-		case Failed:
-			return Failed
-		case Incomplete:
-			out = Incomplete
+		case ResultFailed:
+			return ResultFailed
+		case ResultIncomplete:
+			out = ResultIncomplete
 		}
 	}
 	return out
 }
 
 // ValidateDir validates the dataset in the local directory at path, read
-// through an os.Root of it as OpenDir reads it. An error is returned only
-// when the directory cannot be opened, or as Validate returns one.
-func ValidateDir(ctx context.Context, path string, opt ValidateOptions) (*Report, error) {
+// through an os.Root of it as OpenDir reads it. It checks opt before it
+// opens the directory. An error is returned only when the directory cannot
+// be opened, or as Validate returns one.
+func ValidateDir(ctx context.Context, path string, opt ValidateOptions) (*ValidationReport, error) {
+	levels, err := opt.levels()
+	if err != nil {
+		return nil, err
+	}
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = root.Close() }()
-	return Validate(ctx, dirSource{root}, opt)
+	return runValidation(ctx, dirSource{root}, opt.Limits.withDefaults(), levels)
 }
 
 // Validate validates the dataset at src up to opt.Level (§8). It never
@@ -176,31 +182,46 @@ func ValidateDir(ctx context.Context, path string, opt ValidateOptions) (*Report
 // below keep their result. An unsupported feature, a limit or a storage
 // error leaves the level incomplete, never failed (VAL-1).
 //
-// The error is non-nil only for an unknown level, or when ctx ends; the
+// The error is non-nil only for an unknown level or a negative limit, both
+// ErrInvalidRequest and returned before any I/O, or when ctx ends; the
 // report then holds the levels that finished.
-func Validate(ctx context.Context, src Source, opt ValidateOptions) (*Report, error) {
-	opt.Limits = opt.Limits.withDefaults()
-	var levels []Level
+func Validate(ctx context.Context, src Source, opt ValidateOptions) (*ValidationReport, error) {
+	levels, err := opt.levels()
+	if err != nil {
+		return nil, err
+	}
+	return runValidation(ctx, src, opt.Limits.withDefaults(), levels)
+}
+
+// levels checks opt and returns the levels it asks for, in the order they
+// run. Its error wraps ErrInvalidRequest.
+func (opt ValidateOptions) levels() ([]ValidationLevel, error) {
+	if err := opt.Limits.check(); err != nil {
+		return nil, err
+	}
 	switch opt.Level {
 	case LevelStructural:
-		levels = []Level{LevelStructural}
+		return []ValidationLevel{LevelStructural}, nil
 	case LevelProfile:
-		levels = []Level{LevelStructural, LevelProfile}
+		return []ValidationLevel{LevelStructural, LevelProfile}, nil
 	case LevelFull, "":
-		levels = []Level{LevelStructural, LevelProfile, LevelFull}
+		return []ValidationLevel{LevelStructural, LevelProfile, LevelFull}, nil
 	case LevelDigest:
-		levels = []Level{LevelDigest}
-	default:
-		return nil, fmt.Errorf("seekparquet: unknown validation level %q", opt.Level)
+		return []ValidationLevel{LevelDigest}, nil
 	}
-	v := &validator{ctx: ctx, src: src, limits: opt.Limits}
+	return nil, invalidRequest("unknown validation level %q", opt.Level)
+}
+
+// runValidation runs levels over src with limits, which carry their defaults.
+func runValidation(ctx context.Context, src Source, limits Limits, levels []ValidationLevel) (*ValidationReport, error) {
+	v := &validator{ctx: ctx, src: src, limits: limits}
 	defer v.close()
-	report := &Report{}
+	report := &ValidationReport{}
 	var previous *LevelReport
 	for _, level := range levels {
 		lr := LevelReport{Level: level, At: Location{RowGroup: -1, Page: -1}}
-		if previous != nil && previous.Result != Complete {
-			lr.Result, lr.Reason = Incomplete, fmt.Sprintf("its prerequisite %s is %s", previous.Level, previous.Result)
+		if previous != nil && previous.Result != ResultComplete {
+			lr.Result, lr.Reason = ResultIncomplete, fmt.Sprintf("its prerequisite %s is %s", previous.Level, previous.Result)
 			lr.At = Location{RowGroup: -1, Page: -1}
 		} else if err := v.run(&lr, v.check(level)); err != nil {
 			return report, err
@@ -212,7 +233,7 @@ func Validate(ctx context.Context, src Source, opt ValidateOptions) (*Report, er
 }
 
 // check returns the check of a level.
-func (v *validator) check(level Level) func(*LevelReport) error {
+func (v *validator) check(level ValidationLevel) func(*LevelReport) error {
 	switch level {
 	case LevelStructural:
 		return v.structural
@@ -231,16 +252,16 @@ func (v *validator) run(lr *LevelReport, check func(*LevelReport) error) error {
 	var refusal *RefusalError
 	switch {
 	case err == nil:
-		lr.Result, lr.At = Complete, Location{RowGroup: -1, Page: -1}
+		lr.Result, lr.At = ResultComplete, Location{RowGroup: -1, Page: -1}
 	case v.ctx.Err() != nil:
 		return v.ctx.Err()
 	case errors.As(err, &refusal):
-		lr.Result, lr.Failure = Failed, refusal
+		lr.Result, lr.Failure = ResultFailed, refusal
 		if lr.At.Part == "" || lr.At.Part != refusal.Part {
 			lr.At = Location{Part: refusal.Part, RowGroup: refusal.RowGroup, Page: -1}
 		}
 	default:
-		lr.Result, lr.Err, lr.Reason = Incomplete, err, incompleteReason(err)
+		lr.Result, lr.Err, lr.Reason = ResultIncomplete, err, incompleteReason(err)
 	}
 	return nil
 }

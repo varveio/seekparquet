@@ -317,10 +317,52 @@ func TestLogicalRoundTrip(t *testing.T) {
 	if (Logical{}).String() != "NONE" || (Logical{}).format() != nil || logicalOf(nil) != (Logical{}) {
 		t.Error("no annotation")
 	}
-	for r, s := range map[Repetition]string{Required: "REQUIRED", Optional: "OPTIONAL", Repeated: "REPEATED"} {
+	for r, s := range map[Repetition]string{RepetitionRequired: "REQUIRED", RepetitionOptional: "OPTIONAL", RepetitionRepeated: "REPEATED"} {
 		if r.String() != s || Repetition(r) != Repetition(format.FieldRepetitionType(r)) {
 			t.Errorf("%d: %q", r, r.String())
 		}
+	}
+}
+
+// TestLogicalKindValues: each LogicalKind keeps its number and its Parquet
+// name, so a kind added later goes after the last; a number past the last
+// prints as a number.
+func TestLogicalKindValues(t *testing.T) {
+	kinds := []struct {
+		kind  LogicalKind
+		value int
+		name  string
+	}{
+		{LogicalNone, 0, "NONE"},
+		{LogicalString, 1, "STRING"},
+		{LogicalMap, 2, "MAP"},
+		{LogicalList, 3, "LIST"},
+		{LogicalEnum, 4, "ENUM"},
+		{LogicalDecimal, 5, "DECIMAL"},
+		{LogicalDate, 6, "DATE"},
+		{LogicalTime, 7, "TIME"},
+		{LogicalTimestamp, 8, "TIMESTAMP"},
+		{LogicalInt, 9, "INT"},
+		{LogicalNull, 10, "NULL"},
+		{LogicalJSON, 11, "JSON"},
+		{LogicalBSON, 12, "BSON"},
+		{LogicalUUID, 13, "UUID"},
+		{LogicalFloat16, 14, "FLOAT16"},
+		{LogicalVariant, 15, "VARIANT"},
+		{LogicalGeometry, 16, "GEOMETRY"},
+		{LogicalGeography, 17, "GEOGRAPHY"},
+		{LogicalUnrecognized, 18, "UNRECOGNIZED"},
+	}
+	for _, k := range kinds {
+		if int(k.kind) != k.value || k.kind.String() != k.name {
+			t.Errorf("%s is %d, want %s %d", k.kind, int(k.kind), k.name, k.value)
+		}
+	}
+	if len(logicalNames) != len(kinds) {
+		t.Errorf("%d names, want %d", len(logicalNames), len(kinds))
+	}
+	if got := LogicalKind(len(kinds)).String(); got != "LogicalKind(19)" {
+		t.Errorf("past the last: %q", got)
 	}
 }
 
@@ -334,12 +376,12 @@ func TestColumnsConvertedTypeExact(t *testing.T) {
 		want      Logical
 	}{
 		{format.ByteArray, deprecated.UTF8, Logical{Kind: LogicalString}},
-		{format.Int32, deprecated.TimeMillis, Logical{Kind: LogicalTime, Unit: Millis, AdjustedToUTC: true}},
-		{format.Int64, deprecated.TimestampMicros, Logical{Kind: LogicalTimestamp, Unit: Micros, AdjustedToUTC: true}},
+		{format.Int32, deprecated.TimeMillis, Logical{Kind: LogicalTime, Unit: TimeUnitMillis, AdjustedToUTC: true}},
+		{format.Int64, deprecated.TimestampMicros, Logical{Kind: LogicalTimestamp, Unit: TimeUnitMicros, AdjustedToUTC: true}},
 		{format.Int32, deprecated.Uint16, Logical{Kind: LogicalInt, BitWidth: 16}},
 		{format.Int64, deprecated.Int64, Logical{Kind: LogicalInt, BitWidth: 64, Signed: true}},
 		{format.FixedLenByteArray, deprecated.Decimal, Logical{Kind: LogicalDecimal, Precision: 18, Scale: 4}},
-		{format.FixedLenByteArray, deprecated.Interval, Logical{}},
+		{format.FixedLenByteArray, deprecated.Interval, Logical{Kind: LogicalUnrecognized}},
 	}
 	for _, c := range cases {
 		se := format.SchemaElement{Name: "v", Type: thrift.New(c.typ), RepetitionType: thrift.New(format.Repeated),
@@ -348,7 +390,7 @@ func TestColumnsConvertedTypeExact(t *testing.T) {
 			se.TypeLength = thrift.New[int32](12)
 		}
 		col := columnOf(&se, "v")
-		if col.Logical != c.want || col.Type.String() != c.typ.String() || col.Repetition != Repeated || !col.Key {
+		if col.Logical != c.want || col.Type.String() != c.typ.String() || col.Repetition != RepetitionRepeated || !col.Key {
 			t.Errorf("converted %d: %+v, want %+v", c.converted, col, c.want)
 		}
 		if c.typ == format.FixedLenByteArray && col.Length != 12 {
@@ -356,7 +398,7 @@ func TestColumnsConvertedTypeExact(t *testing.T) {
 		}
 	}
 	group := format.SchemaElement{Name: "g", NumChildren: thrift.New[int32](1), RepetitionType: thrift.New(format.Optional)}
-	if col := columnOf(&group, "key"); !col.Group || col.Type != KindNone || col.Repetition != Optional || col.String() != "g group OPTIONAL" {
+	if col := columnOf(&group, "key"); !col.Group || col.Type != KindNone || col.Repetition != RepetitionOptional || col.String() != "g group OPTIONAL" {
 		t.Errorf("group: %+v %q", col, col.String())
 	}
 }

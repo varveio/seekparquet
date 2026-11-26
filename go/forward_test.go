@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand/v2"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -61,7 +60,7 @@ func fullyValid(t testing.TB, dir string) {
 	t.Helper()
 	report, err := ValidateDir(ctx, dir, ValidateOptions{Level: LevelFull})
 	must(t, err)
-	if report.Result() != Complete {
+	if report.Result() != ResultComplete {
 		t.Fatalf("the fixture is not valid: %+v", report.Levels)
 	}
 }
@@ -85,8 +84,8 @@ func maximaAbove(t testing.TB, dir string, group int, max string) {
 // row group's maxima are written above its keys lands in the next row
 // group. Forward routing once accepted the first group because its last
 // maximum reached the target, and decoded there a page the listing had
-// skipped, over the page limit: the listing, Page, Plan and Aggregate
-// failed with limit_exceeded where a local open and the routing search
+// skipped, over the page limit: the listing, a page of it with the count
+// of each common prefix, and Plan failed with limit_exceeded where a local open and the routing search
 // succeed (issue 79).
 func TestForwardSeekDecodesNoSkippedPage(t *testing.T) {
 	noTestReadAhead(t)
@@ -114,11 +113,9 @@ func TestForwardSeekDecodesNoSkippedPage(t *testing.T) {
 			if got := entriesOf(want); !slices.Equal(got, fx.list) {
 				t.Fatalf("local listing %q, want %q", got, fx.list)
 			}
-			wantPage, err := local.Page(ctx, PageQuery{ListQuery: q, Reductions: []Reduction{{Op: CountRows}}}, nil)
+			wantPage, err := countedPages(local, q, nil)
 			must(t, err)
 			sel := []Selection{{Span: fx.span}}
-			wantAgg, err := local.Aggregate(ctx, sel, []Reduction{{Op: CountRows}}, AggregateOptions{}, nil)
-			must(t, err)
 			for _, speculate := range []bool{true, false} {
 				opt := OpenOptions{Limits: limits, Read: ReadPolicy{DisableSpeculation: !speculate}}
 				what := fmt.Sprintf("speculation %v", speculate)
@@ -131,15 +128,10 @@ func TestForwardSeekDecodesNoSkippedPage(t *testing.T) {
 				must(t, err)
 				noMoreWork(t, what+": listing", &fst, &rst)
 
-				page, err := overSource(t, dir, opt).Page(ctx, PageQuery{ListQuery: q, Reductions: []Reduction{{Op: CountRows}}}, nil)
+				page, err := countedPages(overSource(t, dir, opt), q, nil)
 				must(t, err)
-				if len(page.Entries) != len(wantPage.Entries) {
-					t.Fatalf("%s: page of %d entries, want %d", what, len(page.Entries), len(wantPage.Entries))
-				}
-				for i, e := range page.Entries {
-					if !sameEntries([]ListEntry{wantPage.Entries[i].ListEntry}, []ListEntry{e.ListEntry}) || !reflect.DeepEqual(e.Aggregates, wantPage.Entries[i].Aggregates) {
-						t.Fatalf("%s: page entry %d is %+v, want %+v", what, i, e, wantPage.Entries[i])
-					}
+				if !sameAnswer(wantPage, page) {
+					t.Fatalf("%s: page %+v, want %+v", what, page, wantPage)
 				}
 
 				fst, rst = ReadStats{}, ReadStats{}
@@ -151,11 +143,6 @@ func TestForwardSeekDecodesNoSkippedPage(t *testing.T) {
 				routeOnly(t, func() { _, err = overSource(t, dir, opt).Plan(ctx, sel, nil, &rst) })
 				must(t, err)
 				noMoreWork(t, what+": plan", &fst, &rst)
-
-				agg, err := overSource(t, dir, opt).Aggregate(ctx, sel, []Reduction{{Op: CountRows}}, AggregateOptions{}, nil)
-				if err != nil || !reflect.DeepEqual(agg, wantAgg) {
-					t.Fatalf("%s: aggregate %v, %v; want %v", what, agg, err, wantAgg)
-				}
 			}
 		})
 	}
@@ -204,22 +191,17 @@ func TestForwardSeekPageEvidence(t *testing.T) {
 	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: testutil.Rows("a/x")}, {Rows: testutil.Rows("a/y")}, {Rows: testutil.Rows("a/z")}, {Rows: testutil.Rows("a0")}}})
 	maximaAbove(t, dir, 0, "z")
 	fullyValid(t, dir)
-	q := PageQuery{ListQuery: ListQuery{Delimiter: '/', Limit: 10}, Reductions: []Reduction{{Op: CountRows}}}
-	want, err := open(t, dir, OpenOptions{}).Page(ctx, q, nil)
+	q := ListQuery{Delimiter: '/', Limit: 10}
+	want, err := countedPages(open(t, dir, OpenOptions{}), q, nil)
 	must(t, err)
-	if len(want.Entries) != 2 || want.Entries[0].Aggregates[0].Status != AggregateUnknown {
-		t.Fatalf("local page %+v: want the count of a/ unknown", want.Entries)
+	if len(want.entries) != 2 || want.counts[0] != -1 {
+		t.Fatalf("local page %+v: want the count of a/ unknown", want)
 	}
 	for _, speculate := range []bool{true, false} {
-		got, err := overSource(t, dir, OpenOptions{Read: ReadPolicy{DisableSpeculation: !speculate}}).Page(ctx, q, nil)
+		got, err := countedPages(overSource(t, dir, OpenOptions{Read: ReadPolicy{DisableSpeculation: !speculate}}), q, nil)
 		must(t, err)
-		if len(got.Entries) != len(want.Entries) {
-			t.Fatalf("speculation %v: %d entries, want %d", speculate, len(got.Entries), len(want.Entries))
-		}
-		for i, e := range got.Entries {
-			if !sameEntries([]ListEntry{want.Entries[i].ListEntry}, []ListEntry{e.ListEntry}) || !reflect.DeepEqual(e.Aggregates, want.Entries[i].Aggregates) {
-				t.Fatalf("speculation %v: entry %d is %+v, want %+v", speculate, i, e, want.Entries[i])
-			}
+		if !sameAnswer(want, got) {
+			t.Fatalf("speculation %v: %+v, want %+v", speculate, got, want)
 		}
 	}
 }
@@ -284,7 +266,8 @@ type cursorFixture struct {
 	edit  func(group int, index *format.ColumnIndex)
 }
 
-// work lists the fixture's root page by page with CountRows, following
+// work lists the fixture's root page by page with the count of each common
+// prefix (countedPages), following
 // each page's cursor on one non-local handle, forward-routed and routed by
 // the routing search alone, and returns the work of each over all the
 // pages, after requiring both to answer as a local open does.
@@ -295,26 +278,17 @@ func (fx cursorFixture) work(t *testing.T, speculate bool) (forward, routed Read
 		editColumnIndexes(t, dir, 0, fx.edit)
 	}
 	fullyValid(t, dir)
-	q := PageQuery{ListQuery: ListQuery{Delimiter: '/', Limit: fx.limit}, Reductions: []Reduction{{Op: CountRows}}}
-	pages := func(d *Dataset) ([]PageEntry, ReadStats) {
-		var entries []PageEntry
+	q := ListQuery{Delimiter: '/', Limit: fx.limit}
+	pages := func(d *Dataset) (countedListing, ReadStats) {
 		var total ReadStats
-		for next := q; ; {
-			var st ReadStats
-			p, err := d.Page(ctx, next, &st)
-			must(t, err)
-			total.Add(st)
-			entries = append(entries, p.Entries...)
-			if p.Next == nil {
-				return entries, total
-			}
-			next.Cursor = p.Next
-		}
+		got, err := countedPages(d, q, &total)
+		must(t, err)
+		return got, total
 	}
 	want, _ := pages(open(t, dir, OpenOptions{}))
 	opt := OpenOptions{Read: ReadPolicy{DisableSpeculation: !speculate}}
 	got, forward := pages(overSource(t, dir, opt))
-	var answer []PageEntry
+	var answer countedListing
 	routeOnly(t, func() { answer, routed = pages(overSource(t, dir, opt)) })
 	if !sameAnswer(want, got) || !sameAnswer(want, answer) {
 		t.Fatalf("speculation %v: pages %+v and, routed, %+v; want %+v", speculate, got, answer, want)
@@ -518,29 +492,14 @@ func forwardSeed(t *testing.T, seed uint64, dict bool, work func(op int, what st
 			got, gerr = nonLocal(dir, opt).List(ctx, q, &fst)
 			routeOnly(t, func() { routed, rerr = nonLocal(dir, opt).List(ctx, q, &rst) })
 		case 1:
-			q := PageQuery{ListQuery: ListQuery{Delimiter: '/', Limit: 1 + rng.IntN(6), Prefix: bound()}, Reductions: []Reduction{{Op: CountRows}}}
-			request = q.ListQuery
+			q := ListQuery{Delimiter: '/', Limit: 1 + rng.IntN(6), Prefix: bound()}
+			request = q
 			// Follow the cursors to the end on one handle, adding up
 			// the work of every page: what one page leaves cached is
 			// what the next one reads.
-			page := func(d *Dataset, st *ReadStats) ([]PageEntry, error) {
-				var entries []PageEntry
-				for next := q; ; {
-					var one ReadStats
-					p, err := d.Page(ctx, next, &one)
-					if st != nil {
-						st.Add(one)
-					}
-					if err != nil || p.Next == nil {
-						return append(entries, p.Entries...), err
-					}
-					entries = append(entries, p.Entries...)
-					next.Cursor = p.Next
-				}
-			}
-			want, werr = page(local, nil)
-			got, gerr = page(nonLocal(dir, opt), &fst)
-			routeOnly(t, func() { routed, rerr = page(nonLocal(dir, opt), &rst) })
+			want, werr = countedPages(local, q, nil)
+			got, gerr = countedPages(nonLocal(dir, opt), q, &fst)
+			routeOnly(t, func() { routed, rerr = countedPages(nonLocal(dir, opt), q, &rst) })
 		case 2:
 			q := Query{Selection: Selection{Span: Span{Start: start, End: end, StartExclusive: rng.IntN(2) == 0}}, Limit: int64(1 + rng.IntN(20))}
 			request = q
@@ -596,20 +555,46 @@ type count struct {
 	exact bool
 }
 
-// sameAnswer is sameResults, also for the entries of pages.
+// countedListing is the entries of a listing's pages and the count of
+// each (prefixCounts).
+type countedListing struct {
+	entries []ListEntry
+	counts  []int64
+}
+
+// countedPages lists q a page at a time (listPage), following each page's
+// cursor to the end on d, with the count of each common prefix of each
+// page. st, when not nil, receives the work of every page.
+func countedPages(d *Dataset, q ListQuery, st *ReadStats) (countedListing, error) {
+	var out countedListing
+	for {
+		var one ReadStats
+		entries, next, err := listPage(ctx, d, q, &one)
+		if st != nil {
+			st.Add(one)
+		}
+		if err != nil {
+			return out, err
+		}
+		counts, err := prefixCounts(ctx, d, entries)
+		if err != nil {
+			return out, err
+		}
+		out.entries = append(out.entries, entries...)
+		out.counts = append(out.counts, counts...)
+		if next == nil {
+			return out, nil
+		}
+		q.Cursor = next
+	}
+}
+
+// sameAnswer is sameResults, also for counted listings.
 func sameAnswer(want, got any) bool {
-	w, ok := want.([]PageEntry)
+	w, ok := want.(countedListing)
 	if !ok {
 		return sameResults(want, got)
 	}
-	g := got.([]PageEntry)
-	if len(w) != len(g) {
-		return false
-	}
-	for i := range w {
-		if !sameEntries([]ListEntry{w[i].ListEntry}, []ListEntry{g[i].ListEntry}) || !reflect.DeepEqual(w[i].Aggregates, g[i].Aggregates) {
-			return false
-		}
-	}
-	return true
+	g := got.(countedListing)
+	return sameEntries(w.entries, g.entries) && slices.Equal(w.counts, g.counts)
 }

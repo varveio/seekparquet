@@ -6,12 +6,12 @@ package seekparquet
 import "sync"
 
 // ReadStats counts the work of one operation: Dataset.Rows, Get, Scan,
-// List, Page, Aggregate, AggregateRows, Plan, PlanRows, BuildListIndex or Verify;
-// or Plan.Split, Scan, ScanParallel or ScanValues. Pass a *ReadStats as the
-// operation's statistics argument to receive it: it is reset when the
-// operation starts and filled as it runs. The counts are exact for the
-// operation and are filled whether it succeeds or fails, up to the point it
-// stopped. Add sums the counts of several operations.
+// List, Plan, PlanRows, Columns or Verify; FoldRows; or Plan.Split, Scan or
+// ScanParallel. Pass a *ReadStats as the operation's statistics argument
+// to receive it: it is reset when the operation starts and filled as it
+// runs. The counts are exact for the operation and are filled whether it
+// succeeds or fails, up to the point it stopped. Add sums the counts of
+// several operations.
 //
 // They are diagnostics of this reader's access path, not part of the
 // SeekParquet format contract: another reader, or a later version of this
@@ -26,8 +26,9 @@ import "sync"
 // projected column chunk's OffsetIndex kept by an earlier request
 // (Limits.OffsetIndexMemory) is not read again, and a decoded first key is
 // reused without decoding. PlanRows without columns does no storage I/O;
-// ScanValues accesses projected values without implicit key-index reads or
-// key decoding. Explicitly projecting the key column requests its values.
+// FoldRows without CheckKeys reads projected values without implicit
+// key-index reads or key decoding. Explicitly projecting the key column
+// requests its values.
 type ReadStats struct {
 	// ListIndexSkips counts skips answered by the optional slash index.
 	ListIndexSkips int64

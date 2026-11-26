@@ -105,7 +105,7 @@ func ExampleDataset_List() {
 			break
 		}
 		for _, e := range entries {
-			if e.IsPrefix() {
+			if e.CommonPrefix != nil {
 				fmt.Printf("page %d: prefix %s\n", page, e.CommonPrefix)
 			} else {
 				fmt.Printf("page %d: row %s\n", page, e.Row.Key)

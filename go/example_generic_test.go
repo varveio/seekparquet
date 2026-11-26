@@ -7,35 +7,86 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/big"
+	"slices"
 	"sync/atomic"
 
 	seekparquet "github.com/varveio/seekparquet/go"
 )
 
-func ExampleDataset_Aggregate() {
+func ExampleFold() {
 	ctx := context.Background()
 	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer d.Close()
-	if err := d.Verify(ctx, nil); err != nil {
-		log.Fatal(err)
+
+	// A fold sees physical values, whatever their annotation. Check that
+	// every part stores size as a plain or signed INT64 before summing it.
+	for part := range d.Metadata().Parts {
+		columns, err := d.Columns(ctx, part, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+		i := slices.IndexFunc(columns, func(c seekparquet.Column) bool { return c.Name == "size" })
+		if i < 0 || columns[i].Type != seekparquet.KindInt64 {
+			log.Fatalf("part %d: size is not an INT64 column", part)
+		}
+		if l := columns[i].Logical; l.Kind != seekparquet.LogicalNone && (l.Kind != seekparquet.LogicalInt || !l.Signed) {
+			log.Fatalf("part %d: size is annotated %s", part, l)
+		}
 	}
-	results, err := d.Aggregate(ctx, []seekparquet.Selection{
+
+	plan, err := d.Plan(ctx, []seekparquet.Selection{
 		{Span: seekparquet.PrefixSpan([]byte("logs/2026/01/"))},
 		{Span: seekparquet.PrefixSpan([]byte("logs/2026/02/"))},
-	}, []seekparquet.Reduction{
-		{Op: seekparquet.CountRows},
-		{Op: seekparquet.Sum, Column: "size"},
-		{Op: seekparquet.CountNulls, Column: "size"},
-	}, seekparquet.AggregateOptions{ValueBudgetBytes: 4 << 20}, nil)
+	}, nil, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Count rows, and sum and count the nulls of size. The sum is exact
+	// however FoldRows groups the rows, so check its range on the result.
+	type totals struct {
+		rows, nulls int64
+		size        *big.Int
+	}
+	fold := seekparquet.Fold[totals]{
+		Columns: []string{"size"},
+		New:     func() totals { return totals{size: new(big.Int)} },
+		Add: func(acc *totals, rows *seekparquet.ValueBatch) error {
+			sizes := rows.Column(0)
+			acc.rows += int64(rows.Len())
+			var n big.Int
+			for i := range rows.Len() {
+				if sizes.IsNull(i) {
+					acc.nulls++
+				} else {
+					acc.size.Add(acc.size, n.SetInt64(sizes.Int64(i)))
+				}
+			}
+			return nil
+		},
+		Merge: func(into, from *totals) {
+			into.rows += from.rows
+			into.nulls += from.nulls
+			into.size.Add(into.size, from.size)
+		},
+	}
+	results, err := seekparquet.FoldRows(ctx, d, plan.InputRowSpans(), fold,
+		seekparquet.FoldOptions{ValueBudgetBytes: 4 << 20, CheckKeys: true}, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	for _, r := range results {
-		if r[0].Status == seekparquet.AggregateExact && r[1].Status == seekparquet.AggregateExact {
-			fmt.Printf("rows=%d size=%d nulls=%d\n", r[0].Value.Int64(), r[1].Value.Int64(), r[2].Value.Int64())
+		switch {
+		case r.Status != seekparquet.FoldExact:
+			fmt.Println("not exact")
+		case !r.Value.size.IsInt64():
+			fmt.Println("size overflows int64")
+		default:
+			fmt.Printf("rows=%d size=%d nulls=%d\n", r.Value.rows, r.Value.size, r.Value.nulls)
 		}
 	}
 	// Output:
@@ -43,35 +94,34 @@ func ExampleDataset_Aggregate() {
 	// rows=40 size=43279389918 nulls=0
 }
 
-func ExampleBatchFilter() {
+func ExampleFoldOptions_checkKeys() {
 	ctx := context.Background()
-	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
+	// A fixture whose keys decrease inside one page.
+	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/invalid/key-order-within-page", seekparquet.OpenOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer d.Close()
-	if err := d.Verify(ctx, nil); err != nil {
-		log.Fatal(err)
-	}
-	filter := &seekparquet.BatchFilter{
-		Columns: []string{"size"},
-		Apply: func(b *seekparquet.ValueBatch, keep []bool) error {
-			sizes := b.Column(0)
-			for i := range keep {
-				keep[i] = sizes.Present() && !sizes.IsNull(i) && sizes.Int64(i) >= 0
-			}
-			return nil
-		},
-	}
-	results, err := d.Aggregate(ctx, []seekparquet.Selection{{Span: seekparquet.PrefixSpan([]byte("logs/2026/01/"))}},
-		[]seekparquet.Reduction{{Op: seekparquet.CountRows}},
-		seekparquet.AggregateOptions{ValueBudgetBytes: -1, Filter: filter}, nil)
+	plan, err := d.Plan(ctx, []seekparquet.Selection{{}}, nil, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("selected rows:", results[0][0].Value.Int64())
+
+	// The count comes from checked row counts: it decodes no key.
+	n, exact := plan.Count()
+	fmt.Printf("count: %d, exact=%t\n", n, exact)
+
+	// A fold with no columns and CheckKeys counts the rows and checks
+	// every key it selects.
+	count := seekparquet.Fold[int64]{
+		Add:   func(acc *int64, rows *seekparquet.ValueBatch) error { *acc += int64(rows.Len()); return nil },
+		Merge: func(into, from *int64) { *into += *from },
+	}
+	_, err = seekparquet.FoldRows(ctx, d, plan.InputRowSpans(), count, seekparquet.FoldOptions{CheckKeys: true}, nil)
+	fmt.Println("checked count:", seekparquet.RefusalCodeOf(err))
 	// Output:
-	// selected rows: 30
+	// count: 12, exact=true
+	// checked count: key_order
 }
 
 func ExamplePlan_ScanParallel() {
@@ -98,7 +148,7 @@ func ExamplePlan_ScanParallel() {
 	// rows: 30
 }
 
-func ExampleDataset_Page() {
+func ExampleDataset_List_pages() {
 	ctx := context.Background()
 	d, err := seekparquet.OpenDir(ctx, "../conformance/datasets/multipart", seekparquet.OpenOptions{})
 	if err != nil {
@@ -108,22 +158,38 @@ func ExampleDataset_Page() {
 	if err := d.Verify(ctx, nil); err != nil {
 		log.Fatal(err)
 	}
-	q := seekparquet.PageQuery{
-		ListQuery:  seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: 2},
-		Reductions: []seekparquet.Reduction{{Op: seekparquet.CountRows}},
-	}
+	// Pages of two entries. Each listing asks for one entry more, to learn
+	// whether another page follows and to establish the rows of the last
+	// common prefix it keeps.
+	const pageSize = 2
+	q := seekparquet.ListQuery{Prefix: []byte("logs/2026/"), Delimiter: '/', Limit: pageSize + 1}
 	for {
-		page, err := d.Page(ctx, q, nil)
+		entries, err := d.List(ctx, q, nil)
 		if err != nil {
 			log.Fatal(err)
 		}
-		for _, entry := range page.Entries {
-			fmt.Printf("%s: %d rows\n", entry.Bytes(), entry.Aggregates[0].Value.Int64())
+		more := len(entries) > pageSize
+		if more {
+			entries = entries[:pageSize]
 		}
-		if page.Next == nil {
+		for _, entry := range entries {
+			_, startKnown := entry.Rows.Start.Ordinal()
+			_, endKnown := entry.Rows.End.Ordinal()
+			if !startKnown || !endKnown {
+				log.Fatal("use a key-range plan for an unknown boundary")
+			}
+			// Counting known rows reads nothing.
+			p, err := d.PlanRows(ctx, []seekparquet.RowSpan{entry.Rows}, nil, nil)
+			if err != nil {
+				log.Fatal(err)
+			}
+			n, _ := p.Count()
+			fmt.Printf("%s: %d rows\n", entry.Bytes(), n)
+		}
+		if !more {
 			break
 		}
-		q.Cursor = page.Next
+		q.Cursor = entries[len(entries)-1].Cursor()
 	}
 	// Output:
 	// logs/2026/01/: 30 rows
@@ -173,12 +239,12 @@ func ExampleFoldRows() {
 		},
 	}
 	results, err := seekparquet.FoldRows(ctx, d, plan.InputRowSpans(), sumBy,
-		seekparquet.FoldOptions{ValueBudgetBytes: -1, Workers: 2, CheckKeys: true}, nil)
+		seekparquet.FoldOptions{Workers: 2, CheckKeys: true}, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	for _, r := range results {
-		fmt.Println(r.Status == seekparquet.AggregateExact, r.Value)
+		fmt.Println(r.Status == seekparquet.FoldExact, r.Value)
 	}
 	// Output:
 	// true map[(null):25240398209 GLACIER:31427457570 STANDARD:46326142539]

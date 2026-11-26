@@ -318,10 +318,10 @@ func TestManifestNestingLimit(t *testing.T) {
 	if _, err := OpenDir(context.Background(), dir, OpenOptions{}); !errors.Is(err, ErrLimitExceeded) {
 		t.Errorf("OpenDir: %v", err)
 	}
-	for _, level := range []Level{LevelStructural, LevelDigest} {
+	for _, level := range []ValidationLevel{LevelStructural, LevelDigest} {
 		report, err := ValidateDir(context.Background(), dir, ValidateOptions{Level: level})
 		must(t, err)
-		if lr := report.Levels[0]; lr.Result != Incomplete || !errors.Is(lr.Err, ErrLimitExceeded) {
+		if lr := report.Levels[0]; lr.Result != ResultIncomplete || !errors.Is(lr.Err, ErrLimitExceeded) {
 			t.Errorf("validate %s: %s", level, describeReport(report))
 		}
 	}

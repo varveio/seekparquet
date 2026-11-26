@@ -292,11 +292,11 @@ func entriesOf(entries []ListEntry) []string {
 	out := make([]string, len(entries))
 	for i, e := range entries {
 		switch {
-		case e.IsPrefix() && e.Exact == nil:
+		case e.CommonPrefix != nil && e.Exact == nil:
 			out[i] = "p:" + string(e.CommonPrefix)
-		case e.IsPrefix() && bytes.Equal(e.Exact.Key, e.CommonPrefix) && e.Exact.Offset == 0:
+		case e.CommonPrefix != nil && bytes.Equal(e.Exact.Key, e.CommonPrefix) && e.Exact.Offset == 0:
 			out[i] = "P:" + string(e.CommonPrefix)
-		case e.IsPrefix():
+		case e.CommonPrefix != nil:
 			out[i] = fmt.Sprintf("p:%s with exact row %q/%d", e.CommonPrefix, e.Exact.Key, e.Exact.Offset)
 		default:
 			out[i] = "r:" + string(e.Row.Key)
@@ -455,4 +455,45 @@ func sameResults(want, got any) bool {
 		return ok && sameEntries(w, g)
 	}
 	return reflect.DeepEqual(want, got)
+}
+
+// listPage lists one page of q as a caller pages a listing: it lists one
+// entry beyond q.Limit, keeps q.Limit entries, and returns the cursor of
+// the last kept entry when another follows, nil at the end. The entry
+// beyond the page lets List establish the end of the last kept common
+// prefix's rows.
+func listPage(ctx context.Context, d *Dataset, q ListQuery, st *ReadStats) ([]ListEntry, *Cursor, error) {
+	q.Limit++
+	entries, err := d.List(ctx, q, st)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(entries) < q.Limit {
+		return entries, nil, nil
+	}
+	entries = entries[:len(entries)-1]
+	return entries, entries[len(entries)-1].Cursor(), nil
+}
+
+// prefixCounts returns, for each entry, the count of a common prefix's
+// rows, planned without columns, which reads nothing; -1 for a row entry,
+// a common prefix with an unknown boundary, or a count that is not exact.
+func prefixCounts(ctx context.Context, d *Dataset, entries []ListEntry) ([]int64, error) {
+	counts := make([]int64, len(entries))
+	for i, e := range entries {
+		counts[i] = -1
+		_, start := e.Rows.Start.Ordinal()
+		_, end := e.Rows.End.Ordinal()
+		if e.CommonPrefix == nil || !start || !end {
+			continue
+		}
+		p, err := d.PlanRows(ctx, []RowSpan{e.Rows}, nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		if n, exact := p.Count(); exact {
+			counts[i] = n
+		}
+	}
+	return counts, nil
 }

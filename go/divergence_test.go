@@ -138,7 +138,7 @@ func TestShortDictionaryValue(t *testing.T) {
 	}
 	report, err := ValidateDir(ctx, dir, ValidateOptions{})
 	must(t, err)
-	if full, _ := report.Level(LevelFull); full.Result != Failed || full.Failure.Code != CodeInvalidParquet {
+	if full, _ := report.Level(LevelFull); full.Result != ResultFailed || full.Failure.Code != CodeInvalidParquet {
 		t.Errorf("validation: %+v", full)
 	}
 }
@@ -397,7 +397,7 @@ func TestWalkedPagesAddUp(t *testing.T) {
 		}
 		report, err := ValidateDir(ctx, dir, ValidateOptions{})
 		must(t, err)
-		if full, _ := report.Level(LevelFull); full.Result != Failed || full.Failure.Code != CodeInvalidParquet {
+		if full, _ := report.Level(LevelFull); full.Result != ResultFailed || full.Failure.Code != CodeInvalidParquet {
 			t.Fatalf("validation: %+v", full)
 		}
 	})

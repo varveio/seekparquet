@@ -143,7 +143,7 @@ func (g *generator) renderLimits() (string, error) {
 	b.WriteString("A **limit** fails the operation that exceeds it with a limit error: Go `*LimitError`, which wraps `ErrLimitExceeded`, or Java `LimitExceededException`.\n")
 	b.WriteString("A **cache budget** never fails an operation; past it, the reader evicts cached bytes or stops keeping what it loads.\n")
 	fmt.Fprintf(&b, "Exceeding a limit is a policy of yours or a capacity of the reader, never a refusal of the data (%s).\n", reqLinks(page, []string{"CHECK-5"}))
-	b.WriteString("A zero setting takes its default. Negative settings are rejected when Go opens the dataset or Java builds the Limits.\n\n")
+	b.WriteString("A zero setting takes its default. A negative setting is rejected: Go returns `ErrInvalidRequest` when it opens or validates a dataset or parses a manifest, and Java throws `IllegalArgumentException` when it builds the Limits.\n\n")
 	fmt.Fprintf(&b, "What to do when an operation exceeds one: [troubleshooting](%s#limits).\n\n", rel(page, "docs/guides/troubleshooting.md"))
 	for _, s := range g.limits.Structs {
 		fmt.Fprintf(&b, "## Settings\n\nGo sets them in `%s`; Java with `%s` methods of the same names.\n\n", s.Go, s.Java)
@@ -184,7 +184,16 @@ func (g *generator) renderReadStats() (string, error) {
 	b.WriteString(header)
 	b.WriteString("# Read statistics\n\n")
 	b.WriteString(g.pending(page))
-	b.WriteString("Go exposes ReadStats for Rows, Get, Scan, List, Dataset.Verify, Dataset.Plan, Plan.Split and Plan.Scan. Java supplies statistics through ReadOptions, including for verify and columns. In Go, pass a `*ReadStats` as the statistics argument: it is reset when the operation starts and filled as it runs, whether the operation succeeds or fails. `Dataset.Verify(ctx, stats)` takes the same statistics argument; pass nil to discard statistics.\n")
+	ops := append([]string(nil), p.statsOps...)
+	if len(ops) < 2 {
+		return "", fmt.Errorf("%s: found %d operations that take a *ReadStats", page, len(ops))
+	}
+	sort.Strings(ops)
+	for i, op := range ops {
+		ops[i] = "`" + op + "`"
+	}
+	fmt.Fprintf(&b, "Go exposes ReadStats for %s and %s. ", strings.Join(ops[:len(ops)-1], ", "), ops[len(ops)-1])
+	b.WriteString("Java supplies statistics through ReadOptions, including for verify and columns. In Go, pass a `*ReadStats` as the statistics argument: it is reset when the operation starts and filled as it runs, whether the operation succeeds or fails. `Dataset.Verify(ctx, stats)` takes the same statistics argument; pass nil to discard statistics.\n")
 	b.WriteString("In Java, pass a statistics consumer in `ReadOptions`; it receives a `ReadStats` record.\n\n")
 	b.WriteString("The counts describe this reader's access path. They are diagnostics, not part of the format: another reader, or another version of this one, may do the same read with different counts.\n\n")
 	b.WriteString("Physical request counts, wire bytes, retries and byte-cache hits belong to the caller's storage instrumentation.\n\nThe table's meanings describe Go; Java differences follow it.\n\n")

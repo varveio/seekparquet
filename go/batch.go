@@ -81,9 +81,9 @@ func (b *Batch) Cursor(i int) *Cursor {
 	return &Cursor{Key: bytes.Clone(b.Key(i)), Offset: b.Offset(i)}
 }
 
-// Stop, returned by a batch callback, ends Dataset.Scan, Plan.Scan,
-// Plan.ScanValues or Plan.ScanParallel early with a nil error: a successful
-// early stop. Any other callback error ends the scan and is returned unchanged.
+// Stop, returned by a batch callback, ends Dataset.Scan, Plan.Scan or
+// Plan.ScanParallel early with a nil error: a successful early stop. Any
+// other callback error ends the scan and is returned unchanged.
 var Stop = errors.New("seekparquet: stop the scan")
 
 // Scan hands fn borrowed batches of the plan's rows and projected values,
@@ -103,7 +103,7 @@ var Stop = errors.New("seekparquet: stop the scan")
 // then close the Dataset after Scan returns. Requests started by fn run
 // normally; once Close has begun they fail with ErrClosed. Concurrent or
 // reentrant scans have independent borrowed storage. Source caching follows
-// the storage layer's policy, as it does for ScanValues.
+// the storage layer's policy.
 func (plan *Plan) Scan(ctx context.Context, st *ReadStats, fn func(*Batch) error) error {
 	return plan.scanBatches(ctx, st, keyReuse{}, fn)
 }

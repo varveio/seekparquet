@@ -54,11 +54,15 @@ func extension(raw json.RawMessage, namespace string) (json.RawMessage, bool) {
 // *RefusalError (invalid_manifest), and a version this package does not
 // read with unsupported_version (MAN-7). A manifest larger than
 // lim.ManifestBytes, or listing more than lim.Parts parts, is
-// ErrLimitExceeded; zero limits take their defaults.
+// ErrLimitExceeded; zero limits take their defaults, and a negative limit
+// is ErrInvalidRequest.
 //
 // The part files are not read: their existence, sizes and contents are
 // checked when the dataset is opened (CHECK-1).
 func ParseManifest(raw []byte, lim Limits) (Manifest, error) {
+	if err := lim.check(); err != nil {
+		return Manifest{}, err
+	}
 	lim = lim.withDefaults()
 	if int64(len(raw)) > lim.ManifestBytes {
 		return Manifest{}, exceeded(LimitManifestBytes, int64(len(raw)), lim.ManifestBytes, "%s", ManifestName)

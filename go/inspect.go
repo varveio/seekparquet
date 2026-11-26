@@ -36,11 +36,12 @@ type Column struct {
 	// type_length (0 for every other type).
 	Type   Kind
 	Length int32
-	// Logical is the logical annotation, with its parameters, the zero
-	// Logical when the column has none: the logical_type field, or else the
-	// legacy converted_type normalized into it as Parquet's LogicalTypes.md
-	// maps it (time and timestamp adjusted to UTC; INTERVAL has no logical
-	// type).
+	// Logical is a leaf's logical annotation, with its parameters, the zero
+	// Logical for a group and for a leaf with none: the logical_type field,
+	// or else the legacy converted_type normalized into it as Parquet's
+	// LogicalTypes.md maps it (time and timestamp adjusted to UTC). An
+	// annotation neither describes, INTERVAL included, is
+	// LogicalUnrecognized.
 	Logical    Logical
 	Repetition Repetition
 	// Key reports the dataset's key column.

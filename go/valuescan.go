@@ -12,16 +12,16 @@ import (
 )
 
 // ValueBatch is a positive run of consecutive selected rows in dataset
-// order. It never crosses a row group, a projected column's page boundary,
-// or a gap in the selection. Its maximum size is bounded by the reader.
-// A batch may cross adjacent input-span boundaries after union normalization;
-// aggregate per input span by distributing rows using their dataset ordinals.
-// Only batches produced by ScanValues carry data; the zero value is empty.
+// order, as Fold.Add receives it. It never crosses a row group, a
+// projected column's page boundary, or a gap in the selection. Its maximum
+// size is bounded by the reader. Only batches the reader hands over carry
+// data; the zero value is empty.
 //
 // The batch, column views and value bytes are borrowed and read-only,
-// valid only until the ScanValues callback returns. Copying a ValueBatch or
-// ColumnView does not retain values; use ColumnView.Value(i).Clone().
-// Start returns an independently owned position.
+// valid only until the callback that received the batch returns. Copying
+// a ValueBatch or ColumnView does not retain values; use
+// ColumnView.Value(i).Clone(). Start returns an independently owned
+// position.
 //
 // Dataset ordinals and counts are int64; batch indexes and lengths are int.
 // Compute a row's ordinal as start + int64(i), without converting start to int.
@@ -44,7 +44,7 @@ func (b *ValueBatch) Len() int { return b.n }
 func (b *ValueBatch) Start() RowPosition { return RowPosition{ds: b.ds, ordinal: b.start} }
 
 // Column returns the borrowed values of projection slot c, following
-// Plan.Columns, with the same null and absent semantics as Batch.Column.
+// Fold.Columns, with the same null and absent semantics as Batch.Column.
 // It panics when c is outside the projection.
 func (b *ValueBatch) Column(c int) ColumnView {
 	if k := b.kinds[c]; k != KindNone {
@@ -57,7 +57,7 @@ func (b *ValueBatch) Column(c int) ColumnView {
 // absent column's view (absentView).
 const maxValueBatch = len(absentValues)
 
-// ScanValues hands fn borrowed batches of the plan's projected values,
+// scanValues hands fn borrowed batches of the plan's projected values,
 // in dataset order, with overlapping selected rows yielded once.
 //
 // It executes the plan's row positions without seeking through keys,
@@ -76,7 +76,7 @@ const maxValueBatch = len(absentValues)
 // without one is walked by its page headers from its start. A plan with
 // no columns yields batches of rows alone, at most 4,096 each and within
 // a row group, checking the parts holding them and reading nothing else.
-func (plan *Plan) ScanValues(ctx context.Context, st *ReadStats, fn func(*ValueBatch) error) (err error) {
+func (plan *Plan) scanValues(ctx context.Context, st *ReadStats, fn func(*ValueBatch) error) (err error) {
 	st, spare := takeStats(st)
 	defer dropStats(spare)
 	if fn == nil {
@@ -107,7 +107,7 @@ func (plan *Plan) ScanValues(ctx context.Context, st *ReadStats, fn func(*ValueB
 	return nil
 }
 
-// valueScan is one ScanValues call: the projected chunks of the row group
+// valueScan is one scanValues call: the projected chunks of the row group
 // it is in, and the batch it hands over.
 type valueScan struct {
 	ctx     context.Context

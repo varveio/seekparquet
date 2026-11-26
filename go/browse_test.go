@@ -40,7 +40,7 @@ func scannedValues(t *testing.T, plan *Plan, st *ReadStats) ([]int64, []string) 
 	var ords []int64
 	var vals []string
 	ncols := len(plan.Columns())
-	err := plan.ScanValues(ctx, st, func(b *ValueBatch) error {
+	err := plan.scanValues(ctx, st, func(b *ValueBatch) error {
 		start, ok := b.Start().Ordinal()
 		if !ok || b.Len() <= 0 {
 			return fmt.Errorf("batch at %d (%v) of %d rows", start, ok, b.Len())
@@ -193,7 +193,7 @@ func TestScanValuesConcurrent(t *testing.T) {
 	for i := range errs {
 		wg.Go(func() {
 			var got []string
-			errs[i] = plan.ScanValues(ctx, nil, func(b *ValueBatch) error {
+			errs[i] = plan.scanValues(ctx, nil, func(b *ValueBatch) error {
 				for j := range b.Len() {
 					var sb strings.Builder
 					valueText(&sb, b.Column, len(batchOracleColumns), j)
@@ -218,25 +218,25 @@ func TestScanValuesStopAndClose(t *testing.T) {
 	plan, err := d.PlanRows(ctx, []RowSpan{d.r.rowSpan(0, d.r.rows)}, []string{"num"}, nil)
 	must(t, err)
 	calls := 0
-	if err := plan.ScanValues(ctx, nil, func(*ValueBatch) error { calls++; return Stop }); err != nil || calls != 1 {
+	if err := plan.scanValues(ctx, nil, func(*ValueBatch) error { calls++; return Stop }); err != nil || calls != 1 {
 		t.Fatalf("stop: %v after %d calls", err, calls)
 	}
 	mine := errors.New("mine")
-	if err := plan.ScanValues(ctx, nil, func(*ValueBatch) error { return mine }); err != mine {
+	if err := plan.scanValues(ctx, nil, func(*ValueBatch) error { return mine }); err != mine {
 		t.Fatalf("callback error: %v", err)
 	}
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	if err := plan.ScanValues(cctx, nil, func(*ValueBatch) error { cancel(); return nil }); !errors.Is(err, context.Canceled) {
+	if err := plan.scanValues(cctx, nil, func(*ValueBatch) error { cancel(); return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled: %v", err)
 	}
 	must(t, d.Close())
-	afterClose, err := plan.SelectRows(plan.InputRowSpans())
+	afterClose, err := plan.selectRows(plan.InputRowSpans())
 	must(t, err)
-	if err := afterClose.ScanValues(ctx, nil, func(*ValueBatch) error { return nil }); !errors.Is(err, ErrClosed) {
+	if err := afterClose.scanValues(ctx, nil, func(*ValueBatch) error { return nil }); !errors.Is(err, ErrClosed) {
 		t.Fatalf("selected plan after close: %v", err)
 	}
-	if err := plan.ScanValues(ctx, nil, func(*ValueBatch) error { return nil }); !errors.Is(err, ErrClosed) {
+	if err := plan.scanValues(ctx, nil, func(*ValueBatch) error { return nil }); !errors.Is(err, ErrClosed) {
 		t.Fatalf("closed: %v", err)
 	}
 	if _, err := d.PlanRows(ctx, nil, nil, nil); !errors.Is(err, ErrClosed) {
@@ -258,7 +258,7 @@ func TestSelectRowsProjectedBytes(t *testing.T) {
 		cols := []string{"dict", "num", "missing", "opt"}
 		whole, err := d.PlanRows(ctx, []RowSpan{d.r.rowSpan(lo, hi)}, cols, nil)
 		must(t, err)
-		same, err := whole.SelectRows(whole.InputRowSpans())
+		same, err := whole.selectRows(whole.InputRowSpans())
 		must(t, err)
 		if b, e := same.ProjectedBytes(); !eqBytes(b, e, whole) {
 			t.Fatalf("indexed=%v: all of the plan: %d %v, plan %d", indexed, b, e, whole.bytes)
@@ -270,7 +270,7 @@ func TestSelectRowsProjectedBytes(t *testing.T) {
 				spans = append(spans, d.r.rowSpan(a, min(hi, a+r.Int63n(n/6))))
 			}
 			var st ReadStats
-			sel, err := whole.SelectRows(spans)
+			sel, err := whole.selectRows(spans)
 			must(t, err)
 			fresh, err := d.PlanRows(ctx, spans, cols, &st)
 			must(t, err)
@@ -289,7 +289,7 @@ func TestSelectRowsProjectedBytes(t *testing.T) {
 				t.Fatalf("trial %d: selected values differ", trial)
 			}
 		}
-		if _, err := whole.SelectRows([]RowSpan{d.r.rowSpan(lo-1, lo+1)}); !errors.Is(err, ErrInvalidRequest) {
+		if _, err := whole.selectRows([]RowSpan{d.r.rowSpan(lo-1, lo+1)}); !errors.Is(err, ErrInvalidRequest) {
 			t.Fatalf("outside: %v", err)
 		}
 		if !indexed {
@@ -301,7 +301,7 @@ func TestSelectRowsProjectedBytes(t *testing.T) {
 		if _, exact := p.ProjectedBytes(); !exact {
 			t.Fatalf("the plan's own bytes are exact")
 		}
-		s, err := p.SelectRows(p.InputRowSpans())
+		s, err := p.selectRows(p.InputRowSpans())
 		must(t, err)
 		if _, exact := s.ProjectedBytes(); exact {
 			t.Fatalf("locations not kept, yet selected bytes exact")
@@ -339,9 +339,9 @@ func TestSelectRowsDuplicateProjection(t *testing.T) {
 			d.r.rowSpan(d.r.rows/3, d.r.rows/2),
 			d.r.rowSpan(d.r.rows/3+1, d.r.rows/2+1),
 		}
-		a, err := one.SelectRows(subset)
+		a, err := one.selectRows(subset)
 		must(t, err)
-		b, err := dup.SelectRows(subset)
+		b, err := dup.selectRows(subset)
 		must(t, err)
 		if n, exact := b.ProjectedBytes(); !eqBytes(n, exact, a) {
 			t.Fatalf("byKey=%v: duplicate subset priced %d %v, want %d %v", byKey, n, exact, a.bytes, !a.partial)
@@ -471,7 +471,7 @@ func TestListRowsRandomOracle(t *testing.T) {
 						lo, hi := listCandidates(keys, q, e)
 						s, okS := e.Rows.Start.Ordinal()
 						x, okE := e.Rows.End.Ordinal()
-						if e.IsPrefix() && okS && okE {
+						if e.CommonPrefix != nil && okS && okE {
 							checked++
 						}
 						if okS && s != lo || okE && x != hi {
@@ -508,7 +508,7 @@ func listCandidates(keys []string, q ListQuery, e ListEntry) (lo, hi int64) {
 			continue
 		}
 		var match bool
-		if e.IsPrefix() {
+		if e.CommonPrefix != nil {
 			match = bytes.Equal(commonPrefix(key, q.Prefix, q.Delimiter), e.CommonPrefix)
 		} else {
 			match = bytes.Equal(key, e.Row.Key) && offset == e.Row.Offset
@@ -558,7 +558,7 @@ func TestScanValuesUnindexedWindows(t *testing.T) {
 			}
 			src.batches = nil
 			var sum int64
-			err = p.ScanValues(ctx, nil, func(b *ValueBatch) error {
+			err = p.scanValues(ctx, nil, func(b *ValueBatch) error {
 				for i := range b.Len() {
 					sum += b.Column(0).Int64(i)
 				}

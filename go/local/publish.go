@@ -41,6 +41,8 @@ var inject func(s step, path string) error
 // Ops is how publication reaches the file system. Every path is
 // slash-separated and relative to Root, which confines it (PART-1).
 type Ops struct {
+	// Root is required and must stay open until the publication call
+	// returns.
 	Root *os.Root
 	// AllowUnsynced lets publication go ahead where directories cannot be
 	// synced (ErrDirSyncUnsupported): files are then made visible, but not
