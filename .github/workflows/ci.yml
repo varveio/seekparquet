@@ -26,6 +26,7 @@ jobs:
       conformance: ${{ steps.diff.outputs.conformance }}
       macos: ${{ steps.diff.outputs.macos }}
       shards: ${{ steps.shards.outputs.matrix }}
+      macos-shards: ${{ steps.shards.outputs.macos }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -37,7 +38,9 @@ jobs:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: python3 scripts/ci/policy.py
       - id: shards
-        run: echo "matrix=$(python3 scripts/ci/go-shards.py --matrix)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "matrix=$(python3 scripts/ci/go-shards.py --matrix)" >> "$GITHUB_OUTPUT"
+          echo "macos=$(python3 scripts/ci/go-shards.py --matrix macos)" >> "$GITHUB_OUTPUT"
       - name: CI policy and shard regressions
         run: python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
 
@@ -74,6 +77,7 @@ jobs:
       - uses: ./.github/actions/setup-go
         with:
           key: go-race-${{ matrix.shard }}
+          family: go-race
       - name: race tests (includes fuzz seeds)
         run: python3 scripts/ci/go-shards.py --run '${{ matrix.shard }}'
       - name: retain race diagnostics
@@ -101,21 +105,37 @@ jobs:
         working-directory: go
         run: go test -count=1 -timeout=12m ./...
 
-  # Full macOS race coverage on main/nightly/manual and elevated PRs.
+  # Full macOS race coverage on main/nightly/manual and elevated PRs: the race shards in fewer jobs,
+  # since macOS runners are scarce (scripts/ci/go-shards.py), and go vet in one of them.
   go-macos:
     needs: changes
     if: needs.changes.outputs.macos == 'true'
+    name: go-macos (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.macos-shards) }}
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: ./.github/actions/setup-go
         with:
-          key: go-macos
-      - working-directory: go
-        run: |
-          go vet ./...
-          go test -race -count=1 -timeout=15m ./...
+          key: go-macos-${{ matrix.shard }}
+          family: go-macos
+      - name: vet macOS packages
+        if: matrix.vet
+        working-directory: go
+        run: go vet ./...
+      - name: race tests (includes fuzz seeds)
+        run: python3 scripts/ci/go-shards.py --run '${{ matrix.shard }}'
+      - name: retain race diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: go-macos-${{ matrix.shard }}
+          path: go-race-${{ matrix.shard }}.json
+          retention-days: 14
 
   conformance:
     needs: changes
@@ -244,6 +264,8 @@ jobs:
           key: docs
       - name: generated reference pages, regions and snippets (docs/dev/docs.md)
         run: go -C go run ./internal/tools/docgen
+      - name: the quickstart's printed output (docs/quickstart.md)
+        run: go -C go test -count=1 ./examples/quickstart
       - name: links, requirement anchors and terminology
         run: |
           python3 -m unittest discover -s scripts/docs -p 'test_*.py'

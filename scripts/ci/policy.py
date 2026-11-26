@@ -16,6 +16,8 @@ def select(event, paths=(), full_label=False):
         for path in names:
             if path.startswith(('.github/', 'scripts/ci/')):
                 go = java = contract = macos = True
+            elif path.startswith('go/') and path.endswith('.md') and '/testdata/' not in path:
+                pass  # documentation: only the always-run docs job reads it (docgen, links, terms)
             elif path.startswith('go/'):
                 go = True
                 if path in ('go/go.mod', 'go/go.sum') or path.startswith('go/local/') or any(x in path.lower() for x in ('windows', 'darwin', 'unix', 'platform')):
