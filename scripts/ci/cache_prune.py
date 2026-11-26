@@ -14,7 +14,9 @@ import subprocess
 import sys
 
 PREFIX = r"seekparquet-go-v1-"
-BUILD = re.compile(PREFIX + r"build-(Linux|macOS|Windows)-(X64|ARM64)-(go[0-9.]+)-(go-lint|go-race-(?:differential|randomized|faults|browse-oracle|range-batches|rest)|go-windows|go-macos|conformance|java|docs)-[0-9a-f]{64}-([0-9a-f]{40})$")
+# A race shard, or a union of shards joined by '+' (scripts/ci/go-shards.py).
+SHARD = r"[a-z0-9]+(?:[+-][a-z0-9]+)*"
+BUILD = re.compile(PREFIX + r"build-(Linux|macOS|Windows)-(X64|ARM64)-(go[0-9.]+)-(go-lint|go-race-" + SHARD + "|go-windows|go-macos(?:-" + SHARD + r")?|conformance|java|docs)-[0-9a-f]{64}-([0-9a-f]{40})$")
 MODULE = re.compile(PREFIX + r"mod-(Linux|macOS|Windows)-(X64|ARM64)-[0-9a-f]{64}$")
 
 

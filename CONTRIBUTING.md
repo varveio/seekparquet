@@ -50,27 +50,35 @@ python3 scripts/docs/check_docs.py
 ## Continuous integration
 
 `ci-ok` is the required aggregate check. For affected Go code, PRs run format/vet/module checks,
-all tests and fuzz seeds in Linux race shards (one per heavy test listed in `scripts/ci/go-shards.py`, then the rest), and the complete Windows suite without the
-race detector. Java still reads Go-written datasets on every Go change. Conformance and Java
-checks retain their full assertions when selected; source selection does not select individual tests.
+all tests and fuzz seeds in Linux race shards (listed by `scripts/ci/go-shards.py --matrix`), and
+the complete Windows suite without the race detector. Java still reads Go-written datasets on every
+Go change. Conformance and Java checks retain their full assertions when selected; source selection
+does not select individual tests.
 
-The expensive root-package differential tests each have a shard; the remainder includes every
-other root test and every other package. `go-lint` checks the live Go test inventory for exactly
-one shard per test. New tests and packages enter the remainder automatically; renaming a dedicated
-test fails that check. Reproduce a shard from the repository root with
-`python3 scripts/ci/go-shards.py --run differential` (or `randomized`, `rest`), or verify the
+The expensive root-package differential tests each have a shard. The other root tests fall into
+eight groups (`root-1` to `root-8`) by a CRC-32 of the test's name, and every other package runs in
+`packages`. `go-lint` checks the live Go test inventory for exactly one shard and one macOS job per
+test. New tests and packages land in a shard automatically; renaming a dedicated test fails that
+check. Reproduce a shard from the repository root with
+`python3 scripts/ci/go-shards.py --run differential` (or `root-3`, `packages`), or verify the
 inventory with `--check`. Race runs use `-count=1` and keep JSON diagnostics for 14 days.
 
 Full macOS race tests run on every `main` push, daily at 05:17 UTC, and manual workflow dispatch.
 PRs also run them for Go dependency/platform paths, CI changes, unknown inputs, deletions/renames,
-or the `ci:full` label. Documentation-only PRs may skip runtime suites. Missing base/diff data
-selects full validation; a failed diff fails CI. Main, scheduled and manual runs always select
-all suites. Label changes reevaluate the policy; superseded PR runs cancel, while main runs
-remain independent. Deferring ordinary PR macOS tests trades earlier platform feedback for a
-shorter PR loop; a failing main/nightly platform check still requires a fix.
+or the `ci:full` label. They run the same shards in three jobs, since macOS runners are scarce: the
+dedicated tests together, and the root groups in two halves, one with `packages` and one with
+`go vet`. Each job is a union of shards, reproduced with `--run` and the shard names joined by `+`.
+Documentation-only PRs may skip runtime suites; Markdown under `go/` (outside `testdata/`) is
+documentation, since only the always-run `docs` job reads it. That job checks generated pages,
+snippets, links and terminology in every Markdown file, and the quickstart's printed output.
+Missing base/diff data selects full validation; a failed diff fails CI. Main, scheduled and manual
+runs always select all suites. Label changes reevaluate the policy; superseded PR runs cancel,
+while main runs remain independent. Deferring ordinary PR macOS tests trades earlier platform
+feedback for a shorter PR loop; a failing main/nightly platform check still requires a fix.
 
 Go module caches are shared per platform and dependency set; build caches are separate
-per toolchain, job and race shard. Only main pushes save Go caches, and cache maintenance bounds old generations.
+per toolchain, job and race shard, and a shard without one of its own starts from its job's newest.
+Only main pushes save Go caches, and cache maintenance bounds old generations.
 Gradle and pip also cache dependencies, including caches scoped to individual PRs.
 Caches never substitute for running Go tests.
 

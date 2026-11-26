@@ -60,18 +60,26 @@ class RetentionTests(unittest.TestCase):
         workflow = (root / '.github/workflows/ci.yml').read_text()
         import re
         modes = re.findall(r'^          key: (.+)$', workflow, re.MULTILINE)
-        shards = json.loads(subprocess.check_output(
-            [sys.executable, str(root / 'scripts/ci/go-shards.py'), '--matrix'], text=True))
+        def matrix(*platform):
+            return json.loads(subprocess.check_output(
+                [sys.executable, str(root / 'scripts/ci/go-shards.py'), '--matrix', *platform], text=True))
+        shards = {'go-race-${{ matrix.shard }}': ['go-race-' + shard for shard in matrix()],
+                  'go-macos-${{ matrix.shard }}': ['go-macos-' + job['shard'] for job in matrix('macos')]}
         expanded = []
         for mode in modes:
-            if mode == 'go-race-${{ matrix.shard }}':
-                expanded.extend('go-race-' + shard for shard in shards)
-            else:
-                expanded.append(mode)
+            expanded.extend(shards.get(mode, [mode]))
+        self.assertFalse(any('${{' in mode for mode in expanded))
         self.assertTrue(expanded)
         for mode in expanded:
             with self.subTest(mode=mode):
                 self.assertIsNotNone(BUILD.fullmatch(cache(1, mode=mode)['key']))
+
+    def test_shard_modes_retain_separately_and_fully(self):
+        entries = [cache(i, mode='go-race-root-1') for i in (1, 2, 3)]
+        entries += [cache(i, mode='go-race-root-1+root-3') for i in (4, 5)]
+        entries += [cache(i, mode='go-macos-differential+randomized') for i in (6, 7)]
+        self.assertEqual(self.ids(entries), [1])
+        self.assertEqual(BUILD.fullmatch(entries[3]['key']).group(4), 'go-race-root-1+root-3')
 
     def test_toolchains_are_not_restoration_or_retention_peers(self):
         entries = [cache(i) for i in (1, 2)]

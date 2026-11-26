@@ -2,14 +2,21 @@ name: Set up Go with a shared module cache and a per-job build cache
 description: >
   Go at the version go/go.mod names, with two caches. The module cache (GOMODCACHE) is one entry
   per runner OS and architecture and dependency set, shared by every job. The build cache
-  (GOCACHE) is per job (the `key` input) and per commit, restored from the job's newest. A push
-  to main saves both when the job ends; any other event restores only. setup-go's own cache is
-  off.
+  (GOCACHE) is per job (the `key` input) and per commit, restored from the job's newest, or else
+  from the newest of its family (the `family` input), so that a new or renamed shard starts warm.
+  A push to main saves both when the job ends; any other event restores only. setup-go's own
+  cache is off.
 
 inputs:
   key:
     description: The job's build-cache name (its job id, and its matrix value where it has one)
     required: true
+  family:
+    description: >
+      A prefix of `key` that the other matrix jobs of the job id share (go-race, go-macos), restored
+      from when `key` has no entry
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -75,6 +82,7 @@ runs:
         restore-keys: |
           seekparquet-go-v1-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.toolchain }}-${{ inputs.key }}-${{ steps.paths.outputs.deps }}-
           seekparquet-go-v1-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.toolchain }}-${{ inputs.key }}-
+          seekparquet-go-v1-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.toolchain }}-${{ inputs.family || inputs.key }}-
 
     - name: Restore the Go build cache
       if: github.event_name != 'push' || github.ref != 'refs/heads/main'
@@ -85,3 +93,4 @@ runs:
         restore-keys: |
           seekparquet-go-v1-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.toolchain }}-${{ inputs.key }}-${{ steps.paths.outputs.deps }}-
           seekparquet-go-v1-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.toolchain }}-${{ inputs.key }}-
+          seekparquet-go-v1-build-${{ runner.os }}-${{ runner.arch }}-${{ steps.paths.outputs.toolchain }}-${{ inputs.family || inputs.key }}-
