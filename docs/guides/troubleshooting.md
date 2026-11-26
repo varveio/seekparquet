@@ -335,7 +335,7 @@ Fixed; it cannot be raised. Split the dataset.
 
 | Error | Meaning | What to do |
 |---|---|---|
-| Go `ErrInvalidRequest`, Java `IllegalArgumentException` | the request is malformed: a result limit that is not positive, a malformed cursor or cursor token, a prefix cursor in a range read ([QUERY-1](../../spec/format-1.md#query-1)); or a negative `Limits` setting, which Go rejects when it opens a dataset, validates or parses a manifest, and Java when `Limits.Builder.build()` runs; or a negative Go `FoldOptions.ValueBudgetBytes` | fix the request; nothing was read |
+| Go `ErrInvalidRequest`, Java `IllegalArgumentException` | the request is malformed: a result limit that is not positive, a malformed cursor or cursor token, a prefix cursor in a range read ([QUERY-1](../../spec/format-1.md#query-1)); or a negative `Limits` setting, which Go rejects when it opens a dataset, validates or parses a manifest, and Java when `Limits.Builder.build()` runs; or a negative Go `FoldOptions.ValueBudgetBytes` or `FoldOptions.Workers`, a negative worker count for Go `Plan.ScanParallel`, or an unknown Go `ValidateOptions.Level` | fix the request; nothing was read |
 | Go `ErrClosed`, Java `IllegalStateException` | the dataset was already closed | do not use a dataset after `Close` |
 | Go `ErrClosed` (wrapping the read's error), Java `CancellationException` | `Close` was called while the read ran, and ended it | close only after the reads you need have returned |
 | Java `IllegalStateException` from `close()` | `close()` was called from inside one of the dataset's own requests on the same thread, such as a scan visitor; nothing changed | end the request, then close |

@@ -143,7 +143,7 @@ func (g *generator) renderLimits() (string, error) {
 	b.WriteString("A **limit** fails the operation that exceeds it with a limit error: Go `*LimitError`, which wraps `ErrLimitExceeded`, or Java `LimitExceededException`.\n")
 	b.WriteString("A **cache budget** never fails an operation; past it, the reader evicts cached bytes or stops keeping what it loads.\n")
 	fmt.Fprintf(&b, "Exceeding a limit is a policy of yours or a capacity of the reader, never a refusal of the data (%s).\n", reqLinks(page, []string{"CHECK-5"}))
-	b.WriteString("A zero setting takes its default. Negative settings are rejected when Go opens the dataset or Java builds the Limits.\n\n")
+	b.WriteString("A zero setting takes its default. A negative setting is rejected: Go returns `ErrInvalidRequest` when it opens or validates a dataset or parses a manifest, and Java throws `IllegalArgumentException` when it builds the Limits.\n\n")
 	fmt.Fprintf(&b, "What to do when an operation exceeds one: [troubleshooting](%s#limits).\n\n", rel(page, "docs/guides/troubleshooting.md"))
 	for _, s := range g.limits.Structs {
 		fmt.Fprintf(&b, "## Settings\n\nGo sets them in `%s`; Java with `%s` methods of the same names.\n\n", s.Go, s.Java)

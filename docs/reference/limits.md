@@ -6,7 +6,7 @@ These settings bound specific input sizes, decoding estimates, retained indexes 
 A **limit** fails the operation that exceeds it with a limit error: Go `*LimitError`, which wraps `ErrLimitExceeded`, or Java `LimitExceededException`.
 A **cache budget** never fails an operation; past it, the reader evicts cached bytes or stops keeping what it loads.
 Exceeding a limit is a policy of yours or a capacity of the reader, never a refusal of the data ([CHECK-5](../../spec/format-1.md#check-5)).
-A zero setting takes its default. Negative settings are rejected when Go opens the dataset or Java builds the Limits.
+A zero setting takes its default. A negative setting is rejected: Go returns `ErrInvalidRequest` when it opens or validates a dataset or parses a manifest, and Java throws `IllegalArgumentException` when it builds the Limits.
 
 What to do when an operation exceeds one: [troubleshooting](../guides/troubleshooting.md#limits).
 

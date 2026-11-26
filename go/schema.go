@@ -37,7 +37,9 @@ func (r Repetition) String() string {
 type LogicalKind uint8
 
 // The logical annotations: LogicalNone, those of Parquet's
-// LogicalTypes.md, then LogicalUnrecognized.
+// LogicalTypes.md in its order, then LogicalUnrecognized. MAP, LIST and
+// VARIANT annotate groups, whose Column.Logical is zero, so no Column
+// carries LogicalMap, LogicalList or LogicalVariant.
 const (
 	LogicalNone LogicalKind = iota
 	LogicalString
@@ -116,6 +118,7 @@ type Logical struct {
 	// Precision and Scale are a DECIMAL annotation's.
 	Precision, Scale int32
 	// SpecificationVersion is a VARIANT annotation's, 0 when not written.
+	// VARIANT annotates groups, so it is 0 in every Column.Logical.
 	SpecificationVersion int8
 	// CRS is a GEOMETRY or GEOGRAPHY annotation's coordinate reference
 	// system, "" for the default OGC:CRS84.

@@ -91,6 +91,55 @@ func TestColumnsAnnotated(t *testing.T) {
 	}
 }
 
+// TestColumnsGroupAnnotations: a LIST group and a MAP group are reported,
+// by Columns and InspectFooter, as groups with the zero Logical, so no
+// Column carries LogicalList or LogicalMap.
+func TestColumnsGroupAnnotations(t *testing.T) {
+	type row struct {
+		Key   []byte           `parquet:"key"`
+		Tags  []string         `parquet:"tags,list"`
+		Attrs map[string]int64 `parquet:"attrs"`
+	}
+	rows := make([]row, 8)
+	for i := range rows {
+		rows[i] = row{Key: []byte{'k', byte('0' + i)}, Tags: []string{"t"}, Attrs: map[string]int64{"a": int64(i)}}
+	}
+	dir := write(t, testutil.Dataset{Parts: []testutil.Part{{Rows: rows}}})
+	meta, err := testutil.ReadFooter(partFile(dir, 0))
+	must(t, err)
+	annotated := map[string]bool{}
+	for _, se := range meta.Schema {
+		switch se.LogicalType.Value.(type) {
+		case *format.ListType:
+			annotated[se.Name+"/LIST"] = se.NumChildren.V > 0
+		case *format.MapType:
+			annotated[se.Name+"/MAP"] = se.NumChildren.V > 0
+		}
+	}
+	if !annotated["tags/LIST"] || !annotated["attrs/MAP"] {
+		t.Fatalf("the part's schema lacks the annotated groups: %v", annotated)
+	}
+	want := []Column{
+		{Name: "key", Type: KindByteArray, Repetition: RepetitionRequired, Key: true},
+		{Name: "tags", Group: true, Repetition: RepetitionRequired},
+		{Name: "attrs", Group: true, Repetition: RepetitionRequired},
+	}
+	d := open(t, dir, OpenOptions{})
+	got, err := d.Columns(ctx, 0, nil)
+	must(t, err)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Columns:\n got %+v\nwant %+v", got, want)
+	}
+	f, err := os.Open(partFile(dir, 0))
+	must(t, err)
+	defer f.Close()
+	ft, err := InspectFooter(f, d.Metadata().Parts[0].Bytes)
+	must(t, err)
+	if !reflect.DeepEqual(ft.Schema, want) {
+		t.Fatalf("InspectFooter:\n got %+v\nwant %+v", ft.Schema, want)
+	}
+}
+
 // TestColumnsReadStats: Columns resets st on entry; when it is the first to
 // touch the part, st receives the reads of the part's check, whether the
 // check passes or refuses the part, and once the part's outcome is kept a
